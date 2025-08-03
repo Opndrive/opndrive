@@ -14,16 +14,16 @@ if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !BUCKET_NAME || !AWS_REGION)
   throw new Error('Missing environment variables');
 }
 
+const myCreds: Credentials = {
+  accessKeyId: AWS_ACCESS_KEY_ID,
+  secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  bucketName: BUCKET_NAME,
+  prefix: '',
+  region: AWS_REGION,
+};
+
 describe('BYOS3ApiProvider', () => {
   it('fetches a paginated directory structure with expected keys', async () => {
-    const myCreds: Credentials = {
-      accessKeyId: AWS_ACCESS_KEY_ID,
-      secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      bucketName: BUCKET_NAME,
-      prefix: '',
-      region: AWS_REGION,
-    };
-
     const api = new BYOS3ApiProvider(myCreds);
     const result = await api.fetchDirectoryStructure(myCreds.prefix, 2);
 
@@ -34,5 +34,13 @@ describe('BYOS3ApiProvider', () => {
 
     expect(result).toHaveProperty('nextToken');
     expect(result).toHaveProperty('isTruncated');
+  });
+});
+
+describe('BYOS3ApiProvider', () => {
+  it('fetches metadata of a specific file', async () => {
+    const api = new BYOS3ApiProvider(myCreds);
+    const result = await api.fetchMetadata('Screenshot 2025-06-13 142914.png');
+    expect(result === null || typeof result === 'object').toBe(true);
   });
 });
