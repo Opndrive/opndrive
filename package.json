@@ -1,0 +1,51 @@
+{
+  "name": "opndrive",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "**Your Secure, Open-Source Cloud Storage** Opndrive offers a powerful, AI-enhanced platform for seamless file sharing and collaboration, giving you full control over your data.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky",
+    "lint": "eslint frontend/ ",
+    "lint:fix": "eslint frontend/ --fix",
+    "lint:frontend": "eslint frontend/",
+    "lint:frontend:fix": "eslint frontend/ --fix",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html,mjs,cjs}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html,mjs,cjs}\"",
+    "format:frontend": "prettier --write \"frontend/**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html}\"",
+    "format:frontend:check": "prettier --check \"frontend/**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html}\"",
+    "check": "pnpm run lint && pnpm run format:check",
+    "check:frontend": "pnpm run lint:frontend && pnpm run format:frontend:check"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Opndrive/opndrive.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Opndrive/opndrive/issues"
+  },
+  "homepage": "https://github.com/Opndrive/opndrive#readme",
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "eslint": "^9.31.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.19.0"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css,scss,html}": [
+      "prettier --write"
+    ]
+  }
+}

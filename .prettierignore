@@ -1,0 +1,56 @@
+# Build outputs
+**/dist/
+**/build/
+**/.next/
+**/out/
+
+# Dependencies
+**/node_modules/
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Cache directories
+**/.cache/
+**/.eslintcache
+**/.npm/
+**/.yarn/
+**/.parcel-cache/
+
+# Coverage reports
+**/coverage/
+
+# Environment variables
+.env*
+!.env.example
+
+# Logs
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor folders
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Generated files
+**/public/sw.js
+**/public/workbox-*.js
+**/storybook-static/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Minified files
+**/*.min.js
+**/*.bundle.js
