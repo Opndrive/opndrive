@@ -2,7 +2,7 @@
  * Core API interface definition for s3 bucket access for opndrive
  */
 
-import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
+import { _Object, CommonPrefix, HeadObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
 
 export interface Credentials {
   region: string; //AWS region
@@ -12,7 +12,7 @@ export interface Credentials {
   bucketName: string; //AWS S3 bucket name
 }
 
-export interface DiretoryStrucure {
+export interface DirectoryStructure {
   files: _Object[];
   folders: CommonPrefix[];
   nextToken: string | undefined;
@@ -24,14 +24,24 @@ export interface DiretoryStrucure {
  */
 export abstract class BaseS3ApiProvider {
   protected credentials: Credentials;
+  protected s3: S3Client;
 
   constructor(creds: Credentials) {
     this.credentials = creds;
+    this.s3 = new S3Client({
+      region: this.credentials.region,
+      credentials: {
+        accessKeyId: this.credentials.accessKeyId,
+        secretAccessKey: this.credentials.secretAccessKey,
+      },
+    });
   }
 
   abstract fetchDirectoryStructure(
     prefix: string | undefined | null,
     maxKeys: number,
     token?: string
-  ): Promise<DiretoryStrucure>;
+  ): Promise<DirectoryStructure>;
+
+  abstract fetchMetadata(prefix: string): Promise<HeadObjectCommandOutput | null>;
 }
