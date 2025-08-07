@@ -19,6 +19,11 @@ export interface DirectoryStructure {
   isTruncated: boolean | undefined;
 }
 
+export interface PresignedUploadParams {
+  key: string;
+  expiresInSeconds: number;
+}
+
 export type logTypes = 'warn' | 'log' | 'error' | 'table' | 'dir';
 export type userTypes = 'BYO';
 
@@ -87,4 +92,6 @@ export abstract class BaseS3ApiProvider {
   ): Promise<DirectoryStructure>;
 
   abstract fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null>;
+
+  abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
 }

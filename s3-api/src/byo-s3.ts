@@ -1,12 +1,29 @@
-import { BaseS3ApiProvider, DirectoryStructure } from './core';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import {
+  BaseS3ApiProvider,
+  Credentials,
+  DirectoryStructure,
+  PresignedUploadParams,
+  userTypes,
+} from './core';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
   HeadObjectCommand,
   HeadObjectCommandOutput,
+  PutObjectCommandInput,
+  PutObjectCommand,
+  __MetadataBearer,
 } from '@aws-sdk/client-s3';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
+  protected userType: userTypes;
+
+  constructor(creds: Credentials, userType: userTypes) {
+    super(creds);
+    this.userType = userType;
+  }
+
   async fetchDirectoryStructure(
     prefix: string | undefined | null,
     maxKeys: number = 50,
@@ -53,5 +70,27 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     } catch (error) {
       return null;
     }
+  }
+
+  async uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string> {
+    const { key, expiresInSeconds } = params;
+
+    if (key.charAt(0) === '/') {
+      throw new Error('Key starting with /');
+    }
+
+    if (expiresInSeconds < 0) {
+      throw new Error('Negative seconds');
+    }
+
+    const input: PutObjectCommandInput = {
+      Bucket: this.credentials.bucketName,
+      Key: key,
+    };
+
+    const command = new PutObjectCommand(input);
+    const url = await getSignedUrl(this.s3, command, { expiresIn: expiresInSeconds });
+
+    return url;
   }
 }

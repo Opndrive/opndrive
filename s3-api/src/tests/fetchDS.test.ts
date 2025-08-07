@@ -1,5 +1,5 @@
 import { BYOS3ApiProvider } from '@/byo-s3';
-import { Credentials } from '@/core';
+import { Credentials, PresignedUploadParams } from '@/core';
 import { describe, it, expect } from 'vitest';
 
 import dotenv from 'dotenv';
@@ -24,7 +24,7 @@ const myCreds: Credentials = {
 
 describe('BYOS3ApiProvider', () => {
   it('fetches a paginated directory structure with expected keys', async () => {
-    const api = new BYOS3ApiProvider(myCreds);
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
     const result = await api.fetchDirectoryStructure(myCreds.prefix, 2);
 
     expect(result).toMatchObject({
@@ -39,8 +39,44 @@ describe('BYOS3ApiProvider', () => {
 
 describe('BYOS3ApiProvider', () => {
   it('fetches metadata of a specific file', async () => {
-    const api = new BYOS3ApiProvider(myCreds);
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
     const result = await api.fetchMetadata('Screenshot 2025-06-13 142914.png');
     expect(result === null || typeof result === 'object').toBe(true);
+  });
+});
+
+describe('BYOS3ApiProvider', () => {
+  it('returns a presigned URL for a valid key', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+    const params: PresignedUploadParams = {
+      key: 'users/data/file.jpg',
+      expiresInSeconds: 900,
+    };
+
+    const result = await api.uploadWithPreSignedUrl(params);
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('throws an error for a key starting with a slash', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+    const params: PresignedUploadParams = {
+      key: '/users/data/file.jpg',
+      expiresInSeconds: 900,
+    };
+
+    await expect(api.uploadWithPreSignedUrl(params)).rejects.toBeDefined();
+  });
+
+  it('throws an error for negative expiration', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+    const params: PresignedUploadParams = {
+      key: 'users/data/file.jpg',
+      expiresInSeconds: -2,
+    };
+
+    await expect(api.uploadWithPreSignedUrl(params)).rejects.toBeDefined();
   });
 });
