@@ -19,6 +19,9 @@ export interface DirectoryStructure {
   isTruncated: boolean | undefined;
 }
 
+export type logTypes = 'warn' | 'log' | 'error' | 'table' | 'dir';
+export type userTypes = 'BYO';
+
 /**
  * Core API class
  */
@@ -36,6 +39,46 @@ export abstract class BaseS3ApiProvider {
       },
     });
   }
+
+  /**
+   *
+   * @param userType user role
+   * @param logType type of log
+   * @param message user message
+   * @param error user error
+   * @param data any kind of data
+   */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  debugLog(
+    userType: userTypes,
+    logType: logTypes,
+    message?: string | undefined | null,
+    error?: string | Error | undefined | null,
+    data?: any
+  ): void {
+    const date = new Date();
+    console.log(`${date.toISOString()} [${userType}-S3]:`);
+    switch (logType) {
+      case 'log':
+        console.log(message, data, '\n');
+        break;
+      case 'error':
+        console.error(error, '\n');
+        break;
+      case 'warn':
+        console.warn(message, '\n');
+        break;
+      case 'table':
+        console.table(data);
+        console.log();
+        break;
+      case 'dir':
+        console.dir(data, { depth: null });
+        console.log();
+        break;
+    }
+  }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   abstract fetchDirectoryStructure(
     prefix: string | undefined | null,
