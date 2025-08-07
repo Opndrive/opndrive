@@ -2,11 +2,12 @@
  * Core API interface definition for s3 bucket access for opndrive
  */
 
-import { _Object, CommonPrefix, HeadObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
 import {
   Credentials,
   DirectoryStructure,
   logTypes,
+  MultipartUploadParams,
   PresignedUploadParams,
   userTypes,
 } from './types';
@@ -78,4 +79,6 @@ export abstract class BaseS3ApiProvider {
   abstract fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null>;
 
   abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
+
+  abstract uploadMultipart(params: MultipartUploadParams): Promise<void>;
 }

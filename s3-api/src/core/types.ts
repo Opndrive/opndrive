@@ -22,3 +22,10 @@ export interface PresignedUploadParams {
 
 export type logTypes = 'warn' | 'log' | 'error' | 'table' | 'dir';
 export type userTypes = 'BYO';
+
+export interface MultipartUploadParams {
+  file: File;
+  key: string;
+  partSizeMB?: number; // default = 5MB
+  onProgress?: (progress: number) => void;
+}
