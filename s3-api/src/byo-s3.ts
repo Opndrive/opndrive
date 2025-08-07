@@ -40,11 +40,11 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     }
   }
 
-  async fetchMetadata(filePath: string): Promise<HeadObjectCommandOutput | null> {
+  async fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null> {
     try {
       const command = new HeadObjectCommand({
         Bucket: this.credentials.bucketName,
-        Key: filePath,
+        Key: path,
       });
 
       const metadata = await this.s3.send(command);

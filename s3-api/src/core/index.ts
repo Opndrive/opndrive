@@ -86,5 +86,5 @@ export abstract class BaseS3ApiProvider {
     token?: string
   ): Promise<DirectoryStructure>;
 
-  abstract fetchMetadata(prefix: string): Promise<HeadObjectCommandOutput | null>;
+  abstract fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null>;
 }
