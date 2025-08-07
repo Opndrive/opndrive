@@ -1,11 +1,5 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import {
-  BaseS3ApiProvider,
-  Credentials,
-  DirectoryStructure,
-  PresignedUploadParams,
-  userTypes,
-} from './core';
+import { Credentials, DirectoryStructure, PresignedUploadParams, userTypes } from './core/types';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
@@ -15,6 +9,7 @@ import {
   PutObjectCommand,
   __MetadataBearer,
 } from '@aws-sdk/client-s3';
+import { BaseS3ApiProvider } from './core';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
