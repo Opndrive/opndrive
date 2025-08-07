@@ -1,11 +1,11 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
-  BaseS3ApiProvider,
   Credentials,
   DirectoryStructure,
+  MultipartUploadParams,
   PresignedUploadParams,
   userTypes,
-} from './core';
+} from './core/types';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
@@ -14,7 +14,13 @@ import {
   PutObjectCommandInput,
   PutObjectCommand,
   __MetadataBearer,
+  CreateMultipartUploadCommand,
+  CompletedPart,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
+import { BaseS3ApiProvider } from './core';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
@@ -92,5 +98,67 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     const url = await getSignedUrl(this.s3, command, { expiresIn: expiresInSeconds });
 
     return url;
+  }
+
+  async uploadMultipart(params: MultipartUploadParams): Promise<void> {
+    const createCommand = new CreateMultipartUploadCommand({
+      Bucket: this.credentials.bucketName,
+      Key: params.key,
+    });
+    const { UploadId } = await this.s3.send(createCommand);
+
+    if (!UploadId) throw new Error('Failed to initiate multipart upload');
+
+    const partSize = (params.partSizeMB ? params.partSizeMB : 5) * 1024 * 1024;
+    const totalParts = Math.ceil(params.file.size / partSize);
+    const completedParts: CompletedPart[] = [];
+
+    try {
+      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        const start = (partNumber - 1) * partSize;
+        const end = Math.min(start + partSize, params.file.size);
+        const blobPart = params.file.slice(start, end);
+
+        const uploadPartCommand = new UploadPartCommand({
+          Bucket: this.credentials.bucketName,
+          Key: params.key,
+          UploadId,
+          PartNumber: partNumber,
+          Body: blobPart,
+        });
+
+        const response = await this.s3.send(uploadPartCommand);
+
+        completedParts.push({
+          ETag: response.ETag,
+          PartNumber: partNumber,
+        });
+
+        if (params.onProgress) {
+          params.onProgress((partNumber / totalParts) * 100);
+        }
+      }
+
+      const completeCommand = new CompleteMultipartUploadCommand({
+        Bucket: this.credentials.bucketName,
+        Key: params.key,
+        UploadId,
+        MultipartUpload: {
+          Parts: completedParts,
+        },
+      });
+
+      await this.s3.send(completeCommand);
+    } catch (error) {
+      console.log(error);
+      await this.s3.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.credentials.bucketName,
+          Key: params.key,
+          UploadId,
+        })
+      );
+      throw error;
+    }
   }
 }

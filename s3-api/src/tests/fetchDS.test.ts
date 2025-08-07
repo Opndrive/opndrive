@@ -1,5 +1,5 @@
-import { BYOS3ApiProvider } from '@/byo-s3';
-import { Credentials, PresignedUploadParams } from '@/core';
+import { BYOS3ApiProvider } from '@/index';
+import { Credentials, PresignedUploadParams } from '@/core/types';
 import { describe, it, expect } from 'vitest';
 
 import dotenv from 'dotenv';
