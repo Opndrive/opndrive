@@ -1,17 +1,29 @@
 {
-  "name": "s3-api",
+  "name": "@opndrive/s3-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "AWS S3 helper for the opndrive project",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "build": "tsc"
   },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "keywords": [],
-  "author": "",
+  "author": "team opndrive",
   "license": "ISC",
   "packageManager": "pnpm@10.7.0",
   "devDependencies": {
