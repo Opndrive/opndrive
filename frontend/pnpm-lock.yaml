@@ -15,8 +15,8 @@ importers:
         specifier: ^4.1.3
         version: 4.1.3(react-hook-form@7.62.0(react@19.1.1))
       '@opndrive/s3-api':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^1.0.1
+        version: 1.0.1
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.6
         version: 1.1.14(@types/react-dom@19.1.7(@types/react@19.1.9))(@types/react@19.1.9)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -520,8 +520,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opndrive/s3-api@1.0.0':
-    resolution: {integrity: sha512-t5PheLfgdO6JMgNtnUFSaszCzxvOp8bhtysSmgIR/l6Ipb/Ozq+xQCOw2QqY1ss3xOzYowWRDR7fW7Oj7+avYQ==}
+  '@opndrive/s3-api@1.0.1':
+    resolution: {integrity: sha512-HHc7rdRSVXaedHMIZChmlkiAeS3auiCIxfEh/lYNSBoSpB4Wwgln7lWJO5r9WNpfZRz2yEutGANwgjGZFJSmEg==}
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -2687,7 +2687,7 @@ snapshots:
   '@next/swc-win32-x64-msvc@15.2.4':
     optional: true
 
-  '@opndrive/s3-api@1.0.0':
+  '@opndrive/s3-api@1.0.1':
     dependencies:
       '@aws-sdk/client-s3': 3.862.0
       '@aws-sdk/s3-request-presigner': 3.862.0
