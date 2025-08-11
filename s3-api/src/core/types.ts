@@ -29,3 +29,8 @@ export interface MultipartUploadParams {
   partSizeMB?: number; // default = 5MB
   onProgress?: (progress: number) => void;
 }
+
+export interface SignedUrlParams {
+  key: string;
+  expiryInSeconds: number;
+}

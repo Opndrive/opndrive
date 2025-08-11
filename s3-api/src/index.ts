@@ -4,6 +4,7 @@ import {
   DirectoryStructure,
   MultipartUploadParams,
   PresignedUploadParams,
+  SignedUrlParams,
   userTypes,
 } from './core/types';
 import {
@@ -19,6 +20,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
 
@@ -160,5 +162,20 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       );
       throw error;
     }
+  }
+
+  async getSignedUrl(params: SignedUrlParams): Promise<string> {
+    const { key, expiryInSeconds } = params;
+
+    if (key.charAt(0) === '/') {
+      throw new Error('Key starting with /');
+    }
+
+    if (expiryInSeconds < 0) {
+      throw new Error('Negative seconds');
+    }
+
+    const cmd = new GetObjectCommand({ Bucket: this.credentials.bucketName, Key: params.key });
+    return getSignedUrl(this.s3, cmd, { expiresIn: params.expiryInSeconds });
   }
 }
