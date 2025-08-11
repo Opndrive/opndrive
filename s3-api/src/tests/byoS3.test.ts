@@ -1,5 +1,5 @@
 import { BYOS3ApiProvider } from '@/index';
-import { Credentials, PresignedUploadParams } from '@/core/types';
+import { Credentials, PresignedUploadParams, SignedUrlParams } from '@/core/types';
 import { describe, it, expect } from 'vitest';
 
 import dotenv from 'dotenv';
@@ -78,5 +78,41 @@ describe('BYOS3ApiProvider', () => {
     };
 
     await expect(api.uploadWithPreSignedUrl(params)).rejects.toBeDefined();
+  });
+});
+
+describe('BYOS3ApiProvider', () => {
+  it('returns a presigned URL to access data', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+    const params: SignedUrlParams = {
+      key: 'Screenshot 2025-06-13 142914.png',
+      expiryInSeconds: 900,
+    };
+
+    const result = await api.getSignedUrl(params);
+
+    expect(typeof result).toBe('string');
+  });
+
+  it('throws an error for a key starting with a slash', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+    const params: SignedUrlParams = {
+      key: '/users/data/file.jpg',
+      expiryInSeconds: 900,
+    };
+
+    await expect(api.getSignedUrl(params)).rejects.toBeDefined();
+  });
+
+  it('throws an error for negative expiration', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+    const params: SignedUrlParams = {
+      key: 'users/data/file.jpg',
+      expiryInSeconds: -2,
+    };
+
+    await expect(api.getSignedUrl(params)).rejects.toBeDefined();
   });
 });
