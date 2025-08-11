@@ -46,7 +46,7 @@ describe('BYOS3ApiProvider', () => {
 });
 
 describe('BYOS3ApiProvider', () => {
-  it('returns a presigned URL for a valid key', async () => {
+  it('returns a presigned URL for a valid key for data upload on client side', async () => {
     const api = new BYOS3ApiProvider(myCreds, 'BYO');
 
     const params: PresignedUploadParams = {
