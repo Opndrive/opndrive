@@ -9,6 +9,7 @@ import {
   logTypes,
   MultipartUploadParams,
   PresignedUploadParams,
+  SignedUrlParams,
   userTypes,
 } from './types';
 
@@ -83,4 +84,6 @@ export abstract class BaseS3ApiProvider {
   abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
 
   abstract uploadMultipart(params: MultipartUploadParams): Promise<void>;
+
+  abstract getSignedUrl(params: SignedUrlParams): Promise<string>;
 }
