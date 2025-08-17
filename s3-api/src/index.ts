@@ -278,6 +278,23 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       throw new Error(`Move failed for ${params.oldKey} → ${params.newKey}: ${err}`);
     }
   }
+
+  async createFolder(key: string): Promise<void> {
+    try {
+      if (key.startsWith('/')) throw new Error('Key starts with /');
+      if (!key.endsWith('/')) key += '/'; // enforce trailing slash
+
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: key,
+          Body: '',
+        })
+      );
+    } catch (err) {
+      throw new Error(`Create folder failed for ${key}: ${err}`);
+    }
+  }
 }
 
 export { MultipartUploader } from './utils/multipartUploader';

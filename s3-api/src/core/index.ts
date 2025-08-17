@@ -98,4 +98,6 @@ export abstract class BaseS3ApiProvider {
   abstract deleteFile(key: string): Promise<void>;
 
   abstract moveFile(params: MoveFileParams): Promise<void>;
+
+  abstract createFolder(key: string): Promise<void>;
 }
