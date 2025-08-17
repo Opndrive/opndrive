@@ -23,6 +23,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
 import { MultipartUploader } from './utils/multipartUploader';
@@ -242,6 +243,15 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     }
 
     throw new Error('Unsupported Body type returned from S3');
+  }
+
+  async deleteFile(key: string): Promise<void> {
+    await this.s3.send(
+      new DeleteObjectCommand({
+        Bucket: this.credentials.bucketName,
+        Key: key,
+      })
+    );
   }
 }
 

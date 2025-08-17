@@ -93,4 +93,6 @@ export abstract class BaseS3ApiProvider {
   abstract getSignedUrl(params: SignedUrlParams): Promise<string>;
 
   abstract downloadFile(params: DownloadFileParams): Promise<Blob | ArrayBuffer | Buffer>;
+
+  abstract deleteFile(key: string): Promise<void>;
 }
