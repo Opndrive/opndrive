@@ -6,6 +6,7 @@ import { HeadObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
 import {
   Credentials,
   DirectoryStructure,
+  DownloadFileParams,
   logTypes,
   MultipartUploadParallelParams,
   MultipartUploadParams,
@@ -86,7 +87,10 @@ export abstract class BaseS3ApiProvider {
   abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
 
   abstract uploadMultipart(params: MultipartUploadParams): Promise<void>;
+
   abstract uploadMultipartParallely(params: MultipartUploadParallelParams): MultipartUploader;
 
   abstract getSignedUrl(params: SignedUrlParams): Promise<string>;
+
+  abstract downloadFile(key: DownloadFileParams): Promise<Blob | ArrayBuffer | Buffer>;
 }
