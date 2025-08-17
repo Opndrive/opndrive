@@ -7,11 +7,13 @@ import {
   Credentials,
   DirectoryStructure,
   logTypes,
+  MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
   SignedUrlParams,
   userTypes,
 } from './types';
+import { MultipartUploader } from '@/utils/multipartUploader';
 
 /**
  * Core API class
@@ -84,6 +86,7 @@ export abstract class BaseS3ApiProvider {
   abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
 
   abstract uploadMultipart(params: MultipartUploadParams): Promise<void>;
+  abstract uploadMultipartParallely(params: MultipartUploadParallelParams): MultipartUploader;
 
   abstract getSignedUrl(params: SignedUrlParams): Promise<string>;
 }

@@ -30,6 +30,14 @@ export interface MultipartUploadParams {
   onProgress?: (progress: number) => void;
 }
 
+export interface MultipartUploadParallelParams {
+  file: File;
+  key: string;
+  partSizeMB: number;
+  concurrency: number;
+  onProgress?: (p: number) => void;
+}
+
 export interface SignedUrlParams {
   key: string;
   expiryInSeconds: number;

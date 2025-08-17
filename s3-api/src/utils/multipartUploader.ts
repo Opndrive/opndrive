@@ -1,0 +1,219 @@
+import {
+  S3Client,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+  ListPartsCommand,
+  CompletedPart,
+} from '@aws-sdk/client-s3';
+
+export interface MultipartUploadParams {
+  file: File;
+  key: string;
+  partSizeMB: number;
+  concurrency: number;
+  onProgress?: (progress: number) => void;
+}
+
+export class MultipartUploader {
+  private s3: S3Client;
+  private bucket: string;
+  private key: string;
+
+  private uploadId?: string;
+  private completedParts: CompletedPart[] = [];
+  private partSize: number = 5 * 1024 * 1024;
+
+  private isPaused = false;
+  private isCancelled = false;
+  private concurrency = 3;
+
+  private controllers: AbortController[] = [];
+
+  constructor(s3: S3Client, bucket: string, key: string) {
+    this.s3 = s3;
+    this.bucket = bucket;
+    this.key = key;
+  }
+
+  private saveState(file: File) {
+    const state = {
+      uploadId: this.uploadId,
+      key: this.key,
+      fileName: file.name,
+      fileSize: file.size,
+      completedParts: this.completedParts,
+      partSize: this.partSize,
+    };
+    localStorage.setItem(`upload:${file.name}:${this.key}`, JSON.stringify(state));
+  }
+
+  static restore(s3: S3Client, bucket: string, file: File, key: string): MultipartUploader | null {
+    const raw = localStorage.getItem(`upload:${file.name}:${key}`);
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+
+    const uploader = new MultipartUploader(s3, bucket, key);
+    uploader.uploadId = state.uploadId;
+    uploader.completedParts = state.completedParts || [];
+    uploader.partSize = state.partSize;
+    return uploader;
+  }
+
+  async start(params: MultipartUploadParams) {
+    this.partSize = (params.partSizeMB || 5) * 1024 * 1024;
+    this.concurrency = params.concurrency || 3;
+
+    if (!this.uploadId) {
+      const { UploadId } = await this.s3.send(
+        new CreateMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+        })
+      );
+      this.uploadId = UploadId!;
+    }
+
+    await this.uploadParts(params.file, params.onProgress);
+
+    if (!this.isPaused && !this.isCancelled) {
+      await this.completeUpload();
+      localStorage.removeItem(`upload:${params.file.name}:${this.key}`);
+    }
+  }
+
+  private async uploadParts(file: File, onProgress?: (p: number) => void) {
+    const totalParts = Math.ceil(file.size / this.partSize);
+    let nextPart = 1;
+
+    const uploadedNumbers = new Set(this.completedParts.map((p) => p.PartNumber));
+
+    const worker = async () => {
+      while (nextPart <= totalParts && !this.isPaused && !this.isCancelled) {
+        const partNumber = nextPart++;
+        if (uploadedNumbers.has(partNumber)) continue;
+
+        const start = (partNumber - 1) * this.partSize;
+        const end = Math.min(start + this.partSize, file.size);
+        const blobPart = file.slice(start, end);
+
+        // safety: only allow <5MB if it's the LAST part
+        if (end - start < 5 * 1024 * 1024 && partNumber !== totalParts) {
+          throw new Error(`Part ${partNumber} too small (<5MB). Only the last part can be <5MB.`);
+        }
+
+        const controller = new AbortController();
+        this.controllers.push(controller);
+
+        try {
+          const { ETag } = await this.s3.send(
+            new UploadPartCommand({
+              Bucket: this.bucket,
+              Key: this.key,
+              UploadId: this.uploadId,
+              PartNumber: partNumber,
+              Body: blobPart,
+            }),
+            { abortSignal: controller.signal }
+          );
+
+          this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
+          this.saveState(file);
+
+          if (onProgress) {
+            onProgress((this.completedParts.length / totalParts) * 100);
+          }
+        } catch (err) {
+          if (this.isCancelled || this.isPaused) {
+            return; // ignore
+          }
+          throw err;
+        } finally {
+          this.controllers = this.controllers.filter((c) => c !== controller);
+        }
+      }
+    };
+
+    const workers = Array.from({ length: this.concurrency }, () => worker());
+    await Promise.all(workers);
+  }
+
+  private async completeUpload() {
+    if (!this.uploadId) return;
+
+    // deduplicate + sort
+    const deduped = new Map<number, CompletedPart>();
+    for (const p of this.completedParts) {
+      if (p.PartNumber != null) deduped.set(p.PartNumber, p);
+    }
+    const sortedParts = Array.from(deduped.values()).sort((a, b) => a.PartNumber! - b.PartNumber!);
+
+    await this.s3.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.key,
+        UploadId: this.uploadId,
+        MultipartUpload: { Parts: sortedParts },
+      })
+    );
+  }
+
+  async resume(file: File, onProgress?: (p: number) => void) {
+    if (!this.uploadId) throw new Error('No uploadId found. Start a new upload.');
+    this.isPaused = false;
+    this.isCancelled = false;
+
+    const listed = await this.s3.send(
+      new ListPartsCommand({
+        Bucket: this.bucket,
+        Key: this.key,
+        UploadId: this.uploadId,
+      })
+    );
+
+    const remoteParts = (listed.Parts || []).map((p) => ({
+      ETag: p.ETag!,
+      PartNumber: p.PartNumber!,
+    }));
+
+    // merge local + remote, dedupe
+    const allParts = [...this.completedParts, ...remoteParts];
+    const deduped = new Map<number, CompletedPart>();
+    for (const p of allParts) {
+      if (p.PartNumber != null) deduped.set(p.PartNumber, p);
+    }
+    this.completedParts = Array.from(deduped.values());
+
+    this.saveState(file);
+
+    await this.uploadParts(file, onProgress);
+
+    if (!this.isPaused && !this.isCancelled) {
+      await this.completeUpload();
+      localStorage.removeItem(`upload:${file.name}:${this.key}`);
+    }
+  }
+
+  pause() {
+    this.isPaused = true;
+    this.controllers.forEach((c) => c.abort());
+    this.controllers = [];
+  }
+
+  async cancel() {
+    this.isCancelled = true;
+    this.controllers.forEach((c) => c.abort());
+    this.controllers = [];
+    if (this.uploadId) {
+      await this.s3.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+          UploadId: this.uploadId,
+        })
+      );
+    }
+    localStorage.removeItem(`upload:${this.key}`);
+  }
+}
