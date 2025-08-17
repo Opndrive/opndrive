@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-08-17
+### Added
+- Implemented deleteFile, moveFile, createFolder and deleteFile helper functions.
+
 ## [1.1.0] - 2025-08-17
 ### Added
 - Support for uploading multiparts concurrently.

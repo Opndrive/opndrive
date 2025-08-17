@@ -42,3 +42,13 @@ export interface SignedUrlParams {
   key: string;
   expiryInSeconds: number;
 }
+
+export interface DownloadFileParams {
+  key: string;
+  onProgress?: (progress: number, loaded: number, total: number) => void;
+}
+
+export interface MoveFileParams {
+  oldKey: string;
+  newKey: string;
+}

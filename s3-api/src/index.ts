@@ -2,6 +2,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   Credentials,
   DirectoryStructure,
+  DownloadFileParams,
+  MoveFileParams,
   MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
@@ -22,9 +24,12 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
 import { MultipartUploader } from './utils/multipartUploader';
+import { Readable } from 'stream';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
@@ -189,6 +194,106 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
     const cmd = new GetObjectCommand({ Bucket: this.credentials.bucketName, Key: params.key });
     return getSignedUrl(this.s3, cmd, { expiresIn: params.expiryInSeconds });
+  }
+
+  async downloadFile(params: DownloadFileParams): Promise<Buffer | Blob> {
+    const { Body, ContentLength } = await this.s3.send(
+      new GetObjectCommand({
+        Bucket: this.credentials.bucketName,
+        Key: params.key,
+      })
+    );
+
+    if (!Body) throw new Error('No data returned from S3');
+
+    const total = ContentLength ?? 0;
+    let loaded = 0;
+
+    if (Body instanceof ReadableStream) {
+      const reader = Body.getReader();
+      const chunks: BlobPart[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.byteLength;
+          if (params.onProgress && total) {
+            params.onProgress((loaded / total) * 100, loaded, total);
+          }
+        }
+      }
+      return new Blob(chunks);
+    }
+
+    if (Body instanceof Readable) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of Body) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+        chunks.push(buf);
+        loaded += buf.length;
+        if (params.onProgress && total) {
+          params.onProgress((loaded / total) * 100, loaded, total);
+        }
+      }
+      return Buffer.concat(chunks);
+    }
+
+    if (Body instanceof Blob) {
+      return Body;
+    }
+
+    throw new Error('Unsupported Body type returned from S3');
+  }
+
+  async deleteFile(key: string): Promise<void> {
+    await this.s3.send(
+      new DeleteObjectCommand({
+        Bucket: this.credentials.bucketName,
+        Key: key,
+      })
+    );
+  }
+
+  async moveFile(params: MoveFileParams): Promise<void> {
+    try {
+      const encodedSource = encodeURIComponent(params.oldKey);
+
+      await this.s3.send(
+        new CopyObjectCommand({
+          Bucket: this.credentials.bucketName,
+          CopySource: `${this.credentials.bucketName}/${encodedSource}`,
+          Key: params.newKey,
+        })
+      );
+
+      await this.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: params.oldKey,
+        })
+      );
+    } catch (err) {
+      throw new Error(`Move failed for ${params.oldKey} → ${params.newKey}: ${err}`);
+    }
+  }
+
+  async createFolder(key: string): Promise<void> {
+    try {
+      if (key.startsWith('/')) throw new Error('Key starts with /');
+      if (!key.endsWith('/')) key += '/'; // enforce trailing slash
+
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: key,
+          Body: '',
+        })
+      );
+    } catch (err) {
+      throw new Error(`Create folder failed for ${key}: ${err}`);
+    }
   }
 }
 
