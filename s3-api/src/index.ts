@@ -2,6 +2,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   Credentials,
   DirectoryStructure,
+  MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
   SignedUrlParams,
@@ -23,6 +24,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
+import { MultipartUploader } from './utils/multipartUploader';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
@@ -164,6 +166,16 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     }
   }
 
+  uploadMultipartParallely(params: MultipartUploadParallelParams) {
+    const uploader = new MultipartUploader(this.s3, this.credentials.bucketName, params.key);
+
+    uploader.start(params).catch((err) => {
+      console.error('Multipart upload failed:', err);
+    });
+
+    return uploader;
+  }
+
   async getSignedUrl(params: SignedUrlParams): Promise<string> {
     const { key, expiryInSeconds } = params;
 
@@ -179,3 +191,5 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     return getSignedUrl(this.s3, cmd, { expiresIn: params.expiryInSeconds });
   }
 }
+
+export { MultipartUploader } from './utils/multipartUploader';
