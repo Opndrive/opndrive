@@ -8,6 +8,7 @@ import {
   DirectoryStructure,
   DownloadFileParams,
   logTypes,
+  MoveFileParams,
   MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
@@ -95,4 +96,6 @@ export abstract class BaseS3ApiProvider {
   abstract downloadFile(params: DownloadFileParams): Promise<Blob | ArrayBuffer | Buffer>;
 
   abstract deleteFile(key: string): Promise<void>;
+
+  abstract moveFile(params: MoveFileParams): Promise<void>;
 }

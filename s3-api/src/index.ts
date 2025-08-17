@@ -3,6 +3,7 @@ import {
   Credentials,
   DirectoryStructure,
   DownloadFileParams,
+  MoveFileParams,
   MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
@@ -24,6 +25,7 @@ import {
   AbortMultipartUploadCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
 import { MultipartUploader } from './utils/multipartUploader';
@@ -252,6 +254,29 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         Key: key,
       })
     );
+  }
+
+  async moveFile(params: MoveFileParams): Promise<void> {
+    try {
+      const encodedSource = encodeURIComponent(params.oldKey);
+
+      await this.s3.send(
+        new CopyObjectCommand({
+          Bucket: this.credentials.bucketName,
+          CopySource: `${this.credentials.bucketName}/${encodedSource}`,
+          Key: params.newKey,
+        })
+      );
+
+      await this.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: params.oldKey,
+        })
+      );
+    } catch (err) {
+      throw new Error(`Move failed for ${params.oldKey} → ${params.newKey}: ${err}`);
+    }
   }
 }
 
