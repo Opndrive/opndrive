@@ -1,6 +1,5 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -27,14 +26,7 @@ export default function Navbar(props: NavbarProps) {
         <span className="hidden sm:inline">Opndrive</span>
       </Link>
 
-      {showAuthButtons && (
-        <nav className="flex items-center gap-2 sm:gap-4">
-          <Button variant="ghost" onClick={() => router.push('/auth/login')}>
-            Log in
-          </Button>
-          <Button onClick={() => router.push('/auth/signup')}>Try for free</Button>
-        </nav>
-      )}
+     
     </header>
   );
 }

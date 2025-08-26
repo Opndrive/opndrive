@@ -39,12 +39,14 @@ export default function RootLayout({
       <body>
         <ThemeProvider defaultTheme="system" storageKey="ui-theme">
           <NotificationProvider>
-            {/* <AuthProvider> */}
             {children}
-            {/* </AuthProvider> */}
           </NotificationProvider>
         </ThemeProvider>
       </body>
     </html>
   );
 }
+
+
+
+

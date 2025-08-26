@@ -7,21 +7,25 @@ import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
 import { SidebarStorage } from './sidebar-storage';
-import { groupNavItems, getStorageKeyForRole } from './utils/sidebar';
+import { groupNavItems } from './utils/sidebar';
 
 export function DashboardSidebar({
   isOpen,
   closeSidebar,
   navItems,
   basePath,
-  role,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
 
-  const localStorageKey = useMemo(() => getStorageKeyForRole(role), [role]);
+  // Removed role-based key; use a stable key (optionally include basePath to scope it per app/space)
+  const localStorageKey = useMemo(
+    () => `dashboard_sidebar_state${basePath ? `:${basePath}` : ''}`,
+    [basePath]
+  );
+
   const sidebarSections = useMemo(() => groupNavItems(navItems), [navItems]);
 
   useEffect(() => {
