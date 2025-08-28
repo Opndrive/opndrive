@@ -1,44 +1,49 @@
-"use client"
+'use client';
 
-import type React from "react"
-import { useState } from "react"
-import type { Folder } from "@/types/dashboard/folder"
-import { FolderIcon, SharedFolderIcon, MoreVerticalIcon } from "@/components/icons/folder-icons"
-import { OverflowMenu } from "./overflow-menu"
+import type React from 'react';
+import { useState } from 'react';
+import type { Folder } from '@/types/dashboard/folder';
+import { FolderIcon, SharedFolderIcon, MoreVerticalIcon } from '@/components/icons/folder-icons';
+import { OverflowMenu } from './overflow-menu';
 
 interface FolderItemProps {
-  folder: Folder
-  onClick?: (folder: Folder) => void
-  onMenuClick?: (folder: Folder, event: React.MouseEvent) => void
-  className?: string
+  folder: Folder;
+  onClick?: (folder: Folder) => void;
+  onMenuClick?: (folder: Folder, event: React.MouseEvent) => void;
+  className?: string;
 }
 
 const getFolderIcon = (folder: Folder) => {
-  if (folder.location.type === "shared-with-me") {
-    return <SharedFolderIcon className="text-blue-400" size={20} />
+  if (folder.location.type === 'shared-with-me') {
+    return <SharedFolderIcon className="text-blue-400" size={20} />;
   }
-  return <FolderIcon className="text-blue-400" size={20} />
-}
+  return <FolderIcon className="text-blue-400" size={20} />;
+};
 
-export const FolderItem: React.FC<FolderItemProps> = ({ folder, onClick, onMenuClick, className = "" }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
+export const FolderItem: React.FC<FolderItemProps> = ({
+  folder,
+  onClick,
+  onMenuClick,
+  className = '',
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const handleClick = () => {
-    onClick?.(folder)
-  }
+    onClick?.(folder);
+  };
 
   const handleMenuClick = (event: React.MouseEvent) => {
-    event.stopPropagation()
-    setMenuAnchor(event.currentTarget as HTMLElement)
-    setIsMenuOpen(true)
-    onMenuClick?.(folder, event)
-  }
+    event.stopPropagation();
+    setMenuAnchor(event.currentTarget as HTMLElement);
+    setIsMenuOpen(true);
+    onMenuClick?.(folder, event);
+  };
 
   const handleMenuClose = () => {
-    setIsMenuOpen(false)
-    setMenuAnchor(null)
-  }
+    setIsMenuOpen(false);
+    setMenuAnchor(null);
+  };
 
   return (
     <>
@@ -62,7 +67,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({ folder, onClick, onMenuC
         <button
           className="
             flex-shrink-0 p-1 rounded-full
-            hover:bg-card transition-all duration-200
+            hover:bg-secondary/60 transition-all duration-200
             text-muted-foreground hover:text-foreground
           "
           onClick={handleMenuClick}
@@ -72,7 +77,12 @@ export const FolderItem: React.FC<FolderItemProps> = ({ folder, onClick, onMenuC
         </button>
       </div>
 
-      <OverflowMenu folder={folder} isOpen={isMenuOpen} onClose={handleMenuClose} anchorElement={menuAnchor} />
+      <OverflowMenu
+        folder={folder}
+        isOpen={isMenuOpen}
+        onClose={handleMenuClose}
+        anchorElement={menuAnchor}
+      />
     </>
-  )
-}
+  );
+};
