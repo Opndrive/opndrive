@@ -20,7 +20,6 @@ export interface DashboardSidebarProps {
   closeSidebar: () => void;
   navItems: NavItem[];
   basePath: string;
-  role: string;
 }
 
 export interface SidebarItemProps {

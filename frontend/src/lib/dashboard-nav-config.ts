@@ -12,7 +12,7 @@ export interface NavItem {
   children?: NavItem[];
 }
 
-const adminNavItems: NavItem[] = [
+const NavItems: NavItem[] = [
   {
     title: 'Home',
     href: '/',
@@ -42,20 +42,8 @@ const adminNavItems: NavItem[] = [
   },
 ];
 
-const sevadarNavItems: NavItem[] = [
-  {
-    title: 'Sevadar Dashboard',
-    href: '/',
-    icon: LayoutDashboard,
-  },
-];
 
-export function getNavItems(role: string): NavItem[] {
-  if (role === 'admin') {
-    return adminNavItems;
-  }
-  if (role === 'sevadar') {
-    return sevadarNavItems;
-  }
-  return [];
+
+export function getNavItems(): NavItem[] {
+  return NavItems
 }

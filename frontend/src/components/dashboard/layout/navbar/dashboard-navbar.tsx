@@ -9,17 +9,17 @@ import { SearchPage } from '@/components/ui/dashboard/search-bar/seach-page';
 
 interface DashboardNavbarProps {
   toggleSidebar: () => void;
-  role: string;
 }
 
-export function DashboardNavbar({ toggleSidebar, role }: DashboardNavbarProps) {
+export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
   const { isSearchHidden } = useScroll();
 
   return (
     <header className="sticky top-0 z-30 w-full bg-secondary px-6 py-2">
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center">
-          <div className="lg:hidden">
+          {/* Mobile view: Toggle + Logo */}
+          <div className="lg:hidden flex items-center">
             <Button
               variant="ghost"
               size="icon"
@@ -29,7 +29,16 @@ export function DashboardNavbar({ toggleSidebar, role }: DashboardNavbarProps) {
             >
               <Menu size={20} />
             </Button>
+            <Image
+              src="/logo-nobg.png"
+              width={40}
+              height={40}
+              className="h-10 w-auto"
+              alt="Organization Logo"
+            />
           </div>
+
+          {/* Desktop view: Logo + Name */}
           <div className="hidden items-center space-x-2 lg:flex">
             <Image
               src="/logo-nobg.png"
@@ -42,6 +51,8 @@ export function DashboardNavbar({ toggleSidebar, role }: DashboardNavbarProps) {
               Opn<span className="text-primary">drive</span>
             </span>
           </div>
+
+          {/* Desktop: Toggle on right of logo */}
           <div className="hidden lg:block">
             <Button
               variant="ghost"
@@ -55,15 +66,20 @@ export function DashboardNavbar({ toggleSidebar, role }: DashboardNavbarProps) {
           </div>
         </div>
 
+        {/* Search Bar */}
         <div className="flex flex-1 justify-center px-4">
           <div
-            className={`w-full max-w-2xl transition-all duration-300 ${isSearchHidden ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`}
+            className={`w-full max-w-2xl transition-all duration-300 ${
+              isSearchHidden
+                ? 'opacity-100 translate-y-0 scale-100'
+                : 'opacity-0 translate-y-4 scale-95 pointer-events-none'
+            }`}
           >
             <SearchPage />
           </div>
         </div>
 
-        <NavbarUserProfile role={role} />
+        <NavbarUserProfile />
       </div>
     </header>
   );
