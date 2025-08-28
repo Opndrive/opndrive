@@ -76,7 +76,7 @@ export function SuggestedFiles({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {files.map((file) => (
                 <div key={file.id} onClick={() => handleFileClick(file)} className="cursor-pointer">
-                  <FileItemGrid file={file} onAction={handleFileAction} />
+                  <FileItemGrid file={file} _onAction={handleFileAction} />
                 </div>
               ))}
             </div>
@@ -91,7 +91,7 @@ export function SuggestedFiles({
               </div>
               {files.map((file) => (
                 <div key={file.id} onClick={() => handleFileClick(file)} className="cursor-pointer">
-                  <FileItemList file={file} onAction={handleFileAction} />
+                  <FileItemList file={file} _onAction={handleFileAction} />
                 </div>
               ))}
             </div>
