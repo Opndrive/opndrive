@@ -100,4 +100,10 @@ export abstract class BaseS3ApiProvider {
   abstract moveFile(params: MoveFileParams): Promise<void>;
 
   abstract createFolder(key: string): Promise<void>;
+
+  abstract getBucketName(): string;
+
+  abstract getPrefix(): string;
+
+  abstract getRegion(): string;
 }
