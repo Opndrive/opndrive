@@ -1,31 +1,31 @@
-"use client"
+'use client';
 
-import type React from "react"
-import { useState } from "react"
-import type { Folder } from "@/types/dashboard/folder"
-import { FolderItem } from "@/components/ui/dashboard/folder-item"
+import type React from 'react';
+import { useState } from 'react';
+import type { Folder } from '@/types/dashboard/folder';
+import { FolderItem } from '@/components/ui/dashboard/folder-item';
 
 interface SuggestedFoldersProps {
-  folders: Folder[]
-  onFolderClick?: (folder: Folder) => void
-  onFolderMenuClick?: (folder: Folder, event: React.MouseEvent) => void
-  className?: string
+  folders: Folder[];
+  onFolderClick?: (folder: Folder) => void;
+  onFolderMenuClick?: (folder: Folder, event: React.MouseEvent) => void;
+  className?: string;
 }
 
 export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   folders,
   onFolderClick,
   onFolderMenuClick,
-  className = "",
+  className = '',
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(true);
 
   const toggleExpanded = () => {
-    setIsExpanded(!isExpanded)
-  }
+    setIsExpanded(!isExpanded);
+  };
 
   if (folders.length === 0) {
-    return null
+    return null;
   }
 
   return (
@@ -42,7 +42,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
         aria-controls="suggested-folders-content"
       >
         <svg
-          className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-90" : "rotate-0"}`}
+          className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -58,10 +58,15 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
         >
           {folders.map((folder) => (
-            <FolderItem key={folder.id} folder={folder} onClick={onFolderClick} onMenuClick={onFolderMenuClick} />
+            <FolderItem
+              key={folder.Prefix}
+              folder={folder}
+              onClick={onFolderClick}
+              onMenuClick={onFolderMenuClick}
+            />
           ))}
         </div>
       )}
     </div>
-  )
-}
+  );
+};

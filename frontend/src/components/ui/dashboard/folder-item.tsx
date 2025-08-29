@@ -3,7 +3,10 @@
 import type React from 'react';
 import { useState } from 'react';
 import type { Folder } from '@/types/dashboard/folder';
-import { FolderIcon, SharedFolderIcon, MoreVerticalIcon } from '@/components/icons/folder-icons';
+import {
+  FolderIcon,
+  /* SharedFolderIcon */ MoreVerticalIcon,
+} from '@/components/icons/folder-icons';
 import { OverflowMenu } from './overflow-menu';
 
 interface FolderItemProps {
@@ -14,9 +17,10 @@ interface FolderItemProps {
 }
 
 const getFolderIcon = (folder: Folder) => {
-  if (folder.location.type === 'shared-with-me') {
-    return <SharedFolderIcon className="text-blue-400" size={20} />;
-  }
+  // if (folder.location.type === 'shared-with-me') {
+  //   return <SharedFolderIcon className="text-blue-400" size={20} />;
+  // }
+  console.log('[Lint Issue ] : ', folder.Prefix);
   return <FolderIcon className="text-blue-400" size={20} />;
 };
 
@@ -61,7 +65,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
 
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-foreground truncate">{folder.name}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{folder.location.label}</p>
+          {/* <p className="text-xs text-muted-foreground mt-0.5">{folder.location.label}</p> */}
         </div>
 
         <button

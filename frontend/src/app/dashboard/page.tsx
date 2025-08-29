@@ -5,42 +5,54 @@ import { useScroll } from '@/context/scroll-context';
 import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
 import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
 import { SuggestedFiles } from '@/components/dashboard/home/suggested-files';
-import { createFolder } from '@/lib/folder-helpers';
-import { mockSuggestedFiles } from '@/lib/file-helpers';
 import { Folder } from '@/types/dashboard/folder';
 import { FileItem } from '@/types/dashboard/file';
-
-const mockSuggestedFolders: Folder[] = [
-  createFolder('1', 'Doc', 'my-drive'),
-  createFolder('2', 'Backups', 'my-drive'),
-  createFolder('3', 'Sewa', 'my-drive'),
-  createFolder('4', 'Spiritual Proofs', 'shared-with-me'),
-  createFolder('5', 'Projects', 'my-drive'),
-  createFolder('6', 'Photos', 'my-drive'),
-];
+import { useDriveStore } from '@/context/data-context';
+import { apiS3 } from '@/lib/byo-s3-api';
+import { useEffect } from 'react';
 
 export default function HomePage() {
   const { isFiltersHidden } = useScroll();
+  const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
+    useDriveStore();
+
+  useEffect(() => {
+    const rootPrefix = apiS3.getPrefix();
+    if (rootPrefix === '') {
+      setRootPrefix('/');
+      setCurrentPrefix('/');
+    } else {
+      setRootPrefix(rootPrefix);
+      setCurrentPrefix(rootPrefix);
+    }
+
+    fetchData({ sync: true });
+  }, []);
+
+  useEffect(() => {
+    if (currentPrefix) fetchData({ sync: true });
+  }, [currentPrefix]);
 
   const handleFolderClick = (folder: Folder) => {
+    if (folder.Prefix) {
+      setCurrentPrefix(folder.Prefix);
+    }
     console.log('Folder clicked:', folder);
-    // Navigate to folder or perform action
   };
 
   const handleFolderMenuClick = (folder: Folder, _event: React.MouseEvent) => {
     console.log('Folder menu clicked:', folder);
-    // Show context menu or dropdown
   };
 
   const handleFileClick = (file: FileItem) => {
     console.log('File clicked:', file);
-    // Open file or perform action
   };
 
   const handleFileAction = (action: string, file: FileItem) => {
     console.log('File action:', action, file);
-    // Handle file action
   };
+
+  const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
 
   return (
     <>
@@ -58,21 +70,29 @@ export default function HomePage() {
         </div>
 
         <div className="relative z-0">
-          {/* Suggested Folders Section */}
-          <SuggestedFolders
-            folders={mockSuggestedFolders}
-            onFolderClick={handleFolderClick}
-            onFolderMenuClick={handleFolderMenuClick}
-            className="mt-8"
-          />
+          {/* Only render SuggestedFolders when data is loaded */}
+          {currentPrefix && isReady ? (
+            <SuggestedFolders
+              folders={cache[currentPrefix]?.folders || []}
+              onFolderClick={handleFolderClick}
+              onFolderMenuClick={handleFolderMenuClick}
+              className="mt-8"
+            />
+          ) : (
+            <div className="mt-8 text-muted-foreground text-sm">Loading folders...</div>
+          )}
 
-          {/* Suggested Files Section */}
-          <SuggestedFiles
-            files={mockSuggestedFiles}
-            onFileClick={handleFileClick}
-            onFileAction={handleFileAction}
-            className="mt-8"
-          />
+          {/* SuggestedFiles can stay static or use same logic if needed */}
+          {currentPrefix && isReady ? (
+            <SuggestedFiles
+              files={cache[currentPrefix]?.files || []}
+              onFileClick={handleFileClick}
+              onFileAction={handleFileAction}
+              className="mt-8"
+            />
+          ) : (
+            <div className="mt-8 text-muted-foreground text-sm">Loading files...</div>
+          )}
         </div>
       </div>
     </>

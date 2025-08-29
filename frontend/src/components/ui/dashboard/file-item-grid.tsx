@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react';
+// import { Users } from 'lucide-react';
 import { useState } from 'react';
 import type { FileItem, FileExtension } from '@/types/dashboard/file';
 import { FileThumbnail } from '@/components/ui/dashboard/file-thumbnail';
@@ -40,7 +40,7 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
               className="h-4 w-4 flex-shrink-0"
             />
             <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
-            {file.isShared && <Users className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
+            {/* {file.isShared && <Users className="h-3 w-3 text-muted-foreground flex-shrink-0" />} */}
           </div>
 
           {/* Overflow Menu */}
@@ -54,16 +54,16 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
 
         {/* File Metadata */}
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">{file.reasonSuggested}</p>
+          {/* <p className="text-xs text-muted-foreground">{file.reasonSuggested}</p> */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <div className="h-4 w-4 rounded-full bg-orange-500 flex items-center justify-center">
                 <span className="text-xs font-medium text-white">
-                  {file.owner.name.charAt(0).toUpperCase()}
+                  {/* {file.owner.name.charAt(0).toUpperCase()} */}
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {file.owner.name === 'me' ? 'me' : file.owner.name}
+                {/* {file.owner.name === 'me' ? 'me' : file.owner.name} */}
               </span>
             </div>
           </div>
