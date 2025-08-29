@@ -310,3 +310,4 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 }
 
 export { MultipartUploader } from './utils/multipartUploader';
+export * from './core/types';
