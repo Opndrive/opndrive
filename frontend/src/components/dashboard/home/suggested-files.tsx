@@ -11,6 +11,7 @@ interface SuggestedFilesProps {
   onFileClick?: (file: FileItem) => void;
   onFileAction?: (action: string, file: FileItem) => void;
   className?: string;
+  hideTitle?: boolean;
 }
 
 export function SuggestedFiles({
@@ -18,6 +19,7 @@ export function SuggestedFiles({
   onFileClick,
   onFileAction,
   className = '',
+  hideTitle = false,
 }: SuggestedFilesProps) {
   const [layout, setLayout] = useState<ViewLayout>('list');
   const [isExpanded, setIsExpanded] = useState(true);
@@ -37,40 +39,46 @@ export function SuggestedFiles({
   if (files.length === 0) {
     return (
       <div className={`text-center py-12 ${className}`}>
-        <p className="text-muted-foreground">No suggested files available.</p>
+        <p className="text-muted-foreground">No files available.</p>
       </div>
     );
   }
 
   return (
     <div className={`w-full ${className}`}>
-      <div className="flex items-center justify-between mb-3">
-        <button
-          className="
-            flex items-center gap-2 p-2
-            text-sm font-medium text-foreground
-            hover:bg-secondary/80 rounded-lg
-            transition-colors duration-200
-          "
-          onClick={toggleExpanded}
-          aria-expanded={isExpanded}
-          aria-controls="suggested-files-content"
-        >
-          <svg
-            className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      {!hideTitle ? (
+        <div className="flex items-center justify-between mb-3">
+          <button
+            className="
+              flex items-center gap-2 p-2
+              text-sm font-medium text-foreground
+              hover:bg-secondary/80 rounded-lg
+              transition-colors duration-200
+            "
+            onClick={toggleExpanded}
+            aria-expanded={isExpanded}
+            aria-controls="suggested-files-content"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          Suggested files
-        </button>
+            <svg
+              className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Suggested files
+          </button>
 
-        {isExpanded && <LayoutToggle layout={layout} onLayoutChange={setLayout} />}
-      </div>
+          {isExpanded && <LayoutToggle layout={layout} onLayoutChange={setLayout} />}
+        </div>
+      ) : (
+        <div className="flex items-center justify-end mb-3">
+          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+        </div>
+      )}
 
-      {isExpanded && (
+      {(hideTitle || isExpanded) && (
         <div id="suggested-files-content">
           {layout === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

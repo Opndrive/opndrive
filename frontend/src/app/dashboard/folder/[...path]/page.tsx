@@ -1,8 +1,5 @@
 'use client';
 
-import { DriveHero } from '@/components/dashboard/home/drive-hero';
-import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
 import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
 import { SuggestedFiles } from '@/components/dashboard/home/suggested-files';
 import { DashboardLoading } from '@/components/ui/dashboard/dashboard-skeleton';
@@ -11,35 +8,45 @@ import { FileItem } from '@/types/dashboard/file';
 import { useDriveStore } from '@/context/data-context';
 import { apiS3 } from '@/lib/byo-s3-api';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { FolderBreadcrumb } from '@/components/dashboard/layout/folder-breadcrumb';
 
-export default function HomePage() {
-  const { isFiltersHidden } = useScroll();
+export default function FolderPage() {
+  const params = useParams();
   const router = useRouter();
   const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
     useDriveStore();
+
+  // Get the current folder path from URL params
+  const pathSegments = Array.isArray(params.path) ? params.path : [];
+  const currentPath = pathSegments.length > 0 ? pathSegments.join('/') + '/' : '';
 
   useEffect(() => {
     const rootPrefix = apiS3.getPrefix();
     if (rootPrefix === '') {
       setRootPrefix('/');
-      setCurrentPrefix('/');
     } else {
       setRootPrefix(rootPrefix);
-      setCurrentPrefix(rootPrefix);
     }
 
-    fetchData({ sync: true });
-  }, []);
+    // Set current prefix based on URL path
+    const fullPrefix = rootPrefix === '' ? currentPath : rootPrefix + currentPath;
+    setCurrentPrefix(fullPrefix || (rootPrefix === '' ? '/' : rootPrefix));
+  }, [pathSegments, setRootPrefix, setCurrentPrefix]);
 
   useEffect(() => {
     if (currentPrefix) fetchData({ sync: true });
-  }, [currentPrefix]);
+  }, [currentPrefix, fetchData]);
 
   const handleFolderClick = (folder: Folder) => {
-    if (folder.Prefix && folder.name) {
-      // Navigate to the folder using the Google Drive pattern
-      router.push(`/dashboard/folder/${folder.name}/`);
+    if (folder.Prefix) {
+      // Extract the folder name from the prefix
+      const folderName = folder.name;
+      if (folderName) {
+        // Navigate to the new folder path using Google Drive pattern
+        const newPath = pathSegments.length > 0 ? [...pathSegments, folderName] : [folderName];
+        router.push(`/dashboard/folder/${newPath.join('/')}/`);
+      }
     }
     console.log('Folder clicked:', folder);
   };
@@ -60,48 +67,45 @@ export default function HomePage() {
 
   return (
     <>
-      <DriveHero />
-      <div className="relative">
-        <div
-          className={`sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
-            isFiltersHidden
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 -translate-y-2 pointer-events-none'
-          }`}
-        >
-          <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
-          <ViewDetails />
-        </div>
+      {/* Show breadcrumb for folder navigation */}
+      <FolderBreadcrumb pathSegments={pathSegments} />
 
+      <div className="relative">
         <div className="relative z-0">
           {/* Show loading state or actual content */}
           {currentPrefix && isReady ? (
             <>
               {/* Folders Section */}
               {cache[currentPrefix]?.folders && cache[currentPrefix].folders.length > 0 && (
-                <SuggestedFolders
-                  folders={cache[currentPrefix]?.folders || []}
-                  onFolderClick={handleFolderClick}
-                  onFolderMenuClick={handleFolderMenuClick}
-                  className="mt-8"
-                />
+                <div className="mt-8">
+                  <h3 className="text-sm font-medium text-foreground mb-4 px-1">Folders</h3>
+                  <SuggestedFolders
+                    folders={cache[currentPrefix]?.folders || []}
+                    onFolderClick={handleFolderClick}
+                    onFolderMenuClick={handleFolderMenuClick}
+                    hideTitle={true}
+                  />
+                </div>
               )}
 
               {/* Files Section */}
               {cache[currentPrefix]?.files && cache[currentPrefix].files.length > 0 && (
-                <SuggestedFiles
-                  files={cache[currentPrefix]?.files || []}
-                  onFileClick={handleFileClick}
-                  onFileAction={handleFileAction}
-                  className="mt-8"
-                />
+                <div className="mt-8">
+                  <h3 className="text-sm font-medium text-foreground mb-4 px-1">Files</h3>
+                  <SuggestedFiles
+                    files={cache[currentPrefix]?.files || []}
+                    onFileClick={handleFileClick}
+                    onFileAction={handleFileAction}
+                    hideTitle={true}
+                  />
+                </div>
               )}
 
               {/* Empty state when no folders or files */}
               {(!cache[currentPrefix]?.folders || cache[currentPrefix].folders.length === 0) &&
                 (!cache[currentPrefix]?.files || cache[currentPrefix].files.length === 0) && (
                   <div className="text-center py-12 mt-8">
-                    <p className="text-muted-foreground">No files or folders available.</p>
+                    <p className="text-muted-foreground">No files or folders in this location.</p>
                   </div>
                 )}
             </>
