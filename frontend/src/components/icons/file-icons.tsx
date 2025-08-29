@@ -10,6 +10,8 @@ import {
   LucidePresentation as FilePresentation,
   FileQuestion,
 } from 'lucide-react';
+import { BsFillGearFill } from 'react-icons/bs';
+
 import type { FileExtension } from '@/types/dashboard/file';
 
 interface FileIconProps {
@@ -21,6 +23,8 @@ const getFileIconColor = (extension: FileExtension): string => {
   switch (extension) {
     case 'pdf':
       return 'text-red-500';
+    case 'exe':
+      return 'text-yellow-500';
     case 'doc':
     case 'docx':
       return 'text-blue-500';
@@ -75,6 +79,8 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
   switch (extension) {
     case 'pdf':
       return <FilePdf className={iconClass} />;
+    case 'exe':
+      return <BsFillGearFill className={iconClass} />;
     case 'doc':
     case 'docx':
     case 'txt':

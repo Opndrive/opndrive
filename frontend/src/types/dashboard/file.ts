@@ -14,6 +14,7 @@ export interface FileItem extends _Object {
 
 export type FileExtension =
   | 'pdf'
+  | 'exe'
   | 'doc'
   | 'docx'
   | 'txt'
