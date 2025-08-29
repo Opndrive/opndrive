@@ -34,7 +34,14 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
       </div>
 
       {/* Last Updated Column */}
-      <div className="hidden md:block col-span-3">{file.LastModified?.toDateString()}</div>
+      <div className="hidden md:block col-span-3">
+        {' '}
+        {file.LastModified?.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      </div>
 
       {/* Owner Column */}
       <div className="hidden lg:flex items-center gap-2 col-span-2">

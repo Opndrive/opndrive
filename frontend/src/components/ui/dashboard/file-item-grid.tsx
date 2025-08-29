@@ -56,15 +56,22 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
         {/* File Metadata */}
         <div className="space-y-1">
           {/* <p className="text-xs text-muted-foreground">{file.reasonSuggested}</p> */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
-              <div className="hidden lg:flex items-center gap-2 col-span-2">
+              <div className="flex items-center gap-2">
                 <div className="h-6 w-6 rounded-full bg-card-foreground/70 flex items-center justify-center">
                   <FaUserAlt size={12} className="text-background" />
                 </div>
                 <span className="text-sm text-muted-foreground truncate">{'me'}</span>
               </div>
             </div>
+            <span className="text-xs text-muted-foreground truncate">
+              {file.LastModified?.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </span>
           </div>
         </div>
       </div>
