@@ -3,6 +3,7 @@ import type { FileItem, FileExtension } from '@/types/dashboard/file';
 import { FileIcon } from '@/components/icons/file-icons';
 import { FileOverflowMenu } from '@/components/ui/dashboard/file-overflow-menu';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
+import { FaUserAlt } from 'react-icons/fa';
 
 interface FileItemListProps {
   file: FileItem;
@@ -37,8 +38,8 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
 
       {/* Owner Column */}
       <div className="hidden lg:flex items-center gap-2 col-span-2">
-        <div className="h-6 w-6 rounded-full bg-orange-500 flex items-center justify-center">
-          <span className="text-xs font-medium text-white">{'m'}</span>
+        <div className="h-6 w-6 rounded-full bg-card-foreground/70 flex items-center justify-center">
+          <FaUserAlt size={12} className="text-background" />
         </div>
         <span className="text-sm text-muted-foreground truncate">{'me'}</span>
       </div>

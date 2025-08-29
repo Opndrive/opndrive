@@ -5,6 +5,7 @@ import { FileThumbnail } from '@/components/ui/dashboard/file-thumbnail';
 import { FileIcon } from '@/components/icons/file-icons';
 import { FileOverflowMenu } from '@/components/ui/dashboard/file-overflow-menu';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
+import { FaUserAlt } from 'react-icons/fa';
 
 interface FileItemGridProps {
   file: FileItem;
@@ -57,14 +58,12 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
           {/* <p className="text-xs text-muted-foreground">{file.reasonSuggested}</p> */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
-              <div className="h-4 w-4 rounded-full bg-orange-500 flex items-center justify-center">
-                <span className="text-xs font-medium text-white">
-                  {/* {file.owner.name.charAt(0).toUpperCase()} */}
-                </span>
+              <div className="hidden lg:flex items-center gap-2 col-span-2">
+                <div className="h-6 w-6 rounded-full bg-card-foreground/70 flex items-center justify-center">
+                  <FaUserAlt size={12} className="text-background" />
+                </div>
+                <span className="text-sm text-muted-foreground truncate">{'me'}</span>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {/* {file.owner.name === 'me' ? 'me' : file.owner.name} */}
-              </span>
             </div>
           </div>
         </div>
