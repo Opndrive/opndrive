@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2025-08-29
+### Fixed
+- Rexported the types from index.ts
+
 ## [1.3.0] - 2025-08-29
 ### Added
 - Implemented getRegion, getPrefix and getRegion helper function to get bucket information.

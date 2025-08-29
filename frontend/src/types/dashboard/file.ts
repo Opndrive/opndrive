@@ -1,25 +1,10 @@
+import { _Object } from '@aws-sdk/client-s3';
 import type React from 'react';
-export interface FileItem {
-  id: string;
+
+export interface FileItem extends _Object {
   name: string;
   extension: string;
   size: number;
-  lastModified: Date;
-  lastOpened?: Date;
-  owner: {
-    id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-  };
-  location: {
-    type: 'my-drive' | 'shared-with-me' | 'folder';
-    path: string;
-    folderId?: string;
-  };
-  isShared?: boolean;
-  reasonSuggested: string;
-  thumbnail?: string;
 }
 
 export type FileExtension =

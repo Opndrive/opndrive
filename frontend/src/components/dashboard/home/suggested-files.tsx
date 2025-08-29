@@ -75,7 +75,11 @@ export function SuggestedFiles({
           {layout === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {files.map((file) => (
-                <div key={file.id} onClick={() => handleFileClick(file)} className="cursor-pointer">
+                <div
+                  key={file.Key}
+                  onClick={() => handleFileClick(file)}
+                  className="cursor-pointer"
+                >
                   <FileItemGrid file={file} _onAction={handleFileAction} />
                 </div>
               ))}
@@ -90,7 +94,11 @@ export function SuggestedFiles({
                 <div className="col-span-1"></div>
               </div>
               {files.map((file) => (
-                <div key={file.id} onClick={() => handleFileClick(file)} className="cursor-pointer">
+                <div
+                  key={file.Key}
+                  onClick={() => handleFileClick(file)}
+                  className="cursor-pointer"
+                >
                   <FileItemList file={file} _onAction={handleFileAction} />
                 </div>
               ))}
