@@ -295,6 +295,18 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       throw new Error(`Create folder failed for ${key}: ${err}`);
     }
   }
+
+  getBucketName(): string {
+    return this.credentials.bucketName;
+  }
+
+  getPrefix(): string {
+    return this.credentials.prefix;
+  }
+
+  getRegion(): string {
+    return this.credentials.region;
+  }
 }
 
 export { MultipartUploader } from './utils/multipartUploader';
