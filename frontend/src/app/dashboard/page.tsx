@@ -5,6 +5,7 @@ import { useScroll } from '@/context/scroll-context';
 import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
 import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
 import { SuggestedFiles } from '@/components/dashboard/home/suggested-files';
+import { DashboardLoading } from '@/components/ui/dashboard/dashboard-skeleton';
 import { Folder } from '@/types/dashboard/folder';
 import { FileItem } from '@/types/dashboard/file';
 import { useDriveStore } from '@/context/data-context';
@@ -70,28 +71,29 @@ export default function HomePage() {
         </div>
 
         <div className="relative z-0">
-          {/* Only render SuggestedFolders when data is loaded */}
+          {/* Show loading state or actual content */}
           {currentPrefix && isReady ? (
-            <SuggestedFolders
-              folders={cache[currentPrefix]?.folders || []}
-              onFolderClick={handleFolderClick}
-              onFolderMenuClick={handleFolderMenuClick}
-              className="mt-8"
-            />
-          ) : (
-            <div className="mt-8 text-muted-foreground text-sm">Loading folders...</div>
-          )}
+            <>
+              {/* Suggested Folders */}
+              <SuggestedFolders
+                folders={cache[currentPrefix]?.folders || []}
+                onFolderClick={handleFolderClick}
+                onFolderMenuClick={handleFolderMenuClick}
+                className="mt-8"
+              />
 
-          {/* SuggestedFiles can stay static or use same logic if needed */}
-          {currentPrefix && isReady ? (
-            <SuggestedFiles
-              files={cache[currentPrefix]?.files || []}
-              onFileClick={handleFileClick}
-              onFileAction={handleFileAction}
-              className="mt-8"
-            />
+              {/* Suggested Files */}
+              <SuggestedFiles
+                files={cache[currentPrefix]?.files || []}
+                onFileClick={handleFileClick}
+                onFileAction={handleFileAction}
+                className="mt-8"
+              />
+            </>
           ) : (
-            <div className="mt-8 text-muted-foreground text-sm">Loading files...</div>
+            <div className="mt-8">
+              <DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />
+            </div>
           )}
         </div>
       </div>
