@@ -88,9 +88,9 @@ export function SuggestedFiles({
             <div className="space-y-1">
               <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
                 <div className="col-span-4">Name</div>
-                <div className="hidden md:block col-span-3">Last Updates</div>
+                <div className="hidden md:block col-span-3">Last Updated</div>
                 <div className="hidden lg:block col-span-2">Owner</div>
-                <div className="hidden xl:block col-span-2">Location</div>
+                <div className="hidden xl:block col-span-2">Size</div>
                 <div className="col-span-1"></div>
               </div>
               {files.map((file) => (
