@@ -1,10 +1,7 @@
-// import { Users } from 'lucide-react';
-// import { MdFolderShared } from 'react-icons/md';
 import { useState } from 'react';
 import type { FileItem, FileExtension } from '@/types/dashboard/file';
 import { FileIcon } from '@/components/icons/file-icons';
 import { FileOverflowMenu } from '@/components/ui/dashboard/file-overflow-menu';
-// import { FaFolder } from 'react-icons/fa';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
 
 interface FileItemListProps {
@@ -33,40 +30,22 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
       <div className="col-span-4 flex items-center gap-3 min-w-0">
         <FileIcon extension={file.extension as FileExtension} className="h-4 w-4 flex-shrink-0" />
         <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
-        {/* {file.isShared && <Users className="h-3 w-3 text-muted-foreground flex-shrink-0" />} */}
       </div>
 
-      {/* Reason Suggested Column */}
-      <div className="hidden md:block col-span-3">
-        {/* <span className="text-sm text-muted-foreground">{file.reasonSuggested}</span> */}
-      </div>
+      {/* Last Updated Column */}
+      <div className="hidden md:block col-span-3">{file.LastModified?.toDateString()}</div>
 
       {/* Owner Column */}
       <div className="hidden lg:flex items-center gap-2 col-span-2">
         <div className="h-6 w-6 rounded-full bg-orange-500 flex items-center justify-center">
-          <span className="text-xs font-medium text-white">
-            {/* {file.owner.name.charAt(0).toUpperCase()} */}
-          </span>
+          <span className="text-xs font-medium text-white">{'m'}</span>
         </div>
-        <span className="text-sm text-muted-foreground truncate">
-          {/* {file.owner.name === 'me' ? 'me' : file.owner.name} */}
-        </span>
+        <span className="text-sm text-muted-foreground truncate">{'me'}</span>
       </div>
 
-      {/* Location Column */}
+      {/* Size Column */}
       <div className="hidden xl:flex items-center gap-2 col-span-2">
-        {/* {file.location.type === 'shared-with-me' ? (
-          <MdFolderShared size={18} className="text-muted-foreground" />
-        ) : (
-          <FaFolder size={18} className="text-muted-foreground" />
-        )} */}
-        {/* <span className="text-sm text-muted-foreground truncate">
-          {file.location.type === 'my-drive'
-            ? 'My Drive'
-            : file.location.type === 'shared-with-me'
-              ? 'Shared with me'
-              : file.location.path}
-        </span> */}
+        {file.size.value} {file.size.unit}
       </div>
 
       {/* Actions */}

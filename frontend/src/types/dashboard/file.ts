@@ -1,10 +1,15 @@
 import { _Object } from '@aws-sdk/client-s3';
 import type React from 'react';
 
+export type DataUnits = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
+
 export interface FileItem extends _Object {
   name: string;
   extension: string;
-  size: number;
+  size: {
+    value: number;
+    unit: DataUnits;
+  };
 }
 
 export type FileExtension =

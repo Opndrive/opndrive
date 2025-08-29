@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
 import { apiS3 } from '@/lib/byo-s3-api';
 import { Folder } from '@/types/dashboard/folder';
-import { FileItem } from '@/types/dashboard/file';
+import { DataUnits, FileItem } from '@/types/dashboard/file';
 
 type PrefixData = {
   files: FileItem[];
@@ -43,9 +43,22 @@ function enrichFolder(obj: CommonPrefix): Folder {
   };
 }
 
-function bytesToMB(bytes: number | undefined): number {
-  if (!bytes) return 0;
-  return bytes / (1024 * 1024);
+function formatBytes(bytes: number | undefined): { value: number; unit: DataUnits } {
+  if (!bytes || bytes < 0) return { value: 0, unit: 'B' };
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let i = 0;
+
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i++;
+  }
+
+  return {
+    value: parseFloat(size.toFixed(2)),
+    unit: units[i] as DataUnits,
+  };
 }
 
 function enrichFile(obj: _Object): FileItem {
@@ -64,7 +77,7 @@ function enrichFile(obj: _Object): FileItem {
     ...obj,
     name: name ?? '',
     extension: ext ?? 'unknown',
-    size: bytesToMB(obj.Size),
+    size: formatBytes(obj.Size),
   };
 }
 
