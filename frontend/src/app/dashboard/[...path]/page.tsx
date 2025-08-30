@@ -1,6 +1,5 @@
 'use client';
 
-import { DriveHero } from '@/components/dashboard/home/drive-hero';
 import { useScroll } from '@/context/scroll-context';
 import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
 import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
@@ -71,11 +70,7 @@ export default function FolderPage() {
 
   return (
     <>
-      {/* Show breadcrumb only when inside a folder */}
       {pathSegments.length > 0 && <FolderBreadcrumb pathSegments={pathSegments} />}
-
-      {/* DriveHero without welcome message and filters for folder views */}
-      <DriveHero showWelcome={false} showFilters={false} />
 
       <div className="relative">
         <div
