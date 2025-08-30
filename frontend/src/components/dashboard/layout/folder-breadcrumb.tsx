@@ -1,15 +1,20 @@
 'use client';
 
 import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
+import { useDriveStore } from '@/context/data-context';
 import { ChevronRight, Home } from 'lucide-react';
 import Link from 'next/link';
 import { Fragment } from 'react';
+import { useRouter } from 'next/navigation'; // ⬅️ import router
 
 interface FolderBreadcrumbProps {
   pathSegments: string[];
 }
 
 export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
+  const { setCurrentPrefix } = useDriveStore();
+  const router = useRouter(); // ⬅️ get router
+
   return (
     <div className="flex items-center justify-between py-4 border-b border-border/50">
       {/* Breadcrumb Navigation */}
@@ -27,23 +32,24 @@ export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
           {pathSegments.map((segment, index) => {
             const isLast = index === pathSegments.length - 1;
             const pathUpToHere = pathSegments.slice(0, index + 1).join('/');
-            const href = `/dashboard/folder/${pathUpToHere}/`;
 
             return (
               <Fragment key={index}>
                 <ChevronRight size={16} className="mx-1 text-muted-foreground flex-shrink-0" />
-                <Link
-                  href={href}
+                <button
                   className={`px-2 py-1 rounded-md transition-colors truncate max-w-[200px] ${
                     isLast
                       ? 'text-foreground font-medium bg-secondary/30'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
                   }`}
-                  aria-current={isLast ? 'page' : undefined}
-                  title={segment}
+                  onClick={() => {
+                    const newPrefix = pathUpToHere + '/';
+                    setCurrentPrefix(newPrefix);
+                    router.push(`/dashboard/${newPrefix}`); // ⬅️ update URL too
+                  }}
                 >
                   {segment}
-                </Link>
+                </button>
               </Fragment>
             );
           })}

@@ -35,7 +35,7 @@ export default function FolderPage() {
   }, [pathSegments, setRootPrefix, setCurrentPrefix]);
 
   useEffect(() => {
-    if (currentPrefix) fetchData({ sync: true });
+    if (currentPrefix) fetchData({ sync: false });
   }, [currentPrefix, fetchData]);
 
   const handleFolderClick = (folder: Folder) => {

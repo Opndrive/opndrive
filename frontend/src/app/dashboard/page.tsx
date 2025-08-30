@@ -29,11 +29,11 @@ export default function HomePage() {
       setCurrentPrefix(rootPrefix);
     }
 
-    fetchData({ sync: true });
+    fetchData({ sync: false });
   }, []);
 
   useEffect(() => {
-    if (currentPrefix) fetchData({ sync: true });
+    if (currentPrefix) fetchData({ sync: false });
   }, [currentPrefix]);
 
   const handleFolderClick = (folder: Folder) => {

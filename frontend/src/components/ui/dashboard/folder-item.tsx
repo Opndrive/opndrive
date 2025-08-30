@@ -16,11 +16,10 @@ interface FolderItemProps {
   className?: string;
 }
 
-const getFolderIcon = (folder: Folder) => {
+const getFolderIcon = (_folder: Folder) => {
   // if (folder.location.type === 'shared-with-me') {
   //   return <SharedFolderIcon className="text-blue-400" size={20} />;
   // }
-  console.log('[Lint Issue ] : ', folder.Prefix);
   return <FolderIcon className="text-blue-400" size={20} />;
 };
 
