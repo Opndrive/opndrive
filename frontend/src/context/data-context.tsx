@@ -99,7 +99,7 @@ export const useDriveStore = create<Store>((set, get) => ({
   setCurrentPrefix: (prefix) => set({ currentPrefix: prefix }),
 
   fetchData: async (opts = { sync: false }) => {
-    const { currentPrefix, rootPrefix, cache, setPrefixData, setStatus } = get();
+    const { currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();
 
     // Ensure prefixes are available first
     if (currentPrefix === null || rootPrefix === null) return;
@@ -110,8 +110,9 @@ export const useDriveStore = create<Store>((set, get) => ({
     const keyPrefix = formattedPrefix === '' ? '/' : formattedPrefix;
 
     // Avoid duplicate concurrent fetches unless forced by sync
-    const currStatus = get().status[keyPrefix];
-    if (currStatus === 'loading' && !opts.sync) return;
+    const currStatus = status[keyPrefix];
+
+    if (currStatus === 'ready' && !opts.sync) return;
 
     const currentData = cache[keyPrefix];
 
@@ -145,7 +146,7 @@ export const useDriveStore = create<Store>((set, get) => ({
                 nextToken: data.nextToken,
                 isTruncated: data.isTruncated,
               };
-
+        console.log('Data loaded again');
         setPrefixData(keyPrefix, nextData);
         setStatus(keyPrefix, 'ready');
       } catch (e) {
