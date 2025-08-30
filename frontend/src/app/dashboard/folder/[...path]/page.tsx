@@ -32,11 +32,13 @@ export default function FolderPage() {
     // Set current prefix based on URL path
     const fullPrefix = rootPrefix === '' ? currentPath : rootPrefix + currentPath;
     setCurrentPrefix(fullPrefix || (rootPrefix === '' ? '/' : rootPrefix));
-  }, [pathSegments, setRootPrefix, setCurrentPrefix]);
+  }, []);
 
   useEffect(() => {
-    if (currentPrefix) fetchData({ sync: false });
-  }, [currentPrefix, fetchData]);
+    if (currentPrefix) {
+      fetchData({ sync: false });
+    }
+  }, [currentPrefix]);
 
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix) {
