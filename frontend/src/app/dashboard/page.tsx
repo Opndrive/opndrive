@@ -28,8 +28,6 @@ export default function HomePage() {
       setRootPrefix(rootPrefix);
       setCurrentPrefix(rootPrefix);
     }
-
-    fetchData({ sync: false });
   }, []);
 
   useEffect(() => {
