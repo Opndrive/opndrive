@@ -5,15 +5,15 @@ import { useDriveStore } from '@/context/data-context';
 import { ChevronRight, Home } from 'lucide-react';
 import Link from 'next/link';
 import { Fragment } from 'react';
-import { useRouter } from 'next/navigation'; // ⬅️ import router
+import { useRouter } from 'next/navigation';
 
 interface FolderBreadcrumbProps {
   pathSegments: string[];
 }
 
 export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
-  const { setCurrentPrefix } = useDriveStore();
-  const router = useRouter(); // ⬅️ get router
+  const { setCurrentPrefix: _setCurrentPrefix } = useDriveStore();
+  const router = useRouter();
 
   return (
     <div className="flex items-center justify-between py-4 border-b border-border/50">
@@ -43,9 +43,13 @@ export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
                   }`}
                   onClick={() => {
-                    const newPrefix = pathUpToHere + '/';
-                    setCurrentPrefix(newPrefix);
-                    router.push(`/dashboard/${newPrefix}`); // ⬅️ update URL too
+                    // Use the new browse route with query parameters
+                    const params = new URLSearchParams();
+                    params.set('prefix', pathUpToHere + '/');
+                    if (pathUpToHere.length > 0) {
+                      params.set('key', pathSegments[index]);
+                    }
+                    router.push(`/dashboard/browse?${params.toString()}`);
                   }}
                 >
                   {segment}

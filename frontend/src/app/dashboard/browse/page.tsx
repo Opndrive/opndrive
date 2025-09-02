@@ -9,20 +9,34 @@ import { Folder } from '@/types/dashboard/folder';
 import { FileItem } from '@/types/dashboard/file';
 import { useDriveStore } from '@/context/data-context';
 import { apiS3 } from '@/lib/byo-s3-api';
-import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { FolderBreadcrumb } from '@/components/dashboard/layout/folder-breadcrumb';
+import { useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { EnhancedFolderBreadcrumb } from '@/components/dashboard/layout/enhanced-folder-breadcrumb';
+import {
+  parseFolderParams,
+  prefixToPathSegments,
+  buildFolderClickUrl,
+  getFolderNameFromPrefix,
+} from '@/lib/folder-navigation';
 
-export default function FolderPage() {
+function BrowsePageContent() {
   const { isFiltersHidden } = useScroll();
-  const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
     useDriveStore();
 
-  // Get the current folder path from URL params
-  const pathSegments = Array.isArray(params.path) ? params.path : [];
-  const currentPath = pathSegments.length > 0 ? pathSegments.join('/') + '/' : '';
+  // Parse URL parameters using utility function
+  const params = parseFolderParams(searchParams);
+  const {
+    prefix: prefixParam = '',
+    key: keyParam = '',
+    maxKeys: _maxKeys,
+    continuationToken: _continuationToken,
+  } = params;
+
+  // Convert prefix to path segments for breadcrumb
+  const pathSegments = prefixToPathSegments(prefixParam);
 
   useEffect(() => {
     const rootPrefix = apiS3.getPrefix();
@@ -32,25 +46,26 @@ export default function FolderPage() {
       setRootPrefix(rootPrefix);
     }
 
-    // Set current prefix based on URL path
-    const fullPrefix = rootPrefix === '' ? currentPath : rootPrefix + currentPath;
-    setCurrentPrefix(fullPrefix || (rootPrefix === '' ? '/' : rootPrefix));
-  }, []);
+    // Set current prefix based on URL parameters
+    const fullPrefix = rootPrefix === '' ? prefixParam : rootPrefix + prefixParam;
+    const normalizedPrefix = fullPrefix || (rootPrefix === '' ? '/' : rootPrefix);
+
+    setCurrentPrefix(normalizedPrefix);
+  }, [prefixParam, setCurrentPrefix, setRootPrefix]);
 
   useEffect(() => {
     if (currentPrefix) {
       fetchData({ sync: false });
     }
-  }, [currentPrefix]);
+  }, [currentPrefix, fetchData]);
 
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix) {
-      // Extract the folder name from the prefix
       const folderName = folder.name;
       if (folderName) {
-        // Navigate to the new folder path using Google Drive pattern
-        const newPath = pathSegments.length > 0 ? [...pathSegments, folderName] : [folderName];
-        router.push(`/dashboard/folder/${newPath.join('/')}/`);
+        // Use utility function to build URL
+        const url = buildFolderClickUrl(prefixParam, folderName, keyParam);
+        router.push(url);
       }
     }
     console.log('Folder clicked:', folder);
@@ -70,9 +85,29 @@ export default function FolderPage() {
 
   const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
 
+  // Get current folder name for display using utility function
+  const currentFolderName = getFolderNameFromPrefix(prefixParam);
+
   return (
     <>
-      {pathSegments.length > 0 && <FolderBreadcrumb pathSegments={pathSegments} />}
+      {pathSegments.length > 0 && (
+        <EnhancedFolderBreadcrumb
+          pathSegments={pathSegments}
+          currentKey={keyParam}
+          onNavigate={(prefix, key) => {
+            const params = new URLSearchParams();
+            if (prefix) {
+              params.set('prefix', prefix);
+            }
+            if (key) {
+              params.set('key', key);
+            }
+
+            const url = prefix || key ? `/dashboard/browse?${params.toString()}` : '/dashboard';
+            router.push(url);
+          }}
+        />
+      )}
 
       <div className="relative">
         <div
@@ -82,9 +117,9 @@ export default function FolderPage() {
               : 'opacity-0 -translate-y-2 pointer-events-none'
           }`}
         >
-          <h2 className="text-2xl font-normal text-foreground">
-            {pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : 'My Drive'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
+          </div>
           <ViewDetails />
         </div>
 
@@ -118,5 +153,13 @@ export default function FolderPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function BrowsePage() {
+  return (
+    <Suspense fallback={<DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />}>
+      <BrowsePageContent />
+    </Suspense>
   );
 }

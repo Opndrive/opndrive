@@ -49,7 +49,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   if (!paramsLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="animate-pulse text-lg">Loading.</div>
+        <div className="animate-pulse text-lg">Loading...</div>
       </div>
     );
   }

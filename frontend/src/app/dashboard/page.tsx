@@ -12,6 +12,7 @@ import { useDriveStore } from '@/context/data-context';
 import { apiS3 } from '@/lib/byo-s3-api';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { generateFolderUrl } from '@/lib/folder-navigation';
 
 export default function HomePage() {
   const { isFiltersHidden } = useScroll();
@@ -36,8 +37,12 @@ export default function HomePage() {
 
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix && folder.name) {
-      // Navigate to the folder using the Google Drive pattern
-      router.push(`/dashboard/folder/${folder.name}/`);
+      // Navigate to the folder using the enhanced browse route
+      const url = generateFolderUrl({
+        prefix: `${folder.name}/`,
+        key: folder.name,
+      });
+      router.push(url);
     }
     console.log('Folder clicked:', folder);
   };

@@ -1,8 +1,7 @@
 import React from 'react';
-import { LayoutDashboard } from 'lucide-react';
 import { MdHomeFilled } from 'react-icons/md';
 import { LuBook } from 'react-icons/lu';
-import { FaFolder, FaUsers } from 'react-icons/fa';
+import { FaUsers } from 'react-icons/fa';
 import { IoMdTime } from 'react-icons/io';
 
 export interface NavItem {
@@ -20,30 +19,21 @@ const NavItems: NavItem[] = [
   },
   {
     title: 'My Drive',
-    href: '/user',
+    href: '/browse',
     icon: LuBook,
-    children: [
-      {
-        title: 'Folder 1',
-        href: '/user/add',
-        icon: FaFolder,
-      },
-    ],
   },
   {
     title: 'Shared with me',
-    href: '/reports',
+    href: '/shared',
     icon: FaUsers,
   },
   {
     title: 'Recents',
-    href: '/settings',
+    href: '/recent',
     icon: IoMdTime,
   },
 ];
 
-
-
 export function getNavItems(): NavItem[] {
-  return NavItems
+  return NavItems;
 }

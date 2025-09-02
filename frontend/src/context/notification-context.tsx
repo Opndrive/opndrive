@@ -2,7 +2,7 @@
 
 import type React from 'react';
 import { createContext, useContext, useState, useCallback } from 'react';
-import { Notification } from '@/components/ui/notification';
+import { Notification as NotificationComponent } from '@/components/ui/notification';
 
 // Simplified notification types
 export interface NotificationItem {
@@ -96,7 +96,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     >
       {children}
       {notifications.map((notification, index) => (
-        <Notification
+        <NotificationComponent
           key={notification.id}
           id={notification.id}
           type={notification.type}
