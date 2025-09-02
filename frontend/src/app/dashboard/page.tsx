@@ -1,18 +1,18 @@
 'use client';
 
-import { DriveHero } from '@/components/dashboard/home/drive-hero';
+import { DriveHero } from '@/features/dashboard/components/views/home/drive-hero';
 import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
-import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
-import { SuggestedFiles } from '@/components/dashboard/home/suggested-files';
-import { DashboardLoading } from '@/components/ui/dashboard/dashboard-skeleton';
-import { Folder } from '@/types/dashboard/folder';
-import { FileItem } from '@/types/dashboard/file';
+import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
+import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
+import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
+import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
+import { Folder } from '@/features/dashboard/types/folder';
+import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { apiS3 } from '@/lib/byo-s3-api';
+import { apiS3 } from '@/services/byo-s3-api';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { generateFolderUrl } from '@/lib/folder-navigation';
+import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 
 export default function HomePage() {
   const { isFiltersHidden } = useScroll();

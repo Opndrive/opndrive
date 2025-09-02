@@ -1,23 +1,23 @@
 'use client';
 
 import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/components/ui/dashboard/details-sidebar/view-details';
-import { SuggestedFolders } from '@/components/dashboard/home/suggested-folders';
-import { SuggestedFiles } from '@/components/dashboard/home/suggested-files';
-import { DashboardLoading } from '@/components/ui/dashboard/dashboard-skeleton';
-import { Folder } from '@/types/dashboard/folder';
-import { FileItem } from '@/types/dashboard/file';
+import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
+import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
+import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
+import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
+import { Folder } from '@/features/dashboard/types/folder';
+import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { apiS3 } from '@/lib/byo-s3-api';
+import { apiS3 } from '@/services/byo-s3-api';
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { EnhancedFolderBreadcrumb } from '@/components/dashboard/layout/enhanced-folder-breadcrumb';
+import { EnhancedFolderBreadcrumb } from '@/features/dashboard/components/layout/breadcrumb/enhanced-folder-breadcrumb';
 import {
   parseFolderParams,
   prefixToPathSegments,
   buildFolderClickUrl,
   getFolderNameFromPrefix,
-} from '@/lib/folder-navigation';
+} from '@/features/folder-navigation/folder-navigation';
 
 function BrowsePageContent() {
   const { isFiltersHidden } = useScroll();
@@ -94,7 +94,7 @@ function BrowsePageContent() {
         <EnhancedFolderBreadcrumb
           pathSegments={pathSegments}
           currentKey={keyParam}
-          onNavigate={(prefix, key) => {
+          onNavigate={(prefix: string, key?: string) => {
             const params = new URLSearchParams();
             if (prefix) {
               params.set('prefix', prefix);

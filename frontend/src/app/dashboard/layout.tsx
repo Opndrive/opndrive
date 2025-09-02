@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { getNavItems } from '@/lib/dashboard-nav-config';
-import LoadingBar from '@/components/loading-bar';
-import { DashboardNavbar } from '@/components/dashboard/layout/navbar/dashboard-navbar';
-import { DashboardSidebar } from '@/components/dashboard/layout/sidebar/dashboard-sidebar';
+import LoadingBar from '@/shared/components/layout/loading-bar';
+import { DashboardNavbar } from '@/features/dashboard/components/layout/navbar/dashboard-navbar';
+import { DashboardSidebar } from '@/features/dashboard/components/layout/sidebar/dashboard-sidebar';
 import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
-import { DetailsSidebar } from '@/components/ui/dashboard/details-sidebar/details-sidebar';
+import { DetailsSidebar } from '@/features/dashboard/components/ui/details/details-sidebar';
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);

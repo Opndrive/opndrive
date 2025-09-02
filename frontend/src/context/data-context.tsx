@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
-import { apiS3 } from '@/lib/byo-s3-api';
-import { Folder } from '@/types/dashboard/folder';
-import { DataUnits, FileItem } from '@/types/dashboard/file';
+import { apiS3 } from '@/services/byo-s3-api';
+import { DataUnits, FileItem } from '@/features/dashboard/types/file';
+import { Folder } from '@/features/dashboard/types/folder';
 
 type PrefixData = {
   files: FileItem[];

@@ -1,7 +1,7 @@
 'use client';
 
+import { ViewLayout } from '@/features/dashboard/types/file';
 import { List, Grid3X3 } from 'lucide-react';
-import type { ViewLayout } from '@/types/dashboard/file';
 
 interface LayoutToggleProps {
   layout: ViewLayout;

@@ -1,7 +1,7 @@
 'use client';
 
 import Navbar from '@/components/landing-page/navbar';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/shared/components/ui';
 import { useRouter } from 'next/navigation';
 
 export default function LandingPage() {
