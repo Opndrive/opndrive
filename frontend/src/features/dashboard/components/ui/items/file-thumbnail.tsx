@@ -1,5 +1,5 @@
-import type { FileExtension } from '@/types/dashboard/file';
-import { FileIconLarge } from '@/components/icons/file-icons';
+import type { FileExtension } from '@/features/dashboard/types/file';
+import { FileIconLarge } from '@/shared/components/icons/file-icons';
 
 interface FileThumbnailProps {
   extension: FileExtension;

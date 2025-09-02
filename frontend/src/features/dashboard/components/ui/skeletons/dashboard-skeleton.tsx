@@ -3,7 +3,7 @@
 import React from 'react';
 import { FolderSkeletonList } from './folder-skeleton';
 import { FileSkeletonGridList } from './file-skeleton';
-import type { ViewLayout } from '@/types/dashboard/file';
+import type { ViewLayout } from '@/features/dashboard/types/file';
 
 interface SuggestedSectionSkeletonProps {
   title: string;

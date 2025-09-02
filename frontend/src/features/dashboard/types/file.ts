@@ -4,12 +4,20 @@ import type React from 'react';
 export type DataUnits = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
 
 export interface FileItem extends _Object {
+  id: string;
   name: string;
   extension: string;
   size: {
     value: number;
     unit: DataUnits;
   };
+  lastModified?: Date;
+  lastOpened?: Date;
+  owner?: { id: string; name: string; email: string; avatar?: string };
+  location?: { type: 'my-drive' | 'shared-with-me' | 'folder'; path: string; folderId?: string };
+  isShared?: boolean;
+  reasonSuggested?: string;
+  thumbnail?: string;
 }
 
 export type FileExtension =

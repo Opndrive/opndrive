@@ -5,7 +5,7 @@ import { Button } from '@/shared/components/ui/button';
 import Image from 'next/image';
 import NavbarUserProfile from './navbar-user-profile';
 import { useScroll } from '@/context/scroll-context';
-import { SearchPage } from '@/features/dashboard/components/views/search/seach-page';
+import { SearchPage } from '../../views';
 
 interface DashboardNavbarProps {
   toggleSidebar: () => void;

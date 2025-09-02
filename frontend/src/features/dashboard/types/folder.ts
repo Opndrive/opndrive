@@ -7,8 +7,13 @@ export interface FolderLocation {
 }
 
 export interface Folder extends CommonPrefix {
+  id: string;
   name: string;
+  location: FolderLocation;
   icon?: 'folder';
+  itemCount?: number;
+  lastModified?: Date;
+  owner?: string;
 }
 
 export interface FolderMenuAction {

@@ -3,7 +3,7 @@
 import type React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { Folder, FolderMenuAction } from '@/types/dashboard/folder';
+import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import {
   Download,
   Edit3,

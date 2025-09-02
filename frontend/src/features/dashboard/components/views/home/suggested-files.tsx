@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LayoutToggle } from '@/components/ui/layout-toggle';
+import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { FileItem, ViewLayout } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList } from '../../ui';
 

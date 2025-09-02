@@ -1,11 +1,11 @@
-import type { FileItem } from '@/types/dashboard/file';
+import type { FileItem } from '@/features/dashboard/types/file';
 
 export const createFileItem = (
   id: string,
   name: string,
   extension: string,
   options?: {
-    size?: number;
+    size?: FileItem['size'];
     lastModified?: Date;
     lastOpened?: Date;
     owner?: { id: string; name: string; email: string; avatar?: string };
@@ -19,7 +19,10 @@ export const createFileItem = (
     id,
     name,
     extension,
-    size: options?.size || Math.floor(Math.random() * 1000000),
+    size: options?.size || {
+      value: Math.floor(Math.random() * 1000000),
+      unit: 'B',
+    },
     lastModified: options?.lastModified || new Date(),
     lastOpened: options?.lastOpened,
     owner: options?.owner || {

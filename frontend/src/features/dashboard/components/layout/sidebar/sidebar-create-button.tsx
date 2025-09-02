@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
-import { CreateMenu } from '@/features/dashboard/components/ui/menus/create-menu';
+import { CreateMenu } from '../../ui';
 
 interface SidebarCreateButtonProps {
   onClick?: () => void;

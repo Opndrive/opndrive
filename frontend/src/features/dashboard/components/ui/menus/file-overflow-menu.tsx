@@ -3,7 +3,7 @@
 import type React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { FileItem, FileMenuAction } from '@/types/dashboard/file';
+import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Share2, Info, Trash2, Eye } from 'lucide-react';
 
 interface FileOverflowMenuProps {

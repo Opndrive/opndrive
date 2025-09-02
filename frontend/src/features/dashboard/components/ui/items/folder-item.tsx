@@ -5,7 +5,7 @@ import { useState } from 'react';
 import {
   FolderIcon,
   /* SharedFolderIcon */ MoreVerticalIcon,
-} from '@/components/icons/folder-icons';
+} from '@/shared/components/icons/folder-icons';
 import { OverflowMenu } from '../menus/overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 

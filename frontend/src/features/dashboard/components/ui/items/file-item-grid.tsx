@@ -1,6 +1,6 @@
 // import { Users } from 'lucide-react';
 import { useState } from 'react';
-import { FileIcon } from '@/components/icons/file-icons';
+import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
 import { FaUserAlt } from 'react-icons/fa';
 import { FileThumbnail } from './file-thumbnail';

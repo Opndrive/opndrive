@@ -1,4 +1,4 @@
-import type { Folder, FolderLocation } from '@/types/dashboard/folder';
+import type { Folder, FolderLocation } from '@/features/dashboard/types/folder';
 
 export const createFolderLocation = (
   type: FolderLocation['type'],
