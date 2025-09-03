@@ -3,7 +3,7 @@
 import React from 'react';
 import { X, Minus, Plus, CheckCircle, AlertCircle, XCircle, Pause, Upload } from 'lucide-react';
 import { useUploadStore } from '../hooks/use-upload-store';
-import { UploadItemComponent } from './upload-item';
+import { UploadItemComponent } from './upload-item-new';
 import { DuplicateDialog } from './duplicate-dialog';
 
 export function UploadCard() {

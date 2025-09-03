@@ -3,19 +3,38 @@
 import { create } from 'zustand';
 import { UploadState, UploadItem, UploadProgress } from '../types';
 
+interface DuplicateDialogState {
+  isOpen: boolean;
+  item: UploadItem | null;
+  onReplace: (() => void) | null;
+  onKeepBoth: (() => void) | null;
+}
+
 interface UploadStore extends UploadState {
+  // Duplicate dialog state
+  duplicateDialog: DuplicateDialogState;
+
   // Actions
   openCard: () => void;
   closeCard: () => void;
+  forceCloseCard: () => void;
   minimizeCard: () => void;
   maximizeCard: () => void;
   addUploadItem: (item: Omit<UploadItem, 'id'>) => string;
   updateProgress: (progress: UploadProgress) => void;
   updateItemStatus: (itemId: string, status: UploadItem['status'], error?: string) => void;
+  updateItemName: (itemId: string, name: string) => void;
   removeItem: (itemId: string) => void;
   clearCompleted: () => void;
   cancelUpload: (itemId: string) => void;
+  pauseUpload: (itemId: string) => void;
+  resumeUpload: (itemId: string) => void;
   resetStore: () => void;
+
+  // Duplicate dialog actions
+  showDuplicateDialog: (item: UploadItem, onReplace: () => void, onKeepBoth: () => void) => void;
+  hideDuplicateDialog: () => void;
+
   // Queue management
   getActiveUploadsCount: () => number;
   hasQueuedItems: () => boolean;
@@ -33,6 +52,14 @@ const initialState: UploadState = {
 export const useUploadStore = create<UploadStore>((set, get) => ({
   ...initialState,
 
+  // Initialize duplicate dialog state
+  duplicateDialog: {
+    isOpen: false,
+    item: null,
+    onReplace: null,
+    onKeepBoth: null,
+  },
+
   openCard: () => {
     set({ isOpen: true, isMinimized: false });
   },
@@ -42,6 +69,10 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     if (!isUploading) {
       set({ isOpen: false, isMinimized: false });
     }
+  },
+
+  forceCloseCard: () => {
+    set({ isOpen: false, isMinimized: false });
   },
 
   minimizeCard: () => {
@@ -110,6 +141,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     });
   },
 
+  updateItemName: (itemId, name) => {
+    set((state) => ({
+      items: state.items.map((item) => (item.id === itemId ? { ...item, name } : item)),
+    }));
+  },
+
   removeItem: (itemId) => {
     set((state) => {
       const updatedItems = state.items.filter((item) => item.id !== itemId);
@@ -156,7 +193,53 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   },
 
   resetStore: () => {
-    set(initialState);
+    set({
+      ...initialState,
+      duplicateDialog: {
+        isOpen: false,
+        item: null,
+        onReplace: null,
+        onKeepBoth: null,
+      },
+    });
+  },
+
+  pauseUpload: (itemId) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === itemId ? { ...item, status: 'paused' as const } : item
+      ),
+    }));
+  },
+
+  resumeUpload: (itemId) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === itemId ? { ...item, status: 'pending' as const } : item
+      ),
+    }));
+  },
+
+  showDuplicateDialog: (item, onReplace, onKeepBoth) => {
+    set({
+      duplicateDialog: {
+        isOpen: true,
+        item,
+        onReplace,
+        onKeepBoth,
+      },
+    });
+  },
+
+  hideDuplicateDialog: () => {
+    set({
+      duplicateDialog: {
+        isOpen: false,
+        item: null,
+        onReplace: null,
+        onKeepBoth: null,
+      },
+    });
   },
 
   getActiveUploadsCount: () => {

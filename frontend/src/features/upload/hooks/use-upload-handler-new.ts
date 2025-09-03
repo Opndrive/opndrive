@@ -53,39 +53,13 @@ const checkForFolderDuplicates = async (
   currentPath: string
 ): Promise<boolean> => {
   try {
-    // Generate the folder prefix that would be used for this folder
-    let folderPrefix = currentPath;
+    // Create a test key for this folder
+    const testKey = generateS3Key(`${folderName}/test`, currentPath);
+    const metadata = await apiS3.fetchMetadata(testKey);
 
-    // Remove leading slash if present
-    if (folderPrefix.startsWith('/')) {
-      folderPrefix = folderPrefix.slice(1);
-    }
-
-    // If path is empty or just root, don't add any prefix
-    if (!folderPrefix || folderPrefix === '' || folderPrefix === '/') {
-      folderPrefix = `${folderName}/`;
-    } else {
-      // Ensure path ends with slash but doesn't start with one
-      if (!folderPrefix.endsWith('/')) {
-        folderPrefix = `${folderPrefix}/`;
-      }
-      folderPrefix = `${folderPrefix}${folderName}/`;
-    }
-
-    console.log(`Checking for folder duplicates with prefix: "${folderPrefix}"`);
-
-    // Use fetchDirectoryStructure to check if any objects exist with this prefix
-    const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1); // Just check for 1 object
-
-    console.log(`Folder check result:`, {
-      files: result.files.length,
-      folders: result.folders.length,
-    });
-
-    // If we find any objects (files or folders) with this prefix, the folder exists
-    return result.files.length > 0 || result.folders.length > 0;
-  } catch (error) {
-    console.error(`Error checking folder duplicates:`, error);
+    // If we get metadata for any file in this folder path, folder exists
+    return metadata !== null;
+  } catch {
     // If there's an error checking, assume folder doesn't exist
     return false;
   }
@@ -127,7 +101,6 @@ export function useUploadHandler({
     addUploadItem,
     updateProgress,
     updateItemStatus,
-    updateItemName,
     showDuplicateDialog,
     hideDuplicateDialog,
   } = useUploadStore();
@@ -292,9 +265,7 @@ export function useUploadHandler({
 
       // Process each folder
       for (const [folderName, folderFiles] of folderMap) {
-        console.log(`Checking folder: ${folderName} in path: ${currentPath}`);
         const isDuplicate = await checkForFolderDuplicates(folderName, currentPath);
-        console.log(`Folder ${folderName} duplicate check result:`, isDuplicate);
         const folderSize = folderSizes.get(folderName) || 0;
 
         if (isDuplicate) {
@@ -327,42 +298,17 @@ export function useUploadHandler({
               },
               // onReplace
               async () => {
-                try {
-                  updateItemStatus(itemId, 'pending');
-                  await processFolderUpload(folderFiles, itemId, folderName);
-                  hideDuplicateDialog();
-                } catch (error) {
-                  console.error('Error in folder replace:', error);
-                  updateItemStatus(
-                    itemId,
-                    'error',
-                    error instanceof Error ? error.message : 'Upload failed'
-                  );
-                  hideDuplicateDialog();
-                }
+                updateItemStatus(itemId, 'pending');
+                await processFolderUpload(folderFiles, itemId, folderName);
+                hideDuplicateDialog();
                 resolve();
               },
               // onKeepBoth
               async () => {
-                try {
-                  console.log('Generating unique folder name for:', folderName);
-                  const uniqueFolderName = await generateUniqueFolderName(folderName, currentPath);
-                  console.log('Generated unique folder name:', uniqueFolderName);
-
-                  // Update the item name to show the new unique name
-                  updateItemName(itemId, uniqueFolderName);
-                  updateItemStatus(itemId, 'pending');
-                  await processFolderUpload(folderFiles, itemId, uniqueFolderName);
-                  hideDuplicateDialog();
-                } catch (error) {
-                  console.error('Error in folder keep both:', error);
-                  updateItemStatus(
-                    itemId,
-                    'error',
-                    error instanceof Error ? error.message : 'Upload failed'
-                  );
-                  hideDuplicateDialog();
-                }
+                const uniqueFolderName = await generateUniqueFolderName(folderName, currentPath);
+                updateItemStatus(itemId, 'pending');
+                await processFolderUpload(folderFiles, itemId, uniqueFolderName);
+                hideDuplicateDialog();
                 resolve();
               }
             );

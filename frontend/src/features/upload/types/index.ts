@@ -4,7 +4,7 @@ export interface UploadItem {
   type: 'file' | 'folder';
   size: number;
   progress: number;
-  status: 'pending' | 'uploading' | 'completed' | 'error' | 'cancelled';
+  status: 'pending' | 'uploading' | 'completed' | 'error' | 'cancelled' | 'paused';
   error?: string;
   file?: File;
   files?: File[]; // For folder uploads
