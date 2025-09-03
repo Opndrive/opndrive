@@ -21,6 +21,12 @@
   --muted-foreground: #5f6368;
   --geo-map: #000000;
   --top-loading-bar-color: #1a73e8;
+
+  /* Settings specific variables */
+  --settings-sidebar-bg: #f8f9fa;
+  --settings-sidebar-border: #e8eaed;
+  --settings-radio-border: #dadce0;
+  --settings-radio-hover: #f1f3f4;
 }
 
 @theme inline {
@@ -61,6 +67,12 @@
   --input: #303134;
   --geo-map: #5f6368;
   --top-loading-bar-color: #8ab4f8;
+
+  /* Settings specific variables - dark mode */
+  --settings-sidebar-bg: #1b1b1b;
+  --settings-sidebar-border: #3c4043;
+  --settings-radio-border: #5f6368;
+  --settings-radio-hover: #303134;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,6 +93,12 @@
     --input: #303134;
     --geo-map: #5f6368;
     --top-loading-bar-color: #8ab4f8;
+
+    /* Settings specific variables - dark mode */
+    --settings-sidebar-bg: #1b1b1b;
+    --settings-sidebar-border: #3c4043;
+    --settings-radio-border: #5f6368;
+    --settings-radio-hover: #303134;
   }
 }
 

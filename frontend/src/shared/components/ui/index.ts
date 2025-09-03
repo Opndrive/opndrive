@@ -8,3 +8,4 @@ export * from './input';
 export * from './label';
 export * from './notification';
 export * from './skeleton';
+export * from './switch';

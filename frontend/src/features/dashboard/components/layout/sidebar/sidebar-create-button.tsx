@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
 import { CreateMenu } from '../../ui';
+import { useDriveStore } from '@/context/data-context';
 
 interface SidebarCreateButtonProps {
   onClick?: () => void;
@@ -11,6 +12,7 @@ interface SidebarCreateButtonProps {
 export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClick, className }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const { currentPrefix } = useDriveStore();
 
   const handleClick = () => {
     console.log('Button clicked, current menu state:', isMenuOpen); // Debug log
@@ -43,6 +45,7 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         anchorElement={buttonRef.current}
+        currentPath={currentPrefix || ''}
       />
     </>
   );

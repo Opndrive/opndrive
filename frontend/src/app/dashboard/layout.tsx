@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { getNavItems } from '@/lib/dashboard-nav-config';
 import LoadingBar from '@/shared/components/layout/loading-bar';
 import { DashboardNavbar } from '@/features/dashboard/components/layout/navbar/dashboard-navbar';
@@ -8,11 +9,16 @@ import { DashboardSidebar } from '@/features/dashboard/components/layout/sidebar
 import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
 import { DetailsSidebar } from '@/features/dashboard/components/ui/details/details-sidebar';
+import { UploadCard } from '@/features/upload';
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [paramsLoaded, setParamsLoaded] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
+  const pathname = usePathname();
+
+  // Check if we're on the settings page
+  const isSettingsPage = pathname?.startsWith('/dashboard/settings');
 
   // Sidebar localStorage key without role
   const lsKey = useMemo(() => `sidebarOpen_global`, []);
@@ -54,6 +60,17 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
+  // If we're on settings page, let the settings layout handle everything
+  if (isSettingsPage) {
+    return (
+      <div className="flex h-screen overflow-hidden flex-col bg-secondary">
+        <LoadingBar />
+        {children}
+      </div>
+    );
+  }
+
+  // Normal dashboard layout
   return (
     <div className="flex h-screen overflow-hidden flex-col bg-secondary">
       <LoadingBar />
@@ -86,6 +103,9 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
 
         {detailsOpen && <DetailsSidebar />}
       </div>
+
+      {/* Upload Card - Global component */}
+      <UploadCard />
     </div>
   );
 };

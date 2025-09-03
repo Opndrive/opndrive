@@ -1,9 +1,11 @@
 'use client';
 
-import type React from 'react';
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
+import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
+import { useSettings } from '@/features/settings/hooks/use-settings';
+import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 
 interface CreateMenuAction {
   id: string;
@@ -17,41 +19,91 @@ interface CreateMenuProps {
   onClose: () => void;
   anchorElement: HTMLElement | null;
   className?: string;
+  currentPath?: string;
 }
-
-const getCreateMenuActions = (): CreateMenuAction[] => [
-  {
-    id: 'new-folder',
-    label: 'New folder',
-    icon: <FolderPlus size={16} />,
-    onClick: () => console.log('New folder'),
-  },
-  {
-    id: 'file-upload',
-    label: 'File upload',
-    icon: <Upload size={16} />,
-    onClick: () => console.log('File upload'),
-  },
-  {
-    id: 'folder-upload',
-    label: 'Folder upload',
-    icon: <FolderUp size={16} />,
-    onClick: () => console.log('Folder upload'),
-  },
-];
 
 export const CreateMenu: React.FC<CreateMenuProps> = ({
   isOpen,
   onClose,
   anchorElement,
   className = '',
+  currentPath = '',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const [originPosition, setOriginPosition] = useState('top-left');
-  const actions = getCreateMenuActions();
+  const [originPosition, setOriginPosition] = useState<
+    'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  >('top-left');
 
-  console.log('CreateMenu render - isOpen:', isOpen, 'anchorElement:', !!anchorElement); // Debug log
+  const { settings, isLoaded } = useSettings();
+  const { handleFileUpload, handleFolderUpload } = useUploadHandler({
+    currentPath,
+    uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
+  });
+
+  // Professional file upload handlers using utility functions
+  const triggerFileUpload = useCallback(async () => {
+    try {
+      const result = await pickMultipleFiles();
+
+      if (!result.cancelled && result.files && result.files.length > 0) {
+        handleFileUpload(result.files);
+        onClose(); // Close menu after successful file selection
+      }
+    } catch (error) {
+      console.error('Error in file upload:', error);
+    }
+  }, [handleFileUpload, onClose]);
+
+  const triggerFolderUpload = useCallback(async () => {
+    console.log('🚀 triggerFolderUpload started');
+    try {
+      console.log('📁 Calling pickFolder...');
+      const result = await pickFolder();
+
+      console.log('📁 pickFolder result:', {
+        cancelled: result.cancelled,
+        filesCount: result.files?.length || 0,
+        files: result.files ? Array.from(result.files).map((f) => f.name) : [],
+      });
+
+      if (!result.cancelled && result.files && result.files.length > 0) {
+        console.log('📁 Calling handleFolderUpload with', result.files.length, 'files');
+        handleFolderUpload(result.files);
+        onClose(); // Close menu after successful folder selection
+      } else {
+        console.log('📁 Folder upload cancelled or no files selected');
+      }
+    } catch (error) {
+      console.error('❌ Error in folder upload:', error);
+    }
+  }, [handleFolderUpload, onClose]);
+
+  const getCreateMenuActions = (): CreateMenuAction[] => [
+    {
+      id: 'new-folder',
+      label: 'New folder',
+      icon: <FolderPlus size={16} />,
+      onClick: () => {
+        // TODO: Implement folder creation
+        onClose();
+      },
+    },
+    {
+      id: 'file-upload',
+      label: 'File upload',
+      icon: <Upload size={16} />,
+      onClick: triggerFileUpload,
+    },
+    {
+      id: 'folder-upload',
+      label: 'Folder upload',
+      icon: <FolderUp size={16} />,
+      onClick: triggerFolderUpload,
+    },
+  ];
+
+  const actions = getCreateMenuActions();
 
   useEffect(() => {
     if (isOpen && anchorElement) {
@@ -62,7 +114,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
 
       let left = rect.left;
       let top = rect.bottom + padding;
-      let origin = 'top-left';
+      let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
       // Check if menu would go off screen horizontally
       if (left + menuWidth > window.innerWidth - padding) {
@@ -153,9 +205,8 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       aria-label="Create new items"
     >
       {actions.map((action, index) => (
-        <>
+        <React.Fragment key={action.id}>
           <button
-            key={action.id}
             className="
               w-full flex items-center gap-3 px-3 py-3 text-sm rounded-md
               text-left transition-colors duration-150
@@ -171,10 +222,15 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
             <span className="flex-1">{action.label}</span>
           </button>
           {index === 0 && <div className="my-1 h-px bg-border" />}
-        </>
+        </React.Fragment>
       ))}
     </div>
   );
 
-  return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
+  return (
+    <>
+      {/* Portal for menu content */}
+      {typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}
+    </>
+  );
 };
