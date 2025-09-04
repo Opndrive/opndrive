@@ -26,6 +26,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   CopyObjectCommand,
+  S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core';
 import { MultipartUploader } from './utils/multipartUploader';
@@ -82,7 +83,15 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       const metadata = await this.s3.send(command);
 
       return metadata;
-    } catch (error) {
+    } catch (error: unknown) {
+      // 404 errors are expected when checking for file existence
+      // Don't log these as they're part of normal operation
+      if (error instanceof S3ServiceException && error.$metadata?.httpStatusCode === 404) {
+        return null;
+      }
+
+      // Only log unexpected errors
+      console.warn('Unexpected error in fetchMetadata:', error);
       return null;
     }
   }

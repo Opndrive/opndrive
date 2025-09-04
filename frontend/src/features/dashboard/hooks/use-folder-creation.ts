@@ -30,7 +30,7 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
     onKeepBoth: null,
   });
 
-  const { fetchData } = useDriveStore();
+  const { fetchData, refreshCurrentData } = useDriveStore();
 
   // Check if folder already exists
   const checkFolderExists = useCallback(
@@ -95,6 +95,12 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
                   onReplace: null,
                   onKeepBoth: null,
                 });
+                // Refresh data to show the newly created folder
+                try {
+                  await refreshCurrentData();
+                } catch {
+                  // Don't fail folder creation if refresh fails
+                }
                 resolve();
               } catch (error) {
                 resolve();
@@ -111,6 +117,12 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
                   onReplace: null,
                   onKeepBoth: null,
                 });
+                // Refresh data to show the newly created folder
+                try {
+                  await refreshCurrentData();
+                } catch {
+                  // Don't fail folder creation if refresh fails
+                }
                 resolve();
               } catch (error) {
                 resolve();
@@ -122,9 +134,16 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
       } else {
         // No duplicate, create folder directly
         await createFolder(folderName);
+
+        // Refresh data to show the newly created folder
+        try {
+          await refreshCurrentData();
+        } catch {
+          // Don't fail folder creation if refresh fails
+        }
       }
     },
-    [checkFolderExists, createFolder, currentPath]
+    [checkFolderExists, createFolder, currentPath, refreshCurrentData]
   );
 
   return {

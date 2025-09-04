@@ -5,6 +5,7 @@ import { useUploadStore } from './use-upload-store';
 import { UploadMethod } from '../types';
 import { apiS3 } from '@/services/byo-s3-api';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
+import { useDriveStore } from '@/context/data-context';
 
 // Helper function to get file extension
 const getFileExtension = (fileName: string): string => {
@@ -124,6 +125,8 @@ export function useUploadHandler({
     hideDuplicateDialog,
   } = useUploadStore();
 
+  const { refreshCurrentData } = useDriveStore();
+
   // Helper function to process individual file upload
   const processFileUpload = useCallback(
     async (file: File, itemId: string, customName?: string) => {
@@ -241,6 +244,13 @@ export function useUploadHandler({
         }
       }
 
+      // Refresh data after all files are uploaded successfully
+      try {
+        await refreshCurrentData();
+      } catch {
+        // Don't fail the upload if refresh fails
+      }
+
       onUploadComplete?.(true);
     },
     [
@@ -252,6 +262,7 @@ export function useUploadHandler({
       showDuplicateDialog,
       hideDuplicateDialog,
       processFileUpload,
+      refreshCurrentData,
     ]
   );
 
@@ -371,6 +382,13 @@ export function useUploadHandler({
         }
       }
 
+      // Refresh data after all folders are uploaded successfully
+      try {
+        await refreshCurrentData();
+      } catch {
+        // Don't fail the upload if refresh fails
+      }
+
       onUploadComplete?.(true);
     },
     [
@@ -381,6 +399,7 @@ export function useUploadHandler({
       updateItemStatus,
       showDuplicateDialog,
       hideDuplicateDialog,
+      refreshCurrentData,
     ]
   );
 

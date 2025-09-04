@@ -25,6 +25,7 @@ type Store = {
   setRootPrefix: (prefix: string) => void;
 
   fetchData: (opts?: { sync?: boolean }) => Promise<void>;
+  refreshCurrentData: () => Promise<void>;
 };
 
 function enrichFolder(obj: CommonPrefix): Folder {
@@ -162,6 +163,15 @@ export const useDriveStore = create<Store>((set, get) => ({
     } else {
       // Data already present; ensure status reflects it
       if (currStatus !== 'ready') setStatus(keyPrefix, 'ready');
+    }
+  },
+
+  refreshCurrentData: async () => {
+    const { fetchData, currentPrefix, rootPrefix } = get();
+
+    // Only refresh if we have valid prefixes set
+    if (currentPrefix !== null && rootPrefix !== null) {
+      await fetchData({ sync: true });
     }
   },
 }));
