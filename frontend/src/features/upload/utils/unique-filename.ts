@@ -1,4 +1,5 @@
 import { apiS3 } from '@/services/byo-s3-api';
+import { generateS3Key } from './generate-s3-key';
 
 /**
  * Generates a unique filename by checking S3 and adding (1), (2), etc. if needed
@@ -61,11 +62,11 @@ export async function generateUniqueFileName(
       return uniqueName;
     }
     counter++;
-  } while (counter <= 1000); // Safety limit
+  } while (counter <= 100); // Reasonable safety limit
 
   // Fallback with timestamp if we somehow exhaust numbered options
   const timestamp = Date.now();
-  return `${baseName}_${timestamp}${extension}`;
+  return `${baseName} (${timestamp})${extension}`;
 }
 
 /**
@@ -77,27 +78,9 @@ export async function generateUniqueFolderName(
 ): Promise<string> {
   const checkFolderExists = async (folderName: string): Promise<boolean> => {
     try {
-      // Generate the folder prefix that would be used for this folder
-      let folderPrefix = currentPath;
-
-      // Remove leading slash if present
-      if (folderPrefix.startsWith('/')) {
-        folderPrefix = folderPrefix.slice(1);
-      }
-
-      // If path is empty or just root, don't add any prefix
-      if (!folderPrefix || folderPrefix === '' || folderPrefix === '/') {
-        folderPrefix = `${folderName}/`;
-      } else {
-        // Ensure path ends with slash but doesn't start with one
-        if (!folderPrefix.endsWith('/')) {
-          folderPrefix = `${folderPrefix}/`;
-        }
-        folderPrefix = `${folderPrefix}${folderName}/`;
-      }
-
-      // Use fetchDirectoryStructure to check if any objects exist with this prefix
-      const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1); // Just check for 1 object
+      // Use the same generateS3Key logic as the hook for consistency
+      const folderPrefix = generateS3Key(`${folderName}/`, currentPath);
+      const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
 
       // If we find any objects (files or folders) with this prefix, the folder exists
       return result.files.length > 0 || result.folders.length > 0;
@@ -123,9 +106,14 @@ export async function generateUniqueFolderName(
       return uniqueName;
     }
     counter++;
-  } while (counter <= 1000); // Safety limit
 
-  // Fallback with timestamp
+    // Add safety check to prevent infinite loops
+    if (counter > 100) {
+      break;
+    }
+  } while (counter <= 100); // Reasonable safety limit
+
+  // Fallback with timestamp if we somehow exhaust numbered options
   const timestamp = Date.now();
-  return `${originalName}_${timestamp}`;
+  return `${originalName} (${timestamp})`;
 }

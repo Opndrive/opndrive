@@ -38,8 +38,13 @@ function enrichFolder(obj: CommonPrefix): Folder {
 
   return {
     ...obj,
+    id: obj.Prefix || `folder-${Date.now()}-${Math.random()}`,
     name: name ?? '',
     icon: 'folder',
+    location: {
+      type: 'my-drive',
+      label: 'My Drive',
+    },
   };
 }
 
@@ -75,6 +80,7 @@ function enrichFile(obj: _Object): FileItem {
 
   return {
     ...obj,
+    id: obj.Key || `file-${Date.now()}-${Math.random()}`,
     name: name ?? '',
     extension: ext ?? 'unknown',
     size: formatBytes(obj.Size),
@@ -146,11 +152,11 @@ export const useDriveStore = create<Store>((set, get) => ({
                 nextToken: data.nextToken,
                 isTruncated: data.isTruncated,
               };
-        console.log('Data loaded again');
+        // Data loaded successfully
         setPrefixData(keyPrefix, nextData);
         setStatus(keyPrefix, 'ready');
-      } catch (e) {
-        console.error('[fetchData] failed:', e);
+      } catch {
+        // Handle fetch error
         setStatus(keyPrefix, 'error');
       }
     } else {

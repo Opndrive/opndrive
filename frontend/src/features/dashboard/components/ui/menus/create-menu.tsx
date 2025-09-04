@@ -17,6 +17,7 @@ interface CreateMenuAction {
 interface CreateMenuProps {
   isOpen: boolean;
   onClose: () => void;
+  onNewFolderClick: () => void;
   anchorElement: HTMLElement | null;
   className?: string;
   currentPath?: string;
@@ -25,6 +26,7 @@ interface CreateMenuProps {
 export const CreateMenu: React.FC<CreateMenuProps> = ({
   isOpen,
   onClose,
+  onNewFolderClick,
   anchorElement,
   className = '',
   currentPath = '',
@@ -50,44 +52,35 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         handleFileUpload(result.files);
         onClose(); // Close menu after successful file selection
       }
-    } catch (error) {
-      console.error('Error in file upload:', error);
+    } catch {
+      // Handle error silently or with proper error handling
     }
   }, [handleFileUpload, onClose]);
 
   const triggerFolderUpload = useCallback(async () => {
-    console.log('🚀 triggerFolderUpload started');
     try {
-      console.log('📁 Calling pickFolder...');
       const result = await pickFolder();
 
-      console.log('📁 pickFolder result:', {
-        cancelled: result.cancelled,
-        filesCount: result.files?.length || 0,
-        files: result.files ? Array.from(result.files).map((f) => f.name) : [],
-      });
-
       if (!result.cancelled && result.files && result.files.length > 0) {
-        console.log('📁 Calling handleFolderUpload with', result.files.length, 'files');
         handleFolderUpload(result.files);
         onClose(); // Close menu after successful folder selection
-      } else {
-        console.log('📁 Folder upload cancelled or no files selected');
       }
-    } catch (error) {
-      console.error('❌ Error in folder upload:', error);
+    } catch {
+      // Handle error silently or with proper error handling
     }
   }, [handleFolderUpload, onClose]);
+
+  // Handle new folder action - simple approach
+  const handleNewFolderClick = useCallback(() => {
+    onNewFolderClick(); // Call the prop function
+  }, [onNewFolderClick]);
 
   const getCreateMenuActions = (): CreateMenuAction[] => [
     {
       id: 'new-folder',
       label: 'New folder',
       icon: <FolderPlus size={16} />,
-      onClick: () => {
-        // TODO: Implement folder creation
-        onClose();
-      },
+      onClick: handleNewFolderClick,
     },
     {
       id: 'file-upload',

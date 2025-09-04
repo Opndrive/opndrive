@@ -78,8 +78,8 @@ export function DashboardSidebar({
     if (savedOpenSections) {
       try {
         setOpenSections(JSON.parse(savedOpenSections));
-      } catch (e) {
-        console.error('Failed to parse saved sidebar state', e);
+      } catch {
+        // Reset sidebar state if corrupted
         localStorage.removeItem(localStorageKey);
       }
     }
@@ -107,11 +107,11 @@ export function DashboardSidebar({
   };
 
   const handleCreateClick = () => {
-    console.log('Create button clicked');
+    // TODO: Implement create menu functionality
   };
 
   const handleGetMoreStorage = () => {
-    console.log('Get more storage clicked');
+    // TODO: Implement storage upgrade functionality
   };
 
   return (

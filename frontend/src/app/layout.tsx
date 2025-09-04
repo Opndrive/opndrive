@@ -29,7 +29,7 @@ export default function RootLayout({
                     root.setAttribute('data-theme', systemTheme);
                   }
                 } catch (e) {
-                  console.error('Theme setup failed:', e);
+                  // Theme setup failed, use default
                 }
               })();
             `,
@@ -38,15 +38,9 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider defaultTheme="system" storageKey="ui-theme">
-          <NotificationProvider>
-            {children}
-          </NotificationProvider>
+          <NotificationProvider>{children}</NotificationProvider>
         </ThemeProvider>
       </body>
     </html>
   );
 }
-
-
-
-

@@ -28,51 +28,51 @@ const getDefaultMenuActions = (_folder: Folder): FolderMenuAction[] => [
     id: 'download',
     label: 'Download',
     icon: <Download size={16} />,
-    onClick: (folder) => console.log('Download', folder.name),
+    onClick: () => {}, // TODO: Implement download functionality
   },
   {
     id: 'rename',
     label: 'Rename',
     icon: <Edit3 size={16} />,
     shortcut: 'Ctrl+Alt+E',
-    onClick: (folder) => console.log('Rename', folder.name),
+    onClick: () => {}, // TODO: Implement rename functionality
   },
   {
     id: 'summarise',
     label: 'Summarise this folder',
     icon: <Sparkles size={16} />,
-    onClick: (folder) => console.log('Summarise', folder.name),
+    onClick: () => {}, // TODO: Implement summarise functionality
   },
   {
     id: 'share',
     label: 'Share',
     icon: <Share2 size={16} />,
-    onClick: (folder) => console.log('Share', folder.name),
+    onClick: () => {}, // TODO: Implement share functionality
   },
   {
     id: 'organise',
     label: 'Organise',
     icon: <FolderOpen size={16} />,
-    onClick: (folder) => console.log('Organise', folder.name),
+    onClick: () => {}, // TODO: Implement organise functionality
   },
   {
     id: 'info',
     label: 'Folder information',
     icon: <Info size={16} />,
-    onClick: (folder) => console.log('Folder info', folder.name),
+    onClick: () => {}, // TODO: Implement folder info functionality
   },
   {
     id: 'delete',
     label: 'Move to bin',
     icon: <Trash2 size={16} />,
     variant: 'destructive' as const,
-    onClick: (folder) => console.log('Delete', folder.name),
+    onClick: () => {}, // TODO: Implement delete functionality
   },
   {
     id: 'not-helpful',
     label: 'Not a helpful suggestion',
     icon: <ThumbsDown size={16} />,
-    onClick: (folder) => console.log('Not helpful', folder.name),
+    onClick: () => {}, // TODO: Implement feedback functionality
   },
 ];
 

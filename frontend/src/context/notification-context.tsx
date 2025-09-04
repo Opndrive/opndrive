@@ -2,7 +2,7 @@
 
 import type React from 'react';
 import { createContext, useContext, useState, useCallback } from 'react';
-import { Notification as NotificationComponent } from '@/shared/components/ui/notification';
+import { Notification as NotificationComponent } from '@/components/ui/notification';
 
 // Simplified notification types
 export interface NotificationItem {

@@ -72,20 +72,12 @@ const checkForFolderDuplicates = async (
       folderPrefix = `${folderPrefix}${folderName}/`;
     }
 
-    console.log(`Checking for folder duplicates with prefix: "${folderPrefix}"`);
-
     // Use fetchDirectoryStructure to check if any objects exist with this prefix
     const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1); // Just check for 1 object
 
-    console.log(`Folder check result:`, {
-      files: result.files.length,
-      folders: result.folders.length,
-    });
-
     // If we find any objects (files or folders) with this prefix, the folder exists
     return result.files.length > 0 || result.folders.length > 0;
-  } catch (error) {
-    console.error(`Error checking folder duplicates:`, error);
+  } catch {
     // If there's an error checking, assume folder doesn't exist
     return false;
   }
@@ -292,9 +284,7 @@ export function useUploadHandler({
 
       // Process each folder
       for (const [folderName, folderFiles] of folderMap) {
-        console.log(`Checking folder: ${folderName} in path: ${currentPath}`);
         const isDuplicate = await checkForFolderDuplicates(folderName, currentPath);
-        console.log(`Folder ${folderName} duplicate check result:`, isDuplicate);
         const folderSize = folderSizes.get(folderName) || 0;
 
         if (isDuplicate) {
@@ -332,7 +322,6 @@ export function useUploadHandler({
                   await processFolderUpload(folderFiles, itemId, folderName);
                   hideDuplicateDialog();
                 } catch (error) {
-                  console.error('Error in folder replace:', error);
                   updateItemStatus(
                     itemId,
                     'error',
@@ -345,9 +334,7 @@ export function useUploadHandler({
               // onKeepBoth
               async () => {
                 try {
-                  console.log('Generating unique folder name for:', folderName);
                   const uniqueFolderName = await generateUniqueFolderName(folderName, currentPath);
-                  console.log('Generated unique folder name:', uniqueFolderName);
 
                   // Update the item name to show the new unique name
                   updateItemName(itemId, uniqueFolderName);
@@ -355,7 +342,6 @@ export function useUploadHandler({
                   await processFolderUpload(folderFiles, itemId, uniqueFolderName);
                   hideDuplicateDialog();
                 } catch (error) {
-                  console.error('Error in folder keep both:', error);
                   updateItemStatus(
                     itemId,
                     'error',
@@ -440,8 +426,7 @@ export function useUploadHandler({
             uploadedFiles: uploadedCount,
             totalFiles,
           });
-        } catch (error) {
-          console.error(`Failed to upload file ${file.name}:`, error);
+        } catch {
           // Continue with other files even if one fails
         }
       }

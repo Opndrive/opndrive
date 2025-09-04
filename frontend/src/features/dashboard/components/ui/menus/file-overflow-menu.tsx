@@ -19,38 +19,38 @@ const getDefaultFileMenuActions = (_file: FileItem): FileMenuAction[] => [
     id: 'open',
     label: 'Open',
     icon: Eye,
-    onClick: (file) => console.log('Open', file.name),
+    onClick: () => {}, // TODO: Implement open file functionality
   },
   {
     id: 'download',
     label: 'Download',
     icon: Download,
-    onClick: (file) => console.log('Download', file.name),
+    onClick: () => {}, // TODO: Implement download functionality
   },
   {
     id: 'rename',
     label: 'Rename',
     icon: Edit3,
-    onClick: (file) => console.log('Rename', file.name),
+    onClick: () => {}, // TODO: Implement rename functionality
   },
   {
     id: 'share',
     label: 'Share',
     icon: Share2,
-    onClick: (file) => console.log('Share', file.name),
+    onClick: () => {}, // TODO: Implement share functionality
   },
   {
     id: 'info',
     label: 'File information',
     icon: Info,
-    onClick: (file) => console.log('File info', file.name),
+    onClick: () => {}, // TODO: Implement file info functionality
   },
   {
     id: 'delete',
     label: 'Move to bin',
     icon: Trash2,
     variant: 'destructive' as const,
-    onClick: (file) => console.log('Delete', file.name),
+    onClick: () => {}, // TODO: Implement delete functionality
   },
 ];
 

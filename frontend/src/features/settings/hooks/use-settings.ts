@@ -29,8 +29,9 @@ export function useSettings() {
       try {
         const parsed = JSON.parse(stored);
         setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-      } catch (error) {
-        console.error('Failed to parse stored settings:', error);
+      } catch {
+        // Reset to default settings if stored settings are corrupted
+        setSettings(DEFAULT_SETTINGS);
       }
     }
     setIsLoaded(true);

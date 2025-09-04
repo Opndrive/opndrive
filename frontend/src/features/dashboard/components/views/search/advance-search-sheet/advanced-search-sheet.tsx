@@ -109,20 +109,8 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
   };
 
   const handleSearch = () => {
-    console.log('Search with filters:', {
-      type,
-      owner,
-      location,
-      dateModified,
-      includesWords,
-      itemName,
-      sharedTo,
-      inBin,
-      starred,
-      encrypted,
-      awaitingApproval,
-      requestedByMe,
-    });
+    // TODO: Implement search functionality with filters
+    // Filters: type, owner, location, dateModified, includesWords, itemName, sharedTo, inBin, starred, encrypted, awaitingApproval, requestedByMe
     onClose();
   };
 
