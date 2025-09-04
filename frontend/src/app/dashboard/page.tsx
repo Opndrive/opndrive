@@ -10,15 +10,26 @@ import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
 import { apiS3 } from '@/services/byo-s3-api';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 
 export default function HomePage() {
   const { isFiltersHidden } = useScroll();
   const router = useRouter();
-  const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
-    useDriveStore();
+  const {
+    currentPrefix,
+    recentCache,
+    recentStatus,
+    fetchRecentItems,
+    loadMoreRecentFiles,
+    loadMoreRecentFolders,
+    setCurrentPrefix,
+    setRootPrefix,
+  } = useDriveStore();
+
+  const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
+  const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
 
   useEffect(() => {
     const rootPrefix = apiS3.getPrefix();
@@ -32,7 +43,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (currentPrefix) fetchData({ sync: false });
+    if (currentPrefix) fetchRecentItems({ sync: false, itemsPerType: 10 });
   }, [currentPrefix]);
 
   const handleFolderClick = (folder: Folder) => {
@@ -59,7 +70,26 @@ export default function HomePage() {
     console.log('File action:', action, file);
   };
 
-  const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
+  const handleLoadMoreFiles = async () => {
+    setIsLoadingMoreFiles(true);
+    try {
+      await loadMoreRecentFiles();
+    } finally {
+      setIsLoadingMoreFiles(false);
+    }
+  };
+
+  const handleLoadMoreFolders = async () => {
+    setIsLoadingMoreFolders(true);
+    try {
+      await loadMoreRecentFolders();
+    } finally {
+      setIsLoadingMoreFolders(false);
+    }
+  };
+
+  const isReady = currentPrefix ? recentStatus[currentPrefix] === 'ready' : false;
+  const recentData = currentPrefix ? recentCache[currentPrefix] : null;
 
   return (
     <>
@@ -78,31 +108,37 @@ export default function HomePage() {
 
         <div className="relative z-0">
           {/* Show loading state or actual content */}
-          {currentPrefix && isReady ? (
+          {currentPrefix && isReady && recentData ? (
             <>
               {/* Folders Section */}
-              {cache[currentPrefix]?.folders && cache[currentPrefix].folders.length > 0 && (
+              {recentData.folders && recentData.folders.length > 0 && (
                 <SuggestedFolders
-                  folders={cache[currentPrefix]?.folders || []}
+                  folders={recentData.folders}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
+                  onViewMore={handleLoadMoreFolders}
+                  hasMore={recentData.hasMoreFolders}
+                  isLoadingMore={isLoadingMoreFolders}
                   className="mt-8"
                 />
               )}
 
               {/* Files Section */}
-              {cache[currentPrefix]?.files && cache[currentPrefix].files.length > 0 && (
+              {recentData.files && recentData.files.length > 0 && (
                 <SuggestedFiles
-                  files={cache[currentPrefix]?.files || []}
+                  files={recentData.files}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
+                  onViewMore={handleLoadMoreFiles}
+                  hasMore={recentData.hasMoreFiles}
+                  isLoadingMore={isLoadingMoreFiles}
                   className="mt-8"
                 />
               )}
 
               {/* Empty state when no folders or files */}
-              {(!cache[currentPrefix]?.folders || cache[currentPrefix].folders.length === 0) &&
-                (!cache[currentPrefix]?.files || cache[currentPrefix].files.length === 0) && (
+              {(!recentData.folders || recentData.folders.length === 0) &&
+                (!recentData.files || recentData.files.length === 0) && (
                   <div className="text-center py-12 mt-8">
                     <p className="text-muted-foreground">No files or folders available.</p>
                   </div>

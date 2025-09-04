@@ -8,6 +8,7 @@ import {
 } from '@/shared/components/icons/folder-icons';
 import { OverflowMenu } from '../menus/overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
+import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 
 interface FolderItemProps {
   folder: Folder;
@@ -48,6 +49,8 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     setMenuAnchor(null);
   };
 
+  const timeInfo = formatTimeWithTooltip(folder.lastModified);
+
   return (
     <>
       <div
@@ -64,7 +67,11 @@ export const FolderItem: React.FC<FolderItemProps> = ({
 
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-foreground truncate">{folder.name}</h3>
-          {/* <p className="text-xs text-muted-foreground mt-0.5">{folder.location.label}</p> */}
+          {timeInfo.display && (
+            <p className="text-xs text-muted-foreground mt-0.5 truncate" title={timeInfo.tooltip}>
+              {timeInfo.display}
+            </p>
+          )}
         </div>
 
         <button

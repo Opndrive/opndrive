@@ -6,6 +6,7 @@ import { FaUserAlt } from 'react-icons/fa';
 import { FileThumbnail } from './file-thumbnail';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
+import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 
 interface FileItemGridProps {
   file: FileItem;
@@ -26,6 +27,8 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
     setIsMenuOpen(false);
     setMenuAnchor(null);
   };
+
+  const timeInfo = formatTimeWithTooltip(file.lastModified);
 
   return (
     <div className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors">
@@ -65,12 +68,8 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
                 <span className="text-sm text-muted-foreground truncate">{'me'}</span>
               </div>
             </div>
-            <span className="text-xs text-muted-foreground truncate">
-              {file.LastModified?.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })}
+            <span className="text-xs text-muted-foreground truncate" title={timeInfo.tooltip}>
+              {timeInfo.display}
             </span>
           </div>
         </div>

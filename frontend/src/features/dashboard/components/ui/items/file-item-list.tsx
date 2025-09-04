@@ -4,6 +4,7 @@ import { HiOutlineDotsVertical } from 'react-icons/hi';
 import { FaUserAlt } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
+import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 
 interface FileItemListProps {
   file: FileItem;
@@ -25,6 +26,8 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
     setMenuAnchor(null);
   };
 
+  const timeInfo = formatTimeWithTooltip(file.lastModified);
+
   return (
     <div className="group grid grid-cols-12 gap-4 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border/50 last:border-b-0">
       {/* Name Column */}
@@ -35,12 +38,9 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
 
       {/* Last Updated Column */}
       <div className="hidden md:block col-span-3">
-        {' '}
-        {file.LastModified?.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })}
+        <span className="text-sm text-muted-foreground" title={timeInfo.tooltip}>
+          {timeInfo.display}
+        </span>
       </div>
 
       {/* Owner Column */}

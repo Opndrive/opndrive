@@ -9,6 +9,9 @@ interface SuggestedFoldersProps {
   folders: Folder[];
   onFolderClick?: (folder: Folder) => void;
   onFolderMenuClick?: (folder: Folder, event: React.MouseEvent) => void;
+  onViewMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
 }
@@ -17,6 +20,9 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   folders,
   onFolderClick,
   onFolderMenuClick,
+  onViewMore,
+  hasMore = false,
+  isLoadingMore = false,
   className = '',
   hideTitle = false,
 }) => {
@@ -69,6 +75,19 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
               onMenuClick={onFolderMenuClick}
             />
           ))}
+        </div>
+      )}
+
+      {/* View More Button */}
+      {(hideTitle || isExpanded) && hasMore && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={onViewMore}
+            disabled={isLoadingMore}
+            className="px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20  hover:rounded-2xl  duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoadingMore ? 'Loading...' : 'View More Folders'}
+          </button>
         </div>
       )}
     </div>
