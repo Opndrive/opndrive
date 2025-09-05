@@ -30,6 +30,7 @@ export function FileThumbnail({ extension, _name, className = 'w-full h-32' }: F
       case 'webp':
         return 'bg-purple-50 dark:bg-purple-900/30';
       case 'mp4':
+      case 'mkv':
       case 'avi':
       case 'mov':
       case 'wmv':

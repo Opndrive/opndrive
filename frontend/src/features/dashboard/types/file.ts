@@ -39,6 +39,7 @@ export type FileExtension =
   | 'svg'
   | 'webp'
   | 'mp4'
+  | 'mkv'
   | 'avi'
   | 'mov'
   | 'wmv'

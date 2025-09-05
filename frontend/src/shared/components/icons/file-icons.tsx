@@ -101,6 +101,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'webp':
       return <FileImage className={iconClass} />;
     case 'mp4':
+    case 'mkv':
     case 'avi':
     case 'mov':
     case 'wmv':
