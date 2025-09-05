@@ -6,7 +6,7 @@ import {
   FolderIcon,
   /* SharedFolderIcon */ MoreVerticalIcon,
 } from '@/shared/components/icons/folder-icons';
-import { OverflowMenu } from '../menus/overflow-menu';
+import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 
@@ -87,7 +87,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
         </button>
       </div>
 
-      <OverflowMenu
+      <FolderOverflowMenu
         folder={folder}
         isOpen={isMenuOpen}
         onClose={handleMenuClose}

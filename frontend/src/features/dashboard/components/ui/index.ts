@@ -14,7 +14,10 @@ export { ViewDetails } from './details/view-details';
 // Menu components
 export { CreateMenu } from './menus/create-menu';
 export { FileOverflowMenu } from './menus/file-overflow-menu';
-export { OverflowMenu } from './menus/overflow-menu';
+export { FolderOverflowMenu } from './menus/folder-overflow-menu';
+
+// Download components
+export { DownloadProgressManager } from './download-progress-manager';
 
 // Skeleton components
 export { SuggestedSectionSkeleton, DashboardLoading } from './skeletons/dashboard-skeleton';

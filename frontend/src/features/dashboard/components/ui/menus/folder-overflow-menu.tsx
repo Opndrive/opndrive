@@ -2,20 +2,20 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
-import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
+import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
+import { Download, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 
-interface FileOverflowMenuProps {
-  file: FileItem;
+interface OverflowMenuProps {
+  folder: Folder;
   isOpen: boolean;
   onClose: () => void;
   anchorElement: HTMLElement | null;
   className?: string;
 }
 
-export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
-  file,
+export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
+  folder,
   isOpen,
   onClose,
   anchorElement,
@@ -23,48 +23,44 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const [originPosition, setOriginPosition] = useState('top-left');
-  const { downloadFile, isDownloading } = useDownload();
+  const [originPosition, setOriginPosition] = useState<
+    'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  >('top-left');
+  const { downloadFolder, isDownloading } = useDownload();
 
-  const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
-    {
-      id: 'open',
-      label: 'Open',
-      icon: Eye,
-      onClick: () => {}, // TODO: Implement open file functionality
-    },
+  const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
       id: 'download',
       label: 'Download',
-      icon: Download,
-      disabled: isDownloading(file.id),
-      onClick: (file) => {
+      icon: <Download className="flex-shrink-0 h-4 w-4" />,
+      disabled: isDownloading(folder.id),
+      onClick: (folder) => {
         // Use setTimeout to avoid setState during render
-        setTimeout(() => downloadFile(file), 0);
+        setTimeout(() => downloadFolder(folder), 0);
       },
     },
     {
       id: 'rename',
       label: 'Rename',
-      icon: Edit3,
+      icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
       onClick: () => {}, // TODO: Implement rename functionality
     },
     {
       id: 'info',
-      label: 'File information',
-      icon: Info,
-      onClick: () => {}, // TODO: Implement file info functionality
+      label: 'Folder information',
+      icon: <Info className="flex-shrink-0 h-4 w-4" />,
+      onClick: () => {}, // TODO: Implement folder info functionality
     },
     {
       id: 'delete',
       label: 'Move to bin',
-      icon: Trash2,
+      icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
       variant: 'destructive' as const,
       onClick: () => {}, // TODO: Implement delete functionality
     },
   ];
 
-  const actions = getDefaultFileMenuActions(file);
+  const actions = getDefaultMenuActions(folder);
 
   useEffect(() => {
     if (isOpen && anchorElement) {
@@ -75,7 +71,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
 
       let left = rect.right + padding;
       let top = rect.top;
-      let origin = 'top-left';
+      let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
       // Check if menu would go off screen horizontally
       if (left + menuWidth > window.innerWidth - padding) {
@@ -163,7 +159,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
         transformOrigin: getTransformOrigin(),
       }}
       role="menu"
-      aria-label={`Actions for ${file.name}`}
+      aria-label={`Actions for ${folder.name}`}
     >
       {actions.map((action, index) => (
         <React.Fragment key={action.id}>
@@ -181,14 +177,14 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
             `}
             onClick={() => {
               if (!action.disabled) {
-                action.onClick?.(file);
+                action.onClick?.(folder);
                 onClose();
               }
             }}
             disabled={action.disabled}
             role="menuitem"
           >
-            <action.icon className="flex-shrink-0 h-4 w-4" />
+            <span className="flex-shrink-0">{action.icon}</span>
             <span className="flex-1">{action.label}</span>
           </button>
         </React.Fragment>

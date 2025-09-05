@@ -10,6 +10,7 @@ import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
 import { DetailsSidebar } from '@/features/dashboard/components/ui/details/details-sidebar';
 import { UploadCard } from '@/features/upload';
+import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -106,6 +107,9 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
 
       {/* Upload Card - Global component */}
       <UploadCard />
+
+      {/* Download Progress Manager - Global component */}
+      <DownloadProgressManager />
     </div>
   );
 };
