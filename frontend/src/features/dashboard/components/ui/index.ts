@@ -6,7 +6,6 @@ export { FileThumbnail } from './items/file-thumbnail';
 export { FolderItem } from './items/folder-item';
 
 export { DetailsSidebar } from './details/details-sidebar';
-export { ViewDetails } from './details/view-details';
 
 export { CreateMenu } from './menus/create-menu';
 export { FileOverflowMenu } from './menus/file-overflow-menu';

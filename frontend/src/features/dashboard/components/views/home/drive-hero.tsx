@@ -3,7 +3,6 @@
 import { useRef, useEffect } from 'react';
 import { SearchBar } from '@/features/dashboard/components/views/search/search-bar';
 import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
 import { FilterBar } from '@/features/dashboard/components/views/search/filter-bar';
 
 interface DriveHeroProps {
@@ -41,9 +40,7 @@ export const DriveHero = ({ showWelcome = true, showFilters = true, title }: Dri
 
   return (
     <div className="relative mb-8">
-      <div className="absolute right-0 top-0 z-10">
-        <ViewDetails />
-      </div>
+      <div className="absolute right-0 top-0 z-10"></div>
       {showWelcome && (
         <h1
           className={`mb-6 text-center text-2xl font-normal text-foreground transition-all duration-300 ${isFiltersHidden ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}

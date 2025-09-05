@@ -6,6 +6,7 @@ import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder
 import { Download, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDetails } from '@/context/details-context';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -29,6 +30,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   >('top-left');
   const { isDownloading } = useDownload();
   const { deleteFolder, isDeleting } = useDelete();
+  const { open: openDetails } = useDetails();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -53,6 +55,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       label: 'Folder information',
       icon: <Info className="flex-shrink-0 h-4 w-4" />,
       onClick: () => {
+        openDetails(folder);
         onClose();
       },
     },

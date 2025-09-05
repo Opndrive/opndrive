@@ -1,7 +1,6 @@
 'use client';
 
 import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
 import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
 import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
@@ -120,7 +119,6 @@ function BrowsePageContent() {
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
           </div>
-          <ViewDetails />
         </div>
 
         <div className="relative z-0">

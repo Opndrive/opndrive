@@ -8,7 +8,7 @@ import { DashboardNavbar } from '@/features/dashboard/components/layout/navbar/d
 import { DashboardSidebar } from '@/features/dashboard/components/layout/sidebar/dashboard-sidebar';
 import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
-import { DetailsSidebar } from '@/features/dashboard/components/ui/details/details-sidebar';
+import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
 import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 
@@ -102,7 +102,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
           </div>
         </div>
 
-        {detailsOpen && <DetailsSidebar />}
+        <DetailsManager />
       </div>
 
       <UploadCard />

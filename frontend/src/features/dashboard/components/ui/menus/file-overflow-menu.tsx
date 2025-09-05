@@ -6,6 +6,7 @@ import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDetails } from '@/context/details-context';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -27,6 +28,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState('top-left');
   const { downloadFile, isDownloading } = useDownload();
   const { deleteFile, isDeleting } = useDelete();
+  const { open: openDetails } = useDetails();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
@@ -60,6 +62,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       label: 'File information',
       icon: Info,
       onClick: () => {
+        openDetails(file);
         onClose();
       },
     },
