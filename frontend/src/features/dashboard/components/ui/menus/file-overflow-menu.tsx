@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDelete } from '@/features/dashboard/hooks/use-delete';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -25,13 +26,16 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [originPosition, setOriginPosition] = useState('top-left');
   const { downloadFile, isDownloading } = useDownload();
+  const { deleteFile, isDeleting } = useDelete();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
       id: 'open',
       label: 'Open',
       icon: Eye,
-      onClick: () => {},
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'download',
@@ -40,26 +44,45 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       disabled: isDownloading(file.id),
       onClick: (file) => {
         setTimeout(() => downloadFile(file), 0);
+        onClose();
       },
     },
     {
       id: 'rename',
       label: 'Rename',
       icon: Edit3,
-      onClick: () => {},
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'info',
       label: 'File information',
       icon: Info,
-      onClick: () => {},
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'delete',
-      label: 'Move to bin',
+      label: isDeleting(file.id || file.Key || file.name) ? 'Deleting...' : 'Delete forever',
       icon: Trash2,
       variant: 'destructive' as const,
-      onClick: () => {},
+      disabled: isDeleting(file.id || file.Key || file.name),
+      onClick: async () => {
+        const confirmDelete = window.confirm(
+          `Are you sure you want to delete "${file.name}" forever? This action cannot be undone.`
+        );
+
+        if (confirmDelete) {
+          try {
+            await deleteFile(file);
+          } catch (error) {
+            console.error('Delete failed:', error);
+          }
+        }
+        onClose();
+      },
     },
   ];
 
@@ -171,7 +194,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
               text-left transition-colors duration-150
               ${
                 action.variant === 'destructive'
-                  ? 'text-red-400 hover:bg-red-500/10'
+                  ? 'text-[#d93025] hover:bg-[#fce8e6] dark:text-[#f28b82] dark:hover:bg-[#5f2120]/20'
                   : 'text-foreground hover:bg-card'
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -179,7 +202,6 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
             onClick={() => {
               if (!action.disabled) {
                 action.onClick?.(file);
-                onClose();
               }
             }}
             disabled={action.disabled}
@@ -193,5 +215,5 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
     </div>
   );
 
-  return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
+  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
 };

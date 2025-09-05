@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { Download, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDelete } from '@/features/dashboard/hooks/use-delete';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -27,6 +28,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
   const { isDownloading } = useDownload();
+  const { deleteFolder, isDeleting } = useDelete();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -35,29 +37,47 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       icon: <Download className="flex-shrink-0 h-4 w-4" />,
       disabled: isDownloading(folder.id),
       onClick: (_folder) => {
-        setTimeout(() => {
-          onClose();
-        }, 0);
+        onClose();
       },
     },
     {
       id: 'rename',
       label: 'Rename',
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {},
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'info',
       label: 'Folder information',
       icon: <Info className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {},
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'delete',
-      label: 'Move to bin',
+      label: isDeleting(folder.id || folder.Prefix || folder.name)
+        ? 'Deleting...'
+        : 'Delete forever',
       icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
       variant: 'destructive' as const,
-      onClick: () => {},
+      disabled: isDeleting(folder.id || folder.Prefix || folder.name),
+      onClick: async () => {
+        const confirmDelete = window.confirm(
+          `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
+        );
+
+        if (confirmDelete) {
+          try {
+            await deleteFolder(folder);
+          } catch (error) {
+            console.error('Delete failed:', error);
+          }
+        }
+        onClose();
+      },
     },
   ];
 
@@ -169,7 +189,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
               text-left transition-colors duration-150
               ${
                 action.variant === 'destructive'
-                  ? 'text-red-400 hover:bg-red-500/10'
+                  ? 'text-[#d93025] hover:bg-[#fce8e6] dark:text-[#f28b82] dark:hover:bg-[#5f2120]/20'
                   : 'text-foreground hover:bg-card'
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -177,7 +197,6 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
             onClick={() => {
               if (!action.disabled) {
                 action.onClick?.(folder);
-                onClose();
               }
             }}
             disabled={action.disabled}
@@ -191,5 +210,5 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     </div>
   );
 
-  return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
+  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
 };

@@ -6,7 +6,6 @@ import { DashboardSidebarProps } from './types/sidebar';
 import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
-import { SidebarStorage } from './sidebar-storage';
 import { groupNavItems } from './utils/sidebar';
 
 export function DashboardSidebar({
@@ -106,13 +105,7 @@ export function DashboardSidebar({
     }
   };
 
-  const handleCreateClick = () => {
-    // TODO: Implement create menu functionality
-  };
-
-  const handleGetMoreStorage = () => {
-    // TODO: Implement storage upgrade functionality
-  };
+  const handleCreateClick = () => {};
 
   return (
     <>
@@ -175,9 +168,7 @@ export function DashboardSidebar({
             'shrink-0 transition-opacity duration-200',
             isOpen ? 'opacity-100' : 'opacity-0'
           )}
-        >
-          <SidebarStorage used={2.1} total={15} onGetMoreStorage={handleGetMoreStorage} />
-        </div>
+        ></div>
       </div>
     </>
   );
