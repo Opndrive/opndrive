@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import { FileItem, ViewLayout } from '@/features/dashboard/types/file';
+import type { FileItem, ViewLayout } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList } from '../../ui';
 
 interface SuggestedFilesProps {
@@ -120,7 +120,6 @@ export function SuggestedFiles({
         </div>
       )}
 
-      {/* View More Button */}
       {(hideTitle || isExpanded) && hasMore && (
         <div className="mt-4 text-center">
           <button

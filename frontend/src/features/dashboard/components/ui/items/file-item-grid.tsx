@@ -1,4 +1,3 @@
-// import { Users } from 'lucide-react';
 import { useState } from 'react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
@@ -32,10 +31,8 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
 
   return (
     <div className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors">
-      {/* File Thumbnail */}
       <FileThumbnail extension={file.extension as FileExtension} _name={file.name} />
 
-      {/* File Info */}
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -44,10 +41,8 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
               className="h-4 w-4 flex-shrink-0"
             />
             <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
-            {/* {file.isShared && <Users className="h-3 w-3 text-muted-foreground flex-shrink-0" />} */}
           </div>
 
-          {/* Overflow Menu */}
           <button
             className="p-1 rounded-full hover:bg-secondary/80 transition-colors"
             onClick={handleMenuClick}
@@ -56,9 +51,7 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
           </button>
         </div>
 
-        {/* File Metadata */}
         <div className="space-y-1">
-          {/* <p className="text-xs text-muted-foreground">{file.reasonSuggested}</p> */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
               <div className="flex items-center gap-2">

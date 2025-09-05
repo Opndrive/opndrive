@@ -23,16 +23,12 @@ export const SuggestedSectionSkeleton: React.FC<SuggestedSectionSkeletonProps> =
 }) => {
   return (
     <div className={`w-full ${className}`}>
-      {/* Header Skeleton */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 p-2">
-          {/* Arrow Icon */}
           <div className="w-4 h-4 bg-muted/40 rounded animate-pulse" />
-          {/* Title */}
           <div className="h-4 bg-muted/50 rounded w-32 animate-pulse" />
         </div>
 
-        {/* Layout Toggle Skeleton (only for files) */}
         {type === 'files' && isExpanded && (
           <div className="flex rounded-lg bg-secondary/30 p-1 animate-pulse">
             <div className="w-8 h-8 bg-muted/40 rounded-md" />
@@ -41,7 +37,6 @@ export const SuggestedSectionSkeleton: React.FC<SuggestedSectionSkeletonProps> =
         )}
       </div>
 
-      {/* Content Skeleton */}
       {isExpanded && (
         <div>
           {type === 'folders' ? (
@@ -70,12 +65,10 @@ export const DashboardLoading: React.FC<DashboardLoadingProps> = ({
 }) => {
   return (
     <div className={`space-y-8 ${className}`}>
-      {/* Suggested Folders Loading */}
       {showFolders && (
         <SuggestedSectionSkeleton title="Suggested folders" type="folders" count={6} />
       )}
 
-      {/* Suggested Files Loading */}
       {showFiles && (
         <SuggestedSectionSkeleton
           title="Suggested files"

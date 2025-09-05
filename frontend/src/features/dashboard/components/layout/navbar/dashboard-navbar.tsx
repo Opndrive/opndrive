@@ -18,7 +18,6 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
     <header className="sticky top-0 z-30 w-full bg-secondary px-6 py-2">
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center">
-          {/* Mobile view: Toggle + Logo */}
           <div className="lg:hidden flex items-center">
             <Button
               variant="ghost"
@@ -38,21 +37,11 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
             />
           </div>
 
-          {/* Desktop view: Logo + Name */}
-          <div className="hidden items-center space-x-2 lg:flex">
-            <Image
-              src="/logo-nobg.png"
-              width={50}
-              height={50}
-              className="h-10 w-auto"
-              alt="Organization Logo"
-            />
-            <span className="mr-2 text-xl font-medium text-foreground">
-              Opn<span className="text-primary">drive</span>
-            </span>
+          <div className="flex items-center gap-3">
+            <Image src="/logo-nobg.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
+            <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
           </div>
 
-          {/* Desktop: Toggle on right of logo */}
           <div className="hidden lg:block">
             <Button
               variant="ghost"
@@ -66,7 +55,6 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           </div>
         </div>
 
-        {/* Search Bar */}
         <div className="flex flex-1 justify-center px-4">
           <div
             className={`w-full max-w-2xl transition-all duration-300 ${

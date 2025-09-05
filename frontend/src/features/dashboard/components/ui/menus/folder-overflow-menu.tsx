@@ -26,7 +26,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
-  const { downloadFolder, isDownloading } = useDownload();
+  const { isDownloading } = useDownload();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -34,29 +34,30 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       label: 'Download',
       icon: <Download className="flex-shrink-0 h-4 w-4" />,
       disabled: isDownloading(folder.id),
-      onClick: (folder) => {
-        // Use setTimeout to avoid setState during render
-        setTimeout(() => downloadFolder(folder), 0);
+      onClick: (_folder) => {
+        setTimeout(() => {
+          onClose();
+        }, 0);
       },
     },
     {
       id: 'rename',
       label: 'Rename',
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {}, // TODO: Implement rename functionality
+      onClick: () => {},
     },
     {
       id: 'info',
       label: 'Folder information',
       icon: <Info className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {}, // TODO: Implement folder info functionality
+      onClick: () => {},
     },
     {
       id: 'delete',
       label: 'Move to bin',
       icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
       variant: 'destructive' as const,
-      onClick: () => {}, // TODO: Implement delete functionality
+      onClick: () => {},
     },
   ];
 
@@ -73,13 +74,11 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       let top = rect.top;
       let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
-      // Check if menu would go off screen horizontally
       if (left + menuWidth > window.innerWidth - padding) {
         left = rect.left - menuWidth - padding;
         origin = 'top-right';
       }
 
-      // Check if menu would go off screen vertically
       if (top + menuHeight > window.innerHeight - padding) {
         top = rect.bottom - menuHeight;
         origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';

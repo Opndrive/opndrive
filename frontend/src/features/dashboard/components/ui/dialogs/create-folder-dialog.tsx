@@ -26,9 +26,8 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFolderName(defaultName);
-      setIsCreating(false); // Reset creating state when dialog opens
-      setValidationError(''); // Reset validation error
-      // Focus and select text after dialog is fully rendered
+      setIsCreating(false);
+      setValidationError('');
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -36,7 +35,6 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
         }
       }, 100);
     } else {
-      // Reset state when dialog closes
       setIsCreating(false);
       setValidationError('');
     }
@@ -46,12 +44,10 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
     const value = e.target.value;
     setFolderName(value);
 
-    // Clear validation error when user starts typing
     if (validationError) {
       setValidationError('');
     }
 
-    // Validate folder name
     if (value.trim() && !isValidFolderName(value)) {
       setValidationError(
         'Folder name contains invalid characters. Use only letters, numbers, spaces, hyphens, and underscores.'
@@ -64,7 +60,6 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
 
     if (!folderName.trim() || isCreating || validationError) return;
 
-    // Final validation before submit
     if (!isValidFolderName(folderName)) {
       setValidationError(
         'Invalid folder name. Please use only letters, numbers, spaces, hyphens, and underscores.'
@@ -75,9 +70,8 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
     setIsCreating(true);
     try {
       await onConfirm(folderName.trim());
-      // Success handling is done by parent component
-    } catch {
-      // Error handling is done by parent component
+    } catch (error) {
+      console.error('Failed to create folder:', error);
     } finally {
       setIsCreating(false);
     }
@@ -104,7 +98,6 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
         className="relative w-full max-w-md mx-4 bg-card rounded-lg shadow-xl"
         onKeyDown={handleKeyDown}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4">
           <div className="flex items-center gap-3">
             <FolderPlus className="h-5 w-5 text-primary" />
@@ -118,7 +111,6 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
           </button>
         </div>
 
-        {/* Content */}
         <form onSubmit={handleSubmit} className="px-6 pb-6">
           <div className="space-y-4">
             <div>
@@ -137,7 +129,6 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
               {validationError && <p className="text-sm text-red-500 mt-1">{validationError}</p>}
             </div>
 
-            {/* Actions */}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"

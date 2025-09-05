@@ -220,10 +220,5 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
     </div>
   );
 
-  return (
-    <>
-      {/* Portal for menu content */}
-      {typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}
-    </>
-  );
+  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
 };

@@ -55,14 +55,12 @@ export function DuplicateDialog({
   return typeof window !== 'undefined'
     ? createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          {/* Backdrop - transparent */}
           <div
             className="absolute inset-0 backdrop-blur-sm"
             style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
             onClick={handleCancel}
           />
 
-          {/* Dialog */}
           <div
             className="relative rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden"
             style={{
@@ -70,7 +68,6 @@ export function DuplicateDialog({
               border: '1px solid var(--border)',
             }}
           >
-            {/* Header */}
             <div className="px-6 py-4">
               <h2 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
                 Upload options
@@ -82,7 +79,6 @@ export function DuplicateDialog({
               </p>
             </div>
 
-            {/* File/Folder Info */}
             <div className="px-6 pb-4">
               <div
                 className="flex items-center  gap-3 p-3 rounded-lg"
@@ -115,7 +111,6 @@ export function DuplicateDialog({
               </div>
             </div>
 
-            {/* Options */}
             <div className="px-6 pb-6">
               <div className="space-y-3">
                 <label
@@ -175,7 +170,6 @@ export function DuplicateDialog({
               </div>
             </div>
 
-            {/* Actions */}
             <div
               className="px-6 py-4 flex justify-end gap-3"
               style={{

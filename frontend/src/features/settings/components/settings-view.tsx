@@ -35,7 +35,6 @@ export function SettingsView() {
 
   return (
     <div className="space-y-8" key={activeTab}>
-      {/* Page Header */}
       <div className="border-b border-border pb-6">
         <h1 className="text-3xl font-semibold text-foreground">
           {activeTabInfo?.label || 'Settings'}
@@ -45,7 +44,6 @@ export function SettingsView() {
         )}
       </div>
 
-      {/* Settings Content */}
       <div className="max-w-2xl">{renderContent()}</div>
     </div>
   );

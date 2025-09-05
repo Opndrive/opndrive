@@ -30,20 +30,17 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
 
   return (
     <div className="group grid grid-cols-12 gap-4 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border/50 last:border-b-0">
-      {/* Name Column */}
       <div className="col-span-4 flex items-center gap-3 min-w-0">
         <FileIcon extension={file.extension as FileExtension} className="h-4 w-4 flex-shrink-0" />
         <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
       </div>
 
-      {/* Last Updated Column */}
       <div className="hidden md:block col-span-3">
         <span className="text-sm text-muted-foreground" title={timeInfo.tooltip}>
           {timeInfo.display}
         </span>
       </div>
 
-      {/* Owner Column */}
       <div className="hidden lg:flex items-center gap-2 col-span-2">
         <div className="h-6 w-6 rounded-full bg-card-foreground/70 flex items-center justify-center">
           <FaUserAlt size={12} className="text-background" />
@@ -51,12 +48,10 @@ export function FileItemList({ file, _onAction }: FileItemListProps) {
         <span className="text-sm text-muted-foreground truncate">{'me'}</span>
       </div>
 
-      {/* Size Column */}
       <div className="hidden xl:flex items-center gap-2 col-span-2">
         {file.size.value} {file.size.unit}
       </div>
 
-      {/* Actions */}
       <div className="col-span-1 flex justify-end">
         <button
           className="p-1 rounded-full hover:bg-secondary/80 transition-colors"

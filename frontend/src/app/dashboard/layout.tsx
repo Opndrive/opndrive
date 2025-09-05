@@ -105,10 +105,8 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
         {detailsOpen && <DetailsSidebar />}
       </div>
 
-      {/* Upload Card - Global component */}
       <UploadCard />
 
-      {/* Download Progress Manager - Global component */}
       <DownloadProgressManager />
     </div>
   );

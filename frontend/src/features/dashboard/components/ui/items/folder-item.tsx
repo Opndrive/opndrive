@@ -2,10 +2,7 @@
 
 import type React from 'react';
 import { useState } from 'react';
-import {
-  FolderIcon,
-  /* SharedFolderIcon */ MoreVerticalIcon,
-} from '@/shared/components/icons/folder-icons';
+import { FolderIcon, MoreVerticalIcon } from '@/shared/components/icons/folder-icons';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';

@@ -94,10 +94,8 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
       className="flex items-center gap-3 p-3 border-b last:border-b-0"
       style={{ borderColor: 'var(--border)' }}
     >
-      {/* File/Folder Icon and Status */}
       <div className="flex-shrink-0">{getStatusIcon()}</div>
 
-      {/* File Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
@@ -117,7 +115,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
             </div>
           </div>
 
-          {/* Cancel Button - only show for active uploads */}
           {(item.status === 'uploading' || item.status === 'pending') && (
             <button
               onClick={() => onCancel(item.id)}
@@ -129,7 +126,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
           )}
         </div>
 
-        {/* Progress Bar */}
         <div className="mt-2">
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
             <div
@@ -138,7 +134,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
             />
           </div>
 
-          {/* Status Text */}
           <div className="flex items-center justify-between mt-1">
             <span className={`text-xs ${getStatusColor()}`}>{getStatusText()}</span>
             <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>

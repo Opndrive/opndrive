@@ -31,7 +31,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       id: 'open',
       label: 'Open',
       icon: Eye,
-      onClick: () => {}, // TODO: Implement open file functionality
+      onClick: () => {},
     },
     {
       id: 'download',
@@ -39,7 +39,6 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       icon: Download,
       disabled: isDownloading(file.id),
       onClick: (file) => {
-        // Use setTimeout to avoid setState during render
         setTimeout(() => downloadFile(file), 0);
       },
     },
@@ -47,20 +46,20 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       id: 'rename',
       label: 'Rename',
       icon: Edit3,
-      onClick: () => {}, // TODO: Implement rename functionality
+      onClick: () => {},
     },
     {
       id: 'info',
       label: 'File information',
       icon: Info,
-      onClick: () => {}, // TODO: Implement file info functionality
+      onClick: () => {},
     },
     {
       id: 'delete',
       label: 'Move to bin',
       icon: Trash2,
       variant: 'destructive' as const,
-      onClick: () => {}, // TODO: Implement delete functionality
+      onClick: () => {},
     },
   ];
 
@@ -77,13 +76,11 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       let top = rect.top;
       let origin = 'top-left';
 
-      // Check if menu would go off screen horizontally
       if (left + menuWidth > window.innerWidth - padding) {
         left = rect.left - menuWidth - padding;
         origin = 'top-right';
       }
 
-      // Check if menu would go off screen vertically
       if (top + menuHeight > window.innerHeight - padding) {
         top = rect.bottom - menuHeight;
         origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
