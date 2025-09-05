@@ -3,7 +3,7 @@
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
-import { cn } from '@/shared/utils';
+import { cn } from '@/shared/utils/utils';
 
 // Simplified props
 export interface NotificationProps {
