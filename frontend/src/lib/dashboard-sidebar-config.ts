@@ -2,14 +2,14 @@ import React from 'react';
 import { MdHomeFilled } from 'react-icons/md';
 import { LuBook } from 'react-icons/lu';
 
-export interface NavItem {
+export interface SidebarItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  children?: NavItem[];
+  children?: SidebarItem[];
 }
 
-const NavItems: NavItem[] = [
+const SidebarItems: SidebarItem[] = [
   {
     title: 'Home',
     href: '/',
@@ -22,6 +22,6 @@ const NavItems: NavItem[] = [
   },
 ];
 
-export function getNavItems(): NavItem[] {
-  return NavItems;
+export function getSidebarItems(): SidebarItem[] {
+  return SidebarItems;
 }

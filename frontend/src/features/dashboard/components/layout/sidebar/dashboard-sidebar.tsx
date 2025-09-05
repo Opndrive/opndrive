@@ -6,12 +6,12 @@ import { DashboardSidebarProps } from './types/sidebar';
 import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
-import { groupNavItems } from './utils/sidebar';
+import { groupSidebarItems } from './utils/sidebar';
 
 export function DashboardSidebar({
   isOpen,
   closeSidebar,
-  navItems,
+  sidebarItems,
   basePath,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
@@ -25,7 +25,7 @@ export function DashboardSidebar({
     [basePath]
   );
 
-  const sidebarSections = useMemo(() => groupNavItems(navItems), [navItems]);
+  const sidebarSections = useMemo(() => groupSidebarItems(sidebarItems), [sidebarItems]);
 
   useEffect(() => {
     function checkScreenSize() {
@@ -49,7 +49,7 @@ export function DashboardSidebar({
 
   useEffect(() => {
     const initialOpenSections: Record<string, boolean> = {};
-    navItems.forEach((item) => {
+    sidebarItems.forEach((item) => {
       if (item.children) {
         const isActive = item.children.some((child) => {
           const childFullPath = `${basePath}${child.href === '/' ? '' : child.href}`;
@@ -64,7 +64,7 @@ export function DashboardSidebar({
     if (!savedOpenSections && Object.keys(initialOpenSections).length > 0) {
       setOpenSections(initialOpenSections);
     }
-  }, [pathname, navItems, basePath, localStorageKey]);
+  }, [pathname, sidebarItems, basePath, localStorageKey]);
 
   useEffect(() => {
     if (Object.keys(openSections).length > 0) {

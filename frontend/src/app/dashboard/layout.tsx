@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { getNavItems } from '@/lib/dashboard-nav-config';
+import { getSidebarItems } from '@/lib/dashboard-sidebar-config';
 import LoadingBar from '@/shared/components/layout/loading-bar';
 import { DashboardNavbar } from '@/features/dashboard/components/layout/navbar/dashboard-navbar';
 import { DashboardSidebar } from '@/features/dashboard/components/layout/sidebar/dashboard-sidebar';
@@ -48,8 +48,8 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem(lsKey, 'false');
   };
 
-  // No role — just get all nav items
-  const navItems = useMemo(() => getNavItems(), []);
+  // No role — just get all sidebar items
+  const sidebarItems = useMemo(() => getSidebarItems(), []);
   const basePath = '/dashboard';
   const { isOpen: detailsOpen } = useDetails();
 
@@ -82,7 +82,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
         <DashboardSidebar
           isOpen={isSidebarOpen}
           closeSidebar={closeSidebar}
-          navItems={navItems}
+          sidebarItems={sidebarItems}
           basePath={basePath}
         />
 

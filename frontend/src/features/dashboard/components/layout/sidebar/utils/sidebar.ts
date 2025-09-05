@@ -1,4 +1,4 @@
-import { NavItem, SidebarSection } from '../types/sidebar';
+import { SidebarItem, SidebarSection } from '../types/sidebar';
 
 export const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
@@ -12,10 +12,10 @@ export const calculateUsagePercentage = (used: number, total: number): number =>
   return Math.round((used / total) * 100);
 };
 
-export const groupNavItems = (navItems: NavItem[]): SidebarSection[] => {
+export const groupSidebarItems = (sidebarItems: SidebarItem[]): SidebarSection[] => {
   return [
     {
-      items: navItems,
+      items: sidebarItems,
       showSeparator: false,
     },
   ];
