@@ -86,42 +86,28 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
           basePath={basePath}
         />
 
-        {/* Main content area - responsive container */}
+        {/* Main content area - absolute positioned to take full available space */}
         <div
           className={`
-          flex flex-1 flex-col min-h-0 min-w-0 
+          absolute inset-0 flex flex-col min-h-0 min-w-0 
           transition-all duration-200 ease-in-out
-          ${isSidebarOpen ? 'lg:ml-0' : 'lg:ml-0'}
+          ${isSidebarOpen ? 'lg:left-64' : 'lg:left-0'}
           p-2 sm:p-3 lg:p-4
+          ${detailsOpen ? 'lg:pr-[21rem]' : ''}
         `}
         >
-          <div
-            className={`
-            flex flex-1 min-h-0 gap-2 sm:gap-3 lg:gap-4
-            ${detailsOpen ? 'lg:pr-0' : ''}
-          `}
-          >
-            {/* Content panel */}
-            <div className="flex flex-1 flex-col min-h-0 min-w-0 rounded-2xl lg:rounded-3xl border border-border/20 bg-background overflow-hidden">
-              <main
-                ref={mainRef}
-                className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 min-h-0 scroll-smooth custom-scrollbar"
-              >
-                {children}
-              </main>
-            </div>
-
-            {/* Details panel - only on large screens */}
-            <div className="hidden lg:block">
-              <DetailsManager />
-            </div>
+          <div className="flex flex-1 flex-col min-h-0 min-w-0 rounded-2xl lg:rounded-3xl border border-border/20 bg-background overflow-hidden">
+            <main
+              ref={mainRef}
+              className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 min-h-0 scroll-smooth custom-scrollbar"
+            >
+              {children}
+            </main>
           </div>
         </div>
 
-        {/* Mobile details - overlay on small screens */}
-        <div className="lg:hidden">
-          <DetailsManager />
-        </div>
+        {/* Details panel - managed by single responsive component */}
+        <DetailsManager />
       </div>
 
       <UploadCard />

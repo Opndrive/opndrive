@@ -26,9 +26,12 @@ export const DetailsManager = () => {
     return <MobileDetailsDialog />;
   }
 
+  // Desktop version - render in absolute positioned container
   return (
-    <div className="w-80 xl:w-96 flex-shrink-0">
-      <DetailsSidebar />
+    <div className="absolute right-2 top-2 bottom-2 w-80 z-10">
+      <div className="h-full rounded-2xl lg:rounded-3xl border border-border/20 bg-background overflow-hidden shadow-lg">
+        <DetailsSidebar />
+      </div>
     </div>
   );
 };

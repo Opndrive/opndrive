@@ -103,10 +103,8 @@ export const DetailsSidebar = () => {
   };
 
   return (
-    <aside className="flex w-70 mr-3 ml-2 mb-4 shrink-0 flex-col rounded-3xl border border-border/20 bg-background">
-      <div className="rounded-t-3xl overflow-hidden" />
-
-      <header className="flex items-center justify-between px-4 py-3 border-b border-border/20">
+    <aside className="flex w-full h-full flex-col">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border/20 rounded-t-2xl lg:rounded-t-3xl">
         <h4 className="text-lg font-medium text-foreground">Details</h4>
         <Button variant="sheet" size="icon" onClick={close}>
           <X className="h-5 w-5 text-foreground" />
