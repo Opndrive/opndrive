@@ -1,6 +1,5 @@
 'use client';
 
-import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
 import { useDriveStore } from '@/context/data-context';
 import { ChevronRight, Home } from 'lucide-react';
 import Link from 'next/link';
@@ -59,11 +58,6 @@ export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
           })}
         </div>
       </nav>
-
-      {/* View Details - Only show once on the right */}
-      <div className="flex-shrink-0 ml-4">
-        <ViewDetails />
-      </div>
     </div>
   );
 }

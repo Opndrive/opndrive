@@ -3,6 +3,7 @@
 import { Menu } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import Image from 'next/image';
+import Link from 'next/link';
 import NavbarUserProfile from './navbar-user-profile';
 import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
@@ -40,8 +41,13 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
       {/* Desktop Navbar */}
       <div className="hidden lg:flex w-full items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Image src="/logo-nobg.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
-          <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
+            <Image src="/logo-nobg.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
+            <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -51,8 +57,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           >
             <Menu size={20} />
           </Button>
-        </div>
-
+        </div>{' '}
         <div className="flex flex-1 justify-center px-4">
           <div
             className={`w-full max-w-2xl transition-all duration-300 ${
@@ -64,7 +69,6 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
             <SearchPage />
           </div>
         </div>
-
         <NavbarUserProfile />
       </div>
 
@@ -88,14 +92,19 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
             >
               <Menu size={20} />
             </Button>
-            <Image
-              src="/logo-nobg.png"
-              width={32}
-              height={32}
-              className="h-8 w-8"
-              alt="Opndrive Logo"
-            />
-            <h1 className="text-lg font-semibold text-foreground">Opndrive</h1>
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <Image
+                src="/logo-nobg.png"
+                width={32}
+                height={32}
+                className="h-8 w-8"
+                alt="Opndrive Logo"
+              />
+              <h1 className="text-lg font-semibold text-foreground">Opndrive</h1>
+            </Link>
           </div>
           <NavbarUserProfile />
         </div>

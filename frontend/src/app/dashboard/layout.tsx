@@ -92,7 +92,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
           absolute inset-0 flex flex-col min-h-0 min-w-0 
           transition-all duration-200 ease-in-out
           ${isSidebarOpen ? 'lg:left-64' : 'lg:left-0'}
-          p-2 sm:p-3 lg:p-4
+           sm:p-3 lg:p-4
           ${detailsOpen ? 'lg:pr-[21rem]' : ''}
         `}
         >
