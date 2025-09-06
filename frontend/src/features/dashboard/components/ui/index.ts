@@ -2,8 +2,10 @@ export { LayoutToggle } from './layout-toggle';
 
 export { FileItemGrid } from './items/file-item-grid';
 export { FileItemList } from './items/file-item-list';
+export { FileItemMobile } from './items/file-item-mobile';
 export { FileThumbnail } from './items/file-thumbnail';
 export { FolderItem } from './items/folder-item';
+export { FolderItemMobile } from './items/folder-item-mobile';
 
 export { DetailsSidebar } from './details/details-sidebar';
 

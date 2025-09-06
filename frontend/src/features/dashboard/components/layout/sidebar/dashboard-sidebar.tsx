@@ -119,56 +119,60 @@ export function DashboardSidebar({
       <div
         ref={sidebarRef}
         className={cn(
-          'bg-secondary flex flex-col z-50 h-[calc(100vh-3.5rem)] fixed lg:relative left-0 w-64 overflow-x-hidden',
+          'bg-secondary flex flex-col z-30 h-[calc(100vh-3.5rem)]',
+          // Mobile: fixed positioning with slide animation
+          'fixed lg:static left-0 w-64 overflow-x-hidden',
           'transition-all duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : '-translate-x-full',
-          'lg:translate-x-0',
-          isOpen ? 'lg:w-64' : 'lg:w-0'
+          // Mobile visibility
+          isSmallScreen ? (isOpen ? 'translate-x-0' : '-translate-x-full') : '',
+          // Desktop: flex-shrink behavior
+          !isSmallScreen ? (isOpen ? 'w-64' : 'w-0 overflow-hidden') : ''
         )}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3">
-          {/* Create Button */}
-          <SidebarCreateButton onClick={handleCreateClick} />
-
-          {/* Navigation Sections */}
-          {sidebarSections.map((section, sectionIndex) => (
-            <div key={sectionIndex}>
-              {/* Separator */}
-              {section.showSeparator && <div className="border-t border-border my-4" />}
-
-              {/* Section Items */}
-              <div className="space-y-1 mb-4">
-                {section.items.map((item) =>
-                  item.children ? (
-                    <SidebarDropdown
-                      key={item.title}
-                      item={item}
-                      isOpen={!!openSections[item.title]}
-                      onToggle={() => toggleSection(item.title)}
-                      basePath={basePath}
-                      isActive={isActive}
-                      onItemClick={handleMenuItemClick}
-                    />
-                  ) : (
-                    <SidebarItem
-                      key={item.title}
-                      item={item}
-                      basePath={basePath}
-                      isActive={isActive}
-                      onItemClick={handleMenuItemClick}
-                    />
-                  )
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
         <div
-          className={cn(
-            'shrink-0 transition-opacity duration-200',
-            isOpen ? 'opacity-100' : 'opacity-0'
+          className={cn('flex-1 overflow-y-auto overflow-x-hidden py-4', isOpen ? 'px-3' : 'px-0')}
+        >
+          {/* Only show content when sidebar is open */}
+          {isOpen && (
+            <>
+              {/* Create Button */}
+              <SidebarCreateButton onClick={handleCreateClick} />
+
+              {/* Navigation Sections */}
+              {sidebarSections.map((section, sectionIndex) => (
+                <div key={sectionIndex}>
+                  {/* Separator */}
+                  {section.showSeparator && <div className="border-t border-border my-4" />}
+
+                  {/* Section Items */}
+                  <div className="space-y-1 mb-4">
+                    {section.items.map((item) =>
+                      item.children ? (
+                        <SidebarDropdown
+                          key={item.title}
+                          item={item}
+                          isOpen={!!openSections[item.title]}
+                          onToggle={() => toggleSection(item.title)}
+                          basePath={basePath}
+                          isActive={isActive}
+                          onItemClick={handleMenuItemClick}
+                        />
+                      ) : (
+                        <SidebarItem
+                          key={item.title}
+                          item={item}
+                          basePath={basePath}
+                          isActive={isActive}
+                          onItemClick={handleMenuItemClick}
+                        />
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
           )}
-        ></div>
+        </div>
       </div>
     </>
   );

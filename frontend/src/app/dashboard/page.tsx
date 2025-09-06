@@ -95,7 +95,7 @@ export default function HomePage() {
       <DriveHero />
       <div className="relative">
         <div
-          className={`sticky top-[-24px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
+          className={`sticky top-[-20px] md:top-[-24px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
             isFiltersHidden
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-2 pointer-events-none'
