@@ -9,7 +9,7 @@ export const SearchPage = () => {
 
   return (
     <>
-      <div className="relative flex w-full items-center px-4">
+      <div className="relative flex w-full items-center">
         <SearchBar withAdvanced onAdvancedClick={() => setIsAdvancedOpen(true)} />
       </div>
 
