@@ -41,7 +41,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
       {!hideTitle && (
         <button
           className="
-            flex items-center gap-2 w-full p-2 mb-3
+            flex items-center gap-2  p-2 mb-3
             text-sm font-medium text-foreground
             hover:bg-secondary/80 rounded-lg
             transition-colors duration-200
