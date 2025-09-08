@@ -12,7 +12,6 @@ export function formatRelativeTime(date: Date | undefined): string {
   const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
   const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
-  // Same day, show time-based relative format
   if (diffInDays === 0) {
     if (diffInMinutes < 1) {
       return 'Just now';
@@ -23,17 +22,14 @@ export function formatRelativeTime(date: Date | undefined): string {
     }
   }
 
-  // Yesterday
   if (diffInDays === 1) {
     return 'Yesterday';
   }
 
-  // This week (2-6 days ago)
   if (diffInDays < 7) {
     return `${diffInDays} days ago`;
   }
 
-  // More than a week ago, show the actual date
   const isCurrentYear = date.getFullYear() === now.getFullYear();
 
   if (isCurrentYear) {

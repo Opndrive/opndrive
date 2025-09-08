@@ -2,7 +2,6 @@
 
 import { DriveHero } from '@/features/dashboard/components/views/home/drive-hero';
 import { useScroll } from '@/context/scroll-context';
-import { ViewDetails } from '@/features/dashboard/components/ui/details/view-details';
 import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
 import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
@@ -96,14 +95,13 @@ export default function HomePage() {
       <DriveHero />
       <div className="relative">
         <div
-          className={`sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
+          className={`sticky top-[-20px] md:top-[-24px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
             isFiltersHidden
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-2 pointer-events-none'
           }`}
         >
           <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
-          <ViewDetails />
         </div>
 
         <div className="relative z-0">

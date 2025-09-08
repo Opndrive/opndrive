@@ -36,6 +36,14 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     }
   }, [lsKey]);
 
+  // Auto-close sidebar on small screens when entering settings
+  useEffect(() => {
+    if (isSmallScreen) {
+      setIsSidebarOpen(false);
+      localStorage.setItem(lsKey, 'false');
+    }
+  }, [isSmallScreen, lsKey]);
+
   useEffect(() => {
     if (isSidebarOpen && isSmallScreen) {
       document.body.style.overflow = 'hidden';
@@ -59,6 +67,15 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     if (window.innerWidth >= 1024) return;
     setIsSidebarOpen(false);
     localStorage.setItem(lsKey, 'false');
+  };
+
+  const handleTabChange = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    // Auto-close sidebar on small screens when switching tabs
+    if (isSmallScreen) {
+      setIsSidebarOpen(false);
+      localStorage.setItem(lsKey, 'false');
+    }
   };
 
   const handleBack = () => {
@@ -102,7 +119,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
             {/* Settings Navigation - matches sidebar items spacing */}
             <div className="space-y-1 mb-4">
-              <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+              <SettingsSidebar activeTab={activeTab} onTabChange={handleTabChange} />
             </div>
           </div>
         </div>

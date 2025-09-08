@@ -78,7 +78,6 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
         </div>
       )}
 
-      {/* View More Button */}
       {(hideTitle || isExpanded) && hasMore && (
         <div className="mt-4 text-center">
           <button

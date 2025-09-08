@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { Download, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDetails } from '@/context/details-context';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -26,7 +28,9 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
-  const { downloadFolder, isDownloading } = useDownload();
+  const { isDownloading } = useDownload();
+  const { deleteFolder, isDeleting } = useDelete();
+  const { open: openDetails } = useDetails();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -34,29 +38,49 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       label: 'Download',
       icon: <Download className="flex-shrink-0 h-4 w-4" />,
       disabled: isDownloading(folder.id),
-      onClick: (folder) => {
-        // Use setTimeout to avoid setState during render
-        setTimeout(() => downloadFolder(folder), 0);
+      onClick: (_folder) => {
+        onClose();
       },
     },
     {
       id: 'rename',
       label: 'Rename',
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {}, // TODO: Implement rename functionality
+      onClick: () => {
+        onClose();
+      },
     },
     {
       id: 'info',
       label: 'Folder information',
       icon: <Info className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {}, // TODO: Implement folder info functionality
+      onClick: () => {
+        openDetails(folder);
+        onClose();
+      },
     },
     {
       id: 'delete',
-      label: 'Move to bin',
+      label: isDeleting(folder.id || folder.Prefix || folder.name)
+        ? 'Deleting...'
+        : 'Delete forever',
       icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
       variant: 'destructive' as const,
-      onClick: () => {}, // TODO: Implement delete functionality
+      disabled: isDeleting(folder.id || folder.Prefix || folder.name),
+      onClick: async () => {
+        const confirmDelete = window.confirm(
+          `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
+        );
+
+        if (confirmDelete) {
+          try {
+            await deleteFolder(folder);
+          } catch (error) {
+            console.error('Delete failed:', error);
+          }
+        }
+        onClose();
+      },
     },
   ];
 
@@ -73,13 +97,11 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       let top = rect.top;
       let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
-      // Check if menu would go off screen horizontally
       if (left + menuWidth > window.innerWidth - padding) {
         left = rect.left - menuWidth - padding;
         origin = 'top-right';
       }
 
-      // Check if menu would go off screen vertically
       if (top + menuHeight > window.innerHeight - padding) {
         top = rect.bottom - menuHeight;
         origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
@@ -170,7 +192,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
               text-left transition-colors duration-150
               ${
                 action.variant === 'destructive'
-                  ? 'text-red-400 hover:bg-red-500/10'
+                  ? 'text-[#d93025] hover:bg-[#fce8e6] dark:text-[#f28b82] dark:hover:bg-[#5f2120]/20'
                   : 'text-foreground hover:bg-card'
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -178,7 +200,6 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
             onClick={() => {
               if (!action.disabled) {
                 action.onClick?.(folder);
-                onClose();
               }
             }}
             disabled={action.disabled}
@@ -192,5 +213,5 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     </div>
   );
 
-  return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
+  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
 };

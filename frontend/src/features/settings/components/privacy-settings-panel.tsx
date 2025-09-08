@@ -5,7 +5,6 @@ import { Shield, Server, Key, Lock } from 'lucide-react';
 export function PrivacySettingsPanel() {
   return (
     <div className="space-y-12">
-      {/* Data Sovereignty Section */}
       <div className="space-y-6">
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Your Data, Your Control</h3>
@@ -40,7 +39,6 @@ export function PrivacySettingsPanel() {
         </div>
       </div>
 
-      {/* Security & Privacy Section */}
       <div className="space-y-6">
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Security & Privacy</h3>

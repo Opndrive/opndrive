@@ -15,20 +15,15 @@ export const FolderSkeleton: React.FC<FolderSkeletonProps> = ({ className = '' }
         ${className}
       `}
     >
-      {/* Folder Icon Skeleton */}
       <div className="flex-shrink-0">
         <div className="w-5 h-5 bg-muted/50 rounded" />
       </div>
 
-      {/* Folder Content Skeleton */}
       <div className="flex-1 min-w-0 space-y-2">
-        {/* Folder Name */}
         <div className="h-4 bg-muted/50 rounded w-3/4" />
-        {/* Location */}
         <div className="h-3 bg-muted/30 rounded w-1/2" />
       </div>
 
-      {/* Menu Button Skeleton */}
       <div className="flex-shrink-0">
         <div className="w-4 h-4 bg-muted/30 rounded-full" />
       </div>

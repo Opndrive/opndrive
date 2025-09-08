@@ -6,13 +6,12 @@ import { DashboardSidebarProps } from './types/sidebar';
 import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
-import { SidebarStorage } from './sidebar-storage';
-import { groupNavItems } from './utils/sidebar';
+import { groupSidebarItems } from './utils/sidebar';
 
 export function DashboardSidebar({
   isOpen,
   closeSidebar,
-  navItems,
+  sidebarItems,
   basePath,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
@@ -26,7 +25,7 @@ export function DashboardSidebar({
     [basePath]
   );
 
-  const sidebarSections = useMemo(() => groupNavItems(navItems), [navItems]);
+  const sidebarSections = useMemo(() => groupSidebarItems(sidebarItems), [sidebarItems]);
 
   useEffect(() => {
     function checkScreenSize() {
@@ -50,7 +49,7 @@ export function DashboardSidebar({
 
   useEffect(() => {
     const initialOpenSections: Record<string, boolean> = {};
-    navItems.forEach((item) => {
+    sidebarItems.forEach((item) => {
       if (item.children) {
         const isActive = item.children.some((child) => {
           const childFullPath = `${basePath}${child.href === '/' ? '' : child.href}`;
@@ -65,7 +64,7 @@ export function DashboardSidebar({
     if (!savedOpenSections && Object.keys(initialOpenSections).length > 0) {
       setOpenSections(initialOpenSections);
     }
-  }, [pathname, navItems, basePath, localStorageKey]);
+  }, [pathname, sidebarItems, basePath, localStorageKey]);
 
   useEffect(() => {
     if (Object.keys(openSections).length > 0) {
@@ -106,13 +105,7 @@ export function DashboardSidebar({
     }
   };
 
-  const handleCreateClick = () => {
-    // TODO: Implement create menu functionality
-  };
-
-  const handleGetMoreStorage = () => {
-    // TODO: Implement storage upgrade functionality
-  };
+  const handleCreateClick = () => {};
 
   return (
     <>
@@ -126,57 +119,59 @@ export function DashboardSidebar({
       <div
         ref={sidebarRef}
         className={cn(
-          'bg-secondary flex flex-col z-50 h-[calc(100vh-3.5rem)] fixed lg:relative left-0 w-64 overflow-x-hidden',
+          'bg-secondary flex flex-col z-30 h-[calc(100vh-3.5rem)]',
+          // Mobile: fixed positioning with slide animation
+          'fixed lg:static left-0 w-64 overflow-x-hidden',
           'transition-all duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : '-translate-x-full',
-          'lg:translate-x-0',
-          isOpen ? 'lg:w-64' : 'lg:w-0'
+          // Mobile visibility
+          isSmallScreen ? (isOpen ? 'translate-x-0' : '-translate-x-full') : '',
+          // Desktop: flex-shrink behavior
+          !isSmallScreen ? (isOpen ? 'w-64' : 'w-0 overflow-hidden') : ''
         )}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3">
-          {/* Create Button */}
-          <SidebarCreateButton onClick={handleCreateClick} />
-
-          {/* Navigation Sections */}
-          {sidebarSections.map((section, sectionIndex) => (
-            <div key={sectionIndex}>
-              {/* Separator */}
-              {section.showSeparator && <div className="border-t border-border my-4" />}
-
-              {/* Section Items */}
-              <div className="space-y-1 mb-4">
-                {section.items.map((item) =>
-                  item.children ? (
-                    <SidebarDropdown
-                      key={item.title}
-                      item={item}
-                      isOpen={!!openSections[item.title]}
-                      onToggle={() => toggleSection(item.title)}
-                      basePath={basePath}
-                      isActive={isActive}
-                      onItemClick={handleMenuItemClick}
-                    />
-                  ) : (
-                    <SidebarItem
-                      key={item.title}
-                      item={item}
-                      basePath={basePath}
-                      isActive={isActive}
-                      onItemClick={handleMenuItemClick}
-                    />
-                  )
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
         <div
-          className={cn(
-            'shrink-0 transition-opacity duration-200',
-            isOpen ? 'opacity-100' : 'opacity-0'
-          )}
+          className={cn('flex-1 overflow-y-auto overflow-x-hidden py-4', isOpen ? 'px-3' : 'px-0')}
         >
-          <SidebarStorage used={2.1} total={15} onGetMoreStorage={handleGetMoreStorage} />
+          {/* Only show content when sidebar is open */}
+          {isOpen && (
+            <>
+              {/* Create Button */}
+              <SidebarCreateButton onClick={handleCreateClick} />
+
+              {/* Navigation Sections */}
+              {sidebarSections.map((section, sectionIndex) => (
+                <div key={sectionIndex}>
+                  {/* Separator */}
+                  {section.showSeparator && <div className="border-t border-border my-4" />}
+
+                  {/* Section Items */}
+                  <div className="space-y-1 mb-4">
+                    {section.items.map((item) =>
+                      item.children ? (
+                        <SidebarDropdown
+                          key={item.title}
+                          item={item}
+                          isOpen={!!openSections[item.title]}
+                          onToggle={() => toggleSection(item.title)}
+                          basePath={basePath}
+                          isActive={isActive}
+                          onItemClick={handleMenuItemClick}
+                        />
+                      ) : (
+                        <SidebarItem
+                          key={item.title}
+                          item={item}
+                          basePath={basePath}
+                          isActive={isActive}
+                          onItemClick={handleMenuItemClick}
+                        />
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
     </>

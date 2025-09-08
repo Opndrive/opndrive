@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import { FileItem, ViewLayout } from '@/features/dashboard/types/file';
-import { FileItemGrid, FileItemList } from '../../ui';
+import type { FileItem, ViewLayout } from '@/features/dashboard/types/file';
+import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -98,29 +98,67 @@ export function SuggestedFiles({
               ))}
             </div>
           ) : (
-            <div className="space-y-1">
-              <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
-                <div className="col-span-4">Name</div>
-                <div className="hidden md:block col-span-3">Last Updated</div>
-                <div className="hidden lg:block col-span-2">Owner</div>
-                <div className="hidden xl:block col-span-2">Size</div>
-                <div className="col-span-1"></div>
-              </div>
-              {files.map((file) => (
-                <div
-                  key={file.Key}
-                  onClick={() => handleFileClick(file)}
-                  className="cursor-pointer"
-                >
-                  <FileItemList file={file} _onAction={handleFileAction} />
+            <div>
+              {/* Desktop List View */}
+              <div className="hidden sm:block space-y-1">
+                {/* Header with responsive grid matching file items */}
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                  {/* Name - always visible, responsive sizing */}
+                  <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4">
+                    Name
+                  </div>
+
+                  {/* Last Opened - visible from sm up */}
+                  <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
+                    Last Opened
+                  </div>
+
+                  {/* Owner - visible from lg up */}
+                  <div className="hidden lg:block lg:col-span-2 xl:col-span-2">Owner</div>
+
+                  {/* Size - visible from xl up */}
+                  <div className="hidden xl:block xl:col-span-2">Size</div>
+
+                  {/* Menu space - always visible */}
+                  <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                 </div>
-              ))}
+
+                {files.map((file, index) => (
+                  <Fragment key={file.Key}>
+                    <div onClick={() => handleFileClick(file)} className="cursor-pointer">
+                      <FileItemList file={file} _onAction={handleFileAction} />
+                    </div>
+                    {/* Professional separator */}
+                    {index < files.length - 1 && (
+                      <div className="mx-4" aria-hidden="true">
+                        <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
+                      </div>
+                    )}
+                  </Fragment>
+                ))}
+              </div>
+
+              {/* Mobile List View */}
+              <div className="sm:hidden">
+                <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                  Files
+                </div>
+                <div className="divide-y divide-border/30">
+                  {files.map((file) => (
+                    <FileItemMobile
+                      key={file.Key}
+                      file={file}
+                      onFileClick={handleFileClick}
+                      _onAction={handleFileAction}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* View More Button */}
       {(hideTitle || isExpanded) && hasMore && (
         <div className="mt-4 text-center">
           <button

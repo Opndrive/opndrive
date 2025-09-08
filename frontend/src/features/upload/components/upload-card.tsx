@@ -142,7 +142,6 @@ export function UploadCard() {
             color: 'var(--card-foreground)',
           }}
         >
-          {/* Header */}
           <div
             className="flex items-center justify-between p-3 border-b"
             style={{ borderColor: 'var(--border)' }}
@@ -153,7 +152,6 @@ export function UploadCard() {
             </div>
 
             <div className="flex items-center gap-1">
-              {/* Minimize/Maximize button */}
               <button
                 onClick={isMinimized ? maximizeCard : minimizeCard}
                 className="p-1 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -166,7 +164,6 @@ export function UploadCard() {
                 )}
               </button>
 
-              {/* Close button */}
               <button
                 onClick={handleCloseCard}
                 className="p-1 rounded transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
@@ -177,7 +174,6 @@ export function UploadCard() {
             </div>
           </div>
 
-          {/* Content */}
           {!isMinimized && (
             <div className="flex-1 overflow-y-auto">
               {items.map((item) => (
@@ -186,7 +182,6 @@ export function UploadCard() {
             </div>
           )}
 
-          {/* Footer - only show when minimized or for status */}
           {(isMinimized || hasActiveUploads) && (
             <div
               className="flex items-center justify-between p-2 border-t"
@@ -210,7 +205,6 @@ export function UploadCard() {
         </div>
       </div>
 
-      {/* Duplicate Dialog */}
       <DuplicateDialog
         isOpen={duplicateDialog.isOpen}
         onClose={hideDuplicateDialog}

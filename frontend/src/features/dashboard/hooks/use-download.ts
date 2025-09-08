@@ -1,7 +1,3 @@
-/**
- * Custom hook for managing downloads with progress tracking
- */
-
 import { useState, useCallback } from 'react';
 import { downloadService, type DownloadProgress } from '../services/download-service';
 import { useNotification } from '@/context/notification-context';
@@ -28,7 +24,6 @@ export const useDownload = () => {
       return newMap;
     });
 
-    // Auto-remove completed downloads after 3 seconds
     setTimeout(() => {
       setDownloadProgress((current) => {
         const updatedMap = new Map(current);

@@ -28,7 +28,6 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
 
   return (
     <div className="space-y-12">
-      {/* Start Page Section */}
       <div className="space-y-6">
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Start page</h3>
@@ -46,7 +45,6 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
         </div>
       </div>
 
-      {/* Upload Method Section */}
       <div className="space-y-6">
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Upload method</h3>

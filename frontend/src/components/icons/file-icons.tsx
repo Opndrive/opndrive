@@ -1,3 +1,4 @@
+import { FileExtension } from '@/features/dashboard/types/file';
 import {
   FileText,
   FileSpreadsheet,
@@ -11,8 +12,6 @@ import {
   FileQuestion,
 } from 'lucide-react';
 import { BsFillGearFill } from 'react-icons/bs';
-
-import type { FileExtension } from '@/types/dashboard/file';
 
 interface FileIconProps {
   extension: FileExtension;
@@ -43,6 +42,7 @@ const getFileIconColor = (extension: FileExtension): string => {
     case 'webp':
       return 'text-purple-500';
     case 'mp4':
+    case 'mkv':
     case 'avi':
     case 'mov':
     case 'wmv':

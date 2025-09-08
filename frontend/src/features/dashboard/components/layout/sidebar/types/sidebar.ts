@@ -1,29 +1,29 @@
 import React from 'react';
 
-export interface NavItem {
+export interface SidebarItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  children?: NavItem[];
+  children?: SidebarItem[];
   badge?: string | number;
   disabled?: boolean;
 }
 
 export interface SidebarSection {
   title?: string;
-  items: NavItem[];
+  items: SidebarItem[];
   showSeparator?: boolean;
 }
 
 export interface DashboardSidebarProps {
   isOpen: boolean;
   closeSidebar: () => void;
-  navItems: NavItem[];
+  sidebarItems: SidebarItem[];
   basePath: string;
 }
 
 export interface SidebarItemProps {
-  item: NavItem;
+  item: SidebarItem;
   basePath: string;
   isActive: (href: string) => boolean;
   onItemClick: () => void;
@@ -31,7 +31,7 @@ export interface SidebarItemProps {
 }
 
 export interface SidebarDropdownProps {
-  item: NavItem;
+  item: SidebarItem;
   isOpen: boolean;
   onToggle: () => void;
   basePath: string;

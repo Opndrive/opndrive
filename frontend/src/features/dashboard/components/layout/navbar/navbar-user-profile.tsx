@@ -50,7 +50,7 @@ const NavbarUserProfile = () => {
           <DropdownMenuSeparator />
 
           <Link href={`/dashboard/settings`} passHref>
-            <DropdownMenuItem className="cursor-pointer">
+            <DropdownMenuItem className="cursor-pointer ">
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </DropdownMenuItem>
