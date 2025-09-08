@@ -8,7 +8,9 @@ import { DashboardNavbar } from '@/features/dashboard/components/layout/navbar/d
 import { DashboardSidebar } from '@/features/dashboard/components/layout/sidebar/dashboard-sidebar';
 import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
+import { FilePreviewProvider } from '@/context/file-preview-context';
 import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
+import { FilePreviewModal } from '@/components/file-preview';
 import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 
@@ -113,6 +115,8 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
       <UploadCard />
 
       <DownloadProgressManager />
+
+      <FilePreviewModal />
     </div>
   );
 };
@@ -121,7 +125,9 @@ export default function DynamicDashboardLayout({ children }: { children: React.R
   return (
     <ScrollProvider>
       <DetailsProvider>
-        <LayoutShell>{children}</LayoutShell>
+        <FilePreviewProvider>
+          <LayoutShell>{children}</LayoutShell>
+        </FilePreviewProvider>
       </DetailsProvider>
     </ScrollProvider>
   );

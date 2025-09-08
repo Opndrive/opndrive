@@ -57,6 +57,8 @@ export default [
       // Generated files
       '**/public/sw.js',
       '**/public/workbox-*.js',
+      '**/public/**/*.min.js',
+      '**/public/**/*.worker.js',
       '**/storybook-static/**',
 
       // TypeScript build info

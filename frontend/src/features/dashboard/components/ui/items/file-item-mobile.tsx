@@ -4,16 +4,24 @@ import { HiOutlineDotsVertical } from 'react-icons/hi';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 
 interface FileItemMobileProps {
   file: FileItem;
+  allFiles?: FileItem[]; // For navigation between files
   onFileClick?: (file: FileItem) => void;
   _onAction?: (action: string, file: FileItem) => void;
 }
 
-export function FileItemMobile({ file, onFileClick, _onAction }: FileItemMobileProps) {
+export function FileItemMobile({
+  file,
+  allFiles = [],
+  onFileClick,
+  _onAction,
+}: FileItemMobileProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const { openFilePreview } = useFilePreviewActions();
 
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -27,7 +35,13 @@ export function FileItemMobile({ file, onFileClick, _onAction }: FileItemMobileP
   };
 
   const handleFileClick = () => {
-    onFileClick?.(file);
+    // Try custom click handler first, then preview
+    if (onFileClick) {
+      onFileClick(file);
+    } else if (!file.Key?.endsWith('/')) {
+      // Only open preview for non-folder items
+      openFilePreview(file, allFiles);
+    }
   };
 
   const timeInfo = formatTimeWithTooltip(file.lastModified);

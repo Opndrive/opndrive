@@ -126,7 +126,7 @@ export function SuggestedFiles({
                 {files.map((file, index) => (
                   <Fragment key={file.Key}>
                     <div onClick={() => handleFileClick(file)} className="cursor-pointer">
-                      <FileItemList file={file} _onAction={handleFileAction} />
+                      <FileItemList file={file} allFiles={files} _onAction={handleFileAction} />
                     </div>
                     {/* Professional separator */}
                     {index < files.length - 1 && (
@@ -148,6 +148,7 @@ export function SuggestedFiles({
                     <FileItemMobile
                       key={file.Key}
                       file={file}
+                      allFiles={files}
                       onFileClick={handleFileClick}
                       _onAction={handleFileAction}
                     />
