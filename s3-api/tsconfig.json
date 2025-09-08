@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "ES6",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./src",
@@ -15,10 +15,8 @@
     "declaration": true,
     "sourceMap": true,
     "typeRoots": ["./node_modules/@types", "./src/types"],
-    "paths": {
-      "@/*": ["*"]
-    }
+    "paths": { "@/*": ["*"] }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "**/*.spec.ts"]
+  "exclude": ["node_modules", "**/*.spec.ts", "src/tests"]
 }

@@ -52,3 +52,20 @@ export interface MoveFileParams {
   oldKey: string;
   newKey: string;
 }
+
+export interface RenameFileParams {
+  basePath: string;
+  oldName: string;
+  newName: string;
+}
+
+export interface RenameFolderParams {
+  oldPrefix: string;
+  newPrefix: string;
+  onProgress?: (progress: {
+    total: number;
+    processed: number;
+    currentKey?: string;
+    newKey?: string;
+  }) => void;
+}
