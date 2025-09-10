@@ -3,13 +3,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
-import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
+import { Download, Edit3, Info, Trash2, Eye, Share } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
 import { useDriveStore } from '@/context/data-context';
+import { useShare } from '@/context/share-context';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -36,6 +37,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const { open: openDetails } = useDetails();
   const { openPreview } = useFilePreview();
   const { currentPrefix } = useDriveStore();
+  const { openShareDialog } = useShare();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
@@ -63,6 +65,15 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       disabled: isDownloading(file.id),
       onClick: (file) => {
         setTimeout(() => downloadFile(file), 0);
+        onClose();
+      },
+    },
+    {
+      id: 'share',
+      label: 'Share',
+      icon: Share,
+      onClick: () => {
+        openShareDialog(file);
         onClose();
       },
     },

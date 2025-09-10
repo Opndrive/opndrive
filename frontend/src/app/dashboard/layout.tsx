@@ -10,9 +10,11 @@ import { ScrollProvider } from '@/context/scroll-context';
 import { DetailsProvider, useDetails } from '@/context/details-context';
 import { FilePreviewProvider } from '@/context/file-preview-context';
 import { RenameProvider } from '@/context/rename-context';
+import { ShareProvider } from '@/context/share-context';
 import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
 import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
+import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
 import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 
@@ -121,6 +123,8 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
       <FilePreviewModal />
 
       <RenameModalManager />
+
+      <ShareModalManager />
     </div>
   );
 };
@@ -131,7 +135,9 @@ export default function DynamicDashboardLayout({ children }: { children: React.R
       <DetailsProvider>
         <FilePreviewProvider>
           <RenameProvider>
-            <LayoutShell>{children}</LayoutShell>
+            <ShareProvider>
+              <LayoutShell>{children}</LayoutShell>
+            </ShareProvider>
           </RenameProvider>
         </FilePreviewProvider>
       </DetailsProvider>
