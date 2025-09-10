@@ -56,6 +56,17 @@ export function PreviewContent({ file }: PreviewContentProps) {
 
   if (!eligibilityCheck.canPreview) {
     const reason = eligibilityCheck.reason || 'File cannot be previewed';
+
+    // Determine specific error title based on the reason
+    let errorTitle = 'Preview Not Available';
+    if (reason.includes('File type not supported')) {
+      errorTitle = 'File Type Not Supported';
+    } else if (reason.includes('exceeds') || reason.includes('limit')) {
+      errorTitle = 'File Size Too Large';
+    } else if (reason.includes('not previewable')) {
+      errorTitle = 'Preview Not Available';
+    }
+
     return (
       <div
         className="w-full h-full flex items-center justify-center p-8"
@@ -66,7 +77,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
       >
         <div className="text-center max-w-lg">
           <h3 className="text-2xl font-medium mb-4" style={{ color: 'var(--foreground)' }}>
-            Preview Not Available
+            {errorTitle}
           </h3>
           <p
             className="text-lg mb-6"
@@ -141,7 +152,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
     >
       <div className="text-center max-w-lg">
         <h3 className="text-2xl font-medium mb-4" style={{ color: 'var(--foreground)' }}>
-          Preview not available
+          File Type Not Supported
         </h3>
         <p
           className="text-lg mb-6"
@@ -150,7 +161,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
             opacity: 0.7,
           }}
         >
-          {file.name} cannot be previewed.
+          {file.name} cannot be previewed in the browser.
         </p>
         <p
           className="text-sm"

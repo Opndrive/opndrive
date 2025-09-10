@@ -68,13 +68,26 @@ export function VideoViewer({ file }: VideoViewerProps) {
   }
 
   if (error) {
+    // Determine specific error title based on the error message
+    let errorTitle = 'Video Preview Error';
+    if (error.includes('Failed to load') || error.includes('load video')) {
+      errorTitle = 'Failed to Load Video';
+    } else if (error.includes('No file key')) {
+      errorTitle = 'Video Not Found';
+    } else if (error.includes('network') || error.includes('timeout')) {
+      errorTitle = 'Connection Error';
+    }
+
     return (
       <div
         className="w-full h-full flex items-center justify-center"
         style={{ backgroundColor: 'var(--preview-modal-content-bg)' }}
       >
         <div className="flex flex-col items-center space-y-4">
-          <p style={{ color: 'var(--destructive)' }}>Error: {error}</p>
+          <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--foreground)' }}>
+            {errorTitle}
+          </h3>
+          <p style={{ color: 'var(--destructive)' }}>{error}</p>
           <button
             onClick={handleRetry}
             className="px-4 py-2 rounded transition-colors hover:opacity-80"
@@ -135,7 +148,12 @@ export function VideoViewer({ file }: VideoViewerProps) {
                 className="p-6 rounded-lg text-center"
                 style={{ backgroundColor: 'var(--preview-modal-error-bg)' }}
               >
-                <p style={{ color: 'var(--preview-modal-error-color)' }}>Video failed to load</p>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--foreground)' }}>
+                  Video Playback Error
+                </h3>
+                <p style={{ color: 'var(--preview-modal-error-color)' }}>
+                  The video format may not be supported by your browser
+                </p>
                 <button
                   onClick={handleRetry}
                   className="mt-4 px-4 py-2 rounded transition-colors hover:opacity-80"

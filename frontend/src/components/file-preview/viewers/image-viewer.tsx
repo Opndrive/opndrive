@@ -124,6 +124,16 @@ export function ImageViewer({ file }: ImageViewerProps) {
   }
 
   if (error) {
+    // Determine specific error title based on the error message
+    let errorTitle = 'Image Preview Error';
+    if (error.includes('Failed to load') || error.includes('load image')) {
+      errorTitle = 'Failed to Load Image';
+    } else if (error.includes('No file key')) {
+      errorTitle = 'Image Not Found';
+    } else if (error.includes('network') || error.includes('timeout')) {
+      errorTitle = 'Connection Error';
+    }
+
     return (
       <div
         className="w-full h-full flex items-center justify-center"
@@ -131,7 +141,7 @@ export function ImageViewer({ file }: ImageViewerProps) {
       >
         <div className="text-center space-y-4">
           <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--foreground)' }}>
-            Failed to load image
+            {errorTitle}
           </h3>
           <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
             {error}
