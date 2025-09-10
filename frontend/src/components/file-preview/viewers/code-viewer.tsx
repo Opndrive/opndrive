@@ -5,43 +5,10 @@ import { PreviewableFile } from '@/types/file-preview';
 import { s3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
+import { getSyntaxLanguage } from '@/config/file-extensions';
 
 interface CodeViewerProps {
   file: PreviewableFile;
-}
-
-const LANGUAGE_MAP: { [key: string]: string } = {
-  '.js': 'javascript',
-  '.jsx': 'javascript',
-  '.ts': 'typescript',
-  '.tsx': 'typescript',
-  '.py': 'python',
-  '.java': 'java',
-  '.cpp': 'cpp',
-  '.c': 'c',
-  '.cs': 'csharp',
-  '.php': 'php',
-  '.rb': 'ruby',
-  '.go': 'go',
-  '.rust': 'rust',
-  '.html': 'html',
-  '.css': 'css',
-  '.scss': 'scss',
-  '.sass': 'sass',
-  '.json': 'json',
-  '.xml': 'xml',
-  '.yaml': 'yaml',
-  '.yml': 'yaml',
-  '.md': 'markdown',
-  '.txt': 'text',
-};
-
-function getFileExtension(filename: string): string {
-  return filename.toLowerCase().substring(filename.lastIndexOf('.'));
-}
-
-function getCodeLanguage(filename: string): string {
-  return LANGUAGE_MAP[getFileExtension(filename)] || 'text';
 }
 
 export function CodeViewer({ file }: CodeViewerProps) {
@@ -99,7 +66,7 @@ export function CodeViewer({ file }: CodeViewerProps) {
     );
   }
 
-  const language = getCodeLanguage(file.name);
+  const language = getSyntaxLanguage(file.name);
   const lines = codeContent.split('\n');
   const maxLines = Math.min(lines.length, 1000);
 

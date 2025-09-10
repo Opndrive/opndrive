@@ -7,50 +7,21 @@ import { VideoViewer } from './viewers/video-viewer';
 import { PDFViewer } from './viewers/pdf-viewer';
 import { ExcelViewer } from './viewers/excel-viewer';
 import { CodeViewer } from './viewers/code-viewer';
-import { checkPreviewEligibility, getFileExtension } from '@/services/file-size-limits';
+import { checkPreviewEligibility } from '@/services/file-size-limits';
 import { Download } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { isFileInCategory, getFileExtension } from '@/config/file-extensions';
 
 interface PreviewContentProps {
   file: PreviewableFile;
 }
 
-// File type configurations
-const SUPPORTED_EXTENSIONS = {
-  image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'],
-  video: ['.mp4', '.webm', '.ogv', '.mov', '.avi', '.mkv', '.wmv', '.m4v'],
-  pdf: ['.pdf'],
-  spreadsheet: ['.csv', '.xls', '.xlsx', '.xlsm', '.xlsb', '.ods'],
-  code: [
-    '.js',
-    '.ts',
-    '.jsx',
-    '.tsx',
-    '.py',
-    '.java',
-    '.cpp',
-    '.c',
-    '.cs',
-    '.php',
-    '.rb',
-    '.go',
-    '.rust',
-    '.html',
-    '.css',
-    '.scss',
-    '.sass',
-    '.json',
-    '.xml',
-    '.yaml',
-    '.yml',
-    '.md',
-    '.txt',
-  ],
-};
-
-// Utility functions
-function isFileType(filename: string, type: keyof typeof SUPPORTED_EXTENSIONS): boolean {
-  return SUPPORTED_EXTENSIONS[type].includes(getFileExtension(filename));
+// Utility functions using centralized config
+function isFileType(
+  filename: string,
+  category: 'image' | 'video' | 'document' | 'spreadsheet' | 'code'
+): boolean {
+  return isFileInCategory(filename, category);
 }
 
 export function PreviewContent({ file }: PreviewContentProps) {
@@ -83,7 +54,8 @@ export function PreviewContent({ file }: PreviewContentProps) {
   // Check if file size is within preview limits
   const eligibilityCheck = checkPreviewEligibility(file.name, fileSize);
 
-  if (!eligibilityCheck.canPreview && eligibilityCheck.error) {
+  if (!eligibilityCheck.canPreview) {
+    const reason = eligibilityCheck.reason || 'File cannot be previewed';
     return (
       <div
         className="w-full h-full flex items-center justify-center p-8"
@@ -94,7 +66,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
       >
         <div className="text-center max-w-lg">
           <h3 className="text-2xl font-medium mb-4" style={{ color: 'var(--foreground)' }}>
-            {eligibilityCheck.error.title}
+            Preview Not Available
           </h3>
           <p
             className="text-lg mb-6"
@@ -103,7 +75,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
               opacity: 0.7,
             }}
           >
-            {eligibilityCheck.error.message}
+            {reason}
           </p>
           <p
             className="text-sm mb-8"
@@ -112,7 +84,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
               opacity: 0.6,
             }}
           >
-            {eligibilityCheck.error.suggestion}
+            Please download the file to view its contents.
           </p>
           <button
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors hover:opacity-80"
@@ -133,7 +105,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
 
   const isImage = isFileType(file.name, 'image');
   const isVideo = isFileType(file.name, 'video');
-  const isPdf = isFileType(file.name, 'pdf');
+  const isPdf = getFileExtension(file.name) === '.pdf';
   const isSpreadsheet = isFileType(file.name, 'spreadsheet');
   const isCode = isFileType(file.name, 'code');
 

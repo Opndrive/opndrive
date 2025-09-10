@@ -1,5 +1,6 @@
 import { _Object } from '@aws-sdk/client-s3';
 import type React from 'react';
+import { FileExtension } from '@/config/file-extensions';
 
 export type DataUnits = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
 
@@ -20,47 +21,8 @@ export interface FileItem extends _Object {
   thumbnail?: string;
 }
 
-export type FileExtension =
-  | 'pdf'
-  | 'exe'
-  | 'doc'
-  | 'docx'
-  | 'txt'
-  | 'rtf'
-  | 'xls'
-  | 'xlsx'
-  | 'csv'
-  | 'ppt'
-  | 'pptx'
-  | 'jpg'
-  | 'jpeg'
-  | 'png'
-  | 'gif'
-  | 'svg'
-  | 'webp'
-  | 'mp4'
-  | 'mkv'
-  | 'avi'
-  | 'mov'
-  | 'wmv'
-  | 'mp3'
-  | 'wav'
-  | 'flac'
-  | 'zip'
-  | 'rar'
-  | '7z'
-  | 'js'
-  | 'ts'
-  | 'jsx'
-  | 'tsx'
-  | 'html'
-  | 'css'
-  | 'json'
-  | 'py'
-  | 'java'
-  | 'cpp'
-  | 'c'
-  | 'unknown';
+// Re-export FileExtension from centralized config
+export type { FileExtension };
 
 export type ViewLayout = 'grid' | 'list';
 

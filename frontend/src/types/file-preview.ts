@@ -51,26 +51,30 @@ export interface PreviewConfig {
   };
 }
 
-// File type detection utilities
-export const FILE_TYPE_PATTERNS = {
-  image: /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i,
-  pdf: /\.pdf$/i,
-  document: /\.(txt|md|doc|docx|rtf|odt)$/i,
-  code: /\.(js|ts|jsx|tsx|py|java|cpp|c|cs|php|rb|go|rust|html|css|scss|sass|json|xml|yaml|yml)$/i,
-  video: /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i,
-  audio: /\.(mp3|wav|ogg|aac|flac|m4a|wma)$/i,
-} as const;
+import { getFileCategory } from '@/config/file-extensions';
 
+// File type detection utilities - now using centralized config
 export function getFilePreviewType(fileName: string): FilePreviewType {
-  const name = fileName.toLowerCase();
+  const category = getFileCategory(fileName);
 
-  for (const [type, pattern] of Object.entries(FILE_TYPE_PATTERNS)) {
-    if (pattern.test(name)) {
-      return type as FilePreviewType;
-    }
+  // Map centralized categories to preview types
+  switch (category) {
+    case 'image':
+      return 'image';
+    case 'document':
+      if (fileName.toLowerCase().endsWith('.pdf')) {
+        return 'pdf';
+      }
+      return 'document';
+    case 'video':
+      return 'video';
+    case 'audio':
+      return 'audio';
+    case 'code':
+      return 'code';
+    default:
+      return 'document'; // fallback
   }
-
-  return 'unsupported';
 }
 
 export function canPreviewFile(file: PreviewableFile, config: PreviewConfig): boolean {

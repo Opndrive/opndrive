@@ -7,6 +7,7 @@ import { PreviewableFile } from '@/types/file-preview';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FileExtension } from '@/features/dashboard/types/file';
+import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 
 interface PreviewHeaderProps {
   file: PreviewableFile;
@@ -50,7 +51,7 @@ export function PreviewHeader({
   };
 
   // Get file extension for the icon
-  const extension = file.name.split('.').pop() || '';
+  const extension = getFileExtensionWithoutDot(file.name);
 
   return (
     <div

@@ -5,14 +5,11 @@ import { PreviewableFile } from '@/types/file-preview';
 import { s3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
+import { getFileExtension, isFileInCategory } from '@/config/file-extensions';
 import * as XLSX from 'xlsx';
 
 interface ExcelViewerProps {
   file: PreviewableFile;
-}
-
-function getFileExtension(filename: string): string {
-  return filename.toLowerCase().substring(filename.lastIndexOf('.'));
 }
 
 function parseCSV(csvText: string): string[][] {
@@ -78,7 +75,7 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
         if (extension === '.csv') {
           const csvText = await response.text();
           setSpreadsheetData(parseCSV(csvText));
-        } else if (['.xls', '.xlsx', '.xlsm', '.xlsb'].includes(extension)) {
+        } else if (isFileInCategory(file.name, 'spreadsheet') && extension !== '.csv') {
           const arrayBuffer = await response.arrayBuffer();
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
