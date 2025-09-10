@@ -6,8 +6,10 @@ import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
+import { useDriveStore } from '@/context/data-context';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -27,10 +29,13 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [originPosition, setOriginPosition] = useState('top-left');
+
   const { downloadFile, isDownloading } = useDownload();
   const { deleteFile, isDeleting } = useDelete();
+  const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { openPreview } = useFilePreview();
+  const { currentPrefix } = useDriveStore();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
@@ -65,7 +70,9 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       id: 'rename',
       label: 'Rename',
       icon: Edit3,
+      disabled: isRenaming(file.id || file.Key || file.name),
       onClick: () => {
+        openRenameDialog(file, 'file', currentPrefix || '');
         onClose();
       },
     },

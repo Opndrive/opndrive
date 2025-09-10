@@ -6,7 +6,9 @@ import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder
 import { Download, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
+import { useDriveStore } from '@/context/data-context';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -28,9 +30,12 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
+
   const { isDownloading } = useDownload();
   const { deleteFolder, isDeleting } = useDelete();
+  const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
+  const { currentPrefix } = useDriveStore();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -46,7 +51,9 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       id: 'rename',
       label: 'Rename',
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
+      disabled: isRenaming(folder.id || folder.Prefix || folder.name),
       onClick: () => {
+        openRenameDialog(folder, 'folder', currentPrefix || '');
         onClose();
       },
     },
