@@ -12,10 +12,12 @@ import {
   MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
+  RenameFileParams,
+  RenameFolderParams,
   SignedUrlParams,
   userTypes,
-} from './types';
-import { MultipartUploader } from '@/utils/multipartUploader';
+} from './types.js';
+import { MultipartUploader } from '@/utils/multipartUploader.js';
 
 /**
  * Core API class
@@ -100,6 +102,10 @@ export abstract class BaseS3ApiProvider {
   abstract moveFile(params: MoveFileParams): Promise<void>;
 
   abstract createFolder(key: string): Promise<void>;
+
+  abstract renameFile(params: RenameFileParams): Promise<boolean>;
+
+  abstract renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }>;
 
   abstract getBucketName(): string;
 

@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2025-09-08
+### Added
+- File rename function
+- Folder rename function
+### Fixed
+- tsconfig updated and resolved imports to use .js instead of .ts
+
 ## [1.3.1] - 2025-08-29
 ### Fixed
 - Rexported the types from index.ts

@@ -1,5 +1,10 @@
-import { BYOS3ApiProvider } from '@/index';
-import { Credentials, PresignedUploadParams, SignedUrlParams } from '@/core/types';
+import { BYOS3ApiProvider, RenameFolderParams } from '../../dist/index';
+import {
+  Credentials,
+  PresignedUploadParams,
+  RenameFileParams,
+  SignedUrlParams,
+} from '../../dist/index';
 import { describe, it, expect } from 'vitest';
 
 import dotenv from 'dotenv';
@@ -115,4 +120,61 @@ describe('BYOS3ApiProvider', () => {
 
     await expect(api.getSignedUrl(params)).rejects.toBeDefined();
   });
+});
+
+describe('BYOS3ApiProvider', () => {
+  it(
+    'renames a file to another',
+    async () => {
+      const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+      const params: RenameFileParams = {
+        basePath: 'users/c7581c39-99ab-4a36-8942-598557806c04/',
+        oldName: 'parser.py',
+        newName: 'parser_n.py',
+      };
+
+      const result = await api.renameFile(params);
+
+      expect(result).toBeTruthy();
+    },
+    { timeout: 60000 }
+  );
+
+  it(
+    'throws error : renames a file to another',
+    async () => {
+      const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+      const params: RenameFileParams = {
+        basePath: '/users/c7581c39-99ab-4a36-8942-598557806c04',
+        oldName: 'parser.py',
+        newName: 'parser_n.py',
+      };
+
+      const result = await api.renameFile(params);
+
+      expect(result).toBeTruthy();
+    },
+    { timeout: 60000 }
+  );
+});
+
+describe('BYOS3ApiProvider', () => {
+  it(
+    'renames a folder to another',
+    async () => {
+      const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+      const params: RenameFolderParams = {
+        newPrefix: 'users/exefiles/',
+        oldPrefix: 'users/demo1/',
+      };
+
+      const result = await api.renameFolder(params);
+
+      expect(typeof result).toBe('object');
+    },
+    { timeout: 60000 }
+  );
 });

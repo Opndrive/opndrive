@@ -7,9 +7,11 @@ import {
   MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
+  RenameFileParams,
+  RenameFolderParams,
   SignedUrlParams,
   userTypes,
-} from './core/types';
+} from './core/types.js';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
@@ -28,8 +30,8 @@ import {
   CopyObjectCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
-import { BaseS3ApiProvider } from './core';
-import { MultipartUploader } from './utils/multipartUploader';
+import { BaseS3ApiProvider } from './core/index.js';
+import { MultipartUploader } from './utils/multipartUploader.js';
 import { Readable } from 'stream';
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
@@ -288,10 +290,99 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     }
   }
 
+  async renameFile(params: RenameFileParams): Promise<boolean> {
+    try {
+      if (params.basePath.charAt(0) === '/') {
+        throw new Error('Key starting with /');
+      }
+
+      if (!params.basePath.endsWith('/')) params.basePath += '/';
+
+      const fullOldPath = `${params.basePath}${params.oldName}`;
+      const fullNewPath = `${params.basePath}${params.newName}`;
+      const encodedSource = encodeURIComponent(fullOldPath);
+
+      await this.s3.send(
+        new CopyObjectCommand({
+          Bucket: this.credentials.bucketName,
+          CopySource: `${this.credentials.bucketName}/${encodedSource}`,
+          Key: fullNewPath,
+        })
+      );
+
+      await this.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: fullOldPath,
+        })
+      );
+
+      return true;
+    } catch (err) {
+      throw new Error(`Rename failed for ${params.oldName} → ${params.newName}: ${err}`);
+    }
+  }
+
+  async renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }> {
+    const bucket = this.credentials.bucketName;
+
+    const oldPrefix = params.oldPrefix.endsWith('/') ? params.oldPrefix : params.oldPrefix + '/';
+    const newPrefix = params.newPrefix.endsWith('/') ? params.newPrefix : params.newPrefix + '/';
+
+    let continuationToken: string | undefined;
+    const allKeys: string[] = [];
+
+    do {
+      const list = await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: oldPrefix,
+          ContinuationToken: continuationToken,
+        })
+      );
+
+      const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
+      allKeys.push(...keys);
+      continuationToken = list.NextContinuationToken;
+    } while (continuationToken);
+
+    const total = allKeys.length;
+    let processed = 0;
+
+    for (const key of allKeys) {
+      const newKey = key.replace(oldPrefix, newPrefix);
+
+      try {
+        await this.s3.send(
+          new CopyObjectCommand({
+            Bucket: bucket,
+            CopySource: `${bucket}/${encodeURIComponent(key)}`,
+            Key: newKey,
+          })
+        );
+
+        await this.s3.send(
+          new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: key,
+          })
+        );
+
+        processed++;
+        params.onProgress?.({ total, processed, currentKey: key, newKey });
+      } catch (err) {
+        console.error(`Failed to move ${key}:`, err);
+        throw err;
+      }
+    }
+
+    return { total, processed };
+  }
+
   async createFolder(key: string): Promise<void> {
     try {
       if (key.startsWith('/')) throw new Error('Key starts with /');
-      if (!key.endsWith('/')) key += '/'; // enforce trailing slash
+      if (!key.endsWith('/')) key += '/';
 
       await this.s3.send(
         new PutObjectCommand({
@@ -318,5 +409,5 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
   }
 }
 
-export { MultipartUploader } from './utils/multipartUploader';
-export * from './core/types';
+export { MultipartUploader } from './utils/multipartUploader.js';
+export * from './core/types.js';
