@@ -16,8 +16,6 @@ class S3PreviewServiceImpl implements S3PreviewService {
    */
   async getSignedUrl(file: PreviewableFile): Promise<string> {
     try {
-      console.log('S3 Preview Service: Requesting signed URL for:', file);
-
       // Handle both 'key' and 'Key' properties (S3 objects use uppercase Key)
       const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
 
@@ -25,14 +23,10 @@ class S3PreviewServiceImpl implements S3PreviewService {
         throw new Error('No file key found in file object');
       }
 
-      console.log('S3 Preview Service: Using file key:', fileKey);
-
       const signedUrl = await apiS3.getSignedUrl({
         key: fileKey,
         expiryInSeconds: 3600, // 1 hour expiry for preview
       });
-
-      console.log('S3 Preview Service: Got signed URL:', signedUrl);
 
       if (!signedUrl) {
         throw new Error('Failed to generate signed URL');
