@@ -43,7 +43,7 @@ export function FileItemList({ file, allFiles = [], _onAction }: FileItemListPro
       {/* Responsive Grid Layout */}
       <div
         className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer items-center min-h-[56px] sm:min-h-[64px]"
-        onClick={handleFileClick}
+        onDoubleClick={handleFileClick}
       >
         {/* File icon and name - always visible, responsive sizing */}
         <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4 flex items-center gap-2 sm:gap-3 min-w-0">

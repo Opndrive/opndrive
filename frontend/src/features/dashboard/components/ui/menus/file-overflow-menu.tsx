@@ -7,6 +7,7 @@ import { Download, Edit3, Info, Trash2, Eye } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
 import { useDetails } from '@/context/details-context';
+import { useFilePreview } from '@/context/file-preview-context';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -29,6 +30,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const { downloadFile, isDownloading } = useDownload();
   const { deleteFile, isDeleting } = useDelete();
   const { open: openDetails } = useDetails();
+  const { openPreview } = useFilePreview();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
@@ -36,6 +38,16 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       label: 'Open',
       icon: Eye,
       onClick: () => {
+        // Convert FileItem to PreviewableFile format
+        const previewableFile = {
+          id: file.id,
+          name: file.name,
+          key: file.Key,
+          size: file.size?.value || 0,
+          lastModified: file.lastModified,
+          type: file.extension || file.name.split('.').pop() || '',
+        };
+        openPreview(previewableFile, [previewableFile]);
         onClose();
       },
     },

@@ -54,20 +54,13 @@ export default function HomePage() {
       });
       router.push(url);
     }
-    console.log('Folder clicked:', folder);
   };
 
-  const handleFolderMenuClick = (folder: Folder, _event: React.MouseEvent) => {
-    console.log('Folder menu clicked:', folder);
-  };
+  const handleFolderMenuClick = (_folder: Folder, _event: React.MouseEvent) => {};
 
-  const handleFileClick = (file: FileItem) => {
-    console.log('File clicked:', file);
-  };
+  const handleFileClick = (_file: FileItem) => {};
 
-  const handleFileAction = (action: string, file: FileItem) => {
-    console.log('File action:', action, file);
-  };
+  const handleFileAction = (_action: string, _file: FileItem) => {};
 
   const handleLoadMoreFiles = async () => {
     setIsLoadingMoreFiles(true);

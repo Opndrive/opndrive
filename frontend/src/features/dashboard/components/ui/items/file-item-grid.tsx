@@ -6,15 +6,18 @@ import { FileThumbnail } from './file-thumbnail';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 
 interface FileItemGridProps {
   file: FileItem;
+  allFiles?: FileItem[]; // For navigation between files
   _onAction?: (action: string, file: FileItem) => void;
 }
 
-export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
+export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const { openFilePreview } = useFilePreviewActions();
 
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -27,10 +30,20 @@ export function FileItemGrid({ file, _onAction }: FileItemGridProps) {
     setMenuAnchor(null);
   };
 
+  const handleFileClick = () => {
+    // Only open preview for non-folder items
+    if (!file.Key?.endsWith('/')) {
+      openFilePreview(file, allFiles);
+    }
+  };
+
   const timeInfo = formatTimeWithTooltip(file.lastModified);
 
   return (
-    <div className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors">
+    <div
+      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors cursor-pointer"
+      onDoubleClick={handleFileClick}
+    >
       <FileThumbnail extension={file.extension as FileExtension} _name={file.name} />
 
       <div className="p-3">

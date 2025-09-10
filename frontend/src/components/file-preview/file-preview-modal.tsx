@@ -71,7 +71,7 @@ export function FilePreviewModal() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'var(--preview-modal-backdrop)' }}
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
     >
       {/* Backdrop */}
       <div
@@ -80,19 +80,18 @@ export function FilePreviewModal() {
         style={{ backgroundColor: 'transparent' }}
       />
 
-      {/* Modal Content */}
+      {/* Modal Content - Full Screen */}
       <div
         className="relative w-full h-full flex flex-col"
         style={{
-          backgroundColor: 'var(--preview-modal-bg)',
-          boxShadow: 'var(--preview-modal-shadow)',
+          backgroundColor: 'var(--background)',
         }}
       >
         {/* Header */}
         <div
+          className="flex-shrink-0"
           style={{
-            backgroundColor: 'var(--preview-modal-header-bg)',
-            backdropFilter: 'blur(8px)',
+            backgroundColor: 'var(--card)',
             borderBottom: '1px solid var(--border)',
           }}
         >
@@ -110,10 +109,7 @@ export function FilePreviewModal() {
         </div>
 
         {/* Content */}
-        <div
-          className="flex-1 relative"
-          style={{ backgroundColor: 'var(--preview-modal-content-bg)' }}
-        >
+        <div className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--background)' }}>
           <PreviewContent file={currentFile} />
         </div>
       </div>

@@ -11,11 +11,11 @@ export function PreviewLoading({ message = 'Loading preview...' }: PreviewLoadin
   return (
     <div
       className="flex items-center justify-center h-full"
-      style={{ backgroundColor: 'var(--preview-modal-loading-bg)' }}
+      style={{ backgroundColor: 'hsl(var(--background))' }}
     >
       <div className="flex flex-col items-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
-        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'hsl(var(--primary))' }} />
+        <p className="text-sm" style={{ color: 'hsl(var(--muted-foreground))' }}>
           {message}
         </p>
       </div>

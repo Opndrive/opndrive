@@ -27,16 +27,6 @@
   --settings-sidebar-border: #e8eaed;
   --settings-radio-border: #dadce0;
   --settings-radio-hover: #f1f3f4;
-
-  /* File Preview Modal variables */
-  --preview-modal-backdrop: rgba(0, 0, 0, 0.75);
-  --preview-modal-bg: #ffffff;
-  --preview-modal-header-bg: rgba(255, 255, 255, 0.95);
-  --preview-modal-content-bg: #f8f9fa;
-  --preview-modal-loading-bg: #f1f3f4;
-  --preview-modal-error-bg: #fef7f0;
-  --preview-modal-error-color: #ea4335;
-  --preview-modal-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 @theme inline {
@@ -83,16 +73,6 @@
   --settings-sidebar-border: #3c4043;
   --settings-radio-border: #5f6368;
   --settings-radio-hover: #303134;
-
-  /* File Preview Modal variables - dark mode */
-  --preview-modal-backdrop: rgba(0, 0, 0, 0.85);
-  --preview-modal-bg: #131314;
-  --preview-modal-header-bg: rgba(19, 19, 20, 0.95);
-  --preview-modal-content-bg: #1b1b1b;
-  --preview-modal-loading-bg: #303134;
-  --preview-modal-error-bg: #3c1e1e;
-  --preview-modal-error-color: #f28b82;
-  --preview-modal-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -119,16 +99,6 @@
     --settings-sidebar-border: #3c4043;
     --settings-radio-border: #5f6368;
     --settings-radio-hover: #303134;
-
-    /* File Preview Modal variables - dark mode */
-    --preview-modal-backdrop: rgba(0, 0, 0, 0.85);
-    --preview-modal-bg: #131314;
-    --preview-modal-header-bg: rgba(19, 19, 20, 0.95);
-    --preview-modal-content-bg: #1b1b1b;
-    --preview-modal-loading-bg: #303134;
-    --preview-modal-error-bg: #3c1e1e;
-    --preview-modal-error-color: #f28b82;
-    --preview-modal-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
   }
 }
 

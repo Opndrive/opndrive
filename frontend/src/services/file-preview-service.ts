@@ -69,7 +69,11 @@ class FilePreviewService {
     file: PreviewableFile,
     _options: PreviewOptions
   ): Promise<FilePreviewData> {
-    const signedUrl = await this.getSignedUrl(file.key);
+    const fileKey = file.key || file.name;
+    if (!fileKey) {
+      throw new Error('File key or name is required');
+    }
+    const signedUrl = await this.getSignedUrl(fileKey);
 
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -93,9 +97,9 @@ class FilePreviewService {
 
   private async getPDFPreview(
     file: PreviewableFile,
-    options: PreviewOptions
+    _options: PreviewOptions
   ): Promise<FilePreviewData> {
-    const blob = await this.downloadFileAsBlob(file, options);
+    const blob = await this.downloadFileAsBlob(file, _options);
 
     return {
       blob,
@@ -108,9 +112,9 @@ class FilePreviewService {
   private async getTextPreview(
     file: PreviewableFile,
     fileType: FilePreviewType,
-    options: PreviewOptions
+    _options: PreviewOptions
   ): Promise<FilePreviewData> {
-    const blob = await this.downloadFileAsBlob(file, options);
+    const blob = await this.downloadFileAsBlob(file, _options);
     const content = await blob.text();
 
     // Detect language for code files
@@ -132,7 +136,11 @@ class FilePreviewService {
     file: PreviewableFile,
     _options: PreviewOptions
   ): Promise<FilePreviewData> {
-    const signedUrl = await this.getSignedUrl(file.key);
+    const fileKey = file.key || file.name;
+    if (!fileKey) {
+      throw new Error('File key or name is required');
+    }
+    const signedUrl = await this.getSignedUrl(fileKey);
 
     return {
       url: signedUrl,
@@ -140,13 +148,20 @@ class FilePreviewService {
   }
 
   private async getSignedUrl(key: string): Promise<string> {
+    if (!key) {
+      throw new Error('File key is required');
+    }
     // Get signed URL with 1 hour expiration for preview
     return await apiS3.getSignedUrl({ key, expiryInSeconds: 3600 });
   }
 
   private async downloadFileAsBlob(file: PreviewableFile, options: PreviewOptions): Promise<Blob> {
+    const fileKey = file.key || file.name;
+    if (!fileKey) {
+      throw new Error('File key or name is required');
+    }
     return (await apiS3.downloadFile({
-      key: file.key,
+      key: fileKey,
       onProgress: options.onProgress,
     })) as Blob;
   }

@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { s3PreviewService } from '@/services/s3-preview-service';
-import { PreviewError } from '../preview-error';
-import { PreviewLoading } from '../preview-loading';
+import { apiS3 } from '@/services/byo-s3-api';
 
 interface VideoViewerProps {
   file: PreviewableFile;
@@ -22,19 +20,28 @@ export function VideoViewer({ file }: VideoViewerProps) {
         setLoading(true);
         setError(null);
 
-        const url = await s3PreviewService.getSignedUrl(file);
+        // Get the file key (handle both Key and key properties)
+        const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+
+        if (!fileKey) {
+          throw new Error('No file key found');
+        }
+
+        const url = await apiS3.getSignedUrl({
+          key: fileKey,
+          expiryInSeconds: 3600,
+        });
 
         setSignedUrl(url);
         setLoading(false);
       } catch (err) {
-        console.error('Failed to load video:', err);
         setError(err instanceof Error ? err.message : 'Failed to load video');
         setLoading(false);
       }
     }
 
     loadVideo();
-  }, [file.key]);
+  }, [file]);
 
   const handleRetry = () => {
     setError(null);
@@ -44,46 +51,121 @@ export function VideoViewer({ file }: VideoViewerProps) {
   };
 
   if (loading) {
-    return <PreviewLoading message={`Loading ${file.name}...`} />;
+    return (
+      <div
+        className="w-full h-full flex items-center justify-center"
+        style={{ backgroundColor: 'var(--preview-modal-content-bg)' }}
+      >
+        <div className="flex flex-col items-center space-y-4">
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-b-2"
+            style={{ borderColor: 'var(--primary)' }}
+          ></div>
+          <p style={{ color: 'var(--foreground)' }}>Loading {file.name}...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <PreviewError title="Video Preview Error" message={error} onRetry={handleRetry} />;
+    return (
+      <div
+        className="w-full h-full flex items-center justify-center"
+        style={{ backgroundColor: 'var(--preview-modal-content-bg)' }}
+      >
+        <div className="flex flex-col items-center space-y-4">
+          <p style={{ color: 'var(--destructive)' }}>Error: {error}</p>
+          <button
+            onClick={handleRetry}
+            className="px-4 py-2 rounded transition-colors hover:opacity-80"
+            style={{
+              backgroundColor: 'var(--primary)',
+              color: 'var(--primary-foreground)',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!signedUrl) {
     return (
-      <PreviewError
-        title="Video Preview Error"
-        message="No video URL available"
-        onRetry={handleRetry}
-      />
-    );
-  }
-
-  if (videoError) {
-    return (
-      <PreviewError title="Video Load Error" message="Video failed to load" onRetry={handleRetry} />
+      <div
+        className="w-full h-full flex items-center justify-center"
+        style={{ backgroundColor: 'var(--preview-modal-content-bg)' }}
+      >
+        <p style={{ color: 'var(--muted-foreground)' }}>No video URL available</p>
+      </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-black">
-      <video
-        src={signedUrl}
-        controls
-        preload="metadata"
-        className="max-w-full max-h-full object-contain"
-        onError={() => setVideoError(true)}
+    <div
+      className="w-full h-full flex flex-col"
+      style={{ backgroundColor: 'var(--preview-modal-viewer-bg)' }}
+    >
+      {/* Video Container */}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full h-full max-w-4xl max-h-full">
+          <video
+            controls
+            className="w-full h-full object-contain rounded shadow-lg"
+            style={{
+              backgroundColor: 'var(--background)',
+              border: '1px solid var(--preview-modal-border)',
+            }}
+            onError={() => {
+              setVideoError(true);
+            }}
+            onLoadStart={() => {}}
+            onCanPlay={() => {
+              setVideoError(false);
+            }}
+            preload="metadata"
+          >
+            <source src={signedUrl} />
+            Your browser does not support the video tag.
+          </video>
+
+          {videoError && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="p-6 rounded-lg text-center"
+                style={{ backgroundColor: 'var(--preview-modal-error-bg)' }}
+              >
+                <p style={{ color: 'var(--preview-modal-error-color)' }}>Video failed to load</p>
+                <button
+                  onClick={handleRetry}
+                  className="mt-4 px-4 py-2 rounded transition-colors hover:opacity-80"
+                  style={{
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)',
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Video Info */}
+      <div
+        className="flex items-center justify-between p-3 border-t text-sm"
         style={{
-          width: 'auto',
-          height: 'auto',
-          maxWidth: '100%',
-          maxHeight: '100%',
+          backgroundColor: 'var(--preview-modal-header-bg)',
+          borderColor: 'var(--preview-modal-border)',
+          color: 'var(--muted-foreground)',
         }}
       >
-        Your browser does not support the video tag.
-      </video>
+        <span>{file.name}</span>
+        <div className="flex items-center gap-2">
+          <span>Use video controls to play, pause, and adjust volume</span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -49,7 +49,7 @@ export function FileItemMobile({
   return (
     <div
       className="flex items-center p-4 hover:bg-secondary/50 transition-colors active:bg-secondary/70 cursor-pointer"
-      onClick={handleFileClick}
+      onDoubleClick={handleFileClick}
     >
       {/* File Icon */}
       <div className="flex-shrink-0 mr-3">

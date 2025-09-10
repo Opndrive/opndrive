@@ -131,51 +131,90 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
   const maxCols = Math.min(spreadsheetData[0]?.length || 0, 20);
 
   return (
-    <div className="w-full h-full overflow-auto bg-white dark:bg-gray-950 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+    <div
+      className="w-full h-full overflow-auto p-4"
+      style={{ backgroundColor: 'var(--background)' }}
+    >
+      <div
+        className="rounded-lg shadow-lg border overflow-hidden"
+        style={{
+          backgroundColor: 'var(--card)',
+          borderColor: 'var(--border)',
+        }}
+      >
         {/* Header */}
-        <div className="bg-gray-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">{file.name}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            {spreadsheetData.length} rows × {spreadsheetData[0]?.length || 0} columns
-            {maxRows < spreadsheetData.length && ` (showing first ${maxRows} rows)`}
-            {maxCols < (spreadsheetData[0]?.length || 0) && ` (showing first ${maxCols} columns)`}
+        <div
+          className="px-4 py-3 border-b"
+          style={{
+            backgroundColor: 'var(--muted)',
+            borderColor: 'var(--border)',
+          }}
+        >
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+            {file.name}
+          </h3>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
+            Showing first {maxRows} rows and {maxCols} columns
           </p>
         </div>
 
         {/* Table */}
         <div className="overflow-auto max-h-[calc(100vh-200px)]">
           <table className="min-w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
+            <thead className="sticky top-0" style={{ backgroundColor: 'var(--muted)' }}>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 z-10">
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 border-r z-10"
+                  style={{
+                    color: 'var(--muted-foreground)',
+                    backgroundColor: 'var(--muted)',
+                    borderColor: 'var(--border)',
+                  }}
+                >
                   #
                 </th>
-                {spreadsheetData[0]?.slice(0, maxCols).map((header, colIndex) => (
+                {spreadsheetData?.[0]?.slice(0, maxCols).map((header, colIndex) => (
                   <th
                     key={colIndex}
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px] border-r border-gray-200 dark:border-gray-600"
+                    className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider min-w-[120px] border-r"
+                    style={{
+                      color: 'var(--muted-foreground)',
+                      borderColor: 'var(--border)',
+                    }}
                   >
                     {header || `Column ${colIndex + 1}`}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-              {spreadsheetData.slice(1, maxRows).map((row, rowIndex) => (
+            <tbody style={{ backgroundColor: 'var(--card)' }}>
+              {spreadsheetData?.slice(1, maxRows).map((row, rowIndex) => (
                 <tr
                   key={rowIndex}
-                  className={
-                    rowIndex % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'
-                  }
+                  className="border-b hover:opacity-80 transition-opacity cursor-default"
+                  style={{
+                    backgroundColor: rowIndex % 2 === 0 ? 'var(--card)' : 'var(--muted)',
+                    borderColor: 'var(--border)',
+                  }}
                 >
-                  <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 z-10">
+                  <td
+                    className="px-3 py-2 text-sm sticky left-0 border-r z-10"
+                    style={{
+                      color: 'var(--muted-foreground)',
+                      backgroundColor: 'var(--muted)',
+                      borderColor: 'var(--border)',
+                    }}
+                  >
                     {rowIndex + 1}
                   </td>
                   {row.slice(0, maxCols).map((cell, colIndex) => (
                     <td
                       key={colIndex}
-                      className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] border-r border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150 cursor-default"
+                      className="px-3 py-2 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] border-r transition-colors duration-150"
+                      style={{
+                        color: 'var(--foreground)',
+                        borderColor: 'var(--border)',
+                      }}
                       title={cell}
                     >
                       {cell}
@@ -184,7 +223,11 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
                   {Array.from({ length: Math.max(0, maxCols - row.length) }, (_, i) => (
                     <td
                       key={`empty-${i}`}
-                      className="px-3 py-2 text-sm text-gray-400 dark:text-gray-600 border-r border-gray-200 dark:border-gray-600"
+                      className="px-3 py-2 text-sm border-r"
+                      style={{
+                        color: 'var(--muted-foreground)',
+                        borderColor: 'var(--border)',
+                      }}
                     >
                       —
                     </td>

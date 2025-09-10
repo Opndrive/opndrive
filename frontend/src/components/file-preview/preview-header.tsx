@@ -63,8 +63,9 @@ export function PreviewHeader({
         padding: '0 16px',
         margin: 0,
         boxSizing: 'border-box',
-        backgroundColor: 'transparent',
+        backgroundColor: 'var(--card)',
         color: 'var(--foreground)',
+        borderBottom: '1px solid var(--border)',
       }}
     >
       {/* Left side - File icon and name */}
