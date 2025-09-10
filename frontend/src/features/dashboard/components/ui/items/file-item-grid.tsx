@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
 import { FaUserAlt } from 'react-icons/fa';
-import { FileThumbnail } from './file-thumbnail';
+import { FileThumbnailWithImage } from './file-thumbnail-with-image';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
@@ -44,7 +44,11 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
       className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors cursor-pointer"
       onDoubleClick={handleFileClick}
     >
-      <FileThumbnail extension={file.extension as FileExtension} _name={file.name} />
+      <FileThumbnailWithImage
+        extension={file.extension as FileExtension}
+        name={file.name}
+        file={file}
+      />
 
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 mb-2">
