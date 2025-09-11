@@ -9,8 +9,8 @@ export const SearchPage = () => {
 
   return (
     <>
-      <div className="relative flex w-full items-center">
-        <SearchBar withAdvanced onAdvancedClick={() => setIsAdvancedOpen(true)} />
+      <div className="relative flex w-full items-center justify-center">
+        <SearchBar variant="navbar" withAdvanced onAdvancedClick={() => setIsAdvancedOpen(true)} />
       </div>
 
       <AdvancedSearchSheet isOpen={isAdvancedOpen} onClose={() => setIsAdvancedOpen(false)} />

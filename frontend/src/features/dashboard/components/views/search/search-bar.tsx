@@ -1,33 +1,407 @@
 'use client';
 
-import { Search, SlidersHorizontal } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
+import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { useSearch } from '@/features/dashboard/hooks/use-search';
+import { FileIcon } from '@/shared/components/icons/file-icons';
+import { FolderIcon } from '@/shared/components/icons/folder-icons';
+import { getFileExtensionWithoutDot } from '@/config/file-extensions';
+import { useFilePreview } from '@/context/file-preview-context';
+import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
+import type { FileExtension } from '@/features/dashboard/types/file';
 
-interface Props {
+interface SearchSuggestion {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  key: string;
+  extension?: string;
+  location: string;
+}
+
+interface SearchBarProps {
+  className?: string;
+  placeholder?: string;
+  variant?: 'default' | 'navbar';
   withAdvanced?: boolean;
   onAdvancedClick?: () => void;
 }
 
-export const SearchBar = ({ withAdvanced = false, onAdvancedClick }: Props) => (
-  <div className="relative w-full">
-    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+export function SearchBar({
+  className,
+  placeholder = 'Search files and folders...',
+  variant = 'default',
+  withAdvanced = false,
+  onAdvancedClick,
+}: SearchBarProps) {
+  const router = useRouter();
+  const { openPreview } = useFilePreview();
+  const [query, setQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [dropdownPosition, setDropdownPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
 
-    <input
-      type="text"
-      placeholder="Search in Drive"
-      className={`w-full rounded-full border border-border bg-input py-3 pl-12 ${
-        withAdvanced ? 'pr-12' : 'pr-4'
-      } text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none `}
-    />
+  const searchRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-    {withAdvanced && (
-      <button
-        type="button"
-        onClick={onAdvancedClick}
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 transition-colors hover:bg-border"
-        aria-label="Advanced search"
-      >
-        <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
-      </button>
-    )}
-  </div>
-);
+  const { searchFiles, isLoading, searchResults } = useSearch();
+
+  // Convert search results to suggestions and debounced search - only show up to 8 suggestions
+  const suggestions: SearchSuggestion[] =
+    searchResults?.matches.slice(0, 8).map((matchKey, index) => {
+      const isFolder = matchKey.endsWith('/');
+      const pathParts = matchKey.split('/');
+
+      let displayName: string;
+      let displayPath: string;
+      let location: string;
+
+      if (isFolder) {
+        // For folders, remove the trailing slash and get the folder name
+        const folderPath = matchKey.slice(0, -1); // Remove trailing /
+        const folderParts = folderPath.split('/');
+        displayName = folderParts[folderParts.length - 1] || folderPath; // Get last part as folder name
+        displayPath = folderParts.length > 1 ? folderParts.slice(0, -1).join('/') : '/';
+        location = folderParts.length > 1 ? folderParts[folderParts.length - 2] || 'Root' : 'Root';
+      } else {
+        // For files
+        displayName = pathParts[pathParts.length - 1] || matchKey;
+        displayPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '/';
+        location = pathParts.length > 1 ? pathParts[pathParts.length - 2] || 'Root' : 'Root';
+      }
+
+      // Get file extension if it's a file
+      const extension = !isFolder ? getFileExtensionWithoutDot(displayName) : undefined;
+
+      return {
+        id: `${matchKey}-${index}`,
+        name: displayName,
+        type: isFolder ? ('folder' as const) : ('file' as const),
+        path: displayPath,
+        key: matchKey,
+        extension,
+        location,
+      };
+    }) || [];
+
+  console.log('🎯 Final suggestions:', suggestions);
+
+  // Update dropdown position when search container moves or resizes
+  const updateDropdownPosition = useCallback(() => {
+    if (searchRef.current && isDropdownOpen) {
+      const rect = searchRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        left: rect.left,
+        top: rect.bottom + 8, // Add 8px gap between input and dropdown
+        width: rect.width,
+      });
+    }
+  }, [isDropdownOpen]);
+
+  // Handle input changes with debouncing
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+    setHighlightedIndex(-1);
+
+    if (value.trim().length >= 2) {
+      searchFiles(value);
+      setIsDropdownOpen(true);
+    } else {
+      setIsDropdownOpen(false);
+    }
+  };
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isDropdownOpen) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : prev));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+          handleSuggestionClick(suggestions[highlightedIndex]);
+        } else {
+          handleAllResultsClick();
+        }
+        break;
+      case 'Escape':
+        setIsDropdownOpen(false);
+        setHighlightedIndex(-1);
+        inputRef.current?.blur();
+        break;
+    }
+  };
+
+  // Handle suggestion click
+  const handleSuggestionClick = (suggestion: SearchSuggestion) => {
+    if (suggestion.type === 'file') {
+      // Open file preview
+      const previewableFile = {
+        id: suggestion.id,
+        name: suggestion.name,
+        key: suggestion.key,
+        size: 0, // Size not available in search results
+        lastModified: new Date(), // Not available in search results
+        type: suggestion.extension || suggestion.name.split('.').pop() || '',
+      };
+      openPreview(previewableFile, [previewableFile]);
+    } else {
+      // Navigate to folder
+      const folderUrl = generateFolderUrl({ prefix: suggestion.key });
+      router.push(folderUrl);
+    }
+
+    setIsDropdownOpen(false);
+    setQuery('');
+    inputRef.current?.blur();
+  };
+
+  // Handle "View All Results" click
+  const handleAllResultsClick = () => {
+    if (query.trim()) {
+      const searchParams = new URLSearchParams({ q: query.trim() });
+      router.push(`/dashboard/search?${searchParams.toString()}`);
+      setIsDropdownOpen(false);
+      setQuery('');
+      inputRef.current?.blur();
+    }
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setQuery('');
+    setIsDropdownOpen(false);
+    setHighlightedIndex(-1);
+    inputRef.current?.focus();
+  };
+
+  // Render file/folder icons using existing components
+  const renderIcon = (suggestion: SearchSuggestion) => {
+    console.log('🎨 Rendering icon for:', {
+      name: suggestion.name,
+      type: suggestion.type,
+      extension: suggestion.extension,
+      rawExtension: getFileExtensionWithoutDot(suggestion.name),
+    });
+
+    if (suggestion.type === 'folder') {
+      return <FolderIcon className="h-5 w-5 text-blue-500 flex-shrink-0" />;
+    }
+
+    // Use the same pattern as file-item-list.tsx
+    const extension = (suggestion.extension ||
+      getFileExtensionWithoutDot(suggestion.name) ||
+      'txt') as FileExtension;
+    console.log('📄 Using extension for FileIcon:', extension);
+    return <FileIcon extension={extension} className="h-5 w-5 flex-shrink-0" />;
+  };
+
+  // Update dropdown position on mount and when needed
+  useEffect(() => {
+    updateDropdownPosition();
+
+    const handleResize = () => updateDropdownPosition();
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [updateDropdownPosition]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchRef.current &&
+        !searchRef.current.contains(event.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+        setHighlightedIndex(-1);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Dropdown content
+  const dropdownContent = isDropdownOpen && (
+    <div
+      ref={dropdownRef}
+      className="bg-background border border-border/50 rounded-xl shadow-2xl z-[1000] max-h-[400px] overflow-hidden"
+      style={{
+        boxShadow: '0 10px 40px -10px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+        backdropFilter: 'blur(20px)',
+      }}
+    >
+      {isLoading ? (
+        <div className="p-6 text-center">
+          <div className="flex items-center justify-center gap-3 text-muted-foreground">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium">Searching...</span>
+          </div>
+        </div>
+      ) : suggestions.length > 0 ? (
+        <div className="overflow-y-auto max-h-[340px] custom-scrollbar">
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={suggestion.id}
+              onClick={() => handleSuggestionClick(suggestion)}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/50 transition-colors border-b border-border/30 last:border-b-0 ${
+                index === highlightedIndex ? 'bg-accent/50' : ''
+              }`}
+            >
+              {renderIcon(suggestion)}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {suggestion.name}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                  {/* Space for last opened date - TODO: Add when available from S3 API */}
+                  <div className="w-16 text-xs opacity-50">Last opened</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-muted-foreground capitalize px-2 py-1 bg-muted/50 rounded">
+                  {suggestion.type}
+                </div>
+                <div className="text-xs px-2 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded">
+                  {suggestion.location}
+                </div>
+              </div>
+            </button>
+          ))}
+
+          {/* View All Results Footer */}
+          <div className="border-t border-border/30 bg-muted/10">
+            <button
+              onClick={handleAllResultsClick}
+              className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-accent/20 transition-all duration-150 text-primary font-medium group"
+            >
+              <Search className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              <span className="text-sm">View all results for "{query}"</span>
+              <div className="ml-auto text-xs text-muted-foreground bg-primary/10 px-2 py-1 rounded-full">
+                {searchResults?.matches.length || 0}+ results
+              </div>
+            </button>
+          </div>
+        </div>
+      ) : query.trim().length >= 2 ? (
+        <div className="p-8 text-center text-muted-foreground">
+          <Search className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium mb-1">No results found for "{query}"</p>
+          <p className="text-xs opacity-60">Try different keywords or check your spelling</p>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <>
+      <div className={`relative ${className}`} ref={searchRef}>
+        <div className="relative">
+          <Search
+            className={`absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground transition-colors ${
+              isFocused ? 'text-primary' : ''
+            } ${variant === 'navbar' ? 'h-4 w-4' : 'h-5 w-5'}`}
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={placeholder}
+            value={query}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              if (query.trim().length >= 2 && suggestions.length > 0) {
+                setIsDropdownOpen(true);
+              }
+              setIsFocused(true);
+            }}
+            onBlur={() => setIsFocused(false)}
+            className={`
+              w-full rounded-full border transition-all duration-200 ease-out
+              text-foreground placeholder:text-muted-foreground
+              ${
+                isFocused
+                  ? 'border-primary ring-2 ring-primary/20 bg-background shadow-lg'
+                  : 'border-border bg-input hover:border-primary/50 hover:shadow-md'
+              }
+              ${
+                variant === 'navbar'
+                  ? 'py-2.5 pl-12 text-sm w-full min-w-[500px] max-w-[650px] shadow-sm'
+                  : 'py-3.5 pl-12 text-base shadow-sm'
+              }
+              ${withAdvanced ? 'pr-16' : query ? 'pr-10' : 'pr-4'}
+              focus:outline-none
+            `}
+          />
+          {withAdvanced && (
+            <button
+              type="button"
+              onClick={onAdvancedClick}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-colors hover:bg-accent text-muted-foreground hover:text-foreground"
+              aria-label="Advanced search"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+          )}
+          {query && (
+            <button
+              onClick={clearSearch}
+              className={`absolute top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors ${
+                withAdvanced ? 'right-12' : 'right-3'
+              }`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Portal-based dropdown for proper z-index */}
+      {typeof window !== 'undefined' &&
+        dropdownContent &&
+        dropdownPosition &&
+        createPortal(
+          <div
+            className="fixed transition-all duration-200 ease-out"
+            style={{
+              left: dropdownPosition.left,
+              top: dropdownPosition.top,
+              width: dropdownPosition.width,
+              zIndex: 1000,
+              opacity: isDropdownOpen ? 1 : 0,
+              transform: isDropdownOpen
+                ? 'translateY(0) scale(1)'
+                : 'translateY(-10px) scale(0.95)',
+            }}
+          >
+            {dropdownContent}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
