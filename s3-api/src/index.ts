@@ -9,6 +9,8 @@ import {
   PresignedUploadParams,
   RenameFileParams,
   RenameFolderParams,
+  SearchParams,
+  SearchResult,
   SignedUrlParams,
   userTypes,
 } from './core/types.js';
@@ -394,6 +396,28 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     } catch (err) {
       throw new Error(`Create folder failed for ${key}: ${err}`);
     }
+  }
+
+  async search(params: SearchParams): Promise<SearchResult> {
+    const response = await this.s3.send(
+      new ListObjectsV2Command({
+        Bucket: this.credentials.bucketName,
+        Prefix: params.prefix,
+        ContinuationToken: params.nextToken,
+        MaxKeys: 1000,
+      })
+    );
+
+    const contents = response.Contents ?? [];
+
+    const matches = contents
+      .map((obj) => obj.Key ?? '')
+      .filter((key) => key.includes(params.searchTerm));
+
+    return {
+      matches,
+      nextToken: response.NextContinuationToken,
+    };
   }
 
   getBucketName(): string {

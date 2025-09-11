@@ -1,4 +1,4 @@
-import { BYOS3ApiProvider, RenameFolderParams } from '../../dist/index';
+import { BYOS3ApiProvider, RenameFolderParams, SearchParams } from '../../dist/index';
 import {
   Credentials,
   PresignedUploadParams,
@@ -177,4 +177,19 @@ describe('BYOS3ApiProvider', () => {
     },
     { timeout: 60000 }
   );
+});
+
+describe('BYOS3ApiProvider', () => {
+  it('searches as folder or file', async () => {
+    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
+    const params: SearchParams = {
+      prefix: '',
+      searchTerm: 'abc',
+    };
+
+    const result = await api.search(params);
+
+    expect(typeof result).toBe('object');
+  });
 });

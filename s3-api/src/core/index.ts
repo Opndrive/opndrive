@@ -14,6 +14,8 @@ import {
   PresignedUploadParams,
   RenameFileParams,
   RenameFolderParams,
+  SearchParams,
+  SearchResult,
   SignedUrlParams,
   userTypes,
 } from './types.js';
@@ -106,6 +108,8 @@ export abstract class BaseS3ApiProvider {
   abstract renameFile(params: RenameFileParams): Promise<boolean>;
 
   abstract renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }>;
+
+  abstract search(params: SearchParams): Promise<SearchResult>;
 
   abstract getBucketName(): string;
 
