@@ -31,7 +31,7 @@ class DeleteService {
   }
 
   async deleteFolder(folder: Folder, options: DeleteOptions = {}): Promise<void> {
-    const { onProgress, onError } = options;
+    const { onProgress, onComplete, onError } = options;
 
     try {
       onProgress?.({ status: 'deleting' });
@@ -64,6 +64,7 @@ class DeleteService {
       await apiS3.deleteFile(normalizedKey);
 
       onProgress?.({ status: 'success' });
+      onComplete?.();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete folder';
 
