@@ -1,18 +1,9 @@
-import {
-  FileText,
-  FileSpreadsheet,
-  FileImage,
-  FileVideo,
-  FileAudio,
-  Archive,
-  Code,
-  FilePen as FilePdf,
-  LucidePresentation as FilePresentation,
-  FileQuestion,
-} from 'lucide-react';
-import { BsFillGearFill } from 'react-icons/bs';
-
+import { FileText, LucidePresentation as FilePresentation, FileQuestion } from 'lucide-react';
+import { BsFiletypeExe } from 'react-icons/bs';
 import type { FileExtension } from '@/features/dashboard/types/file';
+import { FaFileAudio, FaFileImage, FaFilePdf, FaFileVideo, FaRegFileCode } from 'react-icons/fa6';
+import { LuFileSpreadsheet } from 'react-icons/lu';
+import { FaFileArchive } from 'react-icons/fa';
 
 interface FileIconProps {
   extension: FileExtension;
@@ -147,7 +138,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
 
   switch (extension) {
     case 'pdf':
-      return <FilePdf className={iconClass} />;
+      return <FaFilePdf className={iconClass} />;
 
     // Executables
     case 'exe':
@@ -156,7 +147,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'deb':
     case 'rpm':
     case 'appimage':
-      return <BsFillGearFill className={iconClass} />;
+      return <BsFiletypeExe className={iconClass} />;
 
     // Documents
     case 'doc':
@@ -173,7 +164,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'ods':
     case 'xlsm':
     case 'xlsb':
-      return <FileSpreadsheet className={iconClass} />;
+      return <LuFileSpreadsheet className={iconClass} />;
 
     // Presentations
     case 'ppt':
@@ -194,7 +185,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'tif':
     case 'heic':
     case 'avif':
-      return <FileImage className={iconClass} />;
+      return <FaFileImage className={iconClass} />;
 
     // Videos
     case 'mp4':
@@ -209,7 +200,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case '3gp':
     case 'mpg':
     case 'mpeg':
-      return <FileVideo className={iconClass} />;
+      return <FaFileVideo className={iconClass} />;
 
     // Audio
     case 'mp3':
@@ -220,7 +211,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'wma':
     case 'm4a':
     case 'opus':
-      return <FileAudio className={iconClass} />;
+      return <FaFileAudio className={iconClass} />;
 
     // Archives
     case 'zip':
@@ -230,7 +221,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'gz':
     case 'bz2':
     case 'xz':
-      return <Archive className={iconClass} />;
+      return <FaFileArchive className={iconClass} />;
 
     // Code
     case 'js':
@@ -260,7 +251,7 @@ export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
     case 'sh':
     case 'bat':
     case 'ps1':
-      return <Code className={iconClass} />;
+      return <FaRegFileCode className={iconClass} />;
 
     default:
       return <FileQuestion className={iconClass} />;
