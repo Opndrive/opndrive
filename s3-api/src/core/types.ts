@@ -69,3 +69,14 @@ export interface RenameFolderParams {
     newKey?: string;
   }) => void;
 }
+
+export interface SearchParams {
+  prefix: string;
+  searchTerm: string;
+  nextToken: string;
+}
+
+export interface SearchResult {
+  matches: string[];
+  nextToken?: string;
+}
