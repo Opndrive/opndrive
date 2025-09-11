@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2025-09-11
+### Added
+- Search files or folders
+
 ## [1.4.0] - 2025-09-08
 ### Added
 - File rename function
