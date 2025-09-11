@@ -19,7 +19,7 @@ import {
 } from '@/features/folder-navigation/folder-navigation';
 
 function BrowsePageContent() {
-  const { isFiltersHidden } = useScroll();
+  const { isSearchHidden } = useScroll();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
@@ -104,7 +104,7 @@ function BrowsePageContent() {
       <div className="relative">
         <div
           className={`sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
-            isFiltersHidden
+            isSearchHidden
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-2 pointer-events-none'
           }`}

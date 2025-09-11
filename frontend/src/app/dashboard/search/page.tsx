@@ -24,7 +24,6 @@ export default function SearchPage() {
 
   const { searchFiles, searchWithPagination, searchResults, isLoading, canLoadMore } = useSearch();
   const [viewMode, setViewMode] = useState<ViewLayout>('list');
-  const [filterType, setFilterType] = useState<'all' | 'files' | 'folders'>('all');
 
   // Search when query changes
   useEffect(() => {
@@ -76,17 +75,10 @@ export default function SearchPage() {
       }
     }) || [];
 
-  // Filter results
-  const filteredResults = processedResults.filter((item) => {
-    if (filterType === 'files') return item.type === 'file';
-    if (filterType === 'folders') return item.type === 'folder';
-    return true;
-  });
-
-  const files = filteredResults
+  const files = processedResults
     .filter((item) => item.type === 'file')
     .map((item) => item.data as FileItem);
-  const folders = filteredResults
+  const folders = processedResults
     .filter((item) => item.type === 'folder')
     .map((item) => item.data as Folder);
 
@@ -168,43 +160,16 @@ export default function SearchPage() {
 
         {/* Search Info and Controls */}
         <div className="flex items-center justify-between mt-4">
-          <div className="flex items-center gap-4">
-            <p className="text-sm text-muted-foreground">
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Searching...
-                </span>
-              ) : (
-                `${filteredResults.length} results for "${query}"`
-              )}
-            </p>
-
-            {/* Filters */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant={filterType === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterType('all')}
-              >
-                All
-              </Button>
-              <Button
-                variant={filterType === 'files' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterType('files')}
-              >
-                Files ({files.length})
-              </Button>
-              <Button
-                variant={filterType === 'folders' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterType('folders')}
-              >
-                Folders ({folders.length})
-              </Button>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {isLoading ? (
+              <span className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Searching...
+              </span>
+            ) : (
+              `${processedResults.length} results for "${query}"`
+            )}
+          </p>
 
           {/* Layout Toggle */}
           <LayoutToggle layout={viewMode} onLayoutChange={setViewMode} />
@@ -213,14 +178,14 @@ export default function SearchPage() {
 
       {/* Results */}
       <div className="flex-1 overflow-auto">
-        {isLoading && filteredResults.length === 0 ? (
+        {isLoading && processedResults.length === 0 ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent mx-auto mb-4" />
               <p className="text-muted-foreground">Searching...</p>
             </div>
           </div>
-        ) : filteredResults.length === 0 ? (
+        ) : processedResults.length === 0 ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <Search className="h-16 w-16 text-muted-foreground mx-auto mb-4" />

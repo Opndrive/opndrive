@@ -24,33 +24,26 @@ export const useSearch = () => {
       setIsLoading(true);
 
       try {
-        console.log('🚀 Starting search for:', query, 'in prefix:', currentPrefix);
         const results = await searchService.searchFiles(query, currentPrefix || '', {
           onProgress: (progress) => {
-            console.log('📊 Search progress:', progress);
             if (progress.status === 'error') {
               error('Search failed');
             }
           },
           onError: (errorMessage) => {
-            console.error('❌ Search error callback:', errorMessage);
             error(errorMessage);
           },
         });
 
-        console.log('📋 Search results received:', results);
         setSearchResults(results);
 
         if (results.matches.length === 0) {
-          console.log('🚫 No results found');
           success(`No results found for "${query}"`);
         } else {
-          console.log('✅ Found results:', results.matches.length);
           success(`Found ${results.matches.length} results for "${query}"`);
         }
       } catch (err) {
-        console.error('💥 Search catch block:', err);
-        error(`Failed to search for "${query}"`);
+        error(`Failed to search for "${query}","${err}"`);
         setSearchResults(null);
       } finally {
         setIsLoading(false);
@@ -74,26 +67,22 @@ export const useSearch = () => {
       setIsLoading(true);
 
       try {
-        console.log('📄 Loading more results for:', query, 'token:', nextToken);
         const results = await searchService.searchWithPagination(
           query,
           currentPrefix || '',
           nextToken,
           {
             onProgress: (progress) => {
-              console.log('📊 Paginated search progress:', progress);
               if (progress.status === 'error') {
                 error('Search failed');
               }
             },
             onError: (errorMessage) => {
-              console.error('❌ Paginated search error:', errorMessage);
               error(errorMessage);
             },
           }
         );
 
-        console.log('📋 Paginated results received:', results);
         if (nextToken && searchResults) {
           setSearchResults((prev) =>
             prev
@@ -107,8 +96,7 @@ export const useSearch = () => {
           setSearchResults(results);
         }
       } catch (err) {
-        console.error('💥 Paginated search catch block:', err);
-        error(`Failed to load more results for "${query}"`);
+        error(`Failed to load more results for "${query},"${err}"`);
       } finally {
         setIsLoading(false);
         setActiveSearches((prev) => {
