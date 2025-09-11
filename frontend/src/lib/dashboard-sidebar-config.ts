@@ -1,6 +1,6 @@
 import React from 'react';
 import { MdHomeFilled } from 'react-icons/md';
-import { LuBook } from 'react-icons/lu';
+import { PiHardDrivesFill } from 'react-icons/pi';
 
 export interface SidebarItem {
   title: string;
@@ -18,7 +18,7 @@ const SidebarItems: SidebarItem[] = [
   {
     title: 'My Drive',
     href: '/browse',
-    icon: LuBook,
+    icon: PiHardDrivesFill,
   },
 ];
 
