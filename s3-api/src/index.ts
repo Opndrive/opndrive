@@ -205,7 +205,17 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       throw new Error('Negative seconds');
     }
 
-    const cmd = new GetObjectCommand({ Bucket: this.credentials.bucketName, Key: params.key });
+    let cmd;
+    if (params.isPreview) {
+      cmd = new GetObjectCommand({
+        Bucket: this.credentials.bucketName,
+        Key: params.key,
+        ResponseContentDisposition: 'inline',
+        ResponseContentType: params.responseContentType,
+      });
+    } else {
+      cmd = new GetObjectCommand({ Bucket: this.credentials.bucketName, Key: params.key });
+    }
     return getSignedUrl(this.s3, cmd, { expiresIn: params.expiryInSeconds });
   }
 
