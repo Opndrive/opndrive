@@ -41,6 +41,8 @@ export interface MultipartUploadParallelParams {
 export interface SignedUrlParams {
   key: string;
   expiryInSeconds: number;
+  isPreview: boolean;
+  responseContentType?: string;
 }
 
 export interface DownloadFileParams {
@@ -73,7 +75,7 @@ export interface RenameFolderParams {
 export interface SearchParams {
   prefix: string;
   searchTerm: string;
-  nextToken: string;
+  nextToken?: string;
 }
 
 export interface SearchResult {
