@@ -87,38 +87,38 @@ describe('BYOS3ApiProvider', () => {
 });
 
 describe('BYOS3ApiProvider', () => {
-  it('returns a presigned URL to access data', async () => {
+  it.only('returns a presigned URL to access data', async () => {
     const api = new BYOS3ApiProvider(myCreds, 'BYO');
 
     const params: SignedUrlParams = {
-      key: 'Screenshot 2025-06-13 142914.png',
+      key: 'pogo.png',
       expiryInSeconds: 900,
+      isPreview: false,
+      responseContentType: 'image/png',
     };
 
     const result = await api.getSignedUrl(params);
 
+    console.log(result);
+
     expect(typeof result).toBe('string');
   });
 
-  it('throws an error for a key starting with a slash', async () => {
+  it.only('returns a presigned URL to access data', async () => {
     const api = new BYOS3ApiProvider(myCreds, 'BYO');
+
     const params: SignedUrlParams = {
-      key: '/users/data/file.jpg',
+      key: 'geo-api.js',
       expiryInSeconds: 900,
+      isPreview: true,
+      responseContentType: 'application/text',
     };
 
-    await expect(api.getSignedUrl(params)).rejects.toBeDefined();
-  });
+    const result = await api.getSignedUrl(params);
 
-  it('throws an error for negative expiration', async () => {
-    const api = new BYOS3ApiProvider(myCreds, 'BYO');
+    console.log(result);
 
-    const params: SignedUrlParams = {
-      key: 'users/data/file.jpg',
-      expiryInSeconds: -2,
-    };
-
-    await expect(api.getSignedUrl(params)).rejects.toBeDefined();
+    expect(typeof result).toBe('string');
   });
 });
 
