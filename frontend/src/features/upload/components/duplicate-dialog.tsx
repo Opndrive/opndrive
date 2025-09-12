@@ -2,16 +2,7 @@
 
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { File, Folder } from 'lucide-react';
-
-// Format file size helper
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
+import { File, Folder, AlertTriangle } from 'lucide-react';
 
 export interface DuplicateItem {
   name: string;
@@ -35,7 +26,7 @@ export function DuplicateDialog({
   onKeepBoth,
   duplicateItem,
 }: DuplicateDialogProps) {
-  const [selectedAction, setSelectedAction] = useState<'replace' | 'keep-both'>('replace');
+  const [selectedAction, setSelectedAction] = useState<'replace' | 'keep-both'>('keep-both');
 
   if (!isOpen || !duplicateItem) return null;
 
@@ -69,13 +60,15 @@ export function DuplicateDialog({
             }}
           >
             <div className="px-6 py-4">
-              <h2 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
-                Upload options
-              </h2>
-              <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>
-                {duplicateItem.name} already exists in this location. Do you want to replace the
-                existing {duplicateItem.type} with a new version or keep both{' '}
-                {duplicateItem.type === 'file' ? 'files' : 'folders'}?
+              <div className="flex items-center gap-3 mb-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <h2 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
+                  Folder already exists
+                </h2>
+              </div>
+              <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                A folder named "{duplicateItem.name}" already exists in this location. What would
+                you like to do?
               </p>
             </div>
 
@@ -96,17 +89,9 @@ export function DuplicateDialog({
                   >
                     {duplicateItem.name}
                   </p>
-                  {duplicateItem.type === 'file' && duplicateItem.size && (
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {formatFileSize(duplicateItem.size)}
-                    </p>
-                  )}
-                  {duplicateItem.type === 'folder' && duplicateItem.files && (
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {duplicateItem.files.length}{' '}
-                      {duplicateItem.files.length === 1 ? 'file' : 'files'}
-                    </p>
-                  )}
+                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    Existing folder in this location
+                  </p>
                 </div>
               </div>
             </div>
@@ -114,7 +99,7 @@ export function DuplicateDialog({
             <div className="px-6 pb-6">
               <div className="space-y-3">
                 <label
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                  className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
                   style={{
                     backgroundColor: selectedAction === 'replace' ? 'var(--accent)' : 'transparent',
                     border:
@@ -124,7 +109,7 @@ export function DuplicateDialog({
                   }}
                   onClick={() => setSelectedAction('replace')}
                 >
-                  <div className="relative">
+                  <div className="relative mt-0.5">
                     <input
                       type="radio"
                       name="duplicate-action"
@@ -135,13 +120,21 @@ export function DuplicateDialog({
                       style={{ accentColor: 'var(--primary)' }}
                     />
                   </div>
-                  <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                    Replace existing {duplicateItem.type}
-                  </span>
+                  <div className="flex-1">
+                    <span
+                      className="text-sm font-medium block"
+                      style={{ color: 'var(--foreground)' }}
+                    >
+                      Merge with existing folder
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      Contents will be merged with the existing folder
+                    </span>
+                  </div>
                 </label>
 
                 <label
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                  className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
                   style={{
                     backgroundColor:
                       selectedAction === 'keep-both' ? 'var(--accent)' : 'transparent',
@@ -152,7 +145,7 @@ export function DuplicateDialog({
                   }}
                   onClick={() => setSelectedAction('keep-both')}
                 >
-                  <div className="relative">
+                  <div className="relative mt-0.5">
                     <input
                       type="radio"
                       name="duplicate-action"
@@ -163,9 +156,17 @@ export function DuplicateDialog({
                       style={{ accentColor: 'var(--primary)' }}
                     />
                   </div>
-                  <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                    Keep both {duplicateItem.type === 'file' ? 'files' : 'folders'}
-                  </span>
+                  <div className="flex-1">
+                    <span
+                      className="text-sm font-medium block"
+                      style={{ color: 'var(--foreground)' }}
+                    >
+                      Keep both folders
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      The renamed folder will be saved with a unique name
+                    </span>
+                  </div>
                 </label>
               </div>
             </div>
@@ -207,7 +208,7 @@ export function DuplicateDialog({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                Upload
+                Continue
               </button>
             </div>
           </div>

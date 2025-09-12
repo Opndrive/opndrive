@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 
 export default function HomePage() {
-  const { isFiltersHidden } = useScroll();
+  const { isSearchHidden } = useScroll();
   const router = useRouter();
   const {
     currentPrefix,
@@ -97,7 +97,7 @@ export default function HomePage() {
       <div className="relative">
         <div
           className={`sticky top-[-20px] md:top-[-24px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
-            isFiltersHidden
+            isSearchHidden
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-2 pointer-events-none'
           }`}

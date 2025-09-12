@@ -43,7 +43,6 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
   const { success, error } = useNotification();
 
   const openShareDialog = useCallback((file: FileItem) => {
-    console.log('Opening share dialog for file:', file.name);
     setShareDialog({
       isOpen: true,
       file,
@@ -52,7 +51,6 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
   }, []);
 
   const closeShareDialog = useCallback(() => {
-    console.log('Closing share dialog');
     setShareDialog({
       isOpen: false,
       file: null,
@@ -63,16 +61,9 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
   const generateShareLink = useCallback(
     async (durationInSeconds: number): Promise<ShareResult | null> => {
       if (!shareDialog.file || !shareDialog.file.Key) {
-        console.error('No file selected or file has no key');
         return null;
       }
 
-      console.log(
-        'Generating share link for:',
-        shareDialog.file.name,
-        'Duration:',
-        durationInSeconds
-      );
       setShareDialog((prev) => ({ ...prev, isGenerating: true }));
 
       try {
@@ -85,7 +76,6 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
 
         setShareDialog((prev) => ({ ...prev, isGenerating: false }));
 
-        console.log('Share link generated successfully');
         return {
           url: signedUrl,
           expiresAt,

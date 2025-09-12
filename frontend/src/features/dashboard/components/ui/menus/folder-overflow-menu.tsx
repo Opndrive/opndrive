@@ -3,12 +3,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
-import { Download, Edit3, Info, Trash2 } from 'lucide-react';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { Eye, Edit3, Info, Trash2 } from 'lucide-react';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useDriveStore } from '@/context/data-context';
+import { useRouter } from 'next/navigation';
+import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -31,19 +32,20 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
 
-  const { isDownloading } = useDownload();
   const { deleteFolder, isDeleting } = useDelete();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { currentPrefix } = useDriveStore();
+  const router = useRouter();
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
-      id: 'download',
-      label: 'Download',
-      icon: <Download className="flex-shrink-0 h-4 w-4" />,
-      disabled: isDownloading(folder.id),
+      id: 'view',
+      label: 'View',
+      icon: <Eye className="flex-shrink-0 h-4 w-4" />,
       onClick: (_folder) => {
+        const folderUrl = generateFolderUrl({ prefix: folder.Prefix });
+        router.push(folderUrl);
         onClose();
       },
     },

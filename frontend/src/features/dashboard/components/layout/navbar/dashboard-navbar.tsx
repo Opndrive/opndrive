@@ -65,9 +65,9 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           </Button>
         </div>
 
-        <div className="flex flex-1 justify-center px-4">
+        <div className="flex flex-1 justify-center">
           <div
-            className={`w-full max-w-2xl transition-all duration-300 ${
+            className={`transition-all duration-300 ${
               isSearchHidden
                 ? 'opacity-100 translate-y-0 scale-100'
                 : 'opacity-0 translate-y-4 scale-95 pointer-events-none'
