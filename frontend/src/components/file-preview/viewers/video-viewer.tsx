@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { apiS3 } from '@/services/byo-s3-api';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface VideoViewerProps {
   file: PreviewableFile;
@@ -13,6 +13,7 @@ export function VideoViewer({ file }: VideoViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState(false);
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     async function loadVideo() {

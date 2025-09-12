@@ -1,4 +1,5 @@
 import '@/app/globals.css';
+import { AuthProvider } from '@/context/auth-context';
 import { NotificationProvider } from '@/context/notification-context';
 import { ThemeProvider } from '@/providers/theme-provider';
 
@@ -37,9 +38,11 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider defaultTheme="system" storageKey="ui-theme">
-          <NotificationProvider>{children}</NotificationProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider defaultTheme="system" storageKey="ui-theme">
+            <NotificationProvider>{children}</NotificationProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

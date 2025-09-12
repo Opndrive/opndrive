@@ -1,7 +1,7 @@
-import { apiS3 } from '@/services/byo-s3-api';
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
@@ -10,6 +10,12 @@ export interface RenameOptions {
 }
 
 class RenameService {
+  private api: BYOS3ApiProvider;
+
+  constructor(api: BYOS3ApiProvider) {
+    this.api = api;
+  }
+
   async renameFile(
     file: FileItem,
     newName: string,
@@ -33,7 +39,7 @@ class RenameService {
       const newKey = pathParts.join('/');
 
       // Use moveFile method which handles the copy/delete operations
-      await apiS3.moveFile({
+      await this.api.moveFile({
         oldKey,
         newKey,
       });
@@ -71,7 +77,7 @@ class RenameService {
         ? `${normalizedCurrentPath}${newName}/`
         : `${newName}/`;
 
-      const result = await apiS3.renameFolder({
+      const result = await this.api.renameFolder({
         oldPrefix,
         newPrefix,
         onProgress: (progress) => {
@@ -118,7 +124,7 @@ class RenameService {
         fileKey = generateS3Key(fileName, normalizedPath);
       }
 
-      const metadata = await apiS3.fetchMetadata(fileKey);
+      const metadata = await this.api.fetchMetadata(fileKey);
       return metadata !== null;
     } catch {
       return false;
@@ -134,7 +140,7 @@ class RenameService {
       }
 
       const folderPrefix = generateS3Key(`${folderName}/`, normalizedPath);
-      const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
+      const result = await this.api.fetchDirectoryStructure(folderPrefix, 1);
       return result.files.length > 0 || result.folders.length > 0;
     } catch {
       return false;
@@ -223,4 +229,6 @@ class RenameService {
   }
 }
 
-export const renameService = new RenameService();
+export const createRenameService = (api: BYOS3ApiProvider) => {
+  return new RenameService(api);
+};

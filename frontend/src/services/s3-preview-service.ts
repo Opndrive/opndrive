@@ -1,4 +1,4 @@
-import { apiS3 } from '@/services/byo-s3-api';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { PreviewableFile } from '@/types/file-preview';
 
 export interface S3PreviewService {
@@ -14,6 +14,12 @@ class S3PreviewServiceImpl implements S3PreviewService {
    * @param file - The file to generate a signed URL for
    * @returns Promise<string> - The signed URL
    */
+  private api: BYOS3ApiProvider;
+
+  constructor(api: BYOS3ApiProvider) {
+    this.api = api;
+  }
+
   async getSignedUrl(file: PreviewableFile): Promise<string> {
     try {
       // Handle both 'key' and 'Key' properties (S3 objects use uppercase Key)
@@ -23,7 +29,7 @@ class S3PreviewServiceImpl implements S3PreviewService {
         throw new Error('No file key found in file object');
       }
 
-      const signedUrl = await apiS3.getSignedUrl({
+      const signedUrl = await this.api.getSignedUrl({
         key: fileKey,
         expiryInSeconds: 3600, // 1 hour expiry for preview
       });
@@ -44,4 +50,4 @@ class S3PreviewServiceImpl implements S3PreviewService {
   }
 }
 
-export const s3PreviewService = new S3PreviewServiceImpl();
+export const createS3PreviewService = (api: BYOS3ApiProvider) => new S3PreviewServiceImpl(api);

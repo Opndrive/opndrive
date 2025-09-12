@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileIconLarge } from '@/shared/components/icons/file-icons';
-import { s3PreviewService } from '@/services/s3-preview-service';
+import { createS3PreviewService } from '@/services/s3-preview-service';
 import { checkPreviewEligibility } from '@/services/file-size-limits';
 import { FileItem } from '@/features/dashboard/types/file';
 import {
@@ -8,6 +8,7 @@ import {
   getFileBackground,
   canHaveThumbnailPreview,
 } from '@/config/file-extensions';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface FileThumbnailWithImageProps {
   extension: FileExtension;
@@ -24,6 +25,7 @@ export function FileThumbnailWithImage({
 }: FileThumbnailWithImageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [showImage, setShowImage] = useState(false);
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     async function loadImagePreview() {
@@ -51,6 +53,7 @@ export function FileThumbnailWithImage({
           lastModified: file.lastModified || new Date(),
         };
 
+        const s3PreviewService = createS3PreviewService(apiS3);
         const url = await s3PreviewService.getSignedUrl(previewFile);
         setImageUrl(url);
         setShowImage(true);

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { apiS3 } from '@/services/byo-s3-api';
 import { generateUniqueFolderName } from '@/features/upload/utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
@@ -9,6 +8,7 @@ import {
   sanitizeFolderName,
   isValidFolderName,
 } from '@/features/upload/utils/sanitize-folder-name';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface UseFolderCreationOptions {
   currentPath: string;
@@ -31,6 +31,7 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
   });
 
   const { fetchData, refreshCurrentData } = useDriveStore();
+  const apiS3 = useApiS3();
 
   // Check if folder already exists
   const checkFolderExists = useCallback(
@@ -109,7 +110,7 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
             },
             onKeepBoth: async () => {
               try {
-                const uniqueName = await generateUniqueFolderName(folderName, currentPath);
+                const uniqueName = await generateUniqueFolderName(apiS3, folderName, currentPath);
                 await createFolder(uniqueName);
                 setDuplicateDialog({
                   isOpen: false,

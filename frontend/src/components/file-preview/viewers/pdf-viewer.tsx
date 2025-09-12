@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { s3PreviewService } from '@/services/s3-preview-service';
+import { createS3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface PDFViewerProps {
   file: PreviewableFile;
@@ -14,6 +15,7 @@ export function PDFViewer({ file }: PDFViewerProps) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     async function loadPDF() {
@@ -21,6 +23,7 @@ export function PDFViewer({ file }: PDFViewerProps) {
         setLoading(true);
         setError(null);
 
+        const s3PreviewService = createS3PreviewService(apiS3);
         const url = await s3PreviewService.getSignedUrl(file);
         setSignedUrl(url);
         setLoading(false);

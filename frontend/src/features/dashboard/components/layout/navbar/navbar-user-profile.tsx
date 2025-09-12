@@ -11,8 +11,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/avatar';
 import { ThemeToggle } from '@/shared/components/layout/ThemeToggle';
 import Link from 'next/link';
-import { Settings } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
 import { assets } from '@/assets';
+import { useAuth } from '@/hooks/use-auth';
 
 const user = {
   firstName: 'John Doe',
@@ -21,6 +22,8 @@ const user = {
 };
 
 const NavbarUserProfile = () => {
+  const { clearSession } = useAuth();
+
   return (
     <div className="hover:cursor-pointer flex items-center space-x-4">
       <DropdownMenu>
@@ -53,6 +56,13 @@ const NavbarUserProfile = () => {
             <DropdownMenuItem className="cursor-pointer ">
               <Settings className="w-4 h-4 mr-2" />
               Settings
+            </DropdownMenuItem>
+          </Link>
+
+          <Link href={`/`} onClick={() => clearSession()} passHref>
+            <DropdownMenuItem className="cursor-pointer ">
+              <LogOut className="w-4 h-4 mr-2" />
+              Clear Session
             </DropdownMenuItem>
           </Link>
         </DropdownMenuContent>

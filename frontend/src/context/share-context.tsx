@@ -2,8 +2,8 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { FileItem } from '@/features/dashboard/types/file';
-import { apiS3 } from '@/services/byo-s3-api';
 import { useNotification } from '@/context/notification-context';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface ShareDialogState {
   isOpen: boolean;
@@ -32,6 +32,8 @@ interface ShareProviderProps {
 }
 
 export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
+  const apiS3 = useApiS3();
+
   const [shareDialog, setShareDialog] = useState<ShareDialogState>({
     isOpen: false,
     file: null,

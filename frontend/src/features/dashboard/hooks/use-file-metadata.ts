@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { apiS3 } from '@/services/byo-s3-api';
 import { FileItem } from '@/features/dashboard/types/file';
 import { HeadObjectCommandOutput } from '@aws-sdk/client-s3';
+import { useApiS3 } from '@/hooks/use-auth';
 
 export interface FileMetadata {
   size: string;
@@ -19,6 +19,7 @@ export const useFileMetadata = (file: FileItem | null) => {
   const [metadata, setMetadata] = useState<FileMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     if (!file) {

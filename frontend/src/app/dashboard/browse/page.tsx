@@ -7,7 +7,7 @@ import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/d
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { apiS3 } from '@/services/byo-s3-api';
+import { useApiS3 } from '@/hooks/use-auth';
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { EnhancedFolderBreadcrumb } from '@/features/dashboard/components/layout/breadcrumb/enhanced-folder-breadcrumb';
@@ -24,6 +24,8 @@ function BrowsePageContent() {
   const searchParams = useSearchParams();
   const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
     useDriveStore();
+
+  const apiS3 = useApiS3();
 
   // Parse URL parameters using utility function
   const params = parseFolderParams(searchParams);

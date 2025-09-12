@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { apiS3 } from '@/services/byo-s3-api';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2 } from 'lucide-react';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface ImageViewerProps {
   file: PreviewableFile;
@@ -17,6 +17,7 @@ export function ImageViewer({ file }: ImageViewerProps) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     async function loadImage() {
