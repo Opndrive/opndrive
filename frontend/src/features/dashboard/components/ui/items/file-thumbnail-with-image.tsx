@@ -29,6 +29,7 @@ export function FileThumbnailWithImage({
 
   useEffect(() => {
     async function loadImagePreview() {
+      if (!apiS3) return;
       // Only try to load preview for files that can have thumbnail previews
       if (!canHaveThumbnailPreview(name) || !file) {
         return;

@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
-import { searchService, SearchResult } from '@/features/dashboard/services/search-service';
+import { createSearchService, SearchResult } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
+import { useApiS3 } from '@/hooks/use-auth';
 
 export const useSearch = () => {
   const [activeSearches, setActiveSearches] = useState<Set<string>>(new Set());
@@ -10,6 +11,22 @@ export const useSearch = () => {
 
   const { success, error } = useNotification();
   const { currentPrefix } = useDriveStore();
+  const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return {
+      searchFiles: async () => {},
+      searchWithPagination: async () => {},
+      clearResults: () => {},
+      isSearching: () => false,
+      isLoading: false,
+      searchResults: null,
+      hasResults: false,
+      canLoadMore: false,
+    };
+  }
+
+  const searchService = createSearchService(apiS3);
 
   const searchFiles = useCallback(
     async (query: string) => {

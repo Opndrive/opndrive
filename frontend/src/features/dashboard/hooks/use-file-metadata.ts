@@ -21,6 +21,10 @@ export const useFileMetadata = (file: FileItem | null) => {
   const [error, setError] = useState<string | null>(null);
   const apiS3 = useApiS3();
 
+  if (!apiS3) {
+    return { metadata: null, isLoading: true, error: null };
+  }
+
   useEffect(() => {
     if (!file) {
       setMetadata(null);

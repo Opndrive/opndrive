@@ -1,7 +1,6 @@
-import { apiS3 } from '@/services/byo-s3-api';
-import type { DirectoryStructure } from '@opndrive/s3-api';
+import type { BYOS3ApiProvider, DirectoryStructure } from '@opndrive/s3-api';
 
-// Define extended interface for apiS3 with search method
+// Define extended interface for this.api with search method
 interface S3ApiWithSearch {
   search(params: SearchParams): Promise<SearchResult>;
   fetchDirectoryStructure(
@@ -29,6 +28,12 @@ export interface SearchOptions {
 }
 
 class SearchService {
+  private api: BYOS3ApiProvider;
+
+  constructor(api: BYOS3ApiProvider) {
+    this.api = api;
+  }
+
   async searchFiles(
     query: string,
     prefix: string = '',
@@ -39,15 +44,15 @@ class SearchService {
     try {
       onProgress?.({ status: 'searching' });
 
-      // Check if apiS3 has search method
+      // Check if this.api has search method
 
-      if (typeof (apiS3 as unknown as S3ApiWithSearch).search === 'function') {
+      if (typeof (this.api as unknown as S3ApiWithSearch).search === 'function') {
         const searchParams: SearchParams = {
           prefix,
           searchTerm: query,
           nextToken: '',
         };
-        const result = await (apiS3 as unknown as S3ApiWithSearch).search(searchParams);
+        const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
 
         onProgress?.({ status: 'success' });
         onComplete?.();
@@ -110,7 +115,7 @@ class SearchService {
       const adjustedPrefix = currentPrefix === '/' ? '' : currentPrefix;
 
       try {
-        const structure = await apiS3.fetchDirectoryStructure(adjustedPrefix, 1000);
+        const structure = await this.api.fetchDirectoryStructure(adjustedPrefix, 1000);
 
         // Search in files
         if (structure.files && structure.files.length > 0) {
@@ -141,7 +146,7 @@ class SearchService {
           let nextToken: string | undefined = structure.nextToken;
 
           while (nextToken) {
-            const paginatedStructure = await apiS3.fetchDirectoryStructure(
+            const paginatedStructure = await this.api.fetchDirectoryStructure(
               currentPrefix,
               1000,
               nextToken
@@ -197,19 +202,19 @@ class SearchService {
     try {
       onProgress?.({ status: 'searching' });
 
-      if (typeof (apiS3 as unknown as S3ApiWithSearch).search === 'function') {
+      if (typeof (this.api as unknown as S3ApiWithSearch).search === 'function') {
         const searchParams: SearchParams = {
           prefix,
           searchTerm: query,
           nextToken: nextToken || '',
         };
-        const result = await (apiS3 as unknown as S3ApiWithSearch).search(searchParams);
+        const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
 
         onProgress?.({ status: 'success' });
         onComplete?.();
         return result;
       } else {
-        const structure = await apiS3.fetchDirectoryStructure(prefix, 1000, nextToken);
+        const structure = await this.api.fetchDirectoryStructure(prefix, 1000, nextToken);
 
         const allItems: string[] = [];
 
@@ -251,4 +256,6 @@ class SearchService {
   }
 }
 
-export const searchService = new SearchService();
+export const createSearchService = (api: BYOS3ApiProvider) => {
+  return new SearchService(api);
+};

@@ -5,7 +5,6 @@ import { useUploadStore } from './use-upload-store';
 import { UploadMethod } from '../types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3 } from '@/hooks/use-auth';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 // Helper function to get file extension
@@ -116,12 +115,21 @@ interface UseUploadHandlerOptions {
   onUploadComplete?: (success: boolean) => void;
 }
 
-export function useUploadHandler({
-  currentPath = '',
-  uploadMethod = 'auto',
-  onUploadStart,
-  onUploadComplete,
-}: UseUploadHandlerOptions) {
+export function useUploadHandler(
+  {
+    currentPath = '',
+    uploadMethod = 'auto',
+    onUploadStart,
+    onUploadComplete,
+  }: UseUploadHandlerOptions,
+  apiS3: BYOS3ApiProvider
+) {
+  if (!apiS3) {
+    throw new Error(
+      'useUploadHandler requires a valid apiS3 instance. Pass apiS3 from useAuth when ready.'
+    );
+  }
+
   const {
     addUploadItem,
     updateProgress,
@@ -132,7 +140,6 @@ export function useUploadHandler({
   } = useUploadStore();
 
   const { refreshCurrentData } = useDriveStore();
-  const apiS3 = useApiS3();
 
   // Helper function to process individual file upload
   const processFileUpload = useCallback(

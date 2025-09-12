@@ -18,6 +18,7 @@ export function VideoViewer({ file }: VideoViewerProps) {
   useEffect(() => {
     async function loadVideo() {
       try {
+        if (!apiS3) return;
         setLoading(true);
         setError(null);
 

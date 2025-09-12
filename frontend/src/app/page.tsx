@@ -43,7 +43,7 @@ export default function LandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
-      <Navbar showAuthButtons={true} />
+      <Navbar />
 
       <main className="flex-1">
         <section className="w-full py-24 md:py-32 lg:py-40">

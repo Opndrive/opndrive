@@ -60,6 +60,8 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
 
   const generateShareLink = useCallback(
     async (durationInSeconds: number): Promise<ShareResult | null> => {
+      if (!apiS3) return null;
+
       if (!shareDialog.file || !shareDialog.file.Key) {
         return null;
       }

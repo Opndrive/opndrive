@@ -27,6 +27,10 @@ function BrowsePageContent() {
 
   const apiS3 = useApiS3();
 
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
   // Parse URL parameters using utility function
   const params = parseFolderParams(searchParams);
   const {

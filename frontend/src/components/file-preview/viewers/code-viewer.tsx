@@ -18,13 +18,18 @@ export function CodeViewer({ file }: CodeViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const apiS3 = useApiS3();
 
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
+  const s3PreviewService = createS3PreviewService(apiS3);
+
   useEffect(() => {
     async function loadCode() {
       try {
         setLoading(true);
         setError(null);
 
-        const s3PreviewService = createS3PreviewService(apiS3);
         const signedUrl = await s3PreviewService.getSignedUrl(file);
 
         const response = await fetch(signedUrl);

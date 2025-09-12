@@ -33,6 +33,23 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
   const { fetchData, refreshCurrentData } = useDriveStore();
   const apiS3 = useApiS3();
 
+  if (!apiS3) {
+    return {
+      handleFolderCreation: async () => {
+        throw new Error('S3 API is not available yet.');
+      },
+      duplicateDialog,
+      hideDuplicateDialog: () => {
+        setDuplicateDialog({
+          isOpen: false,
+          folderName: '',
+          onReplace: null,
+          onKeepBoth: null,
+        });
+      },
+    };
+  }
+
   // Check if folder already exists
   const checkFolderExists = useCallback(
     async (folderName: string): Promise<boolean> => {

@@ -18,8 +18,17 @@ export const useDelete = (): UseDeleteReturn => {
   const { success, error } = useNotification();
   const { refreshCurrentData } = useDriveStore();
   const apiS3 = useApiS3();
-  const deleteService = createDeleteService(apiS3);
 
+  if (!apiS3) {
+    return {
+      deleteFile: async () => {},
+      deleteFolder: async () => {},
+      isDeleting: () => false,
+      getActiveDeletes: () => [],
+    };
+  }
+
+  const deleteService = createDeleteService(apiS3);
   const deleteFile = useCallback(
     async (file: FileItem) => {
       const fileId = file.id || file.Key || file.name;

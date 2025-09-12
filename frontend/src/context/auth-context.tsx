@@ -99,7 +99,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.removeItem(STORAGE_KEY);
       setUserCreds(null);
-      setApiS3(null);
 
       router.push('/');
     } catch (error) {

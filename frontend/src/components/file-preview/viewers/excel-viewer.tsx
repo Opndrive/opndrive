@@ -62,6 +62,8 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
   useEffect(() => {
     async function loadSpreadsheet() {
       try {
+        if (!apiS3) return;
+
         setLoading(true);
         setError(null);
 

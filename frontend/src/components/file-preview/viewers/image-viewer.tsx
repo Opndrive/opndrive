@@ -22,6 +22,8 @@ export function ImageViewer({ file }: ImageViewerProps) {
   useEffect(() => {
     async function loadImage() {
       try {
+        if (!apiS3) return;
+
         setLoading(true);
         setError(null);
         setImageLoaded(false);

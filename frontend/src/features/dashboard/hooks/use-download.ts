@@ -11,6 +11,19 @@ export const useDownload = () => {
   );
   const { error: showError, info } = useNotification();
   const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return {
+      downloadFile: async () => {},
+      downloadFolder: async () => {},
+      cancelDownload: () => {},
+      getDownloadProgress: () => undefined,
+      isDownloading: () => false,
+      getAllDownloads: () => [],
+      downloadProgress: [],
+    };
+  }
+
   const downloadService = createDownloadService(apiS3);
 
   const updateProgress = useCallback((progress: DownloadProgress) => {

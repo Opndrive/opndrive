@@ -32,6 +32,10 @@ export default function HomePage() {
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const apiS3 = useApiS3();
 
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
   useEffect(() => {
     if (apiS3) {
       setApiS3(apiS3);

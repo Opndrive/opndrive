@@ -20,6 +20,8 @@ export function PDFViewer({ file }: PDFViewerProps) {
   useEffect(() => {
     async function loadPDF() {
       try {
+        if (!apiS3) return;
+
         setLoading(true);
         setError(null);
 
