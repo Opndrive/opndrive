@@ -3,9 +3,9 @@
 import { useCallback } from 'react';
 import { useUploadStore } from './use-upload-store';
 import { UploadMethod } from '../types';
-import { apiS3 } from '@/services/byo-s3-api';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 // Helper function to get file extension
 const getFileExtension = (fileName: string): string => {
@@ -37,7 +37,11 @@ const generateS3Key = (fileName: string, currentPath: string): string => {
 };
 
 // Helper function to check if file/folder already exists
-const checkForDuplicates = async (fileName: string, currentPath: string): Promise<boolean> => {
+const checkForDuplicates = async (
+  apiS3: BYOS3ApiProvider,
+  fileName: string,
+  currentPath: string
+): Promise<boolean> => {
   try {
     const s3Key = generateS3Key(fileName, currentPath);
     const metadata = await apiS3.fetchMetadata(s3Key);
@@ -50,6 +54,7 @@ const checkForDuplicates = async (fileName: string, currentPath: string): Promis
 
 // Helper function to check if folder already exists
 const checkForFolderDuplicates = async (
+  apiS3: BYOS3ApiProvider,
   folderName: string,
   currentPath: string
 ): Promise<boolean> => {
@@ -110,12 +115,21 @@ interface UseUploadHandlerOptions {
   onUploadComplete?: (success: boolean) => void;
 }
 
-export function useUploadHandler({
-  currentPath = '',
-  uploadMethod = 'auto',
-  onUploadStart,
-  onUploadComplete,
-}: UseUploadHandlerOptions) {
+export function useUploadHandler(
+  {
+    currentPath = '',
+    uploadMethod = 'auto',
+    onUploadStart,
+    onUploadComplete,
+  }: UseUploadHandlerOptions,
+  apiS3: BYOS3ApiProvider
+) {
+  if (!apiS3) {
+    throw new Error(
+      'useUploadHandler requires a valid apiS3 instance. Pass apiS3 from useAuth when ready.'
+    );
+  }
+
   const {
     addUploadItem,
     updateProgress,
@@ -178,7 +192,7 @@ export function useUploadHandler({
         const extension = getFileExtension(file.name);
 
         // Check if file already exists
-        const isDuplicate = await checkForDuplicates(file.name, currentPath);
+        const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPath);
 
         if (isDuplicate) {
           // Pause queue and show duplicate dialog
@@ -216,7 +230,7 @@ export function useUploadHandler({
               },
               // onKeepBoth
               async () => {
-                const uniqueName = await generateUniqueFileName(file.name, currentPath);
+                const uniqueName = await generateUniqueFileName(apiS3, file.name, currentPath);
                 // Create new file with unique name
                 const newFile = new File([file], uniqueName, { type: file.type });
                 // Update the item name
@@ -295,7 +309,7 @@ export function useUploadHandler({
 
       // Process each folder
       for (const [folderName, folderFiles] of folderMap) {
-        const isDuplicate = await checkForFolderDuplicates(folderName, currentPath);
+        const isDuplicate = await checkForFolderDuplicates(apiS3, folderName, currentPath);
         const folderSize = folderSizes.get(folderName) || 0;
 
         if (isDuplicate) {
@@ -345,7 +359,11 @@ export function useUploadHandler({
               // onKeepBoth
               async () => {
                 try {
-                  const uniqueFolderName = await generateUniqueFolderName(folderName, currentPath);
+                  const uniqueFolderName = await generateUniqueFolderName(
+                    apiS3,
+                    folderName,
+                    currentPath
+                  );
 
                   // Update the item name to show the new unique name
                   updateItemName(itemId, uniqueFolderName);

@@ -1,6 +1,6 @@
-import { apiS3 } from '@/services/byo-s3-api';
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 export interface DeleteOptions {
   onProgress?: (progress: { status: 'deleting' | 'success' | 'error'; error?: string }) => void;
@@ -9,6 +9,12 @@ export interface DeleteOptions {
 }
 
 class DeleteService {
+  private api: BYOS3ApiProvider;
+
+  constructor(api: BYOS3ApiProvider) {
+    this.api = api;
+  }
+
   async deleteFile(file: FileItem, options: DeleteOptions = {}): Promise<void> {
     const { onProgress, onComplete, onError } = options;
 
@@ -17,7 +23,7 @@ class DeleteService {
 
       const key = file.Key || file.name;
 
-      await apiS3.deleteFile(key);
+      await this.api.deleteFile(key);
 
       onProgress?.({ status: 'success' });
       onComplete?.();
@@ -39,14 +45,14 @@ class DeleteService {
       const folderKey = folder.Prefix || folder.name;
       const normalizedKey = folderKey.endsWith('/') ? folderKey : `${folderKey}/`;
 
-      const structure = await apiS3.fetchDirectoryStructure(normalizedKey);
+      const structure = await this.api.fetchDirectoryStructure(normalizedKey);
 
       const deletePromises: Promise<void>[] = [];
 
       if (structure.files) {
         for (const file of structure.files) {
           if (file.Key) {
-            deletePromises.push(apiS3.deleteFile(file.Key));
+            deletePromises.push(this.api.deleteFile(file.Key));
           }
         }
       }
@@ -61,7 +67,7 @@ class DeleteService {
 
       await Promise.all(deletePromises);
 
-      await apiS3.deleteFile(normalizedKey);
+      await this.api.deleteFile(normalizedKey);
 
       onProgress?.({ status: 'success' });
       onComplete?.();
@@ -75,14 +81,14 @@ class DeleteService {
   }
 
   private async deleteFolderRecursive(prefix: string): Promise<void> {
-    const structure = await apiS3.fetchDirectoryStructure(prefix);
+    const structure = await this.api.fetchDirectoryStructure(prefix);
 
     const deletePromises: Promise<void>[] = [];
 
     if (structure.files) {
       for (const file of structure.files) {
         if (file.Key) {
-          deletePromises.push(apiS3.deleteFile(file.Key));
+          deletePromises.push(this.api.deleteFile(file.Key));
         }
       }
     }
@@ -98,9 +104,11 @@ class DeleteService {
     await Promise.all(deletePromises);
 
     if (prefix.endsWith('/')) {
-      await apiS3.deleteFile(prefix);
+      await this.api.deleteFile(prefix);
     }
   }
 }
 
-export const deleteService = new DeleteService();
+export const createDeleteService = (api: BYOS3ApiProvider) => {
+  return new DeleteService(api);
+};

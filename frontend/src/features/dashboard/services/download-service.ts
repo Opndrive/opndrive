@@ -1,6 +1,6 @@
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
-import { apiS3 } from '@/services/byo-s3-api';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 export interface DownloadProgress {
   fileId: string;
@@ -17,6 +17,12 @@ export interface DownloadOptions {
 }
 
 class DownloadService {
+  private api: BYOS3ApiProvider;
+
+  constructor(api: BYOS3ApiProvider) {
+    this.api = api;
+  }
+
   private activeDownloads = new Map<string, AbortController>();
 
   async downloadFile(file: FileItem, options: DownloadOptions = {}): Promise<void> {
@@ -32,7 +38,7 @@ class DownloadService {
         status: 'pending',
       });
 
-      const downloadUrl = await apiS3.getSignedUrl({
+      const downloadUrl = await this.api.getSignedUrl({
         key: file.Key || file.name,
         expiryInSeconds: 900,
       });
@@ -148,4 +154,6 @@ class DownloadService {
   }
 }
 
-export const downloadService = new DownloadService();
+export const createDownloadService = (api: BYOS3ApiProvider) => {
+  return new DownloadService(api);
+};

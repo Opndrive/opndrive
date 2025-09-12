@@ -6,6 +6,7 @@ import { FolderPlus, Upload, FolderUp } from 'lucide-react';
 import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
 import { useSettings } from '@/features/settings/hooks/use-settings';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface CreateMenuAction {
   id: string;
@@ -37,11 +38,20 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
 
+  const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
   const { settings, isLoaded } = useSettings();
-  const { handleFileUpload, handleFolderUpload } = useUploadHandler({
-    currentPath,
-    uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
-  });
+  const { handleFileUpload, handleFolderUpload } = useUploadHandler(
+    {
+      currentPath,
+      uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
+    },
+    apiS3
+  );
 
   // Professional file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {

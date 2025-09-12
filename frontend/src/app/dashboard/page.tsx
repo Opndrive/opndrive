@@ -8,7 +8,7 @@ import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/d
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { apiS3 } from '@/services/byo-s3-api';
+import { useApiS3 } from '@/hooks/use-auth';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -25,10 +25,22 @@ export default function HomePage() {
     loadMoreRecentFolders,
     setCurrentPrefix,
     setRootPrefix,
+    setApiS3,
   } = useDriveStore();
 
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
+  const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
+  useEffect(() => {
+    if (apiS3) {
+      setApiS3(apiS3);
+    }
+  }, [apiS3, setApiS3]);
 
   useEffect(() => {
     const rootPrefix = apiS3.getPrefix();

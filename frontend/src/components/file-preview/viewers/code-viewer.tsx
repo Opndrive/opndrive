@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { s3PreviewService } from '@/services/s3-preview-service';
+import { createS3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
 import { getSyntaxLanguage } from '@/config/file-extensions';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface CodeViewerProps {
   file: PreviewableFile;
@@ -15,6 +16,13 @@ export function CodeViewer({ file }: CodeViewerProps) {
   const [codeContent, setCodeContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
+  const s3PreviewService = createS3PreviewService(apiS3);
 
   useEffect(() => {
     async function loadCode() {

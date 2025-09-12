@@ -17,12 +17,14 @@ import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/r
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
 import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
+import { useAuth } from '@/hooks/use-auth';
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [paramsLoaded, setParamsLoaded] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
   const pathname = usePathname();
+  const { userCreds, isLoading } = useAuth();
 
   // Check if we're on the settings page
   const isSettingsPage = pathname?.startsWith('/dashboard/settings');
@@ -59,7 +61,8 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const basePath = '/dashboard';
   const { isOpen: detailsOpen } = useDetails();
 
-  if (!paramsLoaded) {
+  // 🚨 Block dashboard rendering until auth is resolved
+  if (isLoading || !paramsLoaded || !userCreds) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-pulse text-lg">Loading...</div>

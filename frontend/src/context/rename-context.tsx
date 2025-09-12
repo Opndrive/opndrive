@@ -1,11 +1,19 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+  useEffect,
+} from 'react';
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
-import { renameService } from '@/features/dashboard/services/rename-service';
+import { createRenameService } from '@/features/dashboard/services/rename-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
+import { useApiS3, useAuth } from '@/hooks/use-auth';
 
 interface RenameDuplicateDialogState {
   isOpen: boolean;
@@ -45,6 +53,21 @@ interface RenameContextType {
 const RenameContext = createContext<RenameContextType | undefined>(undefined);
 
 export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const apiS3 = useApiS3();
+  const { clearSession } = useAuth();
+
+  useEffect(() => {
+    if (!apiS3) {
+      clearSession();
+    }
+  }, [apiS3, clearSession]);
+
+  if (!apiS3) {
+    return 'Loading...';
+  }
+
+  const renameService = createRenameService(apiS3);
+
   const [activeRenames, setActiveRenames] = useState<Set<string>>(new Set());
   const [duplicateDialog, setDuplicateDialog] = useState<RenameDuplicateDialogState>({
     isOpen: false,

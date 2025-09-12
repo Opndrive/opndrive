@@ -1,10 +1,11 @@
-import { apiS3 } from '@/services/byo-s3-api';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { generateS3Key } from './generate-s3-key';
 
 /**
  * Generates a unique filename by checking S3 and adding (1), (2), etc. if needed
  */
 export async function generateUniqueFileName(
+  apiS3: BYOS3ApiProvider,
   originalName: string,
   currentPath: string
 ): Promise<string> {
@@ -73,6 +74,7 @@ export async function generateUniqueFileName(
  * Generates a unique folder name by checking S3 and adding (1), (2), etc. if needed
  */
 export async function generateUniqueFolderName(
+  apiS3: BYOS3ApiProvider,
   originalName: string,
   currentPath: string
 ): Promise<string> {

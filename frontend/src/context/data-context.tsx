@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
-import { apiS3 } from '@/services/byo-s3-api';
 import { DataUnits, FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
+import { BYOS3ApiProvider } from '@opndrive/s3-api';
 
 type PrefixData = {
   files: FileItem[];
@@ -28,6 +28,8 @@ type RecentDataWithCache = RecentData & {
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
 type Store = {
+  apiS3: BYOS3ApiProvider | null;
+  setApiS3: (api: BYOS3ApiProvider) => void;
   cache: Record<string, PrefixData>;
   recentCache: Record<string, RecentDataWithCache>;
   status: Record<string, Status>;
@@ -112,12 +114,15 @@ function enrichFile(obj: _Object): FileItem {
 }
 
 export const useDriveStore = create<Store>((set, get) => ({
+  apiS3: null,
   cache: {},
   recentCache: {},
   status: {},
   recentStatus: {},
   rootPrefix: null,
   currentPrefix: null,
+
+  setApiS3: (api) => set({ apiS3: api }),
 
   setPrefixData: (prefix, data) =>
     set((state) => ({
@@ -139,7 +144,9 @@ export const useDriveStore = create<Store>((set, get) => ({
   setCurrentPrefix: (prefix) => set({ currentPrefix: prefix }),
 
   fetchData: async (opts = { sync: false }) => {
-    const { currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();
+    const { apiS3, currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();
+
+    if (!apiS3) return;
 
     // Ensure prefixes are available first
     if (currentPrefix === null || rootPrefix === null) return;
@@ -226,8 +233,17 @@ export const useDriveStore = create<Store>((set, get) => ({
   },
 
   fetchRecentItems: async (opts = { sync: false, itemsPerType: 10 }) => {
-    const { currentPrefix, rootPrefix, recentStatus, recentCache, setRecentData, setRecentStatus } =
-      get();
+    const {
+      apiS3,
+      currentPrefix,
+      rootPrefix,
+      recentStatus,
+      recentCache,
+      setRecentData,
+      setRecentStatus,
+    } = get();
+
+    if (!apiS3) return;
 
     if (currentPrefix === null || rootPrefix === null) return;
 

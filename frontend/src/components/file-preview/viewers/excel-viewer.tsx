@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { s3PreviewService } from '@/services/s3-preview-service';
+import { createS3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
 import { getFileExtension, isFileInCategory } from '@/config/file-extensions';
 import * as XLSX from 'xlsx';
+import { useApiS3 } from '@/hooks/use-auth';
 
 interface ExcelViewerProps {
   file: PreviewableFile;
@@ -56,13 +57,17 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
   const [spreadsheetData, setSpreadsheetData] = useState<string[][] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const apiS3 = useApiS3();
 
   useEffect(() => {
     async function loadSpreadsheet() {
       try {
+        if (!apiS3) return;
+
         setLoading(true);
         setError(null);
 
+        const s3PreviewService = createS3PreviewService(apiS3);
         const signedUrl = await s3PreviewService.getSignedUrl(file);
 
         const extension = getFileExtension(file.name);

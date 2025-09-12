@@ -1,14 +1,30 @@
 import { useState, useCallback } from 'react';
-import { downloadService, type DownloadProgress } from '../services/download-service';
+import { createDownloadService, type DownloadProgress } from '../services/download-service';
 import { useNotification } from '@/context/notification-context';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
+import { useApiS3 } from '@/hooks/use-auth';
 
 export const useDownload = () => {
   const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(
     new Map()
   );
   const { error: showError, info } = useNotification();
+  const apiS3 = useApiS3();
+
+  if (!apiS3) {
+    return {
+      downloadFile: async () => {},
+      downloadFolder: async () => {},
+      cancelDownload: () => {},
+      getDownloadProgress: () => undefined,
+      isDownloading: () => false,
+      getAllDownloads: () => [],
+      downloadProgress: [],
+    };
+  }
+
+  const downloadService = createDownloadService(apiS3);
 
   const updateProgress = useCallback((progress: DownloadProgress) => {
     setDownloadProgress((prev) => new Map(prev.set(progress.fileId, progress)));

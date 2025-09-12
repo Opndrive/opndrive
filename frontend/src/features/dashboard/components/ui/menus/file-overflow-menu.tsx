@@ -32,12 +32,12 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState('top-left');
 
   const { downloadFile, isDownloading } = useDownload();
-  const { deleteFile, isDeleting } = useDelete();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { openPreview } = useFilePreview();
   const { currentPrefix } = useDriveStore();
   const { openShareDialog } = useShare();
+  const { deleteFile, isDeleting } = useDelete();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
