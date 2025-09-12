@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2025-09-13
+### Fixed
+- Fixed getSignedUrl function to allow browser preview
+
 ## [1.5.0] - 2025-09-11
 ### Added
 - Search files or folders
