@@ -63,12 +63,12 @@ export function DuplicateDialog({
               <div className="flex items-center gap-3 mb-3">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
                 <h2 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
-                  Folder already exists
+                  {duplicateItem.type === 'file' ? 'File already exists' : 'Folder already exists'}
                 </h2>
               </div>
               <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-                A folder named "{duplicateItem.name}" already exists in this location. What would
-                you like to do?
+                A {duplicateItem.type} named "{duplicateItem.name}" already exists in this location.
+                What would you like to do?
               </p>
             </div>
 
@@ -90,7 +90,7 @@ export function DuplicateDialog({
                     {duplicateItem.name}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                    Existing folder in this location
+                    Existing {duplicateItem.type} in this location
                   </p>
                 </div>
               </div>
@@ -125,10 +125,14 @@ export function DuplicateDialog({
                       className="text-sm font-medium block"
                       style={{ color: 'var(--foreground)' }}
                     >
-                      Merge with existing folder
+                      {duplicateItem.type === 'file'
+                        ? 'Replace existing file'
+                        : 'Merge with existing folder'}
                     </span>
                     <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      Contents will be merged with the existing folder
+                      {duplicateItem.type === 'file'
+                        ? 'The existing file will be replaced with the new one'
+                        : 'Contents will be merged with the existing folder'}
                     </span>
                   </div>
                 </label>
@@ -161,10 +165,12 @@ export function DuplicateDialog({
                       className="text-sm font-medium block"
                       style={{ color: 'var(--foreground)' }}
                     >
-                      Keep both folders
+                      {duplicateItem.type === 'file' ? 'Keep both files' : 'Keep both folders'}
                     </span>
                     <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      The renamed folder will be saved with a unique name
+                      {duplicateItem.type === 'file'
+                        ? 'The new file will be saved with a unique name'
+                        : 'The renamed folder will be saved with a unique name'}
                     </span>
                   </div>
                 </label>
