@@ -166,7 +166,7 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
         >
           <button
             onClick={handleCancel}
-            className="px-4 py-2 text-sm font-medium transition-colors rounded-md"
+            className="px-4 py-2 text-sm cursor-pointer font-medium transition-colors rounded-md"
             style={{
               color: 'var(--muted-foreground)',
               backgroundColor: 'transparent',
@@ -182,7 +182,7 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
           </button>
           <button
             onClick={handleContinue}
-            className="px-6 py-2 text-sm font-medium rounded-md transition-colors"
+            className="px-6 py-2 text-sm cursor-pointer font-medium rounded-md transition-colors"
             style={{
               backgroundColor: 'var(--primary)',
               color: 'var(--primary-foreground)',

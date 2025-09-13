@@ -131,7 +131,7 @@ export const MobileDetailsDialog = () => {
           </h2>
           <button
             onClick={close}
-            className="p-2 rounded-full hover:bg-muted transition-colors"
+            className="p-2 rounded-full cursor-pointer hover:bg-muted transition-colors"
             aria-label="Close details"
           >
             <X className="h-5 w-5 text-foreground" />

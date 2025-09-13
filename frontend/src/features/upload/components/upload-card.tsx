@@ -154,7 +154,7 @@ export function UploadCard() {
             <div className="flex items-center gap-1">
               <button
                 onClick={isMinimized ? maximizeCard : minimizeCard}
-                className="p-1 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                 aria-label={isMinimized ? 'Maximize' : 'Minimize'}
               >
                 {isMinimized ? (
@@ -166,7 +166,7 @@ export function UploadCard() {
 
               <button
                 onClick={handleCloseCard}
-                className="p-1 rounded transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
                 aria-label="Close"
               >
                 <X className="h-4 w-4 text-red-600" />

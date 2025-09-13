@@ -118,7 +118,7 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
           {(item.status === 'uploading' || item.status === 'pending') && (
             <button
               onClick={() => onCancel(item.id)}
-              className="p-1 rounded transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+              className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
               aria-label="Cancel upload"
             >
               <X className="h-3 w-3 text-red-600" />

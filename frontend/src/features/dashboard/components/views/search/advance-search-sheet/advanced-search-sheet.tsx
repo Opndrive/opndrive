@@ -128,7 +128,7 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full p-2 transition-colors hover:bg-border"
+              className="rounded-full p-2 cursor-pointer transition-colors hover:bg-border"
             >
               <X className="h-5 w-5" />
             </button>
@@ -265,21 +265,24 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
           </div>
 
           <div className="flex items-center justify-between border-t border-border px-8 py-6">
-            <button type="button" className="text-sm font-medium text-primary hover:underline">
+            <button
+              type="button"
+              className="text-sm cursor-pointer font-medium text-primary hover:underline"
+            >
               Learn more
             </button>
             <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={handleReset}
-                className="rounded-lg px-6 py-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted"
+                className="rounded-lg cursor-pointer px-6 py-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={handleSearch}
-                className="rounded-lg bg-primary px-8 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="rounded-lg cursor-pointer bg-primary px-8 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 Search
               </button>

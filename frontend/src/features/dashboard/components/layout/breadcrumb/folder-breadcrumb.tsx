@@ -36,7 +36,7 @@ export function FolderBreadcrumb({ pathSegments }: FolderBreadcrumbProps) {
               <Fragment key={index}>
                 <ChevronRight size={16} className="mx-1 text-muted-foreground flex-shrink-0" />
                 <button
-                  className={`px-2 py-1 rounded-md transition-colors truncate max-w-[200px] ${
+                  className={`px-2 py-1 rounded-md cursor-pointer transition-colors truncate max-w-[200px] ${
                     isLast
                       ? 'text-foreground font-medium bg-secondary/30'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'

@@ -10,6 +10,10 @@ import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
+import {
+  CreditWarningDialog,
+  shouldShowCreditWarning,
+} from '@/shared/components/ui/credit-warning-dialog';
 import type { FileExtension } from '@/features/dashboard/types/file';
 import type { _Object } from '@aws-sdk/client-s3';
 
@@ -47,6 +51,8 @@ export function SearchBar({
     top: number;
     width: number;
   } | null>(null);
+  const [showCreditWarning, setShowCreditWarning] = useState(false);
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
 
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -154,18 +160,46 @@ export function SearchBar({
     }
   }, [isDropdownOpen]);
 
-  // Handle input changes with debouncing
+  // Handle input changes with debouncing and credit warning
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
     setHighlightedIndex(-1);
 
     if (value.trim().length >= 2) {
-      searchFiles(value);
-      setIsDropdownOpen(true);
+      if (shouldShowCreditWarning('search-operation')) {
+        setPendingSearchQuery(value);
+        setShowCreditWarning(true);
+        setIsDropdownOpen(false);
+      } else {
+        executeSearch(value);
+      }
     } else {
       setIsDropdownOpen(false);
     }
+  };
+
+  const executeSearch = (searchQuery: string) => {
+    searchFiles(searchQuery);
+    setIsDropdownOpen(true);
+  };
+
+  const handleCreditWarningConfirm = () => {
+    if (pendingSearchQuery) {
+      // Check if this was triggered from "View All Results" by checking current context
+      if (isDropdownOpen || suggestions.length > 0) {
+        executeSearch(pendingSearchQuery);
+      } else {
+        navigateToSearchResults(pendingSearchQuery);
+      }
+      setPendingSearchQuery('');
+    }
+    setShowCreditWarning(false);
+  };
+
+  const handleCreditWarningClose = () => {
+    setShowCreditWarning(false);
+    setPendingSearchQuery('');
   };
 
   // Handle keyboard navigation
@@ -224,12 +258,22 @@ export function SearchBar({
   // Handle "View All Results" click
   const handleAllResultsClick = () => {
     if (query.trim()) {
-      const searchParams = new URLSearchParams({ q: query.trim() });
-      router.push(`/dashboard/search?${searchParams.toString()}`);
-      setIsDropdownOpen(false);
-      setQuery('');
-      inputRef.current?.blur();
+      if (shouldShowCreditWarning('search-operation')) {
+        setPendingSearchQuery(query.trim());
+        setShowCreditWarning(true);
+        setIsDropdownOpen(false);
+      } else {
+        navigateToSearchResults(query.trim());
+      }
     }
+  };
+
+  const navigateToSearchResults = (searchQuery: string) => {
+    const searchParams = new URLSearchParams({ q: searchQuery });
+    router.push(`/dashboard/search?${searchParams.toString()}`);
+    setIsDropdownOpen(false);
+    setQuery('');
+    inputRef.current?.blur();
   };
 
   // Clear search
@@ -315,7 +359,7 @@ export function SearchBar({
             <button
               key={suggestion.id}
               onClick={() => handleSuggestionClick(suggestion)}
-              className={`w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-accent/50 transition-colors border-b border-border/30 last:border-b-0 ${
+              className={`w-full flex cursor-pointer items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-accent/50 transition-colors border-b border-border/30 last:border-b-0 ${
                 index === highlightedIndex ? 'bg-accent/50' : ''
               }`}
             >
@@ -354,7 +398,7 @@ export function SearchBar({
           <div className="border-t border-border/30 bg-muted/10">
             <button
               onClick={handleAllResultsClick}
-              className="w-full flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 text-left hover:bg-accent/20 transition-all duration-150 text-primary font-medium group"
+              className="w-full flex cursor-pointer items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 text-left hover:bg-accent/20 transition-all duration-150 text-primary font-medium group"
             >
               <Search className="h-4 w-4 group-hover:scale-110 transition-transform flex-shrink-0" />
               <span className="text-sm flex-1 min-w-0">View all results for "{query}"</span>
@@ -417,7 +461,7 @@ export function SearchBar({
           {query && (
             <button
               onClick={clearSearch}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
@@ -447,6 +491,14 @@ export function SearchBar({
           </div>,
           document.body
         )}
+
+      {/* Credit Warning Dialog */}
+      <CreditWarningDialog
+        isOpen={showCreditWarning}
+        onClose={handleCreditWarningClose}
+        onConfirm={handleCreditWarningConfirm}
+        operationType="search-operation"
+      />
     </>
   );
 }

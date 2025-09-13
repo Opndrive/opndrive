@@ -17,7 +17,7 @@ export function SettingsSidebar({ activeTab, onTabChange }: SettingsSidebarProps
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
           className={cn(
-            'flex items-center w-full text-sm transition-all duration-200 ease-in-out group px-3 py-2 rounded-lg',
+            'flex items-center w-full text-sm cursor-pointer transition-all duration-200 ease-in-out group px-3 py-2 rounded-lg',
             activeTab === tab.id
               ? 'bg-primary text-primary-foreground font-medium shadow-sm'
               : 'text-secondary-foreground hover:text-foreground hover:bg-accent'

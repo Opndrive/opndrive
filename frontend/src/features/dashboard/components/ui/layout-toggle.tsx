@@ -35,7 +35,7 @@ export function LayoutToggle({ onLayoutChange, className = '' }: LayoutTogglePro
     <div className={`flex rounded-lg bg-secondary p-1 ${className}`}>
       <button
         onClick={() => handleLayoutChange('list')}
-        className={`flex items-center justify-center rounded-md px-2 py-1 text-sm transition-colors ${
+        className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
           layout === 'list'
             ? 'bg-primary text-primary-foreground'
             : 'text-muted-foreground hover:text-foreground'
@@ -46,7 +46,7 @@ export function LayoutToggle({ onLayoutChange, className = '' }: LayoutTogglePro
       </button>
       <button
         onClick={() => handleLayoutChange('grid')}
-        className={`flex items-center justify-center rounded-md px-2 py-1 text-sm transition-colors ${
+        className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
           layout === 'grid'
             ? 'bg-primary text-primary-foreground'
             : 'text-muted-foreground hover:text-foreground'

@@ -95,7 +95,7 @@ export const Notification: React.FC<NotificationProps> = ({
         <div className="flex-1 mr-2 font-medium">{message}</div>
         <button
           onClick={handleClose}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 hover:bg-black/5 dark:hover:bg-white/5"
+          className="flex-shrink-0 text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 hover:bg-black/5 dark:hover:bg-white/5"
         >
           <X className="w-4 h-4" />
         </button>

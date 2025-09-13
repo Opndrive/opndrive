@@ -61,7 +61,7 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
           </div>
 
           <button
-            className="p-1 rounded-full hover:bg-secondary/80 transition-colors"
+            className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
             onClick={handleMenuClick}
           >
             <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />

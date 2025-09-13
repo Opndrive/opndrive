@@ -20,7 +20,7 @@ export const SidebarDropdown: React.FC<SidebarDropdownProps> = ({
       <button
         onClick={onToggle}
         className={cn(
-          'flex items-center w-full px-3 py-2 text-sm rounded-lg transition-all duration-200 ease-in-out group',
+          'flex items-center w-full cursor-pointer px-3 py-2 text-sm rounded-lg transition-all duration-200 ease-in-out group',
           itemIsActive || hasActiveChild
             ? 'bg-primary text-primary-foreground font-medium shadow-sm'
             : 'text-secondary-foreground hover:text-foreground hover:bg-accent'

@@ -18,7 +18,7 @@ export function ThemeToggle() {
     <div className="flex items-center justify-center p-1 rounded-full bg-accent backdrop-blur-sm space-x-6">
       <button
         onClick={() => setTheme('light')}
-        className={`p-2 rounded-full transition-all ${
+        className={`p-2 rounded-full cursor-pointer transition-all ${
           theme === 'light'
             ? 'ring-1 ring-primary bg-secondary/90 text-primary'
             : 'text-muted-foreground hover:text-foreground'
@@ -30,7 +30,7 @@ export function ThemeToggle() {
 
       <button
         onClick={() => setTheme('system')}
-        className={`p-2 rounded-full transition-all ${
+        className={`p-2 rounded-full cursor-pointer transition-all ${
           theme === 'system'
             ? 'ring-1 ring-primary bg-secondary/90 text-primary'
             : 'text-muted-foreground hover:text-foreground'
@@ -42,9 +42,9 @@ export function ThemeToggle() {
 
       <button
         onClick={() => setTheme('dark')}
-        className={`p-2 rounded-full transition-all ${
+        className={`p-2 rounded-full cursor-pointer transition-all ${
           theme === 'dark'
-            ? 'ring-1 ring-primary bg-secondary/90 text-primary'
+            ? 'ring-1 ring-primary  bg-secondary/90 text-primary'
             : 'text-muted-foreground hover:text-foreground'
         }`}
         aria-label="Dark theme"

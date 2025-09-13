@@ -73,7 +73,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
 
         <button
           className="
-            flex-shrink-0 p-1 rounded-full
+            flex-shrink-0 p-1 rounded-full cursor-pointer
             hover:bg-secondary/60 transition-all duration-200
             text-muted-foreground hover:text-foreground
           "

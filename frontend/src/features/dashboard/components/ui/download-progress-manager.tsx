@@ -89,7 +89,7 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
         {download.status === 'downloading' && (
           <button
             onClick={onCancel}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
+            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
             title="Cancel download"
           >
             <X className="w-4 h-4" />

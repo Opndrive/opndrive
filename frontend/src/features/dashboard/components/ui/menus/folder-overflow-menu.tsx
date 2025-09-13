@@ -10,6 +10,10 @@ import { useDetails } from '@/context/details-context';
 import { useDriveStore } from '@/context/data-context';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
+import {
+  CreditWarningDialog,
+  shouldShowCreditWarning,
+} from '@/shared/components/ui/credit-warning-dialog';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -31,12 +35,99 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
+  const [showCreditWarning, setShowCreditWarning] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'rename' | 'delete' | null>(null);
 
   const { deleteFolder, isDeleting } = useDelete();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { currentPrefix } = useDriveStore();
   const router = useRouter();
+
+  // Reset credit warning state when menu closes or component unmounts
+  useEffect(() => {
+    if (!isOpen) {
+      setShowCreditWarning(false);
+      setPendingAction(null);
+    }
+  }, [isOpen]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setShowCreditWarning(false);
+      setPendingAction(null);
+    };
+  }, []);
+
+  // Handle rename with credit warning
+  const handleRename = () => {
+    if (shouldShowCreditWarning('folder-rename')) {
+      setPendingAction('rename');
+      setShowCreditWarning(true);
+      // Don't close menu yet - let credit warning show first
+    } else {
+      executeRename();
+      handleMenuClose();
+    }
+  };
+
+  const executeRename = () => {
+    openRenameDialog(folder, 'folder', currentPrefix || '');
+    handleMenuClose(); // Close menu only after opening rename dialog
+  };
+
+  // Handle delete with credit warning
+  const handleDelete = () => {
+    if (shouldShowCreditWarning('folder-delete')) {
+      setPendingAction('delete');
+      setShowCreditWarning(true);
+      // Don't close menu yet - let credit warning show first
+    } else {
+      executeDelete();
+      handleMenuClose();
+    }
+  };
+
+  const executeDelete = async () => {
+    handleMenuClose(); // Close menu before showing confirmation
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
+    );
+
+    if (confirmDelete) {
+      try {
+        await deleteFolder(folder);
+      } catch (error) {
+        console.error('Delete failed:', error);
+      }
+    }
+  };
+
+  // Handle credit warning confirmation
+  const handleCreditWarningConfirm = () => {
+    if (pendingAction === 'rename') {
+      executeRename();
+    } else if (pendingAction === 'delete') {
+      executeDelete();
+    }
+    setShowCreditWarning(false);
+    setPendingAction(null);
+  };
+
+  const handleCreditWarningClose = () => {
+    setShowCreditWarning(false);
+    setPendingAction(null);
+    onClose(); // Close menu when credit warning is cancelled
+  };
+
+  // Reset credit warning state and close menu
+  const handleMenuClose = () => {
+    // Reset credit warning state when menu closes
+    setShowCreditWarning(false);
+    setPendingAction(null);
+    onClose();
+  };
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
@@ -46,7 +137,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       onClick: (_folder) => {
         const folderUrl = generateFolderUrl({ prefix: folder.Prefix });
         router.push(folderUrl);
-        onClose();
+        handleMenuClose();
       },
     },
     {
@@ -54,10 +145,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       label: 'Rename',
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
       disabled: isRenaming(folder.id || folder.Prefix || folder.name),
-      onClick: () => {
-        openRenameDialog(folder, 'folder', currentPrefix || '');
-        onClose();
-      },
+      onClick: handleRename,
     },
     {
       id: 'info',
@@ -65,7 +153,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       icon: <Info className="flex-shrink-0 h-4 w-4" />,
       onClick: () => {
         openDetails(folder);
-        onClose();
+        handleMenuClose();
       },
     },
     {
@@ -76,20 +164,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
       variant: 'destructive' as const,
       disabled: isDeleting(folder.id || folder.Prefix || folder.name),
-      onClick: async () => {
-        const confirmDelete = window.confirm(
-          `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
-        );
-
-        if (confirmDelete) {
-          try {
-            await deleteFolder(folder);
-          } catch (error) {
-            console.error('Delete failed:', error);
-          }
-        }
-        onClose();
-      },
+      onClick: handleDelete,
     },
   ];
 
@@ -197,7 +272,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
           {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
           <button
             className={`
-              w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-md
+              w-full flex items-center gap-3 px-3 cursor-pointer py-2.5 text-sm rounded-md
               text-left transition-colors duration-150
               ${
                 action.variant === 'destructive'
@@ -222,5 +297,22 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     </div>
   );
 
-  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
+  return (
+    <>
+      {/* Only render menu if credit warning is not showing */}
+      {!showCreditWarning && typeof window !== 'undefined'
+        ? createPortal(menuContent, document.body)
+        : null}
+
+      {/* Credit Warning Dialog - rendered outside portal to avoid conflicts */}
+      {showCreditWarning && (
+        <CreditWarningDialog
+          isOpen={showCreditWarning}
+          onClose={handleCreditWarningClose}
+          onConfirm={handleCreditWarningConfirm}
+          operationType={pendingAction === 'rename' ? 'folder-rename' : 'folder-delete'}
+        />
+      )}
+    </>
+  );
 };
