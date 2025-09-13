@@ -69,17 +69,23 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
         </div>
 
         <div className="space-y-1">
+          {/* Top row: Owner and time */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-card-foreground/70 flex items-center justify-center">
-                  <FaUserAlt size={12} className="text-background" />
-                </div>
-                <span className="text-sm text-muted-foreground truncate">{'me'}</span>
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-4 rounded-full bg-card-foreground/70 flex items-center justify-center">
+                <FaUserAlt size={8} className="text-background" />
               </div>
+              <span className="text-xs text-muted-foreground truncate">me</span>
             </div>
             <span className="text-xs text-muted-foreground truncate" title={timeInfo.tooltip}>
               {timeInfo.display}
+            </span>
+          </div>
+
+          {/* Bottom row: File size - subtle and minimal */}
+          <div className="flex justify-center">
+            <span className="text-xs text-muted-foreground/70">
+              {file.size.value} {file.size.unit}
             </span>
           </div>
         </div>
