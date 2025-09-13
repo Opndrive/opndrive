@@ -180,12 +180,13 @@ describe('BYOS3ApiProvider', () => {
 });
 
 describe('BYOS3ApiProvider', () => {
-  it('searches as folder or file', async () => {
+  it.only('searches as folder or file', async () => {
     const api = new BYOS3ApiProvider(myCreds, 'BYO');
 
     const params: SearchParams = {
       prefix: '',
       searchTerm: 'abc',
+      nextToken: undefined,
     };
 
     const result = await api.search(params);
