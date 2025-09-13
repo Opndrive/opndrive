@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.5.4] - 2025-09-13
+### Fixed
+- Fixed search results type to _Object instead of just string[] of keys
+
 ## [1.5.3] - 2025-09-13
 ### Fixed
 - Fixed search param types
