@@ -79,6 +79,6 @@ export interface SearchParams {
 }
 
 export interface SearchResult {
-  matches: string[];
+  matches: _Object[];
   nextToken?: string;
 }

@@ -420,9 +420,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
     const contents = response.Contents ?? [];
 
-    const matches = contents
-      .map((obj) => obj.Key ?? '')
-      .filter((key) => key.includes(params.searchTerm));
+    const matches = contents.filter((obj) => obj.Key?.includes(params.searchTerm));
 
     return {
       matches,
