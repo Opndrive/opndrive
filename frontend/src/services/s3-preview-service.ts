@@ -32,6 +32,7 @@ class S3PreviewServiceImpl implements S3PreviewService {
       const signedUrl = await this.api.getSignedUrl({
         key: fileKey,
         expiryInSeconds: 3600, // 1 hour expiry for preview
+        isPreview: false,
       });
 
       if (!signedUrl) {

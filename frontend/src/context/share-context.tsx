@@ -72,6 +72,7 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
         const signedUrl = await apiS3.getSignedUrl({
           key: shareDialog.file.Key,
           expiryInSeconds: durationInSeconds,
+          isPreview: false,
         });
 
         const expiresAt = new Date(Date.now() + durationInSeconds * 1000);

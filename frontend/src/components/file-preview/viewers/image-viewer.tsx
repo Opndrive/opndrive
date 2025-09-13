@@ -38,6 +38,7 @@ export function ImageViewer({ file }: ImageViewerProps) {
         const url = await apiS3.getSignedUrl({
           key: fileKey,
           expiryInSeconds: 3600,
+          isPreview: false,
         });
 
         // Test if the URL is accessible
