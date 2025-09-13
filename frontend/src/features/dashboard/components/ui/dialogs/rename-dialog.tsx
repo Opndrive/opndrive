@@ -130,7 +130,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
           </div>
           <button
             onClick={handleCancel}
-            className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="rounded-md p-1 text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -159,7 +159,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
                 type="button"
                 onClick={handleCancel}
                 disabled={isRenaming}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-transparent rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm  cursor-pointer font-medium text-foreground bg-transparent rounded-md hover:bg-muted transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -168,7 +168,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
                 disabled={
                   isRenaming || !newName.trim() || !!validationError || newName === currentName
                 }
-                className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isRenaming ? 'Renaming...' : 'Rename'}
               </button>

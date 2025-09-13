@@ -1,15 +1,16 @@
 import { useCallback, useState } from 'react';
-import { createSearchService, SearchResult } from '@/features/dashboard/services/search-service';
+import { createSearchService } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
 import { useApiS3 } from '@/hooks/use-auth';
+import { SearchResult } from '@opndrive/s3-api';
 
 export const useSearch = () => {
   const [activeSearches, setActiveSearches] = useState<Set<string>>(new Set());
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const { success, error } = useNotification();
+  const { error } = useNotification();
   const { currentPrefix } = useDriveStore();
   const apiS3 = useApiS3();
 
@@ -56,11 +57,7 @@ export const useSearch = () => {
 
         setSearchResults(results);
 
-        if (results.matches.length === 0) {
-          success(`No results found for "${query}"`);
-        } else {
-          success(`Found ${results.matches.length} results for "${query}"`);
-        }
+        // Results are set without showing success notifications
       } catch (err) {
         error(`Failed to search for "${query}","${err}"`);
         setSearchResults(null);
@@ -73,7 +70,7 @@ export const useSearch = () => {
         });
       }
     },
-    [currentPrefix, success, error]
+    [currentPrefix, error]
   );
 
   const searchWithPagination = useCallback(
@@ -125,7 +122,7 @@ export const useSearch = () => {
         });
       }
     },
-    [currentPrefix, searchResults, success, error]
+    [currentPrefix, searchResults, error]
   );
 
   const clearResults = useCallback(() => {

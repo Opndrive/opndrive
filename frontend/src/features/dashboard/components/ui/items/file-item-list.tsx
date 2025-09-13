@@ -81,7 +81,7 @@ export function FileItemList({ file, allFiles = [], _onAction }: FileItemListPro
         {/* Menu button - always visible */}
         <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1 flex justify-end">
           <button
-            className="p-1.5 sm:p-2 rounded-full hover:bg-secondary/80 transition-colors"
+            className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
             onClick={handleMenuClick}
           >
             <HiOutlineDotsVertical

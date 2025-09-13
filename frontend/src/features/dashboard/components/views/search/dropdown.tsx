@@ -176,7 +176,7 @@ export const Dropdown = ({
         ref={btnRef}
         type="button"
         onClick={handleToggleOpen}
-        className="flex w-full items-center justify-between gap-2 rounded border border-border bg-input px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-1 focus:ring-primary"
+        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded border border-border bg-input px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-1 focus:ring-primary"
       >
         <span className="truncate text-foreground">{selectedOption?.label || placeholder}</span>
         <ChevronDown

@@ -47,7 +47,7 @@ export function PreviewError({
         {onRetry && (
           <button
             onClick={onRetry}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-90"
+            className="inline-flex items-center cursor-pointer gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-90"
             style={{
               backgroundColor: 'hsl(var(--primary))',
               color: 'hsl(var(--primary-foreground))',

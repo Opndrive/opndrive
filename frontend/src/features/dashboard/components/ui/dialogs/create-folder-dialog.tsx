@@ -134,14 +134,14 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
                 type="button"
                 onClick={handleCancel}
                 disabled={isCreating}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-transparent rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+                className="px-4 py-2  text-sm cursor-pointer font-medium text-foreground bg-transparent rounded-md hover:bg-muted transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isCreating || !folderName.trim() || !!validationError}
-                className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 cursor-pointer text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCreating ? 'Creating...' : 'Create'}
               </button>

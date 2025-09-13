@@ -223,7 +223,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
           {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
           <button
             className={`
-              w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-md
+              w-full flex items-center gap-3 px-3 cursor-pointer py-2.5 text-sm rounded-md
               text-left transition-colors duration-150
               ${
                 action.variant === 'destructive'

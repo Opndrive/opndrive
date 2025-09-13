@@ -194,7 +194,7 @@ export function CustomDropdown({
                   onMouseEnter={() => setFocusedIndex(index)}
                   disabled={option.disabled}
                   className={`
-                w-full px-3 py-2.5 text-left text-sm transition-colors flex items-center justify-between
+                w-full px-3 py-2.5 text-left text-sm cursor-pointer transition-colors flex items-center justify-between
                 ${
                   option.disabled
                     ? 'text-muted-foreground cursor-not-allowed opacity-50'
@@ -224,7 +224,7 @@ export function CustomDropdown({
         onClick={handleToggle}
         disabled={disabled}
         className={`
-          relative w-full px-3 py-2 text-left bg-background border border-input rounded-md
+          relative w-full px-3 py-2 text-left cursor-pointer bg-background border border-input rounded-md
           transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
           ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-accent'}
           ${className}

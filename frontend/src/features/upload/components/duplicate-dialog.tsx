@@ -180,7 +180,7 @@ export function DuplicateDialog({
             >
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-sm font-medium transition-colors rounded-md"
+                className="px-4 py-2 cursor-pointer text-sm font-medium transition-colors rounded-md"
                 style={{
                   color: 'var(--muted-foreground)',
                   backgroundColor: 'transparent',
@@ -196,7 +196,7 @@ export function DuplicateDialog({
               </button>
               <button
                 onClick={handleUpload}
-                className="px-6 py-2 text-sm font-medium rounded-md transition-colors"
+                className="px-6 py-2 text-sm cursor-pointer font-medium rounded-md transition-colors"
                 style={{
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',

@@ -2,7 +2,8 @@
 
 import { useState, Fragment } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import type { FileItem, ViewLayout } from '@/features/dashboard/types/file';
+import { useCurrentLayout } from '@/hooks/use-current-layout';
+import type { FileItem } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 
 interface SuggestedFilesProps {
@@ -26,7 +27,7 @@ export function SuggestedFiles({
   className = '',
   hideTitle = false,
 }: SuggestedFilesProps) {
-  const [layout, setLayout] = useState<ViewLayout>('list');
+  const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
 
   const toggleExpanded = () => {
@@ -55,7 +56,7 @@ export function SuggestedFiles({
         <div className="flex items-center justify-between mb-3">
           <button
             className="
-              flex items-center gap-2 p-2
+              flex items-center cursor-pointer gap-2 p-2
               text-sm font-medium text-foreground
               hover:bg-secondary/80 rounded-lg
               transition-colors duration-200
@@ -75,11 +76,11 @@ export function SuggestedFiles({
             Suggested files
           </button>
 
-          {isExpanded && <LayoutToggle layout={layout} onLayoutChange={setLayout} />}
+          {isExpanded && <LayoutToggle />}
         </div>
       ) : (
         <div className="flex items-center justify-end mb-3">
-          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+          <LayoutToggle />
         </div>
       )}
 
@@ -165,7 +166,7 @@ export function SuggestedFiles({
           <button
             onClick={onViewMore}
             disabled={isLoadingMore}
-            className="px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20  hover:rounded-2xl  duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm cursor-pointer font-medium text-primary hover:bg-primary/20  hover:rounded-2xl  duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoadingMore ? 'Loading...' : 'View More Files'}
           </button>

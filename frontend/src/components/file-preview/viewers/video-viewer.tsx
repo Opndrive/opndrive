@@ -95,7 +95,7 @@ export function VideoViewer({ file }: VideoViewerProps) {
           <p style={{ color: 'var(--destructive)' }}>{error}</p>
           <button
             onClick={handleRetry}
-            className="px-4 py-2 rounded transition-colors hover:opacity-80"
+            className="px-4 py-2 rounded cursor-pointer transition-colors hover:opacity-80"
             style={{
               backgroundColor: 'var(--primary)',
               color: 'var(--primary-foreground)',
@@ -161,7 +161,7 @@ export function VideoViewer({ file }: VideoViewerProps) {
                 </p>
                 <button
                   onClick={handleRetry}
-                  className="mt-4 px-4 py-2 rounded transition-colors hover:opacity-80"
+                  className="mt-4 px-4 py-2 cursor-pointer rounded transition-colors hover:opacity-80"
                   style={{
                     backgroundColor: 'var(--primary)',
                     color: 'var(--primary-foreground)',

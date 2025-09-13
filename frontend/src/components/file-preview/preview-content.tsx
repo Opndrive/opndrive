@@ -98,7 +98,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
             Please download the file to view its contents.
           </p>
           <button
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors hover:opacity-80"
+            className="inline-flex items-center cursor-pointer gap-2 px-6 py-3 rounded-lg font-medium transition-colors hover:opacity-80"
             style={{
               backgroundColor: 'var(--primary)',
               color: 'var(--primary-foreground)',

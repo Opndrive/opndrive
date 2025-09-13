@@ -80,7 +80,7 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
         ref={buttonRef}
         onClick={handleClick}
         className={cn(
-          'flex items-center w-full px-4 py-3 mb-4 text-sm font-medium',
+          'flex items-center w-full cursor-pointer px-4 py-3 mb-4 text-sm font-medium',
           'bg-card text-card-foreground border border-border',
           'rounded-2xl shadow-sm hover:shadow-md transition-all duration-200',
           'hover:bg-accent hover:text-foreground',

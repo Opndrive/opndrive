@@ -272,7 +272,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
           </div>
           <button
             onClick={handleClose}
-            className="p-1 rounded-full hover:bg-accent transition-colors"
+            className="p-1 rounded-full cursor-pointer hover:bg-accent transition-colors"
             style={{ color: 'var(--muted-foreground)' }}
           >
             <X className="h-5 w-5" />
@@ -319,7 +319,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                     type="button"
                     onClick={() => setDropdownOpen(!dropdownOpen)}
                     disabled={useCustomDuration}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg border transition-colors"
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg border transition-colors cursor-pointer"
                     style={{
                       backgroundColor: useCustomDuration ? 'var(--muted)' : 'var(--background)',
                       borderColor: useCustomDuration ? 'var(--border)' : 'var(--primary)',
@@ -406,7 +406,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                             ref={unitTriggerRef}
                             type="button"
                             onClick={() => setUnitDropdownOpen(!unitDropdownOpen)}
-                            className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-md border transition-colors"
+                            className="w-full flex cursor-pointer items-center justify-between px-3 py-2 text-sm rounded-md border transition-colors"
                             style={{
                               backgroundColor: 'var(--background)',
                               borderColor: 'var(--border)',
@@ -448,7 +448,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
             >
               <button
                 onClick={handleClose}
-                className="px-4 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent"
+                className="px-4 py-2 text-sm cursor-pointer font-medium rounded-md transition-colors hover:bg-accent"
                 style={{ color: 'var(--muted-foreground)' }}
               >
                 Cancel
@@ -459,7 +459,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                   isGenerating ||
                   (useCustomDuration && (!customDuration || !isValidCustomDuration()))
                 }
-                className="px-6 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2 cursor-pointer text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',
@@ -510,7 +510,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                   />
                   <button
                     onClick={handleCopy}
-                    className="px-3 py-2 rounded border transition-colors"
+                    className="px-3 py-2 cursor-pointer rounded border transition-colors"
                     style={{
                       backgroundColor: copied ? 'var(--primary)' : 'var(--secondary)',
                       borderColor: 'var(--border)',
@@ -540,7 +540,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
             >
               <button
                 onClick={handleClose}
-                className="px-6 py-2 text-sm font-medium rounded-md transition-colors"
+                className="px-6 py-2 cursor-pointer text-sm font-medium rounded-md transition-colors"
                 style={{
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',
@@ -578,7 +578,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                   setSelectedDuration(option);
                   setDropdownOpen(false);
                 }}
-                className="w-full px-3 py-2.5 text-left hover:bg-accent transition-colors"
+                className="w-full px-3 py-2.5 cursor-pointer text-left hover:bg-accent transition-colors"
               >
                 <div className="flex flex-col">
                   <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
@@ -619,7 +619,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, onClose }) => 
                   setCustomUnit(option.value as 'minutes' | 'hours' | 'days');
                   setUnitDropdownOpen(false);
                 }}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                className="w-full px-3 py-2 cursor-pointer text-left text-sm hover:bg-accent transition-colors"
                 style={{ color: 'var(--foreground)' }}
               >
                 {option.label}
