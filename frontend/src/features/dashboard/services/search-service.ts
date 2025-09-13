@@ -1,4 +1,10 @@
-import type { BYOS3ApiProvider, DirectoryStructure, SearchParams } from '@opndrive/s3-api';
+import type {
+  SearchResult,
+  BYOS3ApiProvider,
+  DirectoryStructure,
+  SearchParams,
+} from '@opndrive/s3-api';
+import type { _Object } from '@aws-sdk/client-s3';
 
 // Define extended interface for this.api with search method
 interface S3ApiWithSearch {
@@ -8,11 +14,6 @@ interface S3ApiWithSearch {
     maxKeys?: number,
     token?: string
   ): Promise<DirectoryStructure>;
-}
-
-export interface SearchResult {
-  matches: string[];
-  nextToken?: string;
 }
 
 export interface SearchOptions {
@@ -94,8 +95,8 @@ class SearchService {
   private async recursivelySearchDirectories(
     query: string,
     prefix: string = ''
-  ): Promise<string[]> {
-    const matches: string[] = [];
+  ): Promise<_Object[]> {
+    const matches: _Object[] = [];
     const visitedPrefixes = new Set<string>();
 
     const searchInDirectory = async (currentPrefix: string): Promise<void> => {
@@ -115,7 +116,7 @@ class SearchService {
         if (structure.files && structure.files.length > 0) {
           structure.files.forEach((file) => {
             if (file.Key && file.Key.toLowerCase().includes(query.toLowerCase())) {
-              matches.push(file.Key);
+              matches.push(file);
             }
           });
         }
@@ -126,7 +127,14 @@ class SearchService {
             if (folder.Prefix) {
               // Check if folder name matches
               if (folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
-                matches.push(folder.Prefix);
+                // Create a mock _Object for the folder
+                matches.push({
+                  Key: folder.Prefix,
+                  LastModified: new Date(),
+                  Size: 0,
+                  ETag: '',
+                  StorageClass: 'STANDARD',
+                });
               }
 
               // Recursively search inside this folder
@@ -150,7 +158,7 @@ class SearchService {
             if (paginatedStructure.files) {
               paginatedStructure.files.forEach((file) => {
                 if (file.Key && file.Key.toLowerCase().includes(query.toLowerCase())) {
-                  matches.push(file.Key);
+                  matches.push(file);
                 }
               });
             }
@@ -160,7 +168,13 @@ class SearchService {
               for (const folder of paginatedStructure.folders) {
                 if (folder.Prefix) {
                   if (folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
-                    matches.push(folder.Prefix);
+                    matches.push({
+                      Key: folder.Prefix,
+                      LastModified: new Date(),
+                      Size: 0,
+                      ETag: '',
+                      StorageClass: 'STANDARD',
+                    });
                   }
 
                   await searchInDirectory(folder.Prefix);
@@ -181,8 +195,12 @@ class SearchService {
     // Start recursive search from the given prefix
     await searchInDirectory(prefix);
 
-    // Remove duplicates and return
-    return Array.from(new Set(matches));
+    // Remove duplicates based on Key and return
+    const uniqueMatches = matches.filter(
+      (item, index, arr) => arr.findIndex((other) => other.Key === item.Key) === index
+    );
+
+    return uniqueMatches;
   }
 
   async searchWithPagination(
@@ -210,25 +228,29 @@ class SearchService {
       } else {
         const structure = await this.api.fetchDirectoryStructure(prefix, 1000, nextToken);
 
-        const allItems: string[] = [];
+        const matches: _Object[] = [];
 
         if (structure.files) {
           structure.files.forEach((file) => {
-            if (file.Key) {
-              allItems.push(file.Key);
+            if (file.Key && file.Key.toLowerCase().includes(query.toLowerCase())) {
+              matches.push(file);
             }
           });
         }
 
         if (structure.folders) {
           structure.folders.forEach((folder) => {
-            if (folder.Prefix) {
-              allItems.push(folder.Prefix);
+            if (folder.Prefix && folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
+              matches.push({
+                Key: folder.Prefix,
+                LastModified: new Date(),
+                Size: 0,
+                ETag: '',
+                StorageClass: 'STANDARD',
+              });
             }
           });
         }
-
-        const matches = allItems.filter((item) => item.toLowerCase().includes(query.toLowerCase()));
 
         const result: SearchResult = {
           matches,

@@ -15,6 +15,29 @@ import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import type { FileItem, ViewLayout, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
+import type { _Object } from '@aws-sdk/client-s3';
+
+// Type for processed search results
+type ProcessedSearchResult = { type: 'file'; data: FileItem } | { type: 'folder'; data: Folder };
+
+// Import formatBytes function from data-context
+function formatBytes(bytes: number | undefined): { value: number; unit: string } {
+  if (!bytes || bytes < 0) return { value: 0, unit: 'B' };
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let i = 0;
+
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i++;
+  }
+
+  return {
+    value: parseFloat(size.toFixed(2)),
+    unit: units[i],
+  };
+}
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -34,13 +57,13 @@ export default function SearchPage() {
 
   // Convert search results to FileItem and Folder objects
   const processedResults =
-    searchResults?.matches.map((match, index) => {
-      const isFolder = match.endsWith('/');
-      const pathParts = match.split('/');
+    searchResults?.matches.map((match: _Object, index: number) => {
+      const isFolder = match.Key?.endsWith('/');
+      const pathParts = match.Key?.split('/') || [];
 
       if (isFolder) {
         // Create folder object
-        const folderPath = match.slice(0, -1);
+        const folderPath = match.Key?.slice(0, -1) || '';
         const folderParts = folderPath.split('/');
         const folderName = folderParts[folderParts.length - 1] || folderPath;
 
@@ -49,14 +72,14 @@ export default function SearchPage() {
           data: {
             id: `folder-${index}`,
             name: folderName,
-            Prefix: match,
-            lastModified: new Date(),
+            Prefix: match.Key,
+            lastModified: match.LastModified || new Date(),
             itemCount: 0,
           } as Folder,
         };
       } else {
         // Create file object
-        const fileName = pathParts[pathParts.length - 1] || match;
+        const fileName = pathParts[pathParts.length - 1] || match.Key || '';
         const extension = getFileExtensionWithoutDot(fileName);
 
         return {
@@ -64,23 +87,23 @@ export default function SearchPage() {
           data: {
             id: `file-${index}`,
             name: fileName,
-            Key: match,
+            Key: match.Key,
             extension: extension as FileExtension,
-            lastModified: new Date(),
-            size: { value: 0, unit: 'KB' },
-            ETag: '',
-            StorageClass: 'STANDARD',
+            lastModified: match.LastModified || new Date(),
+            size: formatBytes(match.Size),
+            ETag: match.ETag || '',
+            StorageClass: match.StorageClass || 'STANDARD',
           } as FileItem,
         };
       }
     }) || [];
 
   const files = processedResults
-    .filter((item) => item.type === 'file')
-    .map((item) => item.data as FileItem);
+    .filter((item: ProcessedSearchResult) => item.type === 'file')
+    .map((item: ProcessedSearchResult) => item.data as FileItem);
   const folders = processedResults
-    .filter((item) => item.type === 'folder')
-    .map((item) => item.data as Folder);
+    .filter((item: ProcessedSearchResult) => item.type === 'folder')
+    .map((item: ProcessedSearchResult) => item.data as Folder);
 
   const handleBackClick = () => {
     router.back();
@@ -208,7 +231,7 @@ export default function SearchPage() {
                       : 'space-y-1'
                   }
                 >
-                  {folders.map((folder) => (
+                  {folders.map((folder: Folder) => (
                     <FolderItem key={folder.Prefix} folder={folder} onClick={handleFolderClick} />
                   ))}
                 </div>
@@ -223,7 +246,7 @@ export default function SearchPage() {
                 </h3>
                 {viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {files.map((file) => (
+                    {files.map((file: FileItem) => (
                       <div
                         key={file.Key}
                         onClick={() => handleFileClick(file)}
@@ -244,22 +267,22 @@ export default function SearchPage() {
                           Name
                         </div>
 
-                        {/* Last Opened - visible from sm up - blank as requested */}
-                        <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-2 xl:col-span-2">
+                        {/* Last Opened - visible from sm up */}
+                        <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
                           Last Opened
                         </div>
 
                         {/* Owner - visible from lg up */}
                         <div className="hidden lg:block lg:col-span-2 xl:col-span-2">Owner</div>
 
-                        {/* Size - visible from lg up - added as requested */}
-                        <div className="hidden lg:block lg:col-span-2 xl:col-span-2">Size</div>
+                        {/* Size - visible from xl up */}
+                        <div className="hidden xl:block xl:col-span-2">Size</div>
 
                         {/* Menu space - always visible */}
-                        <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-2 xl:col-span-2"></div>
+                        <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                       </div>
 
-                      {files.map((file, index) => (
+                      {files.map((file: FileItem, index: number) => (
                         <Fragment key={file.Key}>
                           <div onClick={() => handleFileClick(file)} className="cursor-pointer">
                             <FileItemList file={file} allFiles={files} _onAction={() => {}} />
@@ -280,7 +303,7 @@ export default function SearchPage() {
                         Files
                       </div>
                       <div className="divide-y divide-border/30">
-                        {files.map((file) => (
+                        {files.map((file: FileItem) => (
                           <FileItemMobile
                             key={file.Key}
                             file={file}

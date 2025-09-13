@@ -11,6 +11,7 @@ import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import type { FileExtension } from '@/features/dashboard/types/file';
+import type { _Object } from '@aws-sdk/client-s3';
 
 interface SearchSuggestion {
   id: string;
@@ -20,6 +21,8 @@ interface SearchSuggestion {
   key: string;
   extension?: string;
   location: string;
+  size?: { value: number; unit: string };
+  lastModified?: Date;
 }
 
 interface SearchBarProps {
@@ -51,11 +54,46 @@ export function SearchBar({
 
   const { searchFiles, isLoading, searchResults } = useSearch();
 
+  // Format bytes utility function
+  const formatBytes = (bytes: number | undefined): { value: number; unit: string } => {
+    if (!bytes || bytes < 0) return { value: 0, unit: 'B' };
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = bytes;
+    let i = 0;
+
+    while (size >= 1024 && i < units.length - 1) {
+      size /= 1024;
+      i++;
+    }
+
+    return {
+      value: parseFloat(size.toFixed(2)),
+      unit: units[i],
+    };
+  };
+
+  // Format relative time
+  const formatRelativeTime = (date: Date | undefined): string => {
+    if (!date) return 'Unknown';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    return `${Math.floor(diffDays / 365)} years ago`;
+  };
+
   // Convert search results to suggestions and debounced search - only show up to 8 suggestions
   const suggestions: SearchSuggestion[] =
-    searchResults?.matches.slice(0, 8).map((matchKey, index) => {
-      const isFolder = matchKey.endsWith('/');
-      const pathParts = matchKey.split('/');
+    searchResults?.matches.slice(0, 8).map((match: _Object, index: number) => {
+      const isFolder = match.Key?.endsWith('/');
+      const pathParts = match.Key?.split('/') || [];
 
       let displayName: string;
       let displayPath: string;
@@ -63,14 +101,14 @@ export function SearchBar({
 
       if (isFolder) {
         // For folders, remove the trailing slash and get the folder name
-        const folderPath = matchKey.slice(0, -1); // Remove trailing /
+        const folderPath = match.Key?.slice(0, -1) || ''; // Remove trailing /
         const folderParts = folderPath.split('/');
         displayName = folderParts[folderParts.length - 1] || folderPath; // Get last part as folder name
         displayPath = folderParts.length > 1 ? folderParts.slice(0, -1).join('/') : '/';
         location = folderParts.length > 1 ? folderParts[folderParts.length - 2] || 'Root' : 'Root';
       } else {
         // For files
-        displayName = pathParts[pathParts.length - 1] || matchKey;
+        displayName = pathParts[pathParts.length - 1] || match.Key || '';
         displayPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '/';
         location = pathParts.length > 1 ? pathParts[pathParts.length - 2] || 'Root' : 'Root';
       }
@@ -79,13 +117,15 @@ export function SearchBar({
       const extension = !isFolder ? getFileExtensionWithoutDot(displayName) : undefined;
 
       return {
-        id: `${matchKey}-${index}`,
+        id: `${match.Key}-${index}`,
         name: displayName,
         type: isFolder ? ('folder' as const) : ('file' as const),
         path: displayPath,
-        key: matchKey,
+        key: match.Key || '',
         extension,
         location,
+        size: !isFolder ? formatBytes(match.Size) : undefined,
+        lastModified: match.LastModified,
       };
     }) || [];
 
@@ -203,7 +243,7 @@ export function SearchBar({
   // Render file/folder icons using existing components
   const renderIcon = (suggestion: SearchSuggestion) => {
     if (suggestion.type === 'folder') {
-      return <FolderIcon className="h-5 w-5 text-blue-500 flex-shrink-0" />;
+      return <FolderIcon className="h-5 w-5 text-primary flex-shrink-0" />;
     }
 
     // Use the same pattern as file-item-list.tsx
@@ -284,9 +324,15 @@ export function SearchBar({
                 <div className="text-sm font-medium text-foreground truncate">
                   {suggestion.name}
                 </div>
-                <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                  {/* Space for last opened date - TODO: Add when available from S3 API */}
-                  <div className="w-16 text-xs opacity-50">Last opened</div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                  {suggestion.lastModified && (
+                    <span className="text-xs">{formatRelativeTime(suggestion.lastModified)}</span>
+                  )}
+                  {suggestion.size && (
+                    <span className="text-xs">
+                      {suggestion.size.value} {suggestion.size.unit}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
