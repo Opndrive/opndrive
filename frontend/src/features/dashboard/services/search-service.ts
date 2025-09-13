@@ -1,4 +1,4 @@
-import type { BYOS3ApiProvider, DirectoryStructure } from '@opndrive/s3-api';
+import type { BYOS3ApiProvider, DirectoryStructure, SearchParams } from '@opndrive/s3-api';
 
 // Define extended interface for this.api with search method
 interface S3ApiWithSearch {
@@ -8,12 +8,6 @@ interface S3ApiWithSearch {
     maxKeys?: number,
     token?: string
   ): Promise<DirectoryStructure>;
-}
-
-export interface SearchParams {
-  prefix: string;
-  searchTerm: string;
-  nextToken: string;
 }
 
 export interface SearchResult {
@@ -50,7 +44,7 @@ class SearchService {
         const searchParams: SearchParams = {
           prefix,
           searchTerm: query,
-          nextToken: '',
+          nextToken: undefined,
         };
         const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
 
@@ -206,7 +200,7 @@ class SearchService {
         const searchParams: SearchParams = {
           prefix,
           searchTerm: query,
-          nextToken: nextToken || '',
+          nextToken: nextToken || undefined,
         };
         const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
 

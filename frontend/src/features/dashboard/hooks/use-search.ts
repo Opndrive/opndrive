@@ -40,8 +40,10 @@ export const useSearch = () => {
       setActiveSearches((prev) => new Set(prev).add(searchId));
       setIsLoading(true);
 
+      const prefix = currentPrefix === '/' ? '' : currentPrefix;
+
       try {
-        const results = await searchService.searchFiles(query, currentPrefix || '', {
+        const results = await searchService.searchFiles(query, prefix ?? '', {
           onProgress: (progress) => {
             if (progress.status === 'error') {
               error('Search failed');

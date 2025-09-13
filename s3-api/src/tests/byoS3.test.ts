@@ -186,6 +186,7 @@ describe('BYOS3ApiProvider', () => {
     const params: SearchParams = {
       prefix: '',
       searchTerm: 'abc',
+      nextToken: undefined,
     };
 
     const result = await api.search(params);

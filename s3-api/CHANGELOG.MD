@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.5.3] - 2025-09-13
+### Fixed
+- Fixed search param types
+
+## [1.5.2] - 2025-09-13
+### Fixed
+- Fixed search param types
+
 ## [1.5.1] - 2025-09-13
 ### Fixed
 - Fixed getSignedUrl function to allow browser preview

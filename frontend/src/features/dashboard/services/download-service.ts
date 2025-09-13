@@ -41,6 +41,7 @@ class DownloadService {
       const downloadUrl = await this.api.getSignedUrl({
         key: file.Key || file.name,
         expiryInSeconds: 900,
+        isPreview: false,
       });
 
       if (!downloadUrl) {

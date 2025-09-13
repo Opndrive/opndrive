@@ -75,7 +75,7 @@ export interface RenameFolderParams {
 export interface SearchParams {
   prefix: string;
   searchTerm: string;
-  nextToken?: string;
+  nextToken: string | undefined;
 }
 
 export interface SearchResult {
