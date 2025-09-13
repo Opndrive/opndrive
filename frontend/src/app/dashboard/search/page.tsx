@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, Fragment } from 'react';
 import { Search, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
@@ -10,10 +10,11 @@ import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
+import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
-import type { FileItem, ViewLayout, FileExtension } from '@/features/dashboard/types/file';
+import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
 
@@ -44,9 +45,9 @@ export default function SearchPage() {
   const router = useRouter();
   const query = searchParams.get('q') || '';
   const { openPreview } = useFilePreview();
+  const { layout: viewMode } = useCurrentLayout();
 
   const { searchFiles, searchWithPagination, searchResults, isLoading, canLoadMore } = useSearch();
-  const [viewMode, setViewMode] = useState<ViewLayout>('list');
 
   // Search when query changes
   useEffect(() => {
@@ -195,7 +196,7 @@ export default function SearchPage() {
           </p>
 
           {/* Layout Toggle */}
-          <LayoutToggle layout={viewMode} onLayoutChange={setViewMode} />
+          <LayoutToggle />
         </div>
       </div>
 

@@ -2,7 +2,8 @@
 
 import { useState, Fragment } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import type { FileItem, ViewLayout } from '@/features/dashboard/types/file';
+import { useCurrentLayout } from '@/hooks/use-current-layout';
+import type { FileItem } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 
 interface SuggestedFilesProps {
@@ -26,7 +27,7 @@ export function SuggestedFiles({
   className = '',
   hideTitle = false,
 }: SuggestedFilesProps) {
-  const [layout, setLayout] = useState<ViewLayout>('list');
+  const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
 
   const toggleExpanded = () => {
@@ -75,11 +76,11 @@ export function SuggestedFiles({
             Suggested files
           </button>
 
-          {isExpanded && <LayoutToggle layout={layout} onLayoutChange={setLayout} />}
+          {isExpanded && <LayoutToggle />}
         </div>
       ) : (
         <div className="flex items-center justify-end mb-3">
-          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+          <LayoutToggle />
         </div>
       )}
 
