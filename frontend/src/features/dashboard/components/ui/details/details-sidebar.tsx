@@ -5,19 +5,13 @@ import { Button } from '@/shared/components/ui';
 import { useDetails } from '@/context/details-context';
 import { useFileMetadata } from '@/features/dashboard/hooks/use-file-metadata';
 import { FileItem } from '@/features/dashboard/types/file';
-import { Folder } from '@/features/dashboard/types/folder';
 import { FaFolder } from 'react-icons/fa';
 import Image from 'next/image';
 import { assets } from '@/assets';
 
-const isFileItem = (item: FileItem | Folder | null): item is FileItem => {
+const isFileItem = (item: FileItem | null): item is FileItem => {
   if (!item) return false;
-  return ('Key' in item && !!item.Key) || ('name' in item && !!item.name && !('Prefix' in item));
-};
-
-const isFolderItem = (item: FileItem | Folder | null): item is Folder => {
-  if (!item) return false;
-  return 'Prefix' in item && !!item.Prefix && !('Key' in item);
+  return ('Key' in item && !!item.Key) || ('name' in item && !!item.name);
 };
 
 export const DetailsSidebar = () => {
@@ -27,11 +21,9 @@ export const DetailsSidebar = () => {
   );
 
   const isFile = selectedItem && isFileItem(selectedItem);
-  const isFolder = selectedItem && isFolderItem(selectedItem);
-  const hasData = isFile || isFolder;
+  const hasData = isFile;
 
   const file = isFile ? (selectedItem as FileItem) : null;
-  const folder = isFolder ? (selectedItem as Folder) : null;
 
   const formatDate = (date: Date | null) => {
     if (!date) return 'Unknown';
@@ -42,24 +34,11 @@ export const DetailsSidebar = () => {
     }).format(date);
   };
 
-  const getLocation = (_item: FileItem | Folder) => {
+  const getLocation = (_item: FileItem) => {
     if (isFile && file) {
       // Extract path from file key
       const path = file.Key || '';
       const parts = path.split('/').slice(0, -1); // Remove filename
-      if (parts.length === 0) {
-        return 'My Drive';
-      }
-      return 'My Drive > ' + parts.join(' > ');
-    }
-
-    if (isFolder && folder) {
-      // Extract path from folder prefix
-      const path = folder.Prefix || '';
-      const parts = path
-        .split('/')
-        .filter((p) => p.length > 0)
-        .slice(0, -1); // Remove current folder
       if (parts.length === 0) {
         return 'My Drive';
       }
@@ -127,11 +106,9 @@ export const DetailsSidebar = () => {
           <div className="space-y-6">
             <div className="text-center border-b border-border/20 pb-4">
               <h3 className="text-lg font-medium text-foreground mb-1 break-words">
-                {isFile ? file?.name : isFolder ? folder?.name : 'Unknown'}
+                {isFile ? file?.name : 'Unknown'}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {isFile ? 'File details' : 'Folder details'}
-              </p>
+              <p className="text-sm text-muted-foreground">File details</p>
             </div>
 
             {isFile && isLoading ? (
@@ -154,7 +131,7 @@ export const DetailsSidebar = () => {
                     Type
                   </label>
                   <p className="text-sm text-foreground mt-1">
-                    {isFile && file ? getFileTypeDisplay(file) : isFolder ? 'Folder' : 'Unknown'}
+                    {isFile && file ? getFileTypeDisplay(file) : 'Unknown'}
                   </p>
                 </div>
 
@@ -200,9 +177,7 @@ export const DetailsSidebar = () => {
                     Created
                   </label>
                   <p className="text-sm text-foreground mt-1">
-                    {isFile
-                      ? formatDate(metadata?.created || null)
-                      : formatDate(folder?.lastModified || null)}
+                    {formatDate(metadata?.created || null)}
                   </p>
                 </div>
 

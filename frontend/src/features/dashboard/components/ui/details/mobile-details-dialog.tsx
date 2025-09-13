@@ -4,19 +4,13 @@ import { X } from 'lucide-react';
 import { useDetails } from '@/context/details-context';
 import { useFileMetadata } from '@/features/dashboard/hooks/use-file-metadata';
 import { FileItem } from '@/features/dashboard/types/file';
-import { Folder } from '@/features/dashboard/types/folder';
 import { FaFolder } from 'react-icons/fa';
 import { createPortal } from 'react-dom';
 import { useEffect } from 'react';
 
-const isFileItem = (item: FileItem | Folder | null): item is FileItem => {
+const isFileItem = (item: FileItem | null): item is FileItem => {
   if (!item) return false;
-  return ('Key' in item && !!item.Key) || ('name' in item && !!item.name && !('Prefix' in item));
-};
-
-const isFolderItem = (item: FileItem | Folder | null): item is Folder => {
-  if (!item) return false;
-  return 'Prefix' in item && !!item.Prefix && !('Key' in item);
+  return ('Key' in item && !!item.Key) || ('name' in item && !!item.name);
 };
 
 export const MobileDetailsDialog = () => {
@@ -38,9 +32,7 @@ export const MobileDetailsDialog = () => {
   if (!isOpen || !selectedItem) return null;
 
   const isFile = isFileItem(selectedItem);
-  const isFolder = isFolderItem(selectedItem);
   const file = isFile ? (selectedItem as FileItem) : null;
-  const folder = isFolder ? (selectedItem as Folder) : null;
 
   const formatDate = (date: Date | null) => {
     if (!date) return 'Unknown';
@@ -51,24 +43,11 @@ export const MobileDetailsDialog = () => {
     }).format(date);
   };
 
-  const getLocation = (_item: FileItem | Folder) => {
+  const getLocation = (_item: FileItem) => {
     if (isFile && file) {
       // Extract path from file key
       const path = file.Key || '';
       const parts = path.split('/').slice(0, -1); // Remove filename
-      if (parts.length === 0) {
-        return 'My Drive';
-      }
-      return 'My Drive > ' + parts.join(' > ');
-    }
-
-    if (isFolder && folder) {
-      // Extract path from folder prefix
-      const path = folder.Prefix || '';
-      const parts = path
-        .split('/')
-        .filter((p) => p.length > 0)
-        .slice(0, -1); // Remove current folder
       if (parts.length === 0) {
         return 'My Drive';
       }
@@ -127,7 +106,7 @@ export const MobileDetailsDialog = () => {
       <div className="relative w-full max-w-md bg-background border border-border rounded-2xl shadow-xl max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-border">
           <h2 id="details-title" className="text-lg font-semibold text-foreground">
-            {isFile ? file?.name : isFolder ? folder?.name : 'Unknown'}
+            {isFile ? file?.name : 'Unknown'}
           </h2>
           <button
             onClick={close}
@@ -142,11 +121,9 @@ export const MobileDetailsDialog = () => {
           <div className="space-y-6">
             <div className="text-center">
               <h3 className="text-xl font-medium text-foreground mb-1">
-                {isFile ? file?.name : isFolder ? folder?.name : 'Unknown'}
+                {isFile ? file?.name : 'Unknown'}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {isFile ? 'File details' : 'Folder details'}
-              </p>
+              <p className="text-sm text-muted-foreground">File details</p>
             </div>
 
             {isFile && isLoading ? (
@@ -163,7 +140,7 @@ export const MobileDetailsDialog = () => {
                 <div>
                   <label className="text-sm font-medium text-foreground">Type</label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {isFile && file ? getFileTypeDisplay(file) : isFolder ? 'Folder' : 'Unknown'}
+                    {isFile && file ? getFileTypeDisplay(file) : 'Unknown'}
                   </p>
                 </div>
 
@@ -205,9 +182,7 @@ export const MobileDetailsDialog = () => {
                 <div>
                   <label className="text-sm font-medium text-foreground">Created</label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {isFile
-                      ? formatDate(metadata?.created || null)
-                      : formatDate(folder?.lastModified || null)}
+                    {formatDate(metadata?.created || null)}
                   </p>
                 </div>
 

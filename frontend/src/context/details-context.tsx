@@ -2,9 +2,8 @@
 
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { FileItem } from '@/features/dashboard/types/file';
-import { Folder } from '@/features/dashboard/types/folder';
 
-type DetailsItem = FileItem | Folder | null;
+type DetailsItem = FileItem | null;
 
 type Ctx = {
   isOpen: boolean;

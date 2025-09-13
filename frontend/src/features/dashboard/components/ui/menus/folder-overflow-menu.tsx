@@ -3,10 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
-import { Eye, Edit3, Info, Trash2 } from 'lucide-react';
+import { Eye, Edit3, Trash2 } from 'lucide-react';
 import { useDelete } from '@/features/dashboard/hooks/use-delete';
 import { useRename } from '@/context/rename-context';
-import { useDetails } from '@/context/details-context';
 import { useDriveStore } from '@/context/data-context';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -40,7 +39,6 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
 
   const { deleteFolder, isDeleting } = useDelete();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
-  const { open: openDetails } = useDetails();
   const { currentPrefix } = useDriveStore();
   const router = useRouter();
 
@@ -146,15 +144,6 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
       disabled: isRenaming(folder.id || folder.Prefix || folder.name),
       onClick: handleRename,
-    },
-    {
-      id: 'info',
-      label: 'Folder information',
-      icon: <Info className="flex-shrink-0 h-4 w-4" />,
-      onClick: () => {
-        openDetails(folder);
-        handleMenuClose();
-      },
     },
     {
       id: 'delete',
