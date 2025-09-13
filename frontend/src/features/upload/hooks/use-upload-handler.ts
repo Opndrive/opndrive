@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useUploadStore } from './use-upload-store';
 import { UploadMethod } from '../types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
-import { BYOS3ApiProvider } from '@opndrive/s3-api';
+import { BYOS3ApiProvider, MultipartUploader } from '@opndrive/s3-api';
 
 // Helper function to get file extension
 const getFileExtension = (fileName: string): string => {
@@ -141,39 +141,111 @@ export function useUploadHandler(
 
   const { refreshCurrentData } = useDriveStore();
 
+  // Track active uploaders for cancellation
+  const activeUploaders = useRef<Map<string, MultipartUploader>>(new Map());
+
   // Helper function to process individual file upload
   const processFileUpload = useCallback(
     async (file: File, itemId: string, customName?: string) => {
       const selectedMethod = determineUploadMethod(file.size, uploadMethod);
       const s3Key = generateS3Key(customName || file.name, currentPath);
+      const fileName = s3Key.split('/')[s3Key.length - 1];
 
       try {
         updateItemStatus(itemId, 'uploading');
 
-        if (selectedMethod === 'multipart-concurrent') {
-          await apiS3.uploadMultipartParallely({
+        if (selectedMethod === 'signed-url') {
+          // Use presigned URL for small files
+          const presignedUrl = await apiS3.uploadWithPreSignedUrl({
+            key: s3Key,
+            expiresInSeconds: 300, // 5 minutes
+          });
+
+          const response = await fetch(presignedUrl, {
+            method: 'PUT',
+            body: file,
+            headers: {
+              'Content-Type': file.type || 'application/octet-stream',
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.statusText}`);
+          }
+
+          // Set progress to 100 for signed URL uploads
+          updateProgress({ itemId, progress: 100.0 });
+          updateItemStatus(itemId, 'completed');
+        } else {
+          // Use multipart upload for larger files
+          const concurrency = selectedMethod === 'multipart-concurrent' ? 3 : 1;
+
+          // Create uploader instance
+          const uploader = apiS3.uploadMultipartParallely({
             file,
             key: s3Key,
             partSizeMB: 5,
-            concurrency: 3,
+            fileName: fileName,
+            concurrency,
             onProgress: (progress: number) => {
-              updateProgress({ itemId, progress });
+              // Ensure progress is never more than 100 and format to 2 decimal places
+              const clampedProgress = Math.min(100, Math.max(0, progress));
+              const formattedProgress = parseFloat(clampedProgress.toFixed(2));
+              updateProgress({ itemId, progress: formattedProgress });
             },
           });
-        } else {
-          await apiS3.uploadMultipart({
+
+          // Store uploader for potential cancellation
+          activeUploaders.current.set(itemId, uploader);
+
+          // Start the upload and wait for completion
+          await uploader.start({
             file,
             key: s3Key,
-            onProgress: (progress: number) => {
-              updateProgress({ itemId, progress });
-            },
+            partSizeMB: 5,
+            fileName: fileName,
+            concurrency,
           });
+
+          // Remove from active uploaders after completion
+          activeUploaders.current.delete(itemId);
+          updateProgress({ itemId, progress: 100.0 });
+          updateItemStatus(itemId, 'completed');
+        }
+      } catch (error) {
+        activeUploaders.current.delete(itemId);
+
+        // Handle specific S3 multipart upload errors
+        if (error instanceof Error) {
+          // If it's a NoSuchUpload error but the upload might have succeeded,
+          // check if the file exists in S3 before marking as error
+          if (
+            error.message.includes('NoSuchUpload') ||
+            error.message.includes('The specified upload does not exist')
+          ) {
+            try {
+              // Try to check if the file was actually uploaded successfully
+              // by attempting to get metadata for the uploaded file
+              await apiS3.fetchDirectoryStructure(s3Key.substring(0, s3Key.lastIndexOf('/') + 1));
+
+              // If we can fetch the directory structure without error,
+              // assume the upload succeeded despite the error
+              console.warn(
+                'NoSuchUpload error occurred but file may have been uploaded successfully:',
+                s3Key
+              );
+              updateProgress({ itemId, progress: 100.0 });
+              updateItemStatus(itemId, 'completed');
+              return;
+            } catch (checkError) {
+              // If we can't verify the upload, treat it as a real error
+              console.error('Upload failed and file verification also failed:', checkError);
+            }
+          }
         }
 
-        updateItemStatus(itemId, 'completed');
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-        updateItemStatus(itemId, 'error', errorMessage);
+        updateItemStatus(itemId, 'error', error instanceof Error ? error.message : 'Upload failed');
+        throw error;
       }
     },
     [currentPath, uploadMethod, updateItemStatus, updateProgress]
@@ -186,75 +258,79 @@ export function useUploadHandler(
       onUploadStart?.();
 
       const fileArray = Array.from(files);
+      const uploadItems: Array<{ file: File; itemId: string; extension: string }> = [];
 
-      // Process files one by one, checking for duplicates
+      // First, add all files to the upload queue immediately
       for (const file of fileArray) {
         const extension = getFileExtension(file.name);
+        const itemId = addUploadItem({
+          name: file.name,
+          type: 'file',
+          size: file.size,
+          progress: 0.0,
+          status: 'pending',
+          file: file,
+          destination: currentPath,
+          extension,
+        });
 
-        // Check if file already exists
-        const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPath);
+        uploadItems.push({ file, itemId, extension });
+      }
 
-        if (isDuplicate) {
-          // Pause queue and show duplicate dialog
-          const itemId = addUploadItem({
-            name: file.name,
-            type: 'file',
-            size: file.size,
-            progress: 0,
-            status: 'paused',
-            file: file,
-            destination: currentPath,
-            extension,
-          });
+      // Then process files one by one, checking for duplicates and updating status
+      for (const { file, itemId, extension } of uploadItems) {
+        try {
+          // Check if file already exists
+          const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPath);
 
-          // Show duplicate dialog and wait for user decision
-          await new Promise<void>((resolve) => {
-            showDuplicateDialog(
-              {
-                id: itemId,
-                name: file.name,
-                type: 'file',
-                size: file.size,
-                progress: 0,
-                status: 'paused',
-                file: file,
-                destination: currentPath,
-                extension,
-              },
-              // onReplace
-              async () => {
-                updateItemStatus(itemId, 'pending');
-                await processFileUpload(file, itemId);
-                hideDuplicateDialog();
-                resolve();
-              },
-              // onKeepBoth
-              async () => {
-                const uniqueName = await generateUniqueFileName(apiS3, file.name, currentPath);
-                // Create new file with unique name
-                const newFile = new File([file], uniqueName, { type: file.type });
-                // Update the item name
-                updateItemStatus(itemId, 'pending');
-                await processFileUpload(newFile, itemId, uniqueName);
-                hideDuplicateDialog();
-                resolve();
-              }
-            );
-          });
-        } else {
-          // No duplicate, proceed with normal upload
-          const itemId = addUploadItem({
-            name: file.name,
-            type: 'file',
-            size: file.size,
-            progress: 0,
-            status: 'pending',
-            file: file,
-            destination: currentPath,
-            extension,
-          });
+          if (isDuplicate) {
+            // Pause this file and show duplicate dialog
+            updateItemStatus(itemId, 'paused');
 
-          await processFileUpload(file, itemId);
+            // Show duplicate dialog and wait for user decision
+            await new Promise<void>((resolve) => {
+              showDuplicateDialog(
+                {
+                  id: itemId,
+                  name: file.name,
+                  type: 'file',
+                  size: file.size,
+                  progress: 0,
+                  status: 'paused',
+                  file: file,
+                  destination: currentPath,
+                  extension,
+                },
+                // onReplace
+                async () => {
+                  await processFileUpload(file, itemId);
+                  hideDuplicateDialog();
+                  resolve();
+                },
+                // onKeepBoth
+                async () => {
+                  const uniqueName = await generateUniqueFileName(apiS3, file.name, currentPath);
+                  // Create new file with unique name
+                  const newFile = new File([file], uniqueName, { type: file.type });
+                  // Update the item name
+                  updateItemName(itemId, uniqueName);
+                  await processFileUpload(newFile, itemId, uniqueName);
+                  hideDuplicateDialog();
+                  resolve();
+                }
+              );
+            });
+          } else {
+            // No duplicate, proceed with normal upload
+            await processFileUpload(file, itemId);
+          }
+        } catch (error) {
+          console.error(`Failed to upload file ${file.name}:`, error);
+          updateItemStatus(
+            itemId,
+            'error',
+            error instanceof Error ? error.message : 'Upload failed'
+          );
         }
       }
 
@@ -273,6 +349,7 @@ export function useUploadHandler(
       onUploadComplete,
       addUploadItem,
       updateItemStatus,
+      updateItemName,
       showDuplicateDialog,
       hideDuplicateDialog,
       processFileUpload,
@@ -318,7 +395,7 @@ export function useUploadHandler(
             name: folderName,
             type: 'folder',
             size: folderSize,
-            progress: 0,
+            progress: 0.0,
             status: 'paused',
             files: folderFiles,
             destination: currentPath,
@@ -343,7 +420,6 @@ export function useUploadHandler(
               // onReplace
               async () => {
                 try {
-                  updateItemStatus(itemId, 'pending');
                   await processFolderUpload(folderFiles, itemId, folderName);
                   hideDuplicateDialog();
                 } catch (error) {
@@ -367,7 +443,6 @@ export function useUploadHandler(
 
                   // Update the item name to show the new unique name
                   updateItemName(itemId, uniqueFolderName);
-                  updateItemStatus(itemId, 'pending');
                   await processFolderUpload(folderFiles, itemId, uniqueFolderName);
                   hideDuplicateDialog();
                 } catch (error) {
@@ -388,7 +463,7 @@ export function useUploadHandler(
             name: folderName,
             type: 'folder',
             size: folderSize,
-            progress: 0,
+            progress: 0.0,
             status: 'pending',
             files: folderFiles,
             destination: currentPath,
@@ -415,6 +490,7 @@ export function useUploadHandler(
       onUploadComplete,
       addUploadItem,
       updateItemStatus,
+      updateItemName,
       showDuplicateDialog,
       hideDuplicateDialog,
       refreshCurrentData,
@@ -430,6 +506,27 @@ export function useUploadHandler(
       const totalFiles = files.length;
 
       for (const file of files) {
+        // Check if upload was cancelled before processing each file
+        const currentItem = useUploadStore.getState().items.find((item) => item.id === itemId);
+        if (currentItem?.status === 'cancelled') {
+          // Cancel any remaining uploaders for this folder
+          const folderUploaders = Array.from(activeUploaders.current.entries()).filter(([key]) =>
+            key.startsWith(itemId)
+          );
+
+          for (const [key, uploader] of folderUploaders) {
+            try {
+              await uploader.cancel();
+              activeUploaders.current.delete(key);
+            } catch (error) {
+              console.warn('Failed to cancel uploader:', error);
+              activeUploaders.current.delete(key);
+            }
+          }
+
+          return; // Exit the function early
+        }
+
         try {
           const relativePath = file.webkitRelativePath;
           // Replace the original folder name with the (potentially renamed) folder name
@@ -439,32 +536,110 @@ export function useUploadHandler(
 
           const s3Key = generateS3Key(newRelativePath, currentPath);
           const selectedMethod = determineUploadMethod(file.size, uploadMethod);
+          const fileName = s3Key.split('/')[s3Key.length - 1];
 
-          if (selectedMethod === 'multipart-concurrent') {
-            await apiS3.uploadMultipartParallely({
+          if (selectedMethod === 'signed-url') {
+            // Use signed URL for small files
+            const presignedUrl = await apiS3.uploadWithPreSignedUrl({
+              key: s3Key,
+              expiresInSeconds: 3600, // 1 hour
+            });
+
+            const response = await fetch(presignedUrl, {
+              method: 'PUT',
+              body: file,
+              headers: {
+                'Content-Type': file.type || 'application/octet-stream',
+              },
+            });
+
+            if (!response.ok) {
+              throw new Error(`Upload failed with status ${response.status}`);
+            }
+          } else {
+            // Use multipart upload for larger files
+            const concurrency = selectedMethod === 'multipart-concurrent' ? 3 : 1;
+
+            // Create individual uploader for each file
+            const uploader = apiS3.uploadMultipartParallely({
               file,
               key: s3Key,
               partSizeMB: 5,
-              concurrency: 3,
+              fileName: fileName,
+              concurrency,
+              onProgress: (fileProgress: number) => {
+                // Calculate overall folder progress correctly
+                const completedFilesProgress = (uploadedCount / totalFiles) * 100;
+                const currentFileProgress = fileProgress / totalFiles;
+                const overallProgress = Math.min(100, completedFilesProgress + currentFileProgress);
+                const formattedProgress = parseFloat(overallProgress.toFixed(2)); // 2 decimal places
+
+                updateProgress({
+                  itemId,
+                  progress: formattedProgress,
+                  uploadedFiles: uploadedCount,
+                  totalFiles,
+                });
+              },
             });
-          } else {
-            await apiS3.uploadMultipart({
+
+            // Store uploader for potential cancellation (using unique key)
+            const fileUploadId = `${itemId}-${uploadedCount}`;
+            activeUploaders.current.set(fileUploadId, uploader);
+
+            // Start upload for this file
+            await uploader.start({
               file,
               key: s3Key,
+              partSizeMB: 5,
+              fileName: fileName,
+              concurrency,
             });
+
+            activeUploaders.current.delete(fileUploadId);
           }
 
+          // Increment uploaded count after successful file upload
           uploadedCount++;
-          const progress = Math.round((uploadedCount / totalFiles) * 100);
 
+          // Update progress after successful file upload
+          const progress = parseFloat(((uploadedCount / totalFiles) * 100).toFixed(2)); // 2 decimal places
           updateProgress({
             itemId,
-            progress,
+            progress: Math.min(100, progress),
             uploadedFiles: uploadedCount,
             totalFiles,
           });
-        } catch {
-          // Continue with other files even if one fails
+        } catch (error) {
+          // Handle specific S3 multipart upload errors
+          if (error instanceof Error) {
+            // If it's a NoSuchUpload error but the upload might have succeeded,
+            // check if we should continue or fail the entire folder upload
+            if (
+              error.message.includes('NoSuchUpload') ||
+              error.message.includes('The specified upload does not exist')
+            ) {
+              console.warn(
+                'NoSuchUpload error for file in folder upload, but file may have uploaded successfully:',
+                file.name
+              );
+
+              // Still increment the count and continue with other files
+              uploadedCount++;
+              const progress = parseFloat(((uploadedCount / totalFiles) * 100).toFixed(2));
+              updateProgress({
+                itemId,
+                progress: Math.min(100, progress),
+                uploadedFiles: uploadedCount,
+                totalFiles,
+              });
+              continue;
+            }
+          }
+
+          // Log error but continue with other files
+          console.error(`Failed to upload file ${file.name}:`, error);
+          // We might want to track failed files in the future
         }
       }
 
@@ -473,8 +648,50 @@ export function useUploadHandler(
     [currentPath, uploadMethod, updateItemStatus, updateProgress]
   );
 
+  // Cancel upload function
+  const cancelUpload = useCallback(
+    async (itemId: string) => {
+      const uploader = activeUploaders.current.get(itemId);
+      if (uploader) {
+        // Single file upload
+        try {
+          await uploader.cancel();
+          updateItemStatus(itemId, 'cancelled');
+          activeUploaders.current.delete(itemId);
+        } catch (error) {
+          console.error('Failed to cancel upload:', error);
+        }
+      } else {
+        // For folder uploads, cancel all individual file uploads
+        const folderUploaders = Array.from(activeUploaders.current.entries()).filter(([key]) =>
+          key.startsWith(`${itemId}-`)
+        );
+
+        if (folderUploaders.length > 0) {
+          // Cancel remaining file uploads
+          for (const [key, uploader] of folderUploaders) {
+            try {
+              await uploader.cancel();
+              activeUploaders.current.delete(key);
+            } catch (error) {
+              console.error(`Failed to cancel file upload ${key}:`, error);
+            }
+          }
+
+          // Update folder status to cancelled
+          updateItemStatus(itemId, 'cancelled');
+        } else {
+          // No active uploaders found, just update UI status
+          updateItemStatus(itemId, 'cancelled');
+        }
+      }
+    },
+    [updateItemStatus]
+  );
+
   return {
     handleFileUpload,
     handleFolderUpload,
+    cancelUpload,
   };
 }

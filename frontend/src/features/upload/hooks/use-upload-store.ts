@@ -14,6 +14,9 @@ interface UploadStore extends UploadState {
   // Duplicate dialog state
   duplicateDialog: DuplicateDialogState;
 
+  // Cancel function registry
+  actualCancelFunction: ((itemId: string) => Promise<void>) | null;
+
   // Actions
   openCard: () => void;
   closeCard: () => void;
@@ -27,9 +30,11 @@ interface UploadStore extends UploadState {
   removeItem: (itemId: string) => void;
   clearCompleted: () => void;
   cancelUpload: (itemId: string) => void;
-  pauseUpload: (itemId: string) => void;
-  resumeUpload: (itemId: string) => void;
   resetStore: () => void;
+
+  // Cancel function registration
+  registerCancelFunction: (cancelFn: (itemId: string) => Promise<void>) => void;
+  getCancelFunction: () => ((itemId: string) => Promise<void>) | null;
 
   // Duplicate dialog actions
   showDuplicateDialog: (item: UploadItem, onReplace: () => void, onKeepBoth: () => void) => void;
@@ -59,6 +64,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     onReplace: null,
     onKeepBoth: null,
   },
+
+  // Initialize cancel function
+  actualCancelFunction: null,
+
+  // Initialize pause and resume functions
+  actualPauseFunction: null,
+  actualResumeFunction: null,
 
   openCard: () => {
     set({ isOpen: true, isMinimized: false });
@@ -185,6 +197,16 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   },
 
   cancelUpload: (itemId) => {
+    const { actualCancelFunction } = get();
+
+    // Call actual cancel function if registered
+    if (actualCancelFunction) {
+      actualCancelFunction(itemId).catch((error) => {
+        console.error('Failed to cancel upload:', error);
+      });
+    }
+
+    // Update UI state immediately
     set((state) => ({
       items: state.items.map((item) =>
         item.id === itemId ? { ...item, status: 'cancelled' as const } : item
@@ -202,22 +224,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         onKeepBoth: null,
       },
     });
-  },
-
-  pauseUpload: (itemId) => {
-    set((state) => ({
-      items: state.items.map((item) =>
-        item.id === itemId ? { ...item, status: 'paused' as const } : item
-      ),
-    }));
-  },
-
-  resumeUpload: (itemId) => {
-    set((state) => ({
-      items: state.items.map((item) =>
-        item.id === itemId ? { ...item, status: 'pending' as const } : item
-      ),
-    }));
   },
 
   showDuplicateDialog: (item, onReplace, onKeepBoth) => {
@@ -250,5 +256,15 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   hasQueuedItems: () => {
     const { items } = get();
     return items.some((item) => item.status === 'pending');
+  },
+
+  // Cancel function registration
+  registerCancelFunction: (cancelFn) => {
+    set({ actualCancelFunction: cancelFn });
+  },
+
+  getCancelFunction: () => {
+    const { actualCancelFunction } = get();
+    return actualCancelFunction;
   },
 }));
