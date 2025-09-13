@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
 import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
+import { useUploadStore } from '@/features/upload/hooks/use-upload-store';
 import { useSettings } from '@/features/settings/hooks/use-settings';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 import { useApiS3 } from '@/hooks/use-auth';
@@ -45,7 +46,8 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   }
 
   const { settings, isLoaded } = useSettings();
-  const { handleFileUpload, handleFolderUpload } = useUploadHandler(
+  const { registerCancelFunction } = useUploadStore();
+  const { handleFileUpload, handleFolderUpload, cancelUpload } = useUploadHandler(
     {
       currentPath,
       uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
@@ -53,7 +55,15 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
     apiS3
   );
 
-  // Professional file upload handlers using utility functions
+  // Register cancel function when component mounts
+  useEffect(() => {
+    registerCancelFunction(cancelUpload);
+    return () => {
+      registerCancelFunction(() => Promise.resolve());
+    };
+  }, [cancelUpload, registerCancelFunction]);
+
+  //  file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {
     try {
       const result = await pickMultipleFiles();

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, CheckCircle, AlertCircle, XCircle, Pause, Upload, Loader2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, XCircle, Upload, Loader2 } from 'lucide-react';
 import { UploadItem } from '../types';
 
 interface UploadItemComponentProps {
@@ -27,8 +27,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return <AlertCircle className="h-4 w-4 text-red-600" />;
       case 'cancelled':
         return <XCircle className="h-4 w-4 text-red-600" />;
-      case 'paused':
-        return <Pause className="h-4 w-4 text-orange-600" />;
       case 'uploading':
         return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
       default:
@@ -44,8 +42,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return 'text-red-600';
       case 'cancelled':
         return 'text-red-600';
-      case 'paused':
-        return 'text-orange-600';
       case 'uploading':
         return 'text-blue-600';
       default:
@@ -61,8 +57,6 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return 'bg-red-600';
       case 'cancelled':
         return 'bg-red-600';
-      case 'paused':
-        return 'bg-orange-600';
       case 'uploading':
         return 'bg-blue-600';
       default:
@@ -77,9 +71,10 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
       case 'error':
         return item.error || 'Failed';
       case 'cancelled':
+        if (item.type === 'folder' && item.uploadedFiles && item.uploadedFiles > 0) {
+          return `Cancelled - ${item.uploadedFiles} files uploaded`;
+        }
         return 'Cancelled';
-      case 'paused':
-        return 'Paused - Waiting for user input';
       case 'uploading':
         return 'Uploading...';
       case 'pending':
@@ -115,29 +110,31 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
             </div>
           </div>
 
-          {(item.status === 'uploading' || item.status === 'pending') && (
-            <button
-              onClick={() => onCancel(item.id)}
-              className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-              aria-label="Cancel upload"
-            >
-              <X className="h-3 w-3 text-red-600" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {(item.status === 'uploading' || item.status === 'pending') && (
+              <button
+                onClick={() => onCancel(item.id)}
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                aria-label="Cancel upload"
+              >
+                <X className="h-3 w-3 text-red-600" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-2">
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
             <div
               className={`h-1.5 rounded-full transition-all duration-300 ${getProgressBarColor()}`}
-              style={{ width: `${item.progress}%` }}
+              style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }}
             />
           </div>
 
           <div className="flex items-center justify-between mt-1">
             <span className={`text-xs ${getStatusColor()}`}>{getStatusText()}</span>
             <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              {item.progress}%
+              {item.progress.toFixed(2)}%
             </span>
           </div>
         </div>

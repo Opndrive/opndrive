@@ -61,13 +61,13 @@ export function UploadCard() {
       if (queuedCount > 0) {
         return {
           text: `Uploading ${totalItems} file${totalItems === 1 ? '' : 's'} (${queuedCount} queued)`,
-          color: 'text-blue-600',
+          color: 'text-[var(--primary)]',
           icon: Upload,
         };
       } else {
         return {
           text: `Uploading ${totalItems} file${totalItems === 1 ? '' : 's'}`,
-          color: 'text-blue-600',
+          color: 'text-[var(--primary)]',
           icon: Upload,
         };
       }
@@ -77,7 +77,7 @@ export function UploadCard() {
     if (pausedItems > 0) {
       return {
         text: `${pausedItems} upload${pausedItems === 1 ? '' : 's'} paused`,
-        color: 'text-orange-600',
+        color: 'text-[#f59e0b]', // Using orange-600 equivalent
         icon: Pause,
       };
     }
@@ -87,7 +87,7 @@ export function UploadCard() {
       const failedCount = cancelledItems + errorItems;
       return {
         text: `${actuallyCompleted} completed, ${failedCount} failed`,
-        color: 'text-orange-600',
+        color: 'text-[#f59e0b]', // Using orange-600 equivalent
         icon: AlertCircle,
       };
     }
@@ -96,7 +96,7 @@ export function UploadCard() {
     if (actuallyCompleted > 0) {
       return {
         text: `${actuallyCompleted} upload${actuallyCompleted === 1 ? '' : 's'} completed`,
-        color: 'text-green-600',
+        color: 'text-[#16a34a]', // Using green-600 equivalent
         icon: CheckCircle,
       };
     }
@@ -105,7 +105,7 @@ export function UploadCard() {
     if (cancelledItems > 0) {
       return {
         text: `${cancelledItems} upload${cancelledItems === 1 ? '' : 's'} cancelled`,
-        color: 'text-red-600',
+        color: 'text-[#dc2626]', // Using red-600 equivalent
         icon: XCircle,
       };
     }
@@ -114,14 +114,14 @@ export function UploadCard() {
     if (errorItems > 0) {
       return {
         text: `${errorItems} upload${errorItems === 1 ? '' : 's'} failed`,
-        color: 'text-red-600',
+        color: 'text-[#dc2626]', // Using red-600 equivalent
         icon: AlertCircle,
       };
     }
 
     return {
       text: `${totalItems} upload${totalItems === 1 ? '' : 's'} completed`,
-      color: 'text-green-600',
+      color: 'text-[#16a34a]', // Using green-600 equivalent
       icon: CheckCircle,
     };
   };
@@ -135,7 +135,7 @@ export function UploadCard() {
     <>
       <div className="fixed bottom-4 right-4 z-50">
         <div
-          className="border rounded-lg shadow-lg w-80 max-h-96 flex flex-col"
+          className="border custom-scrollbar rounded-lg shadow-lg w-80 max-h-96 flex flex-col"
           style={{
             backgroundColor: 'var(--card)',
             borderColor: 'var(--border)',
@@ -154,22 +154,20 @@ export function UploadCard() {
             <div className="flex items-center gap-1">
               <button
                 onClick={isMinimized ? maximizeCard : minimizeCard}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-[var(--accent)]"
+                style={{ color: 'var(--muted-foreground)' }}
                 aria-label={isMinimized ? 'Maximize' : 'Minimize'}
               >
-                {isMinimized ? (
-                  <Plus className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                ) : (
-                  <Minus className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                )}
+                {isMinimized ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
               </button>
 
               <button
                 onClick={handleCloseCard}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-[#fecaca]"
+                style={{ color: 'var(--muted-foreground)' }}
                 aria-label="Close"
               >
-                <X className="h-4 w-4 text-red-600" />
+                <X className="h-4 w-4 text-[#dc2626]" />
               </button>
             </div>
           </div>
@@ -189,10 +187,10 @@ export function UploadCard() {
             >
               <div className="flex items-center gap-2">
                 {hasActiveUploads && (
-                  <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" />
+                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
                 )}
                 {!hasActiveUploads && completedItems > 0 && (
-                  <CheckCircle className="h-3 w-3 text-green-500" />
+                  <CheckCircle className="h-3 w-3 text-[#16a34a]" />
                 )}
                 <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                   {hasActiveUploads
