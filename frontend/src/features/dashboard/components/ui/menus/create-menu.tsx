@@ -211,7 +211,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         <React.Fragment key={action.id}>
           <button
             className="
-              w-full flex cursor-pointer items-center gap-3 px-3 py-3 text-sm rounded-md
+              w-full flex items-center gap-3 px-3 py-3 text-sm rounded-md
               text-left transition-colors duration-150
               text-foreground hover:bg-card cursor-pointer
             "
