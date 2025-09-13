@@ -9,7 +9,6 @@ import {
   DownloadFileParams,
   logTypes,
   MoveFileParams,
-  MultipartUploadParallelParams,
   MultipartUploadParams,
   PresignedUploadParams,
   RenameFileParams,
@@ -93,7 +92,7 @@ export abstract class BaseS3ApiProvider {
 
   abstract uploadMultipart(params: MultipartUploadParams): Promise<void>;
 
-  abstract uploadMultipartParallely(params: MultipartUploadParallelParams): MultipartUploader;
+  abstract uploadMultipartParallely(params: MultipartUploadParams): MultipartUploader;
 
   abstract getSignedUrl(params: SignedUrlParams): Promise<string>;
 
