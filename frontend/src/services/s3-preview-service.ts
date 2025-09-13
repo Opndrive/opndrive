@@ -1,5 +1,6 @@
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { PreviewableFile } from '@/types/file-preview';
+import { getContentTypeForS3 } from '@/config/file-extensions';
 
 export interface S3PreviewService {
   getSignedUrl: (file: PreviewableFile) => Promise<string>;
@@ -32,7 +33,8 @@ class S3PreviewServiceImpl implements S3PreviewService {
       const signedUrl = await this.api.getSignedUrl({
         key: fileKey,
         expiryInSeconds: 3600, // 1 hour expiry for preview
-        isPreview: false,
+        isPreview: true,
+        responseContentType: getContentTypeForS3(fileKey),
       });
 
       if (!signedUrl) {

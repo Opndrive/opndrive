@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import type { FileItem } from '@/features/dashboard/types/file';
 import { useNotification } from '@/context/notification-context';
 import { useApiS3 } from '@/hooks/use-auth';
+import { getContentTypeForS3 } from '@/config/file-extensions';
 
 interface ShareDialogState {
   isOpen: boolean;
@@ -72,7 +73,8 @@ export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
         const signedUrl = await apiS3.getSignedUrl({
           key: shareDialog.file.Key,
           expiryInSeconds: durationInSeconds,
-          isPreview: false,
+          isPreview: true,
+          responseContentType: getContentTypeForS3(shareDialog.file.Key),
         });
 
         const expiresAt = new Date(Date.now() + durationInSeconds * 1000);

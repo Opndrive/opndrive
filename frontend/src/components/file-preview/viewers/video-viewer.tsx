@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
 import { useApiS3 } from '@/hooks/use-auth';
+import { getContentTypeForS3 } from '@/config/file-extensions';
 
 interface VideoViewerProps {
   file: PreviewableFile;
@@ -32,7 +33,8 @@ export function VideoViewer({ file }: VideoViewerProps) {
         const url = await apiS3.getSignedUrl({
           key: fileKey,
           expiryInSeconds: 3600,
-          isPreview: false,
+          isPreview: true,
+          responseContentType: getContentTypeForS3(fileKey),
         });
 
         setSignedUrl(url);

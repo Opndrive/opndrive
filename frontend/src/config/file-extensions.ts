@@ -567,6 +567,161 @@ export function getCategoryDisplayName(category: FileCategory): string {
   return names[category] || 'Unknown';
 }
 
+// MIME type mappings for file extensions
+export const MIME_TYPE_MAP: Record<string, string> = {
+  // Images
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.tiff': 'image/tiff',
+  '.tif': 'image/tiff',
+  '.heic': 'image/heic',
+  '.avif': 'image/avif',
+
+  // Videos
+  '.mp4': 'video/mp4',
+  '.mkv': 'video/x-matroska',
+  '.avi': 'video/x-msvideo',
+  '.mov': 'video/quicktime',
+  '.wmv': 'video/x-ms-wmv',
+  '.flv': 'video/x-flv',
+  '.webm': 'video/webm',
+  '.ogv': 'video/ogg',
+  '.m4v': 'video/x-m4v',
+  '.3gp': 'video/3gpp',
+  '.mpg': 'video/mpeg',
+  '.mpeg': 'video/mpeg',
+
+  // Audio
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.wma': 'audio/x-ms-wma',
+  '.m4a': 'audio/mp4',
+  '.opus': 'audio/opus',
+
+  // Documents
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.txt': 'text/plain',
+  '.rtf': 'application/rtf',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+
+  // Spreadsheets
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.csv': 'text/csv',
+  '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+  '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  '.xlsb': 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+
+  // Presentations
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.odp': 'application/vnd.oasis.opendocument.presentation',
+
+  // Archives
+  '.zip': 'application/zip',
+  '.rar': 'application/vnd.rar',
+  '.7z': 'application/x-7z-compressed',
+  '.tar': 'application/x-tar',
+  '.gz': 'application/gzip',
+  '.bz2': 'application/x-bzip2',
+  '.xz': 'application/x-xz',
+
+  // Code files
+  '.js': 'text/javascript',
+  '.ts': 'text/typescript',
+  '.jsx': 'text/javascript',
+  '.tsx': 'text/typescript',
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.scss': 'text/scss',
+  '.sass': 'text/sass',
+  '.less': 'text/less',
+  '.json': 'application/json',
+  '.xml': 'application/xml',
+  '.yaml': 'text/yaml',
+  '.yml': 'text/yaml',
+  '.toml': 'text/toml',
+  '.ini': 'text/plain',
+  '.cfg': 'text/plain',
+  '.conf': 'text/plain',
+  '.py': 'text/x-python',
+  '.java': 'text/x-java-source',
+  '.cpp': 'text/x-c++src',
+  '.c': 'text/x-csrc',
+  '.cs': 'text/x-csharp',
+  '.php': 'text/x-php',
+  '.rb': 'text/x-ruby',
+  '.go': 'text/x-go',
+  '.rust': 'text/x-rust',
+  '.rs': 'text/x-rust',
+  '.sql': 'text/x-sql',
+  '.sh': 'text/x-shellscript',
+  '.bat': 'text/x-msdos-batch',
+  '.ps1': 'text/x-powershell',
+  '.md': 'text/markdown',
+  '.mdx': 'text/markdown',
+
+  // Executables
+  '.exe': 'application/vnd.microsoft.portable-executable',
+  '.msi': 'application/x-msi',
+  '.dmg': 'application/x-apple-diskimage',
+  '.deb': 'application/vnd.debian.binary-package',
+  '.rpm': 'application/x-rpm',
+  '.appimage': 'application/x-executable',
+};
+
+// Get MIME type for a file
+export function getMimeType(filename: string): string {
+  const extension = getFileExtension(filename);
+  return MIME_TYPE_MAP[extension] || 'application/octet-stream';
+}
+
+// Get content type for S3 signed URL (optimized for browser compatibility)
+export function getContentTypeForS3(filename: string): string {
+  const extension = getFileExtension(filename);
+  const mimeType = MIME_TYPE_MAP[extension];
+
+  if (!mimeType) {
+    return 'application/octet-stream';
+  }
+
+  // For some file types, we want to ensure they display inline in browsers
+  const category = getFileCategory(filename);
+
+  switch (category) {
+    case 'image':
+    case 'video':
+    case 'audio':
+      // These should always use specific MIME types for proper browser rendering
+      return mimeType;
+
+    case 'document':
+      // PDFs should open inline, others might download
+      if (extension === '.pdf') {
+        return 'application/pdf';
+      }
+      return mimeType;
+
+    case 'code':
+      // Text-based files should be viewable inline
+      return mimeType;
+
+    default:
+      return mimeType;
+  }
+}
+
 // Check if file supports a specific feature
 export function supportsFeature(
   filename: string,
