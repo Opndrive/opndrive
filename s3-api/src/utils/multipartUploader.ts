@@ -1,3 +1,4 @@
+import { MultipartUploadParams } from '@/core/types.js';
 import {
   S3Client,
   CreateMultipartUploadCommand,
@@ -8,57 +9,49 @@ import {
   CompletedPart,
 } from '@aws-sdk/client-s3';
 
-export interface MultipartUploadParams {
-  file: File;
-  key: string;
-  partSizeMB: number;
-  concurrency: number;
-  onProgress?: (progress: number) => void;
-}
-
 export class MultipartUploader {
   private s3: S3Client;
   private bucket: string;
   private key: string;
+  private fileName: string;
 
   private uploadId?: string;
   private completedParts: CompletedPart[] = [];
   private partSize: number = 5 * 1024 * 1024;
-
   private isPaused = false;
   private isCancelled = false;
   private concurrency = 3;
 
   private controllers: AbortController[] = [];
 
-  constructor(s3: S3Client, bucket: string, key: string) {
+  constructor(
+    s3: S3Client,
+    bucket: string,
+    key: string,
+    fileName: string,
+    concurrency?: number,
+    partSize?: number
+  ) {
     this.s3 = s3;
     this.bucket = bucket;
     this.key = key;
+    this.fileName = fileName;
+    this.concurrency = concurrency && concurrency > 0 ? concurrency : 3;
+    this.partSize = partSize && partSize >= 5 * 1024 * 1024 ? partSize : 5 * 1024 * 1024;
+    localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
 
   private saveState(file: File) {
     const state = {
       uploadId: this.uploadId,
       key: this.key,
-      fileName: file.name,
+      fileName: this.fileName,
       fileSize: file.size,
       completedParts: this.completedParts,
       partSize: this.partSize,
+      concurrency: this.concurrency,
     };
-    localStorage.setItem(`upload:${file.name}:${this.key}`, JSON.stringify(state));
-  }
-
-  static restore(s3: S3Client, bucket: string, file: File, key: string): MultipartUploader | null {
-    const raw = localStorage.getItem(`upload:${file.name}:${key}`);
-    if (!raw) return null;
-    const state = JSON.parse(raw);
-
-    const uploader = new MultipartUploader(s3, bucket, key);
-    uploader.uploadId = state.uploadId;
-    uploader.completedParts = state.completedParts || [];
-    uploader.partSize = state.partSize;
-    return uploader;
+    localStorage.setItem(`upload:${this.fileName}:${this.key}`, JSON.stringify(state));
   }
 
   async start(params: MultipartUploadParams) {
@@ -79,7 +72,7 @@ export class MultipartUploader {
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
-      localStorage.removeItem(`upload:${params.file.name}:${this.key}`);
+      localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
     }
   }
 
@@ -191,7 +184,7 @@ export class MultipartUploader {
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
-      localStorage.removeItem(`upload:${file.name}:${this.key}`);
+      localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
     }
   }
 
@@ -214,6 +207,6 @@ export class MultipartUploader {
         })
       );
     }
-    localStorage.removeItem(`upload:${this.key}`);
+    localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
 }

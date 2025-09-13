@@ -26,16 +26,10 @@ export type userTypes = 'BYO';
 export interface MultipartUploadParams {
   file: File;
   key: string;
-  partSizeMB?: number; // default = 5MB
-  onProgress?: (progress: number) => void;
-}
-
-export interface MultipartUploadParallelParams {
-  file: File;
-  key: string;
+  fileName: string;
   partSizeMB: number;
   concurrency: number;
-  onProgress?: (p: number) => void;
+  onProgress?: (progress: number) => void;
 }
 
 export interface SignedUrlParams {
