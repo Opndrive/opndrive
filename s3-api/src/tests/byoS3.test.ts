@@ -180,7 +180,7 @@ describe('BYOS3ApiProvider', () => {
 });
 
 describe('BYOS3ApiProvider', () => {
-  it.only('searches as folder or file', async () => {
+  it('searches as folder or file', async () => {
     const api = new BYOS3ApiProvider(myCreds, 'BYO');
 
     const params: SearchParams = {
