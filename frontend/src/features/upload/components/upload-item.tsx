@@ -98,12 +98,12 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
               {item.name}
             </p>
             <div
-              className="flex items-center gap-2 text-xs"
+              className="flex items-center gap-1 sm:gap-2 text-xs flex-wrap"
               style={{ color: 'var(--muted-foreground)' }}
             >
               <span>{formatFileSize(item.size)}</span>
               {item.type === 'folder' && item.totalFiles && (
-                <span>
+                <span className="whitespace-nowrap">
                   • {item.uploadedFiles || 0} of {item.totalFiles} files
                 </span>
               )}
@@ -131,9 +131,9 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
             />
           </div>
 
-          <div className="flex items-center justify-between mt-1">
-            <span className={`text-xs ${getStatusColor()}`}>{getStatusText()}</span>
-            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <div className="flex items-center justify-between mt-1 gap-2">
+            <span className={`text-xs truncate flex-1 ${getStatusColor()}`}>{getStatusText()}</span>
+            <span className="text-xs flex-shrink-0" style={{ color: 'var(--muted-foreground)' }}>
               {item.progress.toFixed(2)}%
             </span>
           </div>

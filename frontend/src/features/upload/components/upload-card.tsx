@@ -133,9 +133,9 @@ export function UploadCard() {
 
   return (
     <>
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50">
         <div
-          className="border custom-scrollbar rounded-lg shadow-lg w-80 max-h-96 flex flex-col"
+          className="border custom-scrollbar rounded-lg shadow-lg w-full sm:w-80 max-h-96 flex flex-col"
           style={{
             backgroundColor: 'var(--card)',
             borderColor: 'var(--border)',
@@ -146,12 +146,16 @@ export function UploadCard() {
             className="flex items-center justify-between p-3 border-b"
             style={{ borderColor: 'var(--border)' }}
           >
-            <div className="flex items-center gap-2">
-              {headerInfo.icon && <headerInfo.icon className={`h-4 w-4 ${headerInfo.color}`} />}
-              <span className={`text-sm font-medium ${headerInfo.color}`}>{headerInfo.text}</span>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {headerInfo.icon && (
+                <headerInfo.icon className={`h-4 w-4 flex-shrink-0 ${headerInfo.color}`} />
+              )}
+              <span className={`text-sm font-medium truncate ${headerInfo.color}`}>
+                {headerInfo.text}
+              </span>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
               <button
                 onClick={isMinimized ? maximizeCard : minimizeCard}
                 className="p-1 rounded cursor-pointer transition-colors hover:bg-[var(--accent)]"
@@ -185,14 +189,14 @@ export function UploadCard() {
               className="flex items-center justify-between p-2 border-t"
               style={{ borderColor: 'var(--border)' }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {hasActiveUploads && (
-                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
+                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse flex-shrink-0" />
                 )}
                 {!hasActiveUploads && completedItems > 0 && (
-                  <CheckCircle className="h-3 w-3 text-[#16a34a]" />
+                  <CheckCircle className="h-3 w-3 text-[#16a34a] flex-shrink-0" />
                 )}
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <span className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
                   {hasActiveUploads
                     ? `Uploading ${items.filter((i) => i.status === 'uploading').length} files...`
                     : `${completedItems} completed`}
