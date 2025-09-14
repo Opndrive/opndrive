@@ -19,7 +19,7 @@ import {
 } from '@/features/folder-navigation/folder-navigation';
 
 function BrowsePageContent() {
-  const { isSearchHidden } = useScroll();
+  const { setSearchHidden } = useScroll();
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -31,6 +31,7 @@ function BrowsePageContent() {
     loadMoreData,
     setCurrentPrefix,
     setRootPrefix,
+    setApiS3,
   } = useDriveStore();
 
   const apiS3 = useApiS3();
@@ -51,7 +52,21 @@ function BrowsePageContent() {
   // Convert prefix to path segments for breadcrumb
   const pathSegments = prefixToPathSegments(prefixParam);
 
+  // Ensure search bar is visible in navbar when on browse page
   useEffect(() => {
+    setSearchHidden(true); // true means navbar search is visible, home search is hidden
+  }, [setSearchHidden]);
+
+  // Set apiS3 in data store when it becomes available
+  useEffect(() => {
+    if (apiS3) {
+      setApiS3(apiS3);
+    }
+  }, [apiS3, setApiS3]);
+
+  useEffect(() => {
+    if (!apiS3) return; // Wait for apiS3 to be available
+
     const rootPrefix = apiS3.getPrefix();
     if (rootPrefix === '') {
       setRootPrefix('/');
@@ -64,7 +79,7 @@ function BrowsePageContent() {
     const normalizedPrefix = fullPrefix || (rootPrefix === '' ? '/' : rootPrefix);
 
     setCurrentPrefix(normalizedPrefix);
-  }, [prefixParam, setCurrentPrefix, setRootPrefix]);
+  }, [apiS3, prefixParam, setCurrentPrefix, setRootPrefix]);
 
   useEffect(() => {
     if (currentPrefix) {
@@ -100,7 +115,7 @@ function BrowsePageContent() {
   const hasMoreItems = currentData?.isTruncated || false;
 
   // Get current folder name for display using utility function
-  const currentFolderName = getFolderNameFromPrefix(prefixParam);
+  const currentFolderName = getFolderNameFromPrefix(prefixParam) || 'My Drive';
 
   return (
     <>
@@ -124,16 +139,10 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div
-          className={`sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
-            isSearchHidden
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 -translate-y-2 pointer-events-none'
-          }`}
-        >
+        <div className="sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
-            {isReady && totalVisibleItems > 0 && (
+            {totalVisibleItems > 0 && (
               <span className="item-count-badge">
                 {hasMoreItems
                   ? `Showing ${totalVisibleItems.toLocaleString()}+ items`

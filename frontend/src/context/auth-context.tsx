@@ -55,7 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const api = new BYOS3ApiProvider(creds, 'BYO');
             setUserCreds(creds);
             setApiS3(api);
-            router.push('/dashboard');
+
+            // Only redirect to dashboard if user is on home page/connect page
+            // Otherwise, stay on current route (preserve the URL after refresh)
+            if (pathname === '/' || pathname === '/connect') {
+              router.push('/dashboard');
+            }
           } else {
             throw new Error('Invalid credentials in storage');
           }

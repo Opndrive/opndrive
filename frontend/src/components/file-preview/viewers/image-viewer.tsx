@@ -19,6 +19,7 @@ export function ImageViewer({ file }: ImageViewerProps) {
   const [rotation, setRotation] = useState(0);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [lastTap, setLastTap] = useState(0);
+  const imageContainerRef = React.useRef<HTMLDivElement>(null);
   const apiS3 = useApiS3();
 
   useEffect(() => {
@@ -58,7 +59,26 @@ export function ImageViewer({ file }: ImageViewerProps) {
     }
 
     loadImage();
-  }, [file]);
+  }, [file, apiS3]);
+
+  // Handle wheel events with proper passive: false
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setScale((prev) => Math.min(Math.max(prev * delta, 0.1), 3));
+    };
+
+    // Add event listener with passive: false to allow preventDefault
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   const calculateInitialScale = () => {
     if (naturalSize.width === 0 || naturalSize.height === 0) {
@@ -176,13 +196,6 @@ export function ImageViewer({ file }: ImageViewerProps) {
       setLastTap(now);
     }
     setTouchStart(null);
-  };
-
-  // Wheel zoom support for desktop
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale((prev) => Math.min(Math.max(prev * delta, 0.1), 3));
   };
 
   if (loading) {
@@ -330,11 +343,11 @@ export function ImageViewer({ file }: ImageViewerProps) {
 
       {/* Image Container */}
       <div
+        ref={imageContainerRef}
         className="flex-1 flex items-center justify-center overflow-hidden p-2 sm:p-4 relative touch-pan-x touch-pan-y"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onWheel={handleWheel}
       >
         {/* Loading overlay */}
         {!imageLoaded && (
