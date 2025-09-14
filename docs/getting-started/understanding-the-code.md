@@ -1,11 +1,11 @@
-# Understanding the OpnDrive Code
+# Understanding the Opndrive Code
 
-Now that you have OpnDrive running, let's take a tour of how the code is
+Now that you have Opndrive running, let's take a tour of how the code is
 organized. This guide explains everything in simple terms.
 
 ## The Big Picture
 
-OpnDrive is like a sandwich with three main layers:
+Opndrive is like a sandwich with three main layers:
 
 ```
 ┌─────────────────────────────────┐
@@ -54,7 +54,7 @@ src/
 
 ## How the Code is Organized (Feature-Based)
 
-Instead of putting all buttons in one folder and all pages in another, OpnDrive
+Instead of putting all buttons in one folder and all pages in another, Opndrive
 groups code by **what it does**:
 
 ```
@@ -151,7 +151,7 @@ If you want to make changes, these are the key files:
 
 ## Technologies Used (What You Should Know)
 
-OpnDrive is built with modern web technologies:
+Opndrive is built with modern web technologies:
 
 - **Next.js** - React framework for building web apps
 - **TypeScript** - JavaScript with type checking

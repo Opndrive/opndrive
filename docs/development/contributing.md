@@ -1,11 +1,11 @@
-# Contributing to OpnDrive
+# Contributing to Opndrive
 
-Thank you for your interest in contributing to OpnDrive! This guide will help
+Thank you for your interest in contributing to Opndrive! This guide will help
 you get started with contributing to our open-source cloud storage solution.
 
 ## How to Contribute
 
-There are many ways to contribute to OpnDrive:
+There are many ways to contribute to Opndrive:
 
 - **Report bugs** and issues
 - **Suggest new features** or improvements
@@ -80,7 +80,7 @@ git push origin feature/your-feature-name
 
 ### 7. Create a Pull Request
 
-1. Go to the [OpnDrive repository](https://github.com/Opndrive/opndrive)
+1. Go to the [Opndrive repository](https://github.com/Opndrive/opndrive)
 2. Click "New Pull Request"
 3. Select your branch and describe your changes
 4. Submit the pull request
@@ -174,7 +174,7 @@ What actually happened.
 - OS: [e.g., Windows 11, macOS 13, Ubuntu 22.04]
 - Browser: [e.g., Chrome 118, Firefox 119, Safari 17]
 - Node.js: [e.g., 18.17.0]
-- OpnDrive Version: [e.g., 1.2.3]
+- Opndrive Version: [e.g., 1.2.3]
 
 ## Additional Context
 
@@ -427,12 +427,12 @@ repository!
 
 ## License
 
-By contributing to OpnDrive, you agree that your contributions will be licensed
+By contributing to Opndrive, you agree that your contributions will be licensed
 under the same license as the project.
 
 ---
 
-**Thank you for contributing to OpnDrive!**
+**Thank you for contributing to Opndrive!**
 
 Your contributions help make cloud storage more accessible and user-friendly for
 everyone. Whether it's a small bug fix or a major feature, every contribution is

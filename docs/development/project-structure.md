@@ -1,6 +1,6 @@
 # Project Structure
 
-This document provides a comprehensive overview of OpnDrive's project structure,
+This document provides a comprehensive overview of Opndrive's project structure,
 designed to help developers understand the codebase organization and navigate
 the project efficiently.
 

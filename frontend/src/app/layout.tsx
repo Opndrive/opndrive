@@ -11,7 +11,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <title>OpnDrive</title>
+        <title>Opndrive</title>
         <script
           dangerouslySetInnerHTML={{
             __html: `

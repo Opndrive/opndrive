@@ -9,7 +9,7 @@ export function PrivacySettingsPanel() {
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Your Data, Your Control</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            OpnDrive is designed with privacy and data sovereignty in mind
+            Opndrive is designed with privacy and data sovereignty in mind
           </p>
         </div>
         <div className="space-y-6">
@@ -18,7 +18,7 @@ export function PrivacySettingsPanel() {
             <div>
               <h4 className="font-medium text-foreground mb-2">Self-Hosted Architecture</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                OpnDrive runs entirely on your infrastructure. No data is ever transmitted to our
+                Opndrive runs entirely on your infrastructure. No data is ever transmitted to our
                 servers or any third-party services. You maintain complete ownership and control
                 over your files and metadata.
               </p>
@@ -31,7 +31,7 @@ export function PrivacySettingsPanel() {
               <h4 className="font-medium text-foreground mb-2">Your S3 Credentials</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 You provide your own S3-compatible storage credentials (AWS S3, MinIO, etc.). These
-                secrets remain on your server and are never shared with OpnDrive developers or any
+                secrets remain on your server and are never shared with Opndrive developers or any
                 external services.
               </p>
             </div>
@@ -52,7 +52,7 @@ export function PrivacySettingsPanel() {
             <div>
               <h4 className="font-medium text-foreground mb-2">Zero Data Collection</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                OpnDrive doesn't collect usage analytics, telemetry, or any personal information. No
+                Opndrive doesn't collect usage analytics, telemetry, or any personal information. No
                 phone-home functionality, no tracking, no data mining. Your usage patterns remain
                 completely private.
               </p>

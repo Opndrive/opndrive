@@ -1,14 +1,14 @@
-# OpnDrive Documentation
+# Opndrive Documentation
 
-Welcome to OpnDrive - your open-source cloud storage solution that works
+Welcome to Opndrive - your open-source cloud storage solution that works
 directly with Amazon S3.
 
 This guide will help you understand the project, set it up, and start
 contributing. Don't worry if you're new to this.
 
-## What is OpnDrive?
+## What is Opndrive?
 
-OpnDrive is like Google Drive or Dropbox, but with these cool differences:
+Opndrive is like Google Drive or Dropbox, but with these cool differences:
 
 - **Open Source** - You can see and modify all the code
 - **Your Own Storage** - Uses your Amazon S3 bucket (you control your data)
@@ -21,7 +21,7 @@ If you're new to programming or this project, start here:
 
 1. **[What You Need](./getting-started/prerequisites.md)** - Software you need
    to install
-2. **[Quick Setup](./getting-started/quick-setup.md)** - Get OpnDrive running in
+2. **[Quick Setup](./getting-started/quick-setup.md)** - Get Opndrive running in
    10 minutes
 3. **[Your First Look](./getting-started/understanding-the-code.md)** - Tour of
    the codebase
@@ -75,9 +75,9 @@ We love contributions! Here's how you can help:
 - **Questions?** - Create a GitHub issue with the "question" label
 - **Want to chat?** - Join our community discussions
 
-## What Makes OpnDrive Special?
+## What Makes Opndrive Special?
 
-Unlike other cloud storage solutions, OpnDrive:
+Unlike other cloud storage solutions, Opndrive:
 
 - Connects directly to YOUR Amazon S3 bucket
 - Gives you full control over your data

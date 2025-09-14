@@ -1,12 +1,12 @@
 # Component Guidelines
 
-This guide explains how components are organized and used in OpnDrive. It's
+This guide explains how components are organized and used in Opndrive. It's
 written for developers who want to understand or contribute to the component
 system.
 
 ## Component Philosophy
 
-OpnDrive follows these simple principles:
+Opndrive follows these simple principles:
 
 1. **Keep it Simple** - Each component does one thing well
 2. **Reuse When Possible** - Build new features by combining existing components
@@ -96,11 +96,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 }
 ```
 
-## How OpnDrive Actually Builds Components
+## How Opndrive Actually Builds Components
 
 ### Styling with Tailwind + CVA
 
-OpnDrive uses Tailwind CSS with Class Variance Authority (CVA) for consistent
+Opndrive uses Tailwind CSS with Class Variance Authority (CVA) for consistent
 styling:
 
 ```typescript
@@ -151,7 +151,7 @@ export function FilePreviewDialog({ file, open, onOpenChange }) {
 
 ### Context for Shared State
 
-OpnDrive uses React Context for sharing state between components:
+Opndrive uses React Context for sharing state between components:
 
 ```typescript
 // Example: File selection context
@@ -176,7 +176,7 @@ export function useFileSelection() {
 
 ### 1. Custom Hooks for Logic
 
-Instead of putting complex logic in components, OpnDrive extracts it into custom
+Instead of putting complex logic in components, Opndrive extracts it into custom
 hooks:
 
 ```typescript
@@ -301,7 +301,7 @@ export function FileItem({ file, onSelect }) {
 
 ## Testing Components
 
-OpnDrive uses React Testing Library for component tests:
+Opndrive uses React Testing Library for component tests:
 
 ```typescript
 // FileItem.test.tsx
@@ -346,5 +346,5 @@ Before submitting a new component, make sure it:
 
 ---
 
-_This guide covers the patterns actually used in OpnDrive. Keep it simple, make
+_This guide covers the patterns actually used in Opndrive. Keep it simple, make
 it accessible, and follow the existing patterns!_

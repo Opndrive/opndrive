@@ -32,7 +32,7 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Start page</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Choose which page to display when you open OpnDrive
+            Choose which page to display when you open Opndrive
           </p>
         </div>
         <div className="pl-0">

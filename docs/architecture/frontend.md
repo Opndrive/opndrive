@@ -1,11 +1,11 @@
 # Frontend Architecture
 
-This document explains the frontend architecture of OpnDrive, including design
+This document explains the frontend architecture of Opndrive, including design
 patterns, component organization, and development workflows.
 
 ## Architecture Overview
 
-OpnDrive's frontend is built with **Next.js 15** using the App Router, following
+Opndrive's frontend is built with **Next.js 15** using the App Router, following
 enterprise-grade patterns inspired by applications like Google Drive, Dropbox,
 and Notion.
 
@@ -208,7 +208,7 @@ export interface FileItemGridProps {
 
 ### App Router Structure
 
-OpnDrive uses Next.js App Router with static routes:
+Opndrive uses Next.js App Router with static routes:
 
 ```
 app/

@@ -1,6 +1,6 @@
 # What You Need to Get Started
 
-Before you can run OpnDrive on your computer, you need to install a few things.
+Before you can run Opndrive on your computer, you need to install a few things.
 Don't worry - it's easier than it sounds!
 
 ## Required Software
@@ -12,7 +12,7 @@ browsers).
 
 - **Download**: Go to [nodejs.org](https://nodejs.org/) and download the **LTS
   version** (Long Term Support)
-- **Why you need it**: OpnDrive is built with JavaScript/TypeScript, so we need
+- **Why you need it**: Opndrive is built with JavaScript/TypeScript, so we need
   Node.js to run it
 - **Version needed**: Version 18 or newer
 
@@ -26,7 +26,7 @@ You should see something like `v18.17.0` or higher.
 
 ### 2. PNPM (Package Manager)
 
-PNPM helps manage the libraries and tools that OpnDrive needs to work.
+PNPM helps manage the libraries and tools that Opndrive needs to work.
 
 - **Install**: After installing Node.js, run this command:
 
@@ -48,7 +48,7 @@ You should see something like `8.6.0` or higher.
 
 ### 3. Git (Version Control)
 
-Git helps track changes to code and lets you download the OpnDrive code from
+Git helps track changes to code and lets you download the Opndrive code from
 GitHub.
 
 - **Download**: Go to [git-scm.com](https://git-scm.com/) and download for your
@@ -122,7 +122,7 @@ git --version
 mkdir test-setup
 cd test-setup
 git init
-echo "Hello OpnDrive!" > test.txt
+echo "Hello Opndrive!" > test.txt
 git add test.txt
 git commit -m "Test setup"
 cd ..
@@ -154,4 +154,4 @@ If all commands work without errors, you're ready for the next step!
 ---
 
 **Next Step**: Once everything is installed, continue to
-[Quick Setup](./quick-setup.md) to get OpnDrive running!
+[Quick Setup](./quick-setup.md) to get Opndrive running!

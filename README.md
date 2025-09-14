@@ -1,12 +1,12 @@
-# OpnDrive
+# Opndrive
 
 **Open-Source Cloud Storage with Direct S3 Integration**
 
-OpnDrive is a modern,cloud storage platform that connects directly to your
+Opndrive is a modern,cloud storage platform that connects directly to your
 Amazon S3 bucket. Think Google Drive or Dropbox, but with complete data
 ownership and open-source transparency.
 
-## What Makes OpnDrive Special?
+## What Makes Opndrive Special?
 
 - **Your Data, Your Control** - Files stored in YOUR S3 bucket, not ours
 - **Modern Interface** - Built with Next.js 15, TypeScript, and Tailwind CSS
@@ -25,7 +25,7 @@ ownership and open-source transparency.
    git clone https://github.com/Opndrive/opndrive.git
    cd opndrive
    pnpm install
-   cd frontend && pnpm install
+   cd frontend; pnpm install
    ```
 
 2. **Start the App**
@@ -51,7 +51,7 @@ ownership and open-source transparency.
 
 ## Architecture
 
-OpnDrive uses a modern, feature-based architecture:
+Opndrive uses a modern, feature-based architecture:
 
 ```
 opndrive/
@@ -136,7 +136,7 @@ We welcome contributions from developers of all skill levels!
 - **Improve docs** - Help make our documentation better
 - **Design improvements** - Enhance the user interface
 - **Add tests** - Help improve code quality
-- **Translations** - Help make OpnDrive available in more languages
+- **Translations** - Help make Opndrive available in more languages
 
 ## Development
 
@@ -172,7 +172,7 @@ docker compose up
 
 ### Vercel/Netlify
 
-OpnDrive frontend can be deployed to any platform that supports Next.js
+Opndrive frontend can be deployed to any platform that supports Next.js
 applications.
 
 ## Security
@@ -208,6 +208,6 @@ see the [LICENSE](LICENSE) file for details.
 
 ---
 
-**If you find OpnDrive useful, please consider giving us a star on GitHub!**
+**If you find Opndrive useful, please consider giving us a star on GitHub!**
 
-_Made with ❤️ by the OpnDrive Team_
+_Made with ❤️ by the Opndrive Team_

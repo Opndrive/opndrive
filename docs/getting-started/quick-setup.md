@@ -1,11 +1,11 @@
 # Quick Setup Guide
 
-This guide will get OpnDrive running on your computer. We'll go step by step,
+This guide will get Opndrive running on your computer. We'll go step by step,
 and don't worry if something goes wrong - we've included troubleshooting tips!
 
 ## Step 1: Download the Code
 
-First, let's get the OpnDrive code onto your computer.
+First, let's get the Opndrive code onto your computer.
 
 ```bash
 # Download the code from GitHub
@@ -22,7 +22,7 @@ What this does:
 
 ## Step 2: Install Dependencies
 
-Now we need to download all the code libraries that OpnDrive uses.
+Now we need to download all the code libraries that Opndrive uses.
 
 ```bash
 # Install main project dependencies
@@ -42,19 +42,19 @@ cd ..
 
 What this does:
 
-- Downloads all the JavaScript libraries OpnDrive needs
+- Downloads all the JavaScript libraries Opndrive needs
 - Sets up three parts of the project: main, frontend, and s3-api
 
 **This might take a few minutes** - pnpm is downloading lots of files!
 
-## Step 3: Start OpnDrive
+## Step 3: Start Opndrive
 
-That's it for setup! OpnDrive handles configuration through its user interface,
+That's it for setup! Opndrive handles configuration through its user interface,
 so we don't need to manually edit any files.
 
-## Step 4: Start OpnDrive
+## Step 4: Start Opndrive
 
-Time to see OpnDrive in action!
+Time to see Opndrive in action!
 
 ```bash
 # Make sure you're in the frontend folder
@@ -74,19 +74,19 @@ You should see output like:
 
 Open your web browser and go to: http://localhost:3000
 
-**You should see the OpnDrive welcome page!**
+**You should see the Opndrive welcome page!**
 
 ## Step 6: Connect Your AWS S3
 
 1. **Click the "Get Started" button** in the center of the page
-2. **You'll be redirected to `/connect`** - this is OpnDrive's setup wizard
+2. **You'll be redirected to `/connect`** - this is Opndrive's setup wizard
 3. **Enter your AWS credentials** in the simple form:
    - AWS Access Key ID
    - AWS Secret Access Key
    - AWS Region (like `us-east-1`)
    - S3 Bucket Name
 
-4. **Click "Connect"** and OpnDrive will:
+4. **Click "Connect"** and Opndrive will:
    - Test your credentials
    - Save them securely in your browser's local storage
    - Redirect you to your dashboard
@@ -106,7 +106,7 @@ all your credentials will be removed from local storage.
 
 ## Next Steps
 
-### To Stop OpnDrive
+### To Stop Opndrive
 
 In your terminal, press `Ctrl+C` (or `Cmd+C` on Mac) to stop the server.
 
@@ -134,7 +134,7 @@ No problem! You can:
 1. Create a free AWS account at [aws.amazon.com](https://aws.amazon.com)
 2. Create an S3 bucket (there's a free tier)
 3. Get your access keys from the AWS console
-4. Come back and connect through the OpnDrive UI
+4. Come back and connect through the Opndrive UI
 
 ## Troubleshooting
 
@@ -175,7 +175,7 @@ pnpm install
 - If you see connection errors, double-check your AWS credentials
 - Make sure your S3 bucket exists and your access keys have the right
   permissions
-- The OpnDrive UI will show helpful error messages to guide you
+- The Opndrive UI will show helpful error messages to guide you
 
 ## Understanding the Development Server
 
@@ -191,7 +191,7 @@ and test changes quickly.
 
 ---
 
-**Congratulations!** You now have OpnDrive running on your computer!
+**Congratulations!** You now have Opndrive running on your computer!
 
 **Next**: Learn about [Understanding the Code](./understanding-the-code.md) to
 see how everything works.

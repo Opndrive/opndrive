@@ -1,6 +1,6 @@
 # Development Setup
 
-This guide will help you set up OpnDrive for local development. Follow these
+This guide will help you set up Opndrive for local development. Follow these
 steps to get your development environment running quickly.
 
 ## Prerequisites
@@ -51,7 +51,7 @@ pnpm dev
 
 - **Frontend**: http://localhost:3000
 
-**That's it!** OpnDrive uses UI-based configuration - no need to manually edit
+**That's it!** Opndrive uses UI-based configuration - no need to manually edit
 environment files. When you first visit the app, you'll see a "Get Started"
 button that takes you to `/connect` where you can enter your AWS credentials
 through the interface.
@@ -214,7 +214,7 @@ Components automatically support dark mode:
 
 ### Direct S3 Integration
 
-OpnDrive uses direct S3 integration through the browser with the s3-api package:
+Opndrive uses direct S3 integration through the browser with the s3-api package:
 
 ```typescript
 import { s3Client } from '@/lib/byo-s3-api';
