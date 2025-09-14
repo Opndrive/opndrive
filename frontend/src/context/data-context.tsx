@@ -171,7 +171,9 @@ export const useDriveStore = create<Store>((set, get) => ({
     const currentData = cache[keyPrefix];
 
     // Decide whether we should fetch
-    if (!currentData || opts.sync || currentData.isTruncated) {
+    // Only fetch if: no data exists, forced sync, or we need to load more (and user explicitly requested it)
+    // Don't auto-refetch just because isTruncated is true - let user decide with "Show More" button
+    if (!currentData || opts.sync) {
       try {
         setStatus(keyPrefix, 'loading');
 
