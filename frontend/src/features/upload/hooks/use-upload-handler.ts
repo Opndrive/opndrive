@@ -188,7 +188,7 @@ export function useUploadHandler(
             fileName: fileName,
             concurrency,
             onProgress: (progress: number) => {
-              // Ensure progress is never more than 100 and format to 2 decimal places
+              // Ensure progress never goes over 100% and format to 2 decimal places
               const clampedProgress = Math.min(100, Math.max(0, progress));
               const formattedProgress = parseFloat(clampedProgress.toFixed(2));
               updateProgress({ itemId, progress: formattedProgress });
@@ -571,8 +571,11 @@ export function useUploadHandler(
                 // Calculate overall folder progress correctly
                 const completedFilesProgress = (uploadedCount / totalFiles) * 100;
                 const currentFileProgress = fileProgress / totalFiles;
-                const overallProgress = Math.min(100, completedFilesProgress + currentFileProgress);
-                const formattedProgress = parseFloat(overallProgress.toFixed(2)); // 2 decimal places
+                const overallProgress = completedFilesProgress + currentFileProgress;
+
+                // Ensure progress never goes over 100% and format to 2 decimal places
+                const clampedProgress = Math.min(100, Math.max(0, overallProgress));
+                const formattedProgress = parseFloat(clampedProgress.toFixed(2));
 
                 updateProgress({
                   itemId,
@@ -603,10 +606,11 @@ export function useUploadHandler(
           uploadedCount++;
 
           // Update progress after successful file upload
-          const progress = parseFloat(((uploadedCount / totalFiles) * 100).toFixed(2)); // 2 decimal places
+          const progress = (uploadedCount / totalFiles) * 100;
+          const formattedProgress = parseFloat(Math.min(100, progress).toFixed(2));
           updateProgress({
             itemId,
-            progress: Math.min(100, progress),
+            progress: formattedProgress,
             uploadedFiles: uploadedCount,
             totalFiles,
           });
@@ -626,10 +630,11 @@ export function useUploadHandler(
 
               // Still increment the count and continue with other files
               uploadedCount++;
-              const progress = parseFloat(((uploadedCount / totalFiles) * 100).toFixed(2));
+              const progress = (uploadedCount / totalFiles) * 100;
+              const formattedProgress = parseFloat(Math.min(100, progress).toFixed(2));
               updateProgress({
                 itemId,
-                progress: Math.min(100, progress),
+                progress: formattedProgress,
                 uploadedFiles: uploadedCount,
                 totalFiles,
               });

@@ -127,7 +127,9 @@ export class MultipartUploader {
           console.log(`Part ${partNumber}/${totalParts} uploaded successfully, ETag: ${ETag}`);
 
           if (onProgress) {
-            onProgress((this.completedParts.length / totalParts) * 100);
+            // Ensure progress never exceeds 100%
+            const progressPercent = Math.min(100, (this.completedParts.length / totalParts) * 100);
+            onProgress(progressPercent);
           }
         } catch (err) {
           if (this.isCancelled || this.isPaused) {
