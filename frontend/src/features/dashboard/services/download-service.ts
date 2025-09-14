@@ -57,6 +57,7 @@ class DownloadService {
 
       const link = document.createElement('a');
       link.href = downloadUrl;
+      link.target = '_blank';
       link.download = file.name;
       link.style.display = 'none';
       document.body.appendChild(link);
