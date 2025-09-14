@@ -209,7 +209,7 @@ export default function SearchPage() {
 
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
-            <p className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground">
               {isLoading ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -218,7 +218,7 @@ export default function SearchPage() {
               ) : (
                 `${processedResults.length} results for "${query}"`
               )}
-            </p>
+            </div>
 
             {/* Layout Toggle */}
             <LayoutToggle />
