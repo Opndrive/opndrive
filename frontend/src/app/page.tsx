@@ -41,11 +41,11 @@ export default function LandingPage() {
             <div className="flex flex-col items-center space-y-4">
               <div className="max-w-3xl space-y-3">
                 <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl">
-                  Your Secure, Open-Source Cloud Storage
+                  Your Secure, Open-Source web UI for Amazon S3
                 </h1>
                 <p className="text-lg text-muted-foreground md:text-xl">
-                  Opndrive offers a powerful, AI-enhanced platform for seamless file sharing and
-                  collaboration, giving you full control over your data.
+                  Think of it like Google Drive or Dropbox, but instead of giving up control, you
+                  connect your own storage backend - AWS S3.
                 </p>
               </div>
               <div className="flex flex-col gap-2 pt-4 min-[400px]:flex-row">
