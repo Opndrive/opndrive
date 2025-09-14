@@ -8,4 +8,3 @@ export { SidebarDropdown } from './sidebar/sidebar-dropdown';
 export { SidebarItem } from './sidebar/sidebar-item';
 
 export { EnhancedFolderBreadcrumb } from './breadcrumb/enhanced-folder-breadcrumb';
-export { FolderBreadcrumb } from './breadcrumb/folder-breadcrumb';
