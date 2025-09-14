@@ -78,20 +78,14 @@ export class MultipartUploader {
 
   private async uploadParts(file: File, onProgress?: (p: number) => void) {
     const totalParts = Math.ceil(file.size / this.partSize);
+    let nextPart = 1;
+
     const uploadedNumbers = new Set(this.completedParts.map((p) => p.PartNumber));
 
-    // Create a queue of part numbers that need to be uploaded
-    const partsToUpload: number[] = [];
-    for (let i = 1; i <= totalParts; i++) {
-      if (!uploadedNumbers.has(i)) {
-        partsToUpload.push(i);
-      }
-    }
-
     const worker = async () => {
-      while (partsToUpload.length > 0 && !this.isPaused && !this.isCancelled) {
-        const partNumber = partsToUpload.shift(); // Safely get next part number
-        if (!partNumber) break;
+      while (nextPart <= totalParts && !this.isPaused && !this.isCancelled) {
+        const partNumber = nextPart++;
+        if (uploadedNumbers.has(partNumber)) continue;
 
         const start = (partNumber - 1) * this.partSize;
         const end = Math.min(start + this.partSize, file.size);
@@ -117,25 +111,18 @@ export class MultipartUploader {
             { abortSignal: controller.signal }
           );
 
-          if (!ETag) {
-            throw new Error(`No ETag returned for part ${partNumber}`);
-          }
-
-          this.completedParts.push({ ETag, PartNumber: partNumber });
+          this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
           this.saveState(file);
 
-          console.log(`Part ${partNumber}/${totalParts} uploaded successfully, ETag: ${ETag}`);
-
           if (onProgress) {
-            // Ensure progress never exceeds 100%
-            const progressPercent = Math.min(100, (this.completedParts.length / totalParts) * 100);
+            const uniqueCompleted = new Set(this.completedParts.map((p) => p.PartNumber));
+            const progressPercent = Math.min(100, (uniqueCompleted.size / totalParts) * 100);
             onProgress(progressPercent);
           }
         } catch (err) {
           if (this.isCancelled || this.isPaused) {
             return; // ignore
           }
-          console.error(`Failed to upload part ${partNumber}:`, err);
           throw err;
         } finally {
           this.controllers = this.controllers.filter((c) => c !== controller);
@@ -153,33 +140,9 @@ export class MultipartUploader {
     // deduplicate + sort
     const deduped = new Map<number, CompletedPart>();
     for (const p of this.completedParts) {
-      if (p.PartNumber != null && p.ETag) {
-        // Ensure ETag is properly formatted (should have quotes)
-        let etag = p.ETag;
-        if (!etag.startsWith('"') && !etag.endsWith('"')) {
-          etag = `"${etag}"`;
-        }
-        deduped.set(p.PartNumber, { ...p, ETag: etag });
-      }
+      if (p.PartNumber != null) deduped.set(p.PartNumber, p);
     }
     const sortedParts = Array.from(deduped.values()).sort((a, b) => a.PartNumber! - b.PartNumber!);
-
-    // Validate that we have sequential part numbers starting from 1
-    for (let i = 0; i < sortedParts.length; i++) {
-      if (sortedParts[i].PartNumber !== i + 1) {
-        throw new Error(
-          `Missing part number ${i + 1}. Found parts: ${sortedParts.map((p) => p.PartNumber).join(', ')}`
-        );
-      }
-    }
-
-    console.log(
-      'Completing multipart upload with parts:',
-      sortedParts.map((p) => ({
-        PartNumber: p.PartNumber,
-        ETag: p.ETag,
-      }))
-    );
 
     await this.s3.send(
       new CompleteMultipartUploadCommand({
