@@ -2,9 +2,9 @@
 
 **Open-Source Cloud Storage with Direct S3 Integration**
 
-Opndrive is a modern,cloud storage platform that connects directly to your
-Amazon S3 bucket. Think Google Drive or Dropbox, but with complete data
-ownership and open-source transparency.
+Opndrive is a modern, open-source web UI for Amazon S3 and S3-compatible storage
+services. Think of it like Google Drive or Dropbox, but instead of giving up
+control, you connect your own storage backend - AWS S3.
 
 ## What Makes Opndrive Special?
 
@@ -15,9 +15,11 @@ ownership and open-source transparency.
 - **Responsive Design** - Works perfectly on desktop, tablet, and mobile
 - **Beautiful UI** - Clean, intuitive interface inspired by modern file managers
 
-## Quick Start
+# Quick Start
 
-### For Users (Just Want to Use It)
+## For Users (Just Want to Use It)
+
+### Option 1: Run Locally
 
 1. **Clone and Install**
 
@@ -36,8 +38,24 @@ ownership and open-source transparency.
    ```
 
 3. **Open Your Browser**
-   - Go to http://localhost:3000
-   - Click "Get Started"
+   - Go to [http://localhost:3000](http://localhost:3000)
+   - Click **Get Started**
+   - Enter your AWS S3 credentials in the UI
+   - Start managing your files!
+
+---
+
+### Option 2: Run with Docker
+
+1. **Run the Container**
+
+   ```bash
+   docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive/opndrive:1.0.0
+   ```
+
+2. **Open Your Browser**
+   - Go to [http://localhost:3000](http://localhost:3000)
+   - Click **Get Started**
    - Enter your AWS S3 credentials in the UI
    - Start managing your files!
 
