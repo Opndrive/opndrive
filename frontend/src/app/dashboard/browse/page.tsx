@@ -22,8 +22,16 @@ function BrowsePageContent() {
   const { isSearchHidden } = useScroll();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentPrefix, cache, status, fetchData, setCurrentPrefix, setRootPrefix } =
-    useDriveStore();
+  const {
+    currentPrefix,
+    cache,
+    status,
+    loadMoreStatus,
+    fetchData,
+    loadMoreData,
+    setCurrentPrefix,
+    setRootPrefix,
+  } = useDriveStore();
 
   const apiS3 = useApiS3();
 
@@ -82,6 +90,14 @@ function BrowsePageContent() {
   const handleFileAction = (_action: string, _file: FileItem) => {};
 
   const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
+  const isLoadingMore = currentPrefix ? loadMoreStatus[currentPrefix] === 'loading' : false;
+  const currentData = currentPrefix ? cache[currentPrefix] : null;
+
+  // Calculate item counts
+  const visibleFolders = currentData?.folders || [];
+  const visibleFiles = currentData?.files || [];
+  const totalVisibleItems = visibleFolders.length + visibleFiles.length;
+  const hasMoreItems = currentData?.isTruncated || false;
 
   // Get current folder name for display using utility function
   const currentFolderName = getFolderNameFromPrefix(prefixParam);
@@ -117,6 +133,13 @@ function BrowsePageContent() {
         >
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
+            {isReady && totalVisibleItems > 0 && (
+              <span className="item-count-badge">
+                {hasMoreItems
+                  ? `Showing ${totalVisibleItems.toLocaleString()}+ items`
+                  : `${totalVisibleItems.toLocaleString()} item${totalVisibleItems === 1 ? '' : 's'}`}
+              </span>
+            )}
           </div>
         </div>
 
@@ -126,7 +149,7 @@ function BrowsePageContent() {
             <>
               {/* Folders */}
               <SuggestedFolders
-                folders={cache[currentPrefix]?.folders || []}
+                folders={visibleFolders}
                 onFolderClick={handleFolderClick}
                 onFolderMenuClick={handleFolderMenuClick}
                 className="mt-8"
@@ -135,12 +158,44 @@ function BrowsePageContent() {
 
               {/* Files */}
               <SuggestedFiles
-                files={cache[currentPrefix]?.files || []}
+                files={visibleFiles}
                 onFileClick={handleFileClick}
                 onFileAction={handleFileAction}
                 className="mt-8"
                 hideTitle={pathSegments.length > 0}
               />
+
+              {/* Show More Button */}
+              {hasMoreItems && (
+                <div className="flex justify-center mt-8 mb-8">
+                  <button onClick={loadMoreData} disabled={isLoadingMore} className="show-more-btn">
+                    {isLoadingMore ? (
+                      <>
+                        <div className="spinner"></div>
+                        Loading more items...
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                          />
+                        </svg>
+                        Show More Items
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div className="mt-8">

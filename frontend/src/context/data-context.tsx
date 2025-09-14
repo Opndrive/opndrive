@@ -34,6 +34,7 @@ type Store = {
   recentCache: Record<string, RecentDataWithCache>;
   status: Record<string, Status>;
   recentStatus: Record<string, Status>;
+  loadMoreStatus: Record<string, Status>;
   currentPrefix: string | null;
   rootPrefix: string | null;
 
@@ -42,12 +43,14 @@ type Store = {
   setCurrentPrefix: (prefix: string) => void;
   setStatus: (prefix: string, s: Status) => void;
   setRecentStatus: (prefix: string, s: Status) => void;
+  setLoadMoreStatus: (prefix: string, s: Status) => void;
   setRootPrefix: (prefix: string) => void;
 
   fetchData: (opts?: { sync?: boolean }) => Promise<void>;
   fetchRecentItems: (opts?: { sync?: boolean; itemsPerType?: number }) => Promise<void>;
   loadMoreRecentFiles: () => Promise<void>;
   loadMoreRecentFolders: () => Promise<void>;
+  loadMoreData: () => Promise<void>;
   refreshCurrentData: () => Promise<void>;
   refreshAll: () => Promise<void>;
 };
@@ -119,6 +122,7 @@ export const useDriveStore = create<Store>((set, get) => ({
   recentCache: {},
   status: {},
   recentStatus: {},
+  loadMoreStatus: {},
   rootPrefix: null,
   currentPrefix: null,
 
@@ -138,6 +142,9 @@ export const useDriveStore = create<Store>((set, get) => ({
 
   setRecentStatus: (prefix, s) =>
     set((state) => ({ recentStatus: { ...state.recentStatus, [prefix]: s } })),
+
+  setLoadMoreStatus: (prefix, s) =>
+    set((state) => ({ loadMoreStatus: { ...state.loadMoreStatus, [prefix]: s } })),
 
   setRootPrefix: (prefix) => set({ rootPrefix: prefix }),
 
@@ -353,5 +360,62 @@ export const useDriveStore = create<Store>((set, get) => ({
     };
 
     setRecentData(keyPrefix, updatedData);
+  },
+
+  loadMoreData: async () => {
+    const {
+      apiS3,
+      currentPrefix,
+      rootPrefix,
+      cache,
+      loadMoreStatus,
+      setPrefixData,
+      setLoadMoreStatus,
+    } = get();
+
+    if (!apiS3) return;
+    if (currentPrefix === null || rootPrefix === null) return;
+
+    const formattedPrefix = rootPrefix === '/' && currentPrefix === '/' ? '' : currentPrefix;
+    const keyPrefix = formattedPrefix === '' ? '/' : formattedPrefix;
+
+    const currentData = cache[keyPrefix];
+
+    // Only load more if we have existing data and it's truncated
+    if (!currentData || !currentData.isTruncated || !currentData.nextToken) {
+      return;
+    }
+
+    // Don't load if already loading
+    if (loadMoreStatus[keyPrefix] === 'loading') return;
+
+    try {
+      setLoadMoreStatus(keyPrefix, 'loading');
+
+      const data = await apiS3.fetchDirectoryStructure(
+        formattedPrefix,
+        1000,
+        currentData.nextToken
+      );
+
+      data.folders = data.folders.filter((obj) => obj.Prefix != '');
+      data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
+      const folders = data.folders.map((obj) => enrichFolder(obj));
+      const files = data.files.map((obj) => enrichFile(obj));
+
+      // Append new data to existing data
+      const nextData = {
+        files: [...currentData.files, ...files],
+        folders: [...currentData.folders, ...folders],
+        nextToken: data.nextToken,
+        isTruncated: data.isTruncated,
+      };
+
+      setPrefixData(keyPrefix, nextData);
+      setLoadMoreStatus(keyPrefix, 'ready');
+    } catch (error) {
+      setLoadMoreStatus(keyPrefix, 'error');
+      console.error('Failed to load more data:', error);
+    }
   },
 }));
