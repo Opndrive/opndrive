@@ -1,6 +1,7 @@
 import React from 'react';
 import { MdHomeFilled } from 'react-icons/md';
 import { PiHardDrivesFill } from 'react-icons/pi';
+import { BookOpen } from 'lucide-react';
 
 export interface SidebarItem {
   title: string;
@@ -19,6 +20,11 @@ const SidebarItems: SidebarItem[] = [
     title: 'My Drive',
     href: '/browse',
     icon: PiHardDrivesFill,
+  },
+  {
+    title: 'Wiki',
+    href: '/wiki',
+    icon: BookOpen,
   },
 ];
 

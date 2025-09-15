@@ -85,6 +85,7 @@ opndrive/
 - **File Preview** - View images, PDFs, and text files directly
 - **File Management** - Rename, delete, download files
 - **Search** - Find files quickly across your storage
+- **Wiki** - Create and manage knowledge base with markdown pages
 - **Multiple Upload Methods** - Auto, signed-URL, multipart, concurrent
 - **Responsive Design** - Works on all devices
 - **Dark/Light Theme** - Choose your preferred interface
