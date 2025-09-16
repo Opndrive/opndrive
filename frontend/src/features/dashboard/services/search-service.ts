@@ -1,20 +1,7 @@
-import type {
-  SearchResult,
-  BYOS3ApiProvider,
-  DirectoryStructure,
-  SearchParams,
-} from '@opndrive/s3-api';
+import type { SearchResult, BYOS3ApiProvider } from '@opndrive/s3-api';
 import type { _Object } from '@aws-sdk/client-s3';
 
 // Define extended interface for this.api with search method
-interface S3ApiWithSearch {
-  search(params: SearchParams): Promise<SearchResult>;
-  fetchDirectoryStructure(
-    prefix: string,
-    maxKeys?: number,
-    token?: string
-  ): Promise<DirectoryStructure>;
-}
 
 export interface SearchOptions {
   onProgress?: (progress: { status: 'searching' | 'success' | 'error'; error?: string }) => void;
@@ -34,27 +21,14 @@ class SearchService {
     prefix: string = '',
     options: SearchOptions = {}
   ): Promise<SearchResult> {
-    const { onProgress, onComplete, onError } = options;
+    const { onProgress, onError } = options;
 
     try {
       onProgress?.({ status: 'searching' });
 
-      // Check if this.api has search method
-
-      if (typeof (this.api as unknown as S3ApiWithSearch).search === 'function') {
-        const searchParams: SearchParams = {
-          prefix,
-          searchTerm: query,
-          nextToken: undefined,
-        };
-        const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
-
-        onProgress?.({ status: 'success' });
-        onComplete?.();
-        return result;
-      } else {
-        return this.fallbackSearch(query, prefix, options);
-      }
+      // Always use fallback search to ensure we get both files and folders
+      // The S3 search method only returns Contents, not CommonPrefixes (folders)
+      return this.fallbackSearch(query, prefix, options);
     } catch (error) {
       console.error('Search error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to search files';
@@ -73,6 +47,7 @@ class SearchService {
     const { onProgress, onComplete, onError } = options;
 
     try {
+      // Use recursive search to find all matching files and folders
       const allItems = await this.recursivelySearchDirectories(query, prefix === '/' ? '' : prefix);
 
       const result: SearchResult = {
@@ -125,11 +100,19 @@ class SearchService {
         if (structure.folders && structure.folders.length > 0) {
           for (const folder of structure.folders) {
             if (folder.Prefix) {
-              // Check if folder name matches
-              if (folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
+              // Extract just the folder name for matching
+              const folderName = folder.Prefix.split('/').filter(Boolean).pop() || '';
+
+              // Check if folder name matches (search in folder name, not full path)
+              if (
+                folderName.toLowerCase().includes(query.toLowerCase()) ||
+                folder.Prefix.toLowerCase().includes(query.toLowerCase())
+              ) {
                 // Create a mock _Object for the folder
+                // Ensure folder Key ends with '/' to be properly detected as folder
+                const folderKey = folder.Prefix.endsWith('/') ? folder.Prefix : folder.Prefix + '/';
                 matches.push({
-                  Key: folder.Prefix,
+                  Key: folderKey,
                   LastModified: new Date(),
                   Size: 0,
                   ETag: '',
@@ -167,9 +150,19 @@ class SearchService {
             if (paginatedStructure.folders) {
               for (const folder of paginatedStructure.folders) {
                 if (folder.Prefix) {
-                  if (folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
+                  // Extract just the folder name for matching
+                  const folderName = folder.Prefix.split('/').filter(Boolean).pop() || '';
+
+                  if (
+                    folderName.toLowerCase().includes(query.toLowerCase()) ||
+                    folder.Prefix.toLowerCase().includes(query.toLowerCase())
+                  ) {
+                    // Ensure folder Key ends with '/' to be properly detected as folder
+                    const folderKey = folder.Prefix.endsWith('/')
+                      ? folder.Prefix
+                      : folder.Prefix + '/';
                     matches.push({
-                      Key: folder.Prefix,
+                      Key: folderKey,
                       LastModified: new Date(),
                       Size: 0,
                       ETag: '',
@@ -200,6 +193,18 @@ class SearchService {
       (item, index, arr) => arr.findIndex((other) => other.Key === item.Key) === index
     );
 
+    console.log('🔍 Search Results:', {
+      query,
+      startPrefix: prefix,
+      totalMatches: matches.length,
+      uniqueMatches: uniqueMatches.length,
+      folders: uniqueMatches.filter((m) => m.Key?.endsWith('/')).length,
+      files: uniqueMatches.filter((m) => !m.Key?.endsWith('/')).length,
+      sampleResults: uniqueMatches
+        .slice(0, 5)
+        .map((m) => ({ Key: m.Key, isFolder: m.Key?.endsWith('/') })),
+    });
+
     return uniqueMatches;
   }
 
@@ -214,53 +219,69 @@ class SearchService {
     try {
       onProgress?.({ status: 'searching' });
 
-      if (typeof (this.api as unknown as S3ApiWithSearch).search === 'function') {
-        const searchParams: SearchParams = {
-          prefix,
-          searchTerm: query,
-          nextToken: nextToken || undefined,
-        };
-        const result = await (this.api as unknown as S3ApiWithSearch).search(searchParams);
-
-        onProgress?.({ status: 'success' });
-        onComplete?.();
-        return result;
-      } else {
-        const structure = await this.api.fetchDirectoryStructure(prefix, 1000, nextToken);
-
-        const matches: _Object[] = [];
-
-        if (structure.files) {
-          structure.files.forEach((file) => {
-            if (file.Key && file.Key.toLowerCase().includes(query.toLowerCase())) {
-              matches.push(file);
-            }
-          });
-        }
-
-        if (structure.folders) {
-          structure.folders.forEach((folder) => {
-            if (folder.Prefix && folder.Prefix.toLowerCase().includes(query.toLowerCase())) {
-              matches.push({
-                Key: folder.Prefix,
-                LastModified: new Date(),
-                Size: 0,
-                ETag: '',
-                StorageClass: 'STANDARD',
-              });
-            }
-          });
-        }
+      // For root search or if no nextToken (first search), do recursive search
+      if (!prefix || prefix === '' || prefix === '/' || !nextToken) {
+        // Use recursive search to get all matching items
+        const allItems = await this.recursivelySearchDirectories(
+          query,
+          prefix === '/' ? '' : prefix
+        );
 
         const result: SearchResult = {
-          matches,
-          nextToken: structure.nextToken,
+          matches: allItems,
+          nextToken: undefined, // Recursive search doesn't use pagination
         };
 
         onProgress?.({ status: 'success' });
         onComplete?.();
         return result;
       }
+
+      // For non-root searches with pagination, use directory structure
+      const structure = await this.api.fetchDirectoryStructure(prefix, 1000, nextToken);
+
+      const matches: _Object[] = [];
+
+      if (structure.files) {
+        structure.files.forEach((file) => {
+          if (file.Key && file.Key.toLowerCase().includes(query.toLowerCase())) {
+            matches.push(file);
+          }
+        });
+      }
+
+      if (structure.folders) {
+        structure.folders.forEach((folder) => {
+          if (folder.Prefix) {
+            // Extract just the folder name for matching
+            const folderName = folder.Prefix.split('/').filter(Boolean).pop() || '';
+
+            if (
+              folderName.toLowerCase().includes(query.toLowerCase()) ||
+              folder.Prefix.toLowerCase().includes(query.toLowerCase())
+            ) {
+              // Ensure folder Key ends with '/' to be properly detected as folder
+              const folderKey = folder.Prefix.endsWith('/') ? folder.Prefix : folder.Prefix + '/';
+              matches.push({
+                Key: folderKey,
+                LastModified: new Date(),
+                Size: 0,
+                ETag: '',
+                StorageClass: 'STANDARD',
+              });
+            }
+          }
+        });
+      }
+
+      const result: SearchResult = {
+        matches,
+        nextToken: structure.nextToken,
+      };
+
+      onProgress?.({ status: 'success' });
+      onComplete?.();
+      return result;
     } catch (error) {
       console.error('Paginated search error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to search files';
