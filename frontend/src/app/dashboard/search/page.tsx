@@ -14,6 +14,7 @@ import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
+import { HiOutlineRefresh } from 'react-icons/hi';
 import {
   CreditWarningDialog,
   shouldShowCreditWarning,
@@ -52,6 +53,7 @@ export default function SearchPage() {
   const { layout: viewMode } = useCurrentLayout();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { searchFiles, searchWithPagination, searchResults, isLoading, canLoadMore } = useSearch();
 
@@ -66,6 +68,20 @@ export default function SearchPage() {
   const handleCreditWarningClose = () => {
     setShowCreditWarning(false);
     setPendingSearchQuery('');
+  };
+
+  const handleSync = async () => {
+    if (isSyncing || !query.trim()) return;
+
+    setIsSyncing(true);
+    try {
+      // Re-run the search with fresh data
+      await searchFiles(query);
+    } catch (error) {
+      console.error('Failed to sync search results:', error);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Search when query changes
@@ -220,8 +236,25 @@ export default function SearchPage() {
               )}
             </div>
 
-            {/* Layout Toggle */}
-            <LayoutToggle />
+            {/* Controls */}
+            <div className="flex items-center gap-2">
+              {/* Sync Button */}
+              <button
+                onClick={handleSync}
+                disabled={isSyncing || !query.trim()}
+                className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+                title="Refresh search results"
+              >
+                <HiOutlineRefresh
+                  className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                    isSyncing ? 'animate-spin' : ''
+                  }`}
+                />
+              </button>
+
+              {/* Layout Toggle */}
+              <LayoutToggle />
+            </div>
           </div>
         </div>
 

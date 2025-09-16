@@ -17,6 +17,7 @@ import {
   buildFolderClickUrl,
   getFolderNameFromPrefix,
 } from '@/features/folder-navigation/folder-navigation';
+import { HiOutlineRefresh } from 'react-icons/hi';
 
 function BrowsePageContent() {
   const { setSearchHidden } = useScroll();
@@ -27,6 +28,7 @@ function BrowsePageContent() {
   const [visibleFileChunks, setVisibleFileChunks] = useState(1); // Start with 1 chunk (100 items)
   const [visibleFolderChunks, setVisibleFolderChunks] = useState(1);
   const [isLoadingMoreChunks, setIsLoadingMoreChunks] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const CHUNK_SIZE = 100; // Display 100 items per chunk
 
@@ -117,6 +119,22 @@ function BrowsePageContent() {
   const handleFileClick = (_file: FileItem) => {};
 
   const handleFileAction = (_action: string, _file: FileItem) => {};
+
+  const handleSync = async () => {
+    if (isSyncing || !currentPrefix) return;
+
+    setIsSyncing(true);
+    try {
+      await fetchData({ sync: true });
+      // Reset chunks to show fresh data from the beginning
+      setVisibleFileChunks(1);
+      setVisibleFolderChunks(1);
+    } catch (error) {
+      console.error('Sync failed:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
   const isLoadingMore = currentPrefix ? loadMoreStatus[currentPrefix] === 'loading' : false;
@@ -238,7 +256,7 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div className="sticky top-[-30px] z-10 flex items-center justify-between gap-4 py-4 bg-background">
+        <div className="sticky top-[-16px] z-10 flex items-center justify-between gap-4 py-4 bg-background">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
             {totalVisibleItems > 0 && (
@@ -249,6 +267,23 @@ function BrowsePageContent() {
               </span>
             )}
           </div>
+
+          {/* Sync/Refresh Button */}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
+              isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
+            }`}
+            title="Refresh files and folders"
+            aria-label="Refresh files and folders"
+          >
+            <HiOutlineRefresh
+              className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
+                isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+              }`}
+            />
+          </button>
         </div>
 
         <div className="relative z-0">

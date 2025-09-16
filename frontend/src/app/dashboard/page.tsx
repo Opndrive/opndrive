@@ -12,6 +12,7 @@ import { useApiS3 } from '@/hooks/use-auth';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
+import { HiOutlineRefresh } from 'react-icons/hi';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -30,6 +31,7 @@ export default function HomePage() {
 
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const apiS3 = useApiS3();
 
   if (!apiS3) {
@@ -92,6 +94,19 @@ export default function HomePage() {
     }
   };
 
+  const handleSync = async () => {
+    if (isSyncing || !currentPrefix) return;
+
+    setIsSyncing(true);
+    try {
+      await fetchRecentItems({ sync: true, itemsPerType: 10 });
+    } catch (error) {
+      console.error('Failed to sync data:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const isReady = currentPrefix ? recentStatus[currentPrefix] === 'ready' : false;
   const recentData = currentPrefix ? recentCache[currentPrefix] : null;
 
@@ -107,6 +122,20 @@ export default function HomePage() {
           }`}
         >
           <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
+
+          {/* Sync Button */}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing || !currentPrefix}
+            className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+            title="Refresh data"
+          >
+            <HiOutlineRefresh
+              className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                isSyncing ? 'animate-spin' : ''
+              }`}
+            />
+          </button>
         </div>
 
         <div className="relative z-0">
