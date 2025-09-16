@@ -324,3 +324,16 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Utility for hiding scrollbars while maintaining scroll functionality */
+.scrollbar-hide {
+  /* IE and Edge */
+  -ms-overflow-style: none;
+  /* Firefox */
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  /* Safari and Chrome */
+  display: none;
+}

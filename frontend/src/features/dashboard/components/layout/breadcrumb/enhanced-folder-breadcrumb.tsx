@@ -3,6 +3,10 @@
 import { ChevronRight } from 'lucide-react';
 import { Fragment } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  generateSmartBreadcrumbs,
+  type BreadcrumbItem,
+} from '@/features/folder-navigation/folder-navigation';
 
 interface EnhancedFolderBreadcrumbProps {
   pathSegments: string[];
@@ -41,40 +45,58 @@ export function EnhancedFolderBreadcrumb({
     }
   };
 
+  const { mobile, desktop } = generateSmartBreadcrumbs(pathSegments);
+
+  const renderBreadcrumbItem = (item: BreadcrumbItem, showChevron: boolean = true) => {
+    const isClickable = !item.isEllipsis;
+
+    return (
+      <Fragment key={`${item.index}-${item.segment}`}>
+        {showChevron && (
+          <ChevronRight size={14} className="mx-0.5 text-muted-foreground flex-shrink-0" />
+        )}
+        {item.isEllipsis ? (
+          <span className="px-1.5 py-1 text-muted-foreground select-none">{item.segment}</span>
+        ) : (
+          <button
+            className={`px-1.5 py-1 rounded-md transition-colors truncate ${
+              item.isLast
+                ? 'text-foreground font-medium bg-secondary/30 max-w-[100px] sm:max-w-[150px] md:max-w-[200px]'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 max-w-[80px] sm:max-w-[120px] md:max-w-[180px]'
+            } ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+            onClick={() => isClickable && handleNavigation(item.pathUpToHere)}
+            title={item.segment}
+            disabled={!isClickable}
+          >
+            {item.segment}
+          </button>
+        )}
+      </Fragment>
+    );
+  };
+
   return (
     <div className="flex items-center py-4 border-b border-border/50">
       <nav className="flex items-center min-w-0 flex-1">
-        <div className="flex items-center text-sm overflow-x-auto">
+        <div className="flex items-center text-sm overflow-x-auto scrollbar-hide">
           {/* My Drive link */}
           <button
             onClick={() => handleNavigation([])}
-            className="text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1 px-2 py-1 rounded-md hover:bg-secondary/50 transition-colors"
+            className="text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-secondary/50 transition-colors flex-shrink-0"
           >
             <span className="hidden sm:inline">My Drive</span>
+            <span className="sm:hidden">Drive</span>
           </button>
 
-          {/* Breadcrumb items */}
-          {pathSegments.map((segment, index) => {
-            const isLast = index === pathSegments.length - 1;
-            const pathUpToHere = pathSegments.slice(0, index + 1);
+          {/* Desktop breadcrumbs - hidden on mobile (md and above) */}
+          <div className="hidden md:flex items-center">
+            {desktop.map((item) => renderBreadcrumbItem(item, true))}
+          </div>
 
-            return (
-              <Fragment key={index}>
-                <ChevronRight size={16} className="mx-1 text-muted-foreground flex-shrink-0" />
-                <button
-                  className={`px-2 py-1 cursor-pointer rounded-md transition-colors truncate max-w-[200px] ${
-                    isLast
-                      ? 'text-foreground font-medium bg-secondary/30'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                  }`}
-                  onClick={() => handleNavigation(pathUpToHere)}
-                  title={segment}
-                >
-                  {segment}
-                </button>
-              </Fragment>
-            );
-          })}
+          {/* Mobile breadcrumbs - shown on small and medium screens */}
+          <div className="flex md:hidden items-center">
+            {mobile.map((item) => renderBreadcrumbItem(item, true))}
+          </div>
         </div>
       </nav>
     </div>

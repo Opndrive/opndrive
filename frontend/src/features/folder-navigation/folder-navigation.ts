@@ -1,7 +1,3 @@
-/**
- * Utility functions for folder navigation with enhanced routing
- */
-
 export interface FolderNavigationParams {
   prefix?: string;
   key?: string;
@@ -96,4 +92,61 @@ export function buildBreadcrumbClickUrl(pathSegments: string[], targetIndex: num
   const key = targetSegments.length > 0 ? targetSegments[targetSegments.length - 1] : undefined;
 
   return generateFolderUrl({ prefix, key });
+}
+
+export interface BreadcrumbItem {
+  segment: string;
+  index: number;
+  pathUpToHere: string[];
+  isEllipsis?: boolean;
+  isLast?: boolean;
+}
+
+export function generateSmartBreadcrumbs(pathSegments: string[]): {
+  mobile: BreadcrumbItem[];
+  desktop: BreadcrumbItem[];
+} {
+  const desktop: BreadcrumbItem[] = pathSegments.map((segment, index) => ({
+    segment,
+    index,
+    pathUpToHere: pathSegments.slice(0, index + 1),
+    isLast: index === pathSegments.length - 1,
+  }));
+
+  // For mobile, show smart truncation when more than 3 segments
+  let mobile: BreadcrumbItem[];
+
+  if (pathSegments.length <= 3) {
+    // Show all segments if 3 or fewer
+    mobile = desktop;
+  } else {
+    // Show: My Drive > ... > [second-to-last] > [current]
+    const lastTwoSegments = pathSegments.slice(-2);
+
+    mobile = [
+      // Ellipsis item to represent the middle segments
+      {
+        segment: '...',
+        index: -1, // Special index for ellipsis
+        pathUpToHere: [],
+        isEllipsis: true,
+      },
+      // Second to last segment
+      {
+        segment: lastTwoSegments[0],
+        index: pathSegments.length - 2,
+        pathUpToHere: pathSegments.slice(0, pathSegments.length - 1),
+        isLast: false,
+      },
+      // Last segment (current)
+      {
+        segment: lastTwoSegments[1],
+        index: pathSegments.length - 1,
+        pathUpToHere: pathSegments.slice(0, pathSegments.length),
+        isLast: true,
+      },
+    ];
+  }
+
+  return { mobile, desktop };
 }
