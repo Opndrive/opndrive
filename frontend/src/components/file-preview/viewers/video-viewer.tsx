@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
 import { useApiS3 } from '@/hooks/use-auth';
 import { getContentTypeForS3 } from '@/config/file-extensions';
@@ -14,6 +14,11 @@ export function VideoViewer({ file }: VideoViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState(false);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(
+    null
+  );
+  const [isPortrait, setIsPortrait] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const apiS3 = useApiS3();
 
   useEffect(() => {
@@ -53,6 +58,17 @@ export function VideoViewer({ file }: VideoViewerProps) {
     setVideoError(false);
     setSignedUrl(null);
     setLoading(true);
+    setVideoDimensions(null);
+    setIsPortrait(false);
+  };
+
+  const handleVideoLoadedMetadata = () => {
+    if (videoRef.current) {
+      const { videoWidth, videoHeight } = videoRef.current;
+      setVideoDimensions({ width: videoWidth, height: videoHeight });
+      setIsPortrait(videoHeight > videoWidth);
+      setVideoError(false);
+    }
   };
 
   if (loading) {
@@ -126,10 +142,26 @@ export function VideoViewer({ file }: VideoViewerProps) {
     >
       {/* Video Container */}
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full h-full max-w-4xl max-h-full">
+        <div
+          className={`flex items-center justify-center ${
+            isPortrait
+              ? 'w-auto h-full max-w-[50vw] sm:max-w-[60vh] md:max-w-[70vh] lg:max-w-[80vh]'
+              : 'w-full h-full max-w-4xl max-h-full'
+          }`}
+          style={{
+            aspectRatio: videoDimensions
+              ? `${videoDimensions.width} / ${videoDimensions.height}`
+              : 'auto',
+          }}
+        >
           <video
+            ref={videoRef}
             controls
-            className="w-full h-full object-contain rounded shadow-lg"
+            className={`rounded shadow-lg ${
+              isPortrait
+                ? 'h-full w-auto max-h-[calc(100vh-8rem)] max-w-full'
+                : 'w-full h-full object-contain'
+            }`}
             style={{
               backgroundColor: 'var(--background)',
               border: '1px solid var(--preview-modal-border)',
@@ -138,6 +170,7 @@ export function VideoViewer({ file }: VideoViewerProps) {
               setVideoError(true);
             }}
             onLoadStart={() => {}}
+            onLoadedMetadata={handleVideoLoadedMetadata}
             onCanPlay={() => {
               setVideoError(false);
             }}
@@ -177,16 +210,23 @@ export function VideoViewer({ file }: VideoViewerProps) {
 
       {/* Video Info */}
       <div
-        className="flex items-center justify-between p-3 border-t text-sm"
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 border-t text-sm gap-2"
         style={{
           backgroundColor: 'var(--preview-modal-header-bg)',
           borderColor: 'var(--preview-modal-border)',
           color: 'var(--muted-foreground)',
         }}
       >
-        <span>{file.name}</span>
-        <div className="flex items-center gap-2">
-          <span>Use video controls to play, pause, and adjust volume</span>
+        <span className="truncate">{file.name}</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs">
+          {videoDimensions && (
+            <span className="whitespace-nowrap">
+              {videoDimensions.width}×{videoDimensions.height}{' '}
+              {isPortrait ? '(Portrait)' : '(Landscape)'}
+            </span>
+          )}
+          <span className="hidden sm:inline">•</span>
+          <span className="text-xs">Use video controls to play, pause, and adjust volume</span>
         </div>
       </div>
     </div>
