@@ -193,18 +193,6 @@ class SearchService {
       (item, index, arr) => arr.findIndex((other) => other.Key === item.Key) === index
     );
 
-    console.log('🔍 Search Results:', {
-      query,
-      startPrefix: prefix,
-      totalMatches: matches.length,
-      uniqueMatches: uniqueMatches.length,
-      folders: uniqueMatches.filter((m) => m.Key?.endsWith('/')).length,
-      files: uniqueMatches.filter((m) => !m.Key?.endsWith('/')).length,
-      sampleResults: uniqueMatches
-        .slice(0, 5)
-        .map((m) => ({ Key: m.Key, isFolder: m.Key?.endsWith('/') })),
-    });
-
     return uniqueMatches;
   }
 

@@ -457,6 +457,7 @@ export const PREVIEW_SIZE_LIMITS = {
 export const PREVIEWABLE_CATEGORIES: FileCategory[] = [
   'image',
   'video',
+  'audio',
   'document',
   'spreadsheet',
   'code',

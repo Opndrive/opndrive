@@ -157,21 +157,8 @@ function BrowsePageContent() {
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        console.log('Intersection Observer triggered:', {
-          isIntersecting: entry.isIntersecting,
-          intersectionRatio: entry.intersectionRatio,
-          canLoadMoreChunks,
-          isLoadingMoreChunks,
-          canLoadMoreFileChunks,
-          canLoadMoreFolderChunks,
-          visibleFileChunks,
-          visibleFolderChunks,
-          totalFiles: allFiles.length,
-          totalFolders: allFolders.length,
-        });
 
         if (entry.isIntersecting && !isLoadingMoreChunks) {
-          console.log('Loading more chunks via Intersection Observer...');
           setIsLoadingMoreChunks(true);
 
           // Load next chunk

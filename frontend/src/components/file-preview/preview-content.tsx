@@ -4,6 +4,7 @@ import React from 'react';
 import { PreviewableFile } from '@/types/file-preview';
 import { ImageViewer } from './viewers/image-viewer';
 import { VideoViewer } from './viewers/video-viewer';
+import { AudioViewer } from './viewers/audio-viewer';
 import { PDFViewer } from './viewers/pdf-viewer';
 import { ExcelViewer } from './viewers/excel-viewer';
 import { CodeViewer } from './viewers/code-viewer';
@@ -23,7 +24,7 @@ interface PreviewContentProps {
 // Utility functions using centralized config
 function isFileType(
   filename: string,
-  category: 'image' | 'video' | 'document' | 'spreadsheet' | 'code'
+  category: 'image' | 'video' | 'audio' | 'document' | 'spreadsheet' | 'code'
 ): boolean {
   return isFileInCategory(filename, category);
 }
@@ -120,6 +121,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
 
   const isImage = isFileType(file.name, 'image');
   const isVideo = isFileType(file.name, 'video');
+  const isAudio = isFileType(file.name, 'audio');
   const isPdf = getFileExtension(file.name) === '.pdf';
   const isSpreadsheet = isFileType(file.name, 'spreadsheet');
   const isCode = isFileType(file.name, 'code');
@@ -131,6 +133,10 @@ export function PreviewContent({ file }: PreviewContentProps) {
 
   if (isVideo) {
     return <VideoViewer file={file} />;
+  }
+
+  if (isAudio) {
+    return <AudioViewer file={file} />;
   }
 
   if (isPdf) {
@@ -174,7 +180,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
             opacity: 0.5,
           }}
         >
-          Supported formats: Images, Videos, PDFs, Excel/CSV files, and Code files
+          Supported formats: Images, Videos, Audio, PDFs, Excel/CSV files, and Code files
         </p>
       </div>
     </div>
