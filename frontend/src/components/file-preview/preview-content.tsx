@@ -10,7 +10,11 @@ import { CodeViewer } from './viewers/code-viewer';
 import { checkPreviewEligibility } from '@/services/file-size-limits';
 import { Download } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
-import { isFileInCategory, getFileExtension } from '@/config/file-extensions';
+import {
+  isFileInCategory,
+  getFileExtension,
+  getFileExtensionWithoutDot,
+} from '@/config/file-extensions';
 
 interface PreviewContentProps {
   file: PreviewableFile;
@@ -41,7 +45,7 @@ export function PreviewContent({ file }: PreviewContentProps) {
       id: file.id,
       name: file.name,
       Key: file.key,
-      extension: file.type || file.name.split('.').pop() || '',
+      extension: file.type || getFileExtensionWithoutDot(file.name),
       size: {
         value: fileSize,
         unit: 'B' as const,

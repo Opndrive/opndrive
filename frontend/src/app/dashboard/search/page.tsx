@@ -141,7 +141,7 @@ export default function SearchPage() {
       key: file.Key,
       size: file.size?.value || 0,
       lastModified: file.lastModified,
-      type: file.extension || file.name.split('.').pop() || '',
+      type: file.extension || getFileExtensionWithoutDot(file.name),
     };
     openPreview(previewableFile, [previewableFile]);
   };

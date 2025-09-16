@@ -11,6 +11,7 @@ import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
 import { useDriveStore } from '@/context/data-context';
 import { useShare } from '@/context/share-context';
+import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -52,7 +53,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
           key: file.Key,
           size: file.size?.value || 0,
           lastModified: file.lastModified,
-          type: file.extension || file.name.split('.').pop() || '',
+          type: file.extension || getFileExtensionWithoutDot(file.name),
         };
         openPreview(previewableFile, [previewableFile]);
         onClose();

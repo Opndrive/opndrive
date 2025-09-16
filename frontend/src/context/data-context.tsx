@@ -103,7 +103,7 @@ function enrichFile(obj: _Object): FileItem {
   if (temp && temp.length >= 1) {
     name = temp[temp.length - 1];
     const fileNameSplit = name.split('.');
-    ext = fileNameSplit[fileNameSplit.length - 1];
+    ext = fileNameSplit[fileNameSplit.length - 1]?.toLowerCase();
   }
 
   return {

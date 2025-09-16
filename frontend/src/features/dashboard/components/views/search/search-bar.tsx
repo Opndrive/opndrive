@@ -241,7 +241,7 @@ export function SearchBar({
         key: suggestion.key,
         size: 0, // Size not available in search results
         lastModified: new Date(), // Not available in search results
-        type: suggestion.extension || suggestion.name.split('.').pop() || '',
+        type: suggestion.extension || getFileExtensionWithoutDot(suggestion.name),
       };
       openPreview(previewableFile, [previewableFile]);
     } else {

@@ -40,7 +40,7 @@ export function PreviewHeader({
       id: file.id,
       name: file.name,
       Key: file.key,
-      extension: file.name.split('.').pop() || '',
+      extension: getFileExtensionWithoutDot(file.name),
       size: {
         value: file.size,
         unit: 'B' as const,
