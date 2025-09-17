@@ -21,8 +21,10 @@ export function AudioViewer({ file }: AudioViewerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
   const [fileSize, setFileSize] = useState<number>(0);
+  const [isSeeking, setIsSeeking] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const apiS3 = useApiS3();
 
   // Get file size from various possible properties
@@ -81,12 +83,35 @@ export function AudioViewer({ file }: AudioViewerProps) {
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
+      setCurrentTime(audioRef.current.currentTime);
     }
   };
 
   const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+    // Only update from native timeupdate when not using our custom interval
+    if (audioRef.current && !isSeeking && !timeUpdateIntervalRef.current) {
+      const audioCurrentTime = audioRef.current.currentTime;
+      setCurrentTime(audioCurrentTime);
+    }
+  };
+
+  // Start/stop frequent time updates when playing/pausing
+  const startTimeUpdates = () => {
+    if (timeUpdateIntervalRef.current) {
+      clearInterval(timeUpdateIntervalRef.current);
+    }
+    timeUpdateIntervalRef.current = setInterval(() => {
+      if (audioRef.current && !audioRef.current.paused && !isSeeking) {
+        const currentAudioTime = audioRef.current.currentTime;
+        setCurrentTime(currentAudioTime);
+      }
+    }, 100); // Update every 100ms for smooth progress
+  };
+
+  const stopTimeUpdates = () => {
+    if (timeUpdateIntervalRef.current) {
+      clearInterval(timeUpdateIntervalRef.current);
+      timeUpdateIntervalRef.current = null;
     }
   };
 
@@ -94,18 +119,42 @@ export function AudioViewer({ file }: AudioViewerProps) {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
+        stopTimeUpdates();
       } else {
         audioRef.current.play();
+        startTimeUpdates();
       }
       setIsPlaying(!isPlaying);
     }
   };
 
+  const handlePlay = () => {
+    setIsPlaying(true);
+    startTimeUpdates();
+  };
+
+  const handlePause = () => {
+    setIsPlaying(false);
+    stopTimeUpdates();
+  };
+
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    if (audioRef.current) {
+    if (audioRef.current && !isNaN(time)) {
+      setCurrentTime(time); // Update UI immediately for responsive feel
       audioRef.current.currentTime = time;
-      setCurrentTime(time);
+    }
+  };
+
+  const handleSeekStart = () => {
+    setIsSeeking(true);
+    stopTimeUpdates();
+  };
+
+  const handleSeekEnd = () => {
+    setIsSeeking(false);
+    if (isPlaying && !audioRef.current?.paused) {
+      startTimeUpdates();
     }
   };
 
@@ -124,12 +173,44 @@ export function AudioViewer({ file }: AudioViewerProps) {
     }
   };
 
+  const handleSeeked = () => {
+    // Update current time after seeking is complete and clear seeking state
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+    setIsSeeking(false);
+    // Restart time updates if audio is playing
+    if (isPlaying && audioRef.current && !audioRef.current.paused) {
+      startTimeUpdates();
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    stopTimeUpdates();
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+    }
+  };
+
   const handleRestart = () => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
       setCurrentTime(0);
+      // If audio was playing, ensure time updates continue
+      if (isPlaying) {
+        startTimeUpdates();
+      }
     }
   };
+
+  // Cleanup interval on component unmount
+  useEffect(() => {
+    return () => {
+      stopTimeUpdates();
+    };
+  }, []);
 
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
@@ -301,9 +382,14 @@ export function AudioViewer({ file }: AudioViewerProps) {
               src={audioUrl}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdate={handleTimeUpdate}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onError={() => setError('Failed to load audio file')}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onSeeked={handleSeeked}
+              onEnded={handleEnded}
+              onError={() => {
+                setError('Failed to load audio file');
+                stopTimeUpdates();
+              }}
               style={{ display: 'none' }}
             />
           )}
@@ -312,15 +398,81 @@ export function AudioViewer({ file }: AudioViewerProps) {
           <div className="space-y-4">
             {/* Progress Bar */}
             <div className="space-y-2">
+              <style jsx>{`
+                .audio-progress {
+                  -webkit-appearance: none;
+                  appearance: none;
+                  background: transparent;
+                  cursor: pointer;
+                  outline: none;
+                }
+
+                .audio-progress::-webkit-slider-track {
+                  height: 6px;
+                  border-radius: 3px;
+                  background: transparent;
+                }
+
+                .audio-progress::-webkit-slider-thumb {
+                  -webkit-appearance: none;
+                  appearance: none;
+                  height: 18px;
+                  width: 18px;
+                  border-radius: 50%;
+                  background: var(--primary);
+                  border: 3px solid var(--background);
+                  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+                  cursor: pointer;
+                  transition: all 0.15s ease;
+                  margin-top: -6px;
+                }
+
+                .audio-progress::-webkit-slider-thumb:hover {
+                  transform: scale(1.15);
+                  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+                }
+
+                .audio-progress::-webkit-slider-thumb:active {
+                  transform: scale(1.1);
+                }
+
+                .audio-progress::-moz-range-track {
+                  height: 6px;
+                  border-radius: 3px;
+                  border: none;
+                  background: transparent;
+                }
+
+                .audio-progress::-moz-range-thumb {
+                  height: 18px;
+                  width: 18px;
+                  border-radius: 50%;
+                  background: var(--primary);
+                  border: 3px solid var(--background);
+                  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+                  cursor: pointer;
+                  transition: all 0.15s ease;
+                }
+
+                .audio-progress::-moz-range-thumb:hover {
+                  transform: scale(1.15);
+                  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+                }
+              `}</style>
               <input
                 type="range"
                 min="0"
                 max={duration || 0}
+                step="0.1"
                 value={currentTime}
                 onChange={handleSeek}
-                className="w-full h-1 rounded-lg appearance-none cursor-pointer"
+                onMouseDown={handleSeekStart}
+                onMouseUp={handleSeekEnd}
+                onTouchStart={handleSeekStart}
+                onTouchEnd={handleSeekEnd}
+                className="audio-progress w-full h-2 rounded-lg"
                 style={{
-                  background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${duration ? (currentTime / duration) * 100 : 0}%, var(--secondary) ${duration ? (currentTime / duration) * 100 : 0}%, var(--secondary) 100%)`,
+                  background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%, var(--muted) ${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%, var(--muted) 100%)`,
                 }}
               />
               <div
