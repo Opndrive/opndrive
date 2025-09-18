@@ -285,9 +285,20 @@ body {
   font-weight: 500;
   padding: 0.25rem 0.75rem;
   border-radius: 0.5rem;
-  margin-left: 0.75rem;
   backdrop-filter: blur(4px);
   transition: all 0.2s ease-in-out;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+@media (max-width: 640px) {
+  .item-count-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.5rem;
+    max-width: 150px;
+  }
 }
 
 .show-more-btn {
