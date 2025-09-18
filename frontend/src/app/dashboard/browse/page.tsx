@@ -256,7 +256,7 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div className="sticky top-[-16px] z-10 flex items-center justify-between gap-4 py-4 bg-background">
+        <div className="sticky top-[-26px] z-10 flex items-center justify-between gap-4 py-4 bg-background">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-normal text-foreground">{currentFolderName}</h2>
             {totalVisibleItems > 0 && (
