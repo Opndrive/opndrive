@@ -93,6 +93,7 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
 
       <FileOverflowMenu
         file={file}
+        allFiles={allFiles}
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
