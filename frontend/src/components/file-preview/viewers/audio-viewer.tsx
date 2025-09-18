@@ -267,47 +267,49 @@ export function AudioViewer({ file }: AudioViewerProps) {
   return (
     <div className="w-full h-full flex flex-col animated-bg">
       <div className="glass-card border-b border-border/50 backdrop-blur-xl">
-        <div className="flex items-center justify-between p-2 sm:p-4 md:p-6">
+        <div className="flex items-center justify-between p-2 sm:p-3 md:p-4 lg:p-6">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-1.5 sm:p-2 rounded-full bg-primary/20">
-              <Music size={16} className="sm:w-5 sm:h-5 text-primary" />
+            <div className="p-1 sm:p-1.5 md:p-2 rounded-full bg-primary/20">
+              <Music size={14} className="sm:w-4 sm:h-4 md:w-5 md:h-5 text-primary" />
             </div>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-1">
             <button
               onClick={handleRestart}
-              className="p-2 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
+              className="p-1.5 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
               title="Restart"
             >
-              <RotateCcw size={14} className="sm:w-[18px] sm:h-[18px]" />
+              <RotateCcw size={12} className="sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px]" />
             </button>
 
             <button
               onClick={handleMuteToggle}
-              className="p-2 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
+              className="p-1.5 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
               title={muted ? 'Unmute' : 'Mute'}
             >
               {muted ? (
-                <VolumeX size={14} className="sm:w-[18px] sm:h-[18px]" />
+                <VolumeX size={12} className="sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px]" />
               ) : (
-                <Volume2 size={14} className="sm:w-[18px] sm:h-[18px]" />
+                <Volume2 size={12} className="sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px]" />
               )}
             </button>
 
             <button
               onClick={() => setShowWaves(!showWaves)}
-              className="p-2 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
+              className="p-1.5 sm:p-2 rounded-full bg-secondary hover:bg-control-hover text-secondary-foreground transition-all duration-200 hover:scale-105"
               title={showWaves ? 'Hide Waves' : 'Show Waves'}
             >
-              <div className="w-[14px] h-[14px] sm:w-[18px] sm:h-[18px] flex items-center justify-center">
+              <div className="w-[12px] h-[12px] sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px] flex items-center justify-center">
                 {showWaves ? <AudioLines /> : <Ban />}
               </div>
             </button>
 
-            <div className="hidden sm:flex items-center gap-3 ml-2">
-              <span className="text-sm text-muted-foreground hidden md:block">Volume</span>
-              <div className="w-16 sm:w-24 relative">
+            <div className="hidden sm:flex items-center gap-2 md:gap-3 ml-2">
+              <span className="text-xs md:text-sm text-muted-foreground hidden lg:block">
+                Volume
+              </span>
+              <div className="w-12 sm:w-16 md:w-20 lg:w-24 relative">
                 <input
                   type="range"
                   min="0"
@@ -326,9 +328,9 @@ export function AudioViewer({ file }: AudioViewerProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-3 sm:p-6 md:p-12">
-        <div className="w-full max-w-4xl">
-          <div className="flex justify-center mb-6 sm:mb-12">
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-4 md:p-5 lg:p-6">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl">
+          <div className="flex justify-center mb-4 sm:mb-6 md:mb-6 lg:mb-8">
             <div className="relative">
               {isPlaying && showWaves && (
                 <div className={`audio-waves ${!showWaves ? 'hidden' : ''}`}>
@@ -339,22 +341,22 @@ export function AudioViewer({ file }: AudioViewerProps) {
                   <div className="wave-ring"></div>
                 </div>
               )}
-              <div className="glass-card p-6 sm:p-8 md:p-12 rounded-full float-animation">
-                <div className="p-4 sm:p-6 md:p-8 rounded-full bg-gradient-to-br from-primary to-primary/80 glow-effect">
+              <div className="glass-card p-3 sm:p-4 md:p-5 lg:p-6 rounded-full float-animation">
+                <div className="p-2 sm:p-3 md:p-4 lg:p-5 rounded-full bg-gradient-to-br from-primary to-primary/80 glow-effect">
                   <Headphones
-                    size={40}
-                    className="sm:w-16 sm:h-16 md:w-20 md:h-20 text-primary-foreground"
+                    size={28}
+                    className="sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-primary-foreground"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="text-center mb-6 sm:mb-12 space-y-2 sm:space-y-4 px-4">
-            <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-foreground text-balance">
+          <div className="text-center mb-4 sm:mb-6 md:mb-6 lg:mb-8 space-y-1 sm:space-y-2 md:space-y-2 px-4">
+            <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-semibold text-foreground text-balance leading-tight">
               {file.name.replace(/\.[^/.]+$/, '')}
             </h1>
-            <div className="flex items-center justify-center gap-2 sm:gap-4 text-sm sm:text-base text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 sm:gap-3 md:gap-3 text-xs sm:text-sm text-muted-foreground">
               <span className="flex items-center gap-1 sm:gap-2">
                 <Clock size={14} className="sm:w-4 sm:h-4" />
                 {duration ? formatTime(duration) : '--:--'}
@@ -384,8 +386,8 @@ export function AudioViewer({ file }: AudioViewerProps) {
             />
           )}
 
-          <div className="space-y-4 sm:space-y-8 px-4">
-            <div className="space-y-2 sm:space-y-4">
+          <div className="space-y-2 sm:space-y-3 md:space-y-4 px-4">
+            <div className="space-y-1 sm:space-y-1.5">
               <input
                 type="range"
                 min="0"
@@ -412,22 +414,22 @@ export function AudioViewer({ file }: AudioViewerProps) {
             <div className="flex justify-center">
               <button
                 onClick={handlePlayPause}
-                className="relative p-4 sm:p-6 rounded-full bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-2xl hover:shadow-primary/50 transition-all duration-300 hover:scale-105 glow-effect group"
+                className="relative p-2.5 sm:p-3 md:p-3.5 lg:p-4 rounded-full bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-2xl hover:shadow-primary/50 transition-all duration-300 hover:scale-105 glow-effect group"
                 title={isPlaying ? 'Pause' : 'Play'}
                 style={{
                   boxShadow: `var(--player-glow), 0 8px 32px rgba(0, 0, 0, 0.15)`,
                 }}
               >
-                <div className="w-8 h-8 sm:w-12 sm:h-12 flex items-center justify-center">
+                <div className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 flex items-center justify-center">
                   {isPlaying ? (
                     <FaPause
-                      size={16}
-                      className="sm:w-6 sm:h-6 group-hover:scale-110 transition-transform"
+                      size={12}
+                      className="sm:text-sm md:text-base lg:text-lg group-hover:scale-110 transition-transform"
                     />
                   ) : (
                     <FaPlay
-                      size={16}
-                      className="sm:w-6 sm:h-6 ml-0.5 sm:ml-1 group-hover:scale-110 transition-transform"
+                      size={12}
+                      className="sm:text-sm md:text-base lg:text-lg ml-0.5 sm:ml-1 group-hover:scale-110 transition-transform"
                     />
                   )}
                 </div>
@@ -438,10 +440,10 @@ export function AudioViewer({ file }: AudioViewerProps) {
       </div>
 
       <div className="glass-card border-t border-border/50 backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-4 md:p-6 gap-2 sm:gap-4">
-          <div className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm text-muted-foreground">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 md:p-4 lg:p-6 gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 md:gap-6 text-xs sm:text-sm text-muted-foreground">
             <span className="flex items-center gap-1 sm:gap-2">
-              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary animate-pulse"></div>
+              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-primary animate-pulse"></div>
               <span className="hidden sm:inline">Audio Player Active</span>
               <span className="sm:hidden">Active</span>
             </span>

@@ -361,14 +361,14 @@ body {
   background: transparent;
   cursor: pointer;
   outline: none;
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   border: none;
 }
 
 .modern-slider::-webkit-slider-track {
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--progress-track);
   border: none;
 }
@@ -376,40 +376,40 @@ body {
 .modern-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  height: 20px;
-  width: 20px;
+  height: 14px;
+  width: 14px;
   border-radius: 50%;
   background: var(--progress-thumb);
   border: 2px solid var(--background);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  margin-top: -7px;
+  margin-top: -5px;
 }
 
 .modern-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.15);
   box-shadow: var(--player-glow);
 }
 
 .modern-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .modern-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   border: none;
   background: var(--progress-track);
 }
 
 .modern-slider::-moz-range-thumb {
-  height: 20px;
-  width: 20px;
+  height: 14px;
+  width: 14px;
   border-radius: 50%;
   background: var(--progress-thumb);
   border: 2px solid var(--background);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -596,14 +596,14 @@ body {
 
 @media (max-width: 480px) {
   .modern-slider::-webkit-slider-thumb {
-    height: 16px;
-    width: 16px;
-    margin-top: -5px;
+    height: 12px;
+    width: 12px;
+    margin-top: -4px;
   }
 
   .modern-slider::-moz-range-thumb {
-    height: 16px;
-    width: 16px;
+    height: 12px;
+    width: 12px;
   }
 
   .glass-card {
