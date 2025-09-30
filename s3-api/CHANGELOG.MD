@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.5.7] - 2025-09-30
+### Fixed
+- Removed uploadMultipart uploader function from the class
+
 ## [1.5.6] - 2025-09-15
 ### Fixed
 - Fixed onProgress in multipart upload
