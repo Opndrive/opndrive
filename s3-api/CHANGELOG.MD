@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2025-09-30
+### Fixed
+- Removed auto start by multipart uploader
+
 ## [1.5.7] - 2025-09-30
 ### Fixed
 - Removed uploadMultipart uploader function from the class
