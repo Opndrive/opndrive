@@ -29,7 +29,7 @@ export default function FAQSection() {
         {/* Header */}
         <div className="text-center mb-16">
           <h2 className="text-5xl font-medium text-[var(--text-primary)] mb-4">
-            Curious about Google Drive?
+            Curious about Opndrive?
           </h2>
           <p className="text-lg text-[var(--text-secondary)]">
             Take a look at our FAQ to learn more.
