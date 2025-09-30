@@ -1,6 +1,10 @@
+
+<img width="1920" height="719" alt="opndrive" src="https://github.com/user-attachments/assets/0368bf61-999b-4b17-979a-7cc7fd468976" />
+
+
 # Opndrive
 
-**Open-Source Cloud Storage with Direct S3 Integration**
+**Open-Source modern UI for S3 Compatible Storage Services**
 
 Opndrive is a modern, open-source web UI for Amazon S3 and S3-compatible storage
 services. Think of it like Google Drive or Dropbox, but instead of giving up

@@ -15,6 +15,7 @@ import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 
 interface FileOverflowMenuProps {
   file: FileItem;
+  allFiles?: FileItem[];
   isOpen: boolean;
   onClose: () => void;
   anchorElement: HTMLElement | null;
@@ -23,6 +24,7 @@ interface FileOverflowMenuProps {
 
 export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   file,
+  allFiles = [],
   isOpen,
   onClose,
   anchorElement,
@@ -46,7 +48,6 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       label: 'Open',
       icon: Eye,
       onClick: () => {
-        // Convert FileItem to PreviewableFile format
         const previewableFile = {
           id: file.id,
           name: file.name,
@@ -55,7 +56,20 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
           lastModified: file.lastModified,
           type: file.extension || getFileExtensionWithoutDot(file.name),
         };
-        openPreview(previewableFile, [previewableFile]);
+
+        const previewableFiles = allFiles.map((f) => ({
+          id: f.id,
+          name: f.name,
+          key: f.Key,
+          size: f.size?.value || 0,
+          lastModified: f.lastModified,
+          type: f.extension || getFileExtensionWithoutDot(f.name),
+        }));
+
+        openPreview(
+          previewableFile,
+          previewableFiles.length > 0 ? previewableFiles : [previewableFile]
+        );
         onClose();
       },
     },

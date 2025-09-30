@@ -78,6 +78,7 @@ export function FileItemMobile({
 
       <FileOverflowMenu
         file={file}
+        allFiles={allFiles}
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}

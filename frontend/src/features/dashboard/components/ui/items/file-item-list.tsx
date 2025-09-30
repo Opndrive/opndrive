@@ -94,6 +94,7 @@ export function FileItemList({ file, allFiles = [], _onAction }: FileItemListPro
 
       <FileOverflowMenu
         file={file}
+        allFiles={allFiles}
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
