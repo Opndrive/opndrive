@@ -126,10 +126,6 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       params.partSizeMB
     );
 
-    uploader.start(params).catch((err) => {
-      console.error('Multipart upload failed:', err);
-    });
-
     return uploader;
   }
 
