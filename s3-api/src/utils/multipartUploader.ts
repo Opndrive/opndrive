@@ -1,4 +1,4 @@
-import { MultipartUploadParams } from '@/core/types.js';
+import { MultipartUploadConfig } from '@/core/types.js';
 import {
   S3Client,
   CreateMultipartUploadCommand,
@@ -24,20 +24,16 @@ export class MultipartUploader {
 
   private controllers: AbortController[] = [];
 
-  constructor(
-    s3: S3Client,
-    bucket: string,
-    key: string,
-    fileName: string,
-    concurrency?: number,
-    partSize?: number
-  ) {
-    this.s3 = s3;
-    this.bucket = bucket;
-    this.key = key;
-    this.fileName = fileName;
-    this.concurrency = concurrency && concurrency > 0 ? concurrency : 3;
-    this.partSize = partSize && partSize >= 5 * 1024 * 1024 ? partSize : 5 * 1024 * 1024;
+  constructor(config: MultipartUploadConfig) {
+    this.s3 = config.s3;
+    this.bucket = config.bucket;
+    this.key = config.key;
+    this.fileName = config.fileName;
+    this.concurrency = config.concurrency && config.concurrency > 0 ? config.concurrency : 3;
+    this.partSize =
+      config.partSizeMB && config.partSizeMB >= 5 * 1024 * 1024
+        ? config.partSizeMB
+        : 5 * 1024 * 1024;
     localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
 
@@ -54,10 +50,7 @@ export class MultipartUploader {
     localStorage.setItem(`upload:${this.fileName}:${this.key}`, JSON.stringify(state));
   }
 
-  async start(params: MultipartUploadParams) {
-    this.partSize = (params.partSizeMB || 5) * 1024 * 1024;
-    this.concurrency = params.concurrency || 3;
-
+  async start(file: File, onProgress?: (p: number) => void) {
     if (!this.uploadId) {
       const { UploadId } = await this.s3.send(
         new CreateMultipartUploadCommand({
@@ -68,7 +61,7 @@ export class MultipartUploader {
       this.uploadId = UploadId!;
     }
 
-    await this.uploadParts(params.file, params.onProgress);
+    await this.uploadParts(file, onProgress);
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();

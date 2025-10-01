@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useUploadStore } from './use-upload-store';
-import { UploadMethod } from '../types';
+import { UploadItem, UploadMethod } from '../types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
 import { BYOS3ApiProvider, MultipartUploader } from '@opndrive/s3-api';
@@ -144,6 +144,10 @@ export function useUploadHandler(
   // Track active uploaders for cancellation
   const activeUploaders = useRef<Map<string, MultipartUploader>>(new Map());
 
+  const getUploadItem = (itemId: string): UploadItem | undefined => {
+    return useUploadStore.getState().items.find((item) => item.id === itemId);
+  };
+
   // Helper function to process individual file upload
   const processFileUpload = useCallback(
     async (file: File, itemId: string, customName?: string) => {
@@ -180,32 +184,26 @@ export function useUploadHandler(
           // Use multipart upload for larger files
           const concurrency = selectedMethod === 'multipart-concurrent' ? 3 : 1;
 
+          const onProgress = (progress: number) => {
+            // Ensure progress never goes over 100% and format to 2 decimal places
+            const clampedProgress = Math.min(100, Math.max(0, progress));
+            const formattedProgress = parseFloat(clampedProgress.toFixed(2));
+            updateProgress({ itemId, progress: formattedProgress });
+          };
+
           // Create uploader instance
           const uploader = apiS3.uploadMultipartParallely({
-            file,
             key: s3Key,
-            partSizeMB: 5,
             fileName: fileName,
-            concurrency,
-            onProgress: (progress: number) => {
-              // Ensure progress never goes over 100% and format to 2 decimal places
-              const clampedProgress = Math.min(100, Math.max(0, progress));
-              const formattedProgress = parseFloat(clampedProgress.toFixed(2));
-              updateProgress({ itemId, progress: formattedProgress });
-            },
+            concurrency: concurrency,
+            partSizeMB: 5,
           });
 
           // Store uploader for potential cancellation
           activeUploaders.current.set(itemId, uploader);
 
           // Start the upload and wait for completion
-          await uploader.start({
-            file,
-            key: s3Key,
-            partSizeMB: 5,
-            fileName: fileName,
-            concurrency,
-          });
+          await uploader.start(file, onProgress);
 
           // Remove from active uploaders after completion
           activeUploaders.current.delete(itemId);
@@ -560,30 +558,19 @@ export function useUploadHandler(
             // Use multipart upload for larger files
             const concurrency = selectedMethod === 'multipart-concurrent' ? 3 : 1;
 
+            const onProgress = (progress: number) => {
+              // Ensure progress never goes over 100% and format to 2 decimal places
+              const clampedProgress = Math.min(100, Math.max(0, progress));
+              const formattedProgress = parseFloat(clampedProgress.toFixed(2));
+              updateProgress({ itemId, progress: formattedProgress });
+            };
+
             // Create individual uploader for each file
             const uploader = apiS3.uploadMultipartParallely({
-              file,
               key: s3Key,
-              partSizeMB: 5,
               fileName: fileName,
-              concurrency,
-              onProgress: (fileProgress: number) => {
-                // Calculate overall folder progress correctly
-                const completedFilesProgress = (uploadedCount / totalFiles) * 100;
-                const currentFileProgress = fileProgress / totalFiles;
-                const overallProgress = completedFilesProgress + currentFileProgress;
-
-                // Ensure progress never goes over 100% and format to 2 decimal places
-                const clampedProgress = Math.min(100, Math.max(0, overallProgress));
-                const formattedProgress = parseFloat(clampedProgress.toFixed(2));
-
-                updateProgress({
-                  itemId,
-                  progress: formattedProgress,
-                  uploadedFiles: uploadedCount,
-                  totalFiles,
-                });
-              },
+              concurrency: concurrency,
+              partSizeMB: 5,
             });
 
             // Store uploader for potential cancellation (using unique key)
@@ -591,13 +578,7 @@ export function useUploadHandler(
             activeUploaders.current.set(fileUploadId, uploader);
 
             // Start upload for this file
-            await uploader.start({
-              file,
-              key: s3Key,
-              partSizeMB: 5,
-              fileName: fileName,
-              concurrency,
-            });
+            await uploader.start(file, onProgress);
 
             activeUploaders.current.delete(fileUploadId);
           }
@@ -694,9 +675,62 @@ export function useUploadHandler(
     [updateItemStatus]
   );
 
+  const pauseUpload = useCallback(
+    (itemId: string) => {
+      console.log('Pausing');
+      const uploader = activeUploaders.current.get(itemId);
+      if (uploader) {
+        // Call the uploader's internal pause method
+        uploader.pause();
+        // Update the UI state
+        updateItemStatus(itemId, 'paused');
+      } else {
+        console.warn(`Could not pause upload ${itemId}: Uploader not found.`);
+      }
+    },
+    [updateItemStatus]
+  );
+
+  const resumeUpload = useCallback(
+    async (itemId: string) => {
+      console.log('Pausing');
+      const uploader = activeUploaders.current.get(itemId);
+      const item = getUploadItem(itemId); // Get file data from the store
+
+      if (uploader && item?.file) {
+        try {
+          // Update UI state to show the upload is active again
+          updateItemStatus(itemId, 'uploading');
+
+          // Call the uploader's resume method with the file and a progress handler
+          await uploader.resume(item.file, (progress: number) => {
+            const formattedProgress = parseFloat(Math.min(100, progress).toFixed(2));
+            updateProgress({ itemId, progress: formattedProgress });
+          });
+
+          // On successful completion, update the final status
+          updateProgress({ itemId, progress: 100.0 });
+          updateItemStatus(itemId, 'completed');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Resume failed';
+          console.error(`Resume error for ${itemId}:`, errorMessage);
+          updateItemStatus(itemId, 'error', errorMessage);
+        } finally {
+          // IMPORTANT: Clean up the uploader instance after it's finished or has failed
+          activeUploaders.current.delete(itemId);
+        }
+      } else {
+        console.error(`Could not resume upload ${itemId}: Uploader or file data not found.`);
+      }
+    },
+    [updateItemStatus, updateProgress]
+  );
+
   return {
     handleFileUpload,
     handleFolderUpload,
     cancelUpload,
+    pauseUpload,
+    resumeUpload,
   };
 }
