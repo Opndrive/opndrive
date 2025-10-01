@@ -1,4 +1,4 @@
-import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
+import { _Object, CommonPrefix, S3Client } from '@aws-sdk/client-s3';
 
 export interface Credentials {
   region: string; //AWS region
@@ -24,12 +24,19 @@ export type logTypes = 'warn' | 'log' | 'error' | 'table' | 'dir';
 export type userTypes = 'BYO';
 
 export interface MultipartUploadParams {
-  file: File;
   key: string;
   fileName: string;
   partSizeMB: number;
   concurrency: number;
-  onProgress?: (progress: number) => void;
+}
+
+export interface MultipartUploadConfig extends MultipartUploadParams {
+  s3: S3Client;
+  bucket: string;
+  key: string;
+  fileName: string;
+  partSizeMB: number;
+  concurrency: number;
 }
 
 export interface SignedUrlParams {

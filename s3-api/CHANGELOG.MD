@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2025-09-30
+### Fixed
+- Fixed MultipartUploader class params and config
+
 ## [1.6.0] - 2025-09-30
 ### Fixed
 - Removed auto start by multipart uploader

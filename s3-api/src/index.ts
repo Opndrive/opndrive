@@ -4,6 +4,7 @@ import {
   DirectoryStructure,
   DownloadFileParams,
   MoveFileParams,
+  MultipartUploadConfig,
   MultipartUploadParams,
   PresignedUploadParams,
   RenameFileParams,
@@ -116,15 +117,17 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     return url;
   }
 
-  uploadMultipartParallely(params: MultipartUploadParams) {
-    const uploader = new MultipartUploader(
-      this.s3,
-      this.credentials.bucketName,
-      params.key,
-      params.fileName,
-      params.concurrency,
-      params.partSizeMB
-    );
+  uploadMultipartParallely(params: MultipartUploadParams): MultipartUploader {
+    const config: MultipartUploadConfig = {
+      s3: this.s3,
+      bucket: this.credentials.bucketName,
+      key: params.key,
+      fileName: params.fileName,
+      concurrency: params.concurrency,
+      partSizeMB: params.partSizeMB,
+    };
+
+    const uploader = new MultipartUploader(config);
 
     return uploader;
   }
