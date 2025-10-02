@@ -256,7 +256,7 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div className="sticky top-[-12px] sm:top-[-26px] z-20 flex items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 px-1 sm:px-0 bg-background border-b border-border/30 sm:border-b-0">
+        <div className="sticky top-[-12px] sm:top-[-26px] z-10 flex items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 px-1 sm:px-0 bg-background border-b border-border/30 sm:border-b-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 min-w-0 flex-1">
             <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-foreground break-words leading-tight sm:leading-normal">
               {currentFolderName}
