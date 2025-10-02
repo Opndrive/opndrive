@@ -12,6 +12,7 @@ import { useApiS3 } from '@/hooks/use-auth';
 
 interface FileThumbnailWithImageProps {
   extension: FileExtension;
+  filename?: string;
   name: string;
   file?: FileItem;
   className?: string;
@@ -19,6 +20,7 @@ interface FileThumbnailWithImageProps {
 
 export function FileThumbnailWithImage({
   extension,
+  filename,
   name,
   file,
   className = 'w-full h-32',
@@ -95,7 +97,7 @@ export function FileThumbnailWithImage({
     <div
       className={`${className} ${getFileBackground(extension)} flex items-center justify-center border-b border-border/50`}
     >
-      <FileIconLarge extension={extension} className="h-16 w-16" />
+      <FileIconLarge extension={extension} filename={filename} className="h-16 w-16" />
     </div>
   );
 }

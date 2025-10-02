@@ -7,6 +7,7 @@ import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
+import { getEffectiveExtension } from '@/config/file-extensions';
 
 interface FileItemGridProps {
   file: FileItem;
@@ -45,7 +46,8 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
       onDoubleClick={handleFileClick}
     >
       <FileThumbnailWithImage
-        extension={file.extension as FileExtension}
+        extension={getEffectiveExtension(file.name, file.extension).extension as FileExtension}
+        filename={getEffectiveExtension(file.name, file.extension).filename}
         name={file.name}
         file={file}
       />
@@ -53,10 +55,17 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <FileIcon
-              extension={file.extension as FileExtension}
-              className="h-4 w-4 flex-shrink-0"
-            />
+            {(() => {
+              const { extension, filename } = getEffectiveExtension(file.name, file.extension);
+
+              return (
+                <FileIcon
+                  extension={extension as FileExtension}
+                  filename={filename}
+                  className="h-4 w-4 flex-shrink-0"
+                />
+              );
+            })()}
             <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
           </div>
 

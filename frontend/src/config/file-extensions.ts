@@ -417,6 +417,24 @@ export const SYNTAX_LANGUAGE_MAP: Record<string, string> = {
   'CMakeLists.txt': 'cmake',
   '.gradle': 'gradle',
   '.properties': 'properties',
+
+  // License and documentation files
+  LICENSE: 'text',
+  'LICENSE.txt': 'text',
+  'LICENSE.md': 'markdown',
+  license: 'text',
+  'license.txt': 'text',
+  'license.md': 'markdown',
+  README: 'text',
+  readme: 'text',
+  CHANGELOG: 'text',
+  changelog: 'text',
+  CONTRIBUTING: 'text',
+  contributing: 'text',
+  AUTHORS: 'text',
+  authors: 'text',
+  COPYING: 'text',
+  copying: 'text',
 };
 
 // Get syntax highlighting language for a file
@@ -436,6 +454,69 @@ export function getSyntaxLanguage(filename: string): string {
 // Check if a file supports syntax highlighting
 export function supportsSyntaxHighlighting(filename: string): boolean {
   return getSyntaxLanguage(filename) !== 'text';
+}
+
+// Utility function to detect if a file is a special file without extension
+export function isSpecialFile(filename: string): boolean {
+  const lowerFilename = filename.toLowerCase();
+  const specialFiles = [
+    'license',
+    'readme',
+    'changelog',
+    'contributing',
+    'authors',
+    'contributors',
+    'copying',
+    'install',
+    'news',
+    'todo',
+    'dockerfile',
+    'makefile',
+    'procfile',
+    'gemfile',
+    'rakefile',
+    'gulpfile',
+    'gruntfile',
+    'webpack',
+    'rollup',
+    'vite',
+  ];
+
+  return specialFiles.some(
+    (special) => lowerFilename === special || lowerFilename.startsWith(special + '.')
+  );
+}
+
+// Get the effective extension or filename for icon purposes
+export function getEffectiveExtension(
+  filename: string,
+  extension?: string
+): { extension?: string; filename?: string } {
+  // If we have a non-empty extension and it's a valid extension, use it
+  if (extension && extension.trim() !== '' && extension !== 'unknown') {
+    const trimmedExt = extension.trim().toLowerCase();
+    // Check if it's a valid file extension by seeing if it's in our categories
+    const isValidExtension = ALL_EXTENSIONS.some((ext) => ext === `.${trimmedExt}`);
+    if (isValidExtension) {
+      return { extension: trimmedExt };
+    }
+    // If it's not a valid extension, fall through to special file handling
+  }
+
+  // Check if it's a file with an actual extension (has a dot)
+  const dotIndex = filename.lastIndexOf('.');
+  if (dotIndex > 0 && dotIndex < filename.length - 1) {
+    const extractedExt = filename.slice(dotIndex + 1).toLowerCase();
+    return { extension: extractedExt };
+  }
+
+  // If it's a special file without extension, use filename for icon detection
+  if (isSpecialFile(filename)) {
+    return { filename };
+  }
+
+  // Default fallback
+  return { filename };
 }
 
 // All extensions as a flat array
@@ -489,11 +570,37 @@ export function getFileExtensionWithoutDot(filename: string): string {
 // Get file category from filename
 export function getFileCategory(filename: string): FileCategory | null {
   const extension = getFileExtension(filename);
+  const baseFilename = filename.toLowerCase();
+
+  // Handle special filenames without extensions that should be treated as code
+  const specialCodeFiles = [
+    'dockerfile',
+    'makefile',
+    'license',
+    'readme',
+    'changelog',
+    'contributing',
+    'authors',
+    'contributors',
+    'copying',
+    'install',
+    'news',
+    'todo',
+  ];
+
+  if (!extension && specialCodeFiles.includes(baseFilename)) {
+    return 'code';
+  }
 
   for (const [category, extensions] of Object.entries(FILE_CATEGORIES)) {
     if ((extensions as readonly string[]).includes(extension)) {
       return category as FileCategory;
     }
+  }
+
+  // If no extension and not a special code file, default to document
+  if (!extension) {
+    return 'document';
   }
 
   return null;

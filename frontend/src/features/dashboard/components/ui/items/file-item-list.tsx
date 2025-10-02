@@ -6,6 +6,7 @@ import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
+import { getEffectiveExtension } from '@/config/file-extensions';
 
 interface FileItemListProps {
   file: FileItem;
@@ -47,10 +48,16 @@ export function FileItemList({ file, allFiles = [], _onAction }: FileItemListPro
       >
         {/* File icon and name - always visible, responsive sizing */}
         <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4 flex items-center gap-2 sm:gap-3 min-w-0">
-          <FileIcon
-            extension={file.extension as FileExtension}
-            className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 flex-shrink-0"
-          />
+          {(() => {
+            const { extension, filename } = getEffectiveExtension(file.name, file.extension);
+            return (
+              <FileIcon
+                extension={extension as FileExtension}
+                filename={filename}
+                className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 flex-shrink-0"
+              />
+            );
+          })()}
           <span className="text-xs sm:text-sm lg:text-base font-medium text-foreground truncate">
             {file.name}
           </span>

@@ -3,10 +3,12 @@ import { BsFiletypeExe } from 'react-icons/bs';
 import type { FileExtension } from '@/features/dashboard/types/file';
 import { FaFileAudio, FaFileImage, FaFilePdf, FaFileVideo, FaRegFileCode } from 'react-icons/fa6';
 import { LuFileSpreadsheet } from 'react-icons/lu';
-import { FaFileArchive } from 'react-icons/fa';
+import { FaFileArchive, FaFileContract, FaBook, FaHammer } from 'react-icons/fa';
+import { SiDocker } from 'react-icons/si';
 
 interface FileIconProps {
-  extension: FileExtension;
+  extension?: FileExtension;
+  filename?: string;
   className?: string;
 }
 
@@ -132,132 +134,190 @@ const getFileIconColor = (extension: FileExtension): string => {
   }
 };
 
-export function FileIcon({ extension, className = 'h-4 w-4' }: FileIconProps) {
-  const colorClass = getFileIconColor(extension);
-  const iconClass = `${className} ${colorClass}`;
+export function FileIcon({ extension, filename, className = 'h-4 w-4' }: FileIconProps) {
+  // Enhanced special file detection
+  const getSpecialFileIcon = (filename: string) => {
+    const lowerFilename = filename.toLowerCase();
 
-  switch (extension) {
-    case 'pdf':
-      return <FaFilePdf className={iconClass} />;
+    // License files
+    if (lowerFilename === 'license' || lowerFilename.startsWith('license.')) {
+      return <FaFileContract className={`${className} text-amber-500`} />;
+    }
 
-    // Executables
-    case 'exe':
-    case 'msi':
-    case 'dmg':
-    case 'deb':
-    case 'rpm':
-    case 'appimage':
-      return <BsFiletypeExe className={iconClass} />;
+    // README files
+    if (lowerFilename === 'readme' || lowerFilename.startsWith('readme.')) {
+      return <FaBook className={`${className} text-blue-500`} />;
+    }
 
-    // Documents
-    case 'doc':
-    case 'docx':
-    case 'txt':
-    case 'rtf':
-    case 'odt':
-      return <FileText className={iconClass} />;
+    // Docker files
+    if (lowerFilename === 'dockerfile' || lowerFilename.startsWith('dockerfile.')) {
+      return <SiDocker className={`${className} text-blue-400`} />;
+    }
 
-    // Spreadsheets
-    case 'xls':
-    case 'xlsx':
-    case 'csv':
-    case 'ods':
-    case 'xlsm':
-    case 'xlsb':
-      return <LuFileSpreadsheet className={iconClass} />;
+    // Make files
+    if (lowerFilename === 'makefile' || lowerFilename.startsWith('makefile.')) {
+      return <FaHammer className={`${className} text-orange-500`} />;
+    }
 
-    // Presentations
-    case 'ppt':
-    case 'pptx':
-    case 'odp':
-      return <FilePresentation className={iconClass} />;
+    // Changelog
+    if (lowerFilename === 'changelog' || lowerFilename.startsWith('changelog.')) {
+      return <FileText className={`${className} text-green-500`} />;
+    }
 
-    // Images
-    case 'jpg':
-    case 'jpeg':
-    case 'png':
-    case 'gif':
-    case 'svg':
-    case 'webp':
-    case 'bmp':
-    case 'ico':
-    case 'tiff':
-    case 'tif':
-    case 'heic':
-    case 'avif':
-      return <FaFileImage className={iconClass} />;
+    // Contributing
+    if (lowerFilename === 'contributing' || lowerFilename.startsWith('contributing.')) {
+      return <FileText className={`${className} text-purple-500`} />;
+    }
 
-    // Videos
-    case 'mp4':
-    case 'mkv':
-    case 'avi':
-    case 'mov':
-    case 'wmv':
-    case 'flv':
-    case 'webm':
-    case 'ogv':
-    case 'm4v':
-    case '3gp':
-    case 'mpg':
-    case 'mpeg':
-      return <FaFileVideo className={iconClass} />;
+    // Other common files
+    if (
+      ['authors', 'contributors', 'copying', 'install', 'news', 'todo'].some(
+        (name) => lowerFilename === name || lowerFilename.startsWith(name + '.')
+      )
+    ) {
+      return <FileText className={`${className} text-gray-500`} />;
+    }
 
-    // Audio
-    case 'mp3':
-    case 'wav':
-    case 'flac':
-    case 'aac':
-    case 'ogg':
-    case 'wma':
-    case 'm4a':
-    case 'opus':
-      return <FaFileAudio className={iconClass} />;
+    return null;
+  };
 
-    // Archives
-    case 'zip':
-    case 'rar':
-    case '7z':
-    case 'tar':
-    case 'gz':
-    case 'bz2':
-    case 'xz':
-      return <FaFileArchive className={iconClass} />;
+  // First check if we have a filename (for files without extensions)
+  if (filename) {
+    const specialIcon = getSpecialFileIcon(filename);
+    if (specialIcon) {
+      return specialIcon;
+    }
+  } // If we have an extension, use it
+  if (extension && extension.trim() !== '' && extension !== 'unknown') {
+    const colorClass = getFileIconColor(extension as FileExtension);
+    const iconClass = `${className} ${colorClass}`;
 
-    // Code
-    case 'js':
-    case 'ts':
-    case 'jsx':
-    case 'tsx':
-    case 'html':
-    case 'css':
-    case 'scss':
-    case 'sass':
-    case 'less':
-    case 'json':
-    case 'xml':
-    case 'yaml':
-    case 'yml':
-    case 'md':
-    case 'py':
-    case 'java':
-    case 'cpp':
-    case 'c':
-    case 'cs':
-    case 'php':
-    case 'rb':
-    case 'go':
-    case 'rs':
-    case 'sql':
-    case 'sh':
-    case 'bat':
-    case 'ps1':
-      return <FaRegFileCode className={iconClass} />;
+    switch (extension) {
+      case 'pdf':
+        return <FaFilePdf className={iconClass} />;
 
-    default:
-      return <FileQuestion className={iconClass} />;
+      // Executables
+      case 'exe':
+      case 'msi':
+      case 'dmg':
+      case 'deb':
+      case 'rpm':
+      case 'appimage':
+        return <BsFiletypeExe className={iconClass} />;
+
+      // Documents
+      case 'doc':
+      case 'docx':
+      case 'txt':
+      case 'rtf':
+      case 'odt':
+        return <FileText className={iconClass} />;
+
+      // Spreadsheets
+      case 'xls':
+      case 'xlsx':
+      case 'csv':
+      case 'ods':
+      case 'xlsm':
+      case 'xlsb':
+        return <LuFileSpreadsheet className={iconClass} />;
+
+      // Presentations
+      case 'ppt':
+      case 'pptx':
+      case 'odp':
+        return <FilePresentation className={iconClass} />;
+
+      // Images
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'svg':
+      case 'webp':
+      case 'bmp':
+      case 'ico':
+      case 'tiff':
+      case 'tif':
+      case 'heic':
+      case 'avif':
+        return <FaFileImage className={iconClass} />;
+
+      // Videos
+      case 'mp4':
+      case 'mkv':
+      case 'avi':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'webm':
+      case 'ogv':
+      case 'm4v':
+      case '3gp':
+      case 'mpg':
+      case 'mpeg':
+        return <FaFileVideo className={iconClass} />;
+
+      // Audio
+      case 'mp3':
+      case 'wav':
+      case 'flac':
+      case 'aac':
+      case 'ogg':
+      case 'wma':
+      case 'm4a':
+      case 'opus':
+        return <FaFileAudio className={iconClass} />;
+
+      // Archives
+      case 'zip':
+      case 'rar':
+      case '7z':
+      case 'tar':
+      case 'gz':
+      case 'bz2':
+      case 'xz':
+        return <FaFileArchive className={iconClass} />;
+
+      // Code
+      case 'js':
+      case 'ts':
+      case 'jsx':
+      case 'tsx':
+      case 'html':
+      case 'css':
+      case 'scss':
+      case 'sass':
+      case 'less':
+      case 'json':
+      case 'xml':
+      case 'yaml':
+      case 'yml':
+      case 'md':
+      case 'py':
+      case 'java':
+      case 'cpp':
+      case 'c':
+      case 'cs':
+      case 'php':
+      case 'rb':
+      case 'go':
+      case 'rs':
+      case 'sql':
+      case 'sh':
+      case 'bat':
+      case 'ps1':
+        return <FaRegFileCode className={iconClass} />;
+
+      default:
+        return <FileQuestion className={iconClass} />;
+    }
   }
+
+  // Final fallback for files without extensions that aren't special
+  return <FileQuestion className={`${className} text-muted-foreground`} />;
 }
 
-export function FileIconLarge({ extension, className = 'h-16 w-16' }: FileIconProps) {
-  return <FileIcon extension={extension} className={className} />;
+export function FileIconLarge({ extension, filename, className = 'h-16 w-16' }: FileIconProps) {
+  return <FileIcon extension={extension} filename={filename} className={className} />;
 }

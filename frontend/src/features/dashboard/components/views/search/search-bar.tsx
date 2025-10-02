@@ -7,7 +7,7 @@ import { Search, X } from 'lucide-react';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
-import { getFileExtensionWithoutDot } from '@/config/file-extensions';
+import { getFileExtensionWithoutDot, getEffectiveExtension } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import {
@@ -291,10 +291,14 @@ export function SearchBar({
     }
 
     // Use the same pattern as file-item-list.tsx
-    const extension = (suggestion.extension ||
-      getFileExtensionWithoutDot(suggestion.name) ||
-      'txt') as FileExtension;
-    return <FileIcon extension={extension} className="h-5 w-5 flex-shrink-0" />;
+    const extension = getEffectiveExtension(suggestion.name, suggestion.extension);
+    return (
+      <FileIcon
+        extension={extension?.extension as FileExtension}
+        filename={extension?.filename}
+        className="h-5 w-5 flex-shrink-0"
+      />
+    );
   };
 
   // Update dropdown position when it opens/closes or on mount

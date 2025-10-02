@@ -5,6 +5,7 @@ import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
+import { getEffectiveExtension } from '@/config/file-extensions';
 
 interface FileItemMobileProps {
   file: FileItem;
@@ -53,7 +54,16 @@ export function FileItemMobile({
     >
       {/* File Icon */}
       <div className="flex-shrink-0 mr-3">
-        <FileIcon extension={file.extension as FileExtension} className="h-6 w-6" />
+        {(() => {
+          const { extension, filename } = getEffectiveExtension(file.name, file.extension);
+          return (
+            <FileIcon
+              extension={extension as FileExtension}
+              filename={filename}
+              className="h-6 w-6"
+            />
+          );
+        })()}
       </div>
 
       {/* File Info */}

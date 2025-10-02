@@ -7,7 +7,7 @@ import { PreviewableFile } from '@/types/file-preview';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FileExtension } from '@/features/dashboard/types/file';
-import { getFileExtensionWithoutDot } from '@/config/file-extensions';
+import { getFileExtensionWithoutDot, getEffectiveExtension } from '@/config/file-extensions';
 
 interface PreviewHeaderProps {
   file: PreviewableFile;
@@ -49,7 +49,7 @@ export function PreviewHeader({
     downloadFile(fileItem);
   };
 
-  const extension = getFileExtensionWithoutDot(file.name);
+  const extension = getEffectiveExtension(file.name);
 
   return (
     <div
@@ -70,7 +70,11 @@ export function PreviewHeader({
     >
       <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
         <div style={{ marginRight: '8px', flexShrink: 0 }} className="sm:mr-3">
-          <FileIcon extension={extension as FileExtension} className="h-5 w-5 sm:h-6 sm:w-6" />
+          <FileIcon
+            extension={extension?.extension as FileExtension}
+            filename={extension?.filename}
+            className="h-5 w-5 sm:h-6 sm:w-6"
+          />
         </div>
 
         <div style={{ minWidth: 0, flex: 1 }}>
