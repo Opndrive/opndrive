@@ -14,8 +14,10 @@ interface UploadStore extends UploadState {
   // Duplicate dialog state
   duplicateDialog: DuplicateDialogState;
 
-  // Cancel function registry
+  // Function registry
   actualCancelFunction: ((itemId: string) => Promise<void>) | null;
+  actualPauseFunction: ((itemId: string) => void) | null;
+  actualResumeFunction: ((itemId: string) => Promise<void>) | null;
 
   // Actions
   openCard: () => void;
@@ -30,11 +32,15 @@ interface UploadStore extends UploadState {
   removeItem: (itemId: string) => void;
   clearCompleted: () => void;
   cancelUpload: (itemId: string) => void;
+  pauseUpload: (itemId: string) => void;
+  resumeUpload: (itemId: string) => void;
   resetStore: () => void;
+  cleanupStaleStorage: () => void;
 
-  // Cancel function registration
+  // Function registration
   registerCancelFunction: (cancelFn: (itemId: string) => Promise<void>) => void;
-  getCancelFunction: () => ((itemId: string) => Promise<void>) | null;
+  registerPauseFunction: (pauseFn: (itemId: string) => void) => void;
+  registerResumeFunction: (resumeFn: (itemId: string) => Promise<void>) => void;
 
   // Duplicate dialog actions
   showDuplicateDialog: (item: UploadItem, onReplace: () => void, onKeepBoth: () => void) => void;
@@ -43,6 +49,7 @@ interface UploadStore extends UploadState {
   // Queue management
   getActiveUploadsCount: () => number;
   hasQueuedItems: () => boolean;
+  forceRefresh: () => void;
 }
 
 const initialState: UploadState = {
@@ -65,10 +72,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     onKeepBoth: null,
   },
 
-  // Initialize cancel function
+  // Initialize functions
   actualCancelFunction: null,
-
-  // Initialize pause and resume functions
   actualPauseFunction: null,
   actualResumeFunction: null,
 
@@ -122,6 +127,9 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
               progress: progress.progress,
               uploadedFiles: progress.uploadedFiles,
               totalFiles: progress.totalFiles,
+              // Explicitly preserve file-related properties
+              file: item.file,
+              files: item.files,
             }
           : item
       ),
@@ -132,7 +140,15 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     set((state) => {
       const updatedItems = state.items.map((item) =>
         item.id === itemId
-          ? { ...item, status, error, progress: status === 'completed' ? 100 : item.progress }
+          ? {
+              ...item,
+              status,
+              error,
+              progress: status === 'completed' ? 100 : item.progress,
+              // Explicitly preserve file-related properties
+              file: item.file,
+              files: item.files,
+            }
           : item
       );
 
@@ -142,7 +158,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       ).length;
 
       const isUploading = updatedItems.some(
-        (item) => item.status === 'uploading' || item.status === 'pending'
+        (item) =>
+          item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
       );
 
       return {
@@ -155,11 +172,51 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   updateItemName: (itemId, name) => {
     set((state) => ({
-      items: state.items.map((item) => (item.id === itemId ? { ...item, name } : item)),
+      items: state.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              name,
+              // Explicitly preserve file-related properties
+              file: item.file,
+              files: item.files,
+            }
+          : item
+      ),
     }));
   },
 
   removeItem: (itemId) => {
+    // Clean up all associated storage
+    if (typeof window !== 'undefined') {
+      // Clean up file cache
+      import('../services/upload-file-cache').then(({ uploadFileCache }) => {
+        uploadFileCache.remove(itemId);
+      });
+
+      // Clean up persistent storage
+      import('../services/persistent-uploader-storage').then(({ persistentUploaderStorage }) => {
+        persistentUploaderStorage.remove(itemId);
+      });
+
+      // Clean up any associated localStorage entries
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.includes(itemId)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((key) => {
+          localStorage.removeItem(key);
+          console.log(`[UPLOAD_STORE] Cleaned up localStorage key: ${key}`);
+        });
+      } catch (error) {
+        console.warn('[UPLOAD_STORE] Error cleaning up localStorage:', error);
+      }
+    }
+
     set((state) => {
       const updatedItems = state.items.filter((item) => item.id !== itemId);
       const completedItems = updatedItems.filter(
@@ -168,7 +225,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       ).length;
 
       const isUploading = updatedItems.some(
-        (item) => item.status === 'uploading' || item.status === 'pending'
+        (item) =>
+          item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
       );
 
       return {
@@ -184,7 +242,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   clearCompleted: () => {
     set((state) => {
       const activeItems = state.items.filter(
-        (item) => item.status === 'uploading' || item.status === 'pending'
+        (item) =>
+          item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
       );
 
       return {
@@ -199,19 +258,35 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   cancelUpload: (itemId) => {
     const { actualCancelFunction } = get();
 
-    // Call actual cancel function if registered
     if (actualCancelFunction) {
       actualCancelFunction(itemId).catch((error) => {
         console.error('Failed to cancel upload:', error);
       });
     }
 
-    // Update UI state immediately
     set((state) => ({
       items: state.items.map((item) =>
         item.id === itemId ? { ...item, status: 'cancelled' as const } : item
       ),
     }));
+  },
+
+  pauseUpload: (itemId) => {
+    const { actualPauseFunction } = get();
+
+    if (actualPauseFunction) {
+      actualPauseFunction(itemId);
+    }
+  },
+
+  resumeUpload: (itemId) => {
+    const { actualResumeFunction } = get();
+
+    if (actualResumeFunction) {
+      actualResumeFunction(itemId).catch((error) => {
+        console.error('Failed to resume upload:', error);
+      });
+    }
   },
 
   resetStore: () => {
@@ -258,13 +333,42 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     return items.some((item) => item.status === 'pending');
   },
 
-  // Cancel function registration
+  // Function registration
   registerCancelFunction: (cancelFn) => {
     set({ actualCancelFunction: cancelFn });
   },
 
-  getCancelFunction: () => {
-    const { actualCancelFunction } = get();
-    return actualCancelFunction;
+  registerPauseFunction: (pauseFn) => {
+    set({ actualPauseFunction: pauseFn });
+  },
+
+  registerResumeFunction: (resumeFn) => {
+    set({ actualResumeFunction: resumeFn });
+  },
+
+  cleanupStaleStorage: () => {
+    // Import persistentUploaderStorage dynamically to avoid circular imports
+    import('../services/persistent-uploader-storage').then(({ persistentUploaderStorage }) => {
+      persistentUploaderStorage.cleanupStaleLocalStorage();
+      console.log('[UPLOAD_STORE] Triggered stale storage cleanup');
+    });
+  },
+
+  forceRefresh: () => {
+    // Force a re-render by updating a timestamp
+    const currentState = get();
+    set({ ...currentState });
   },
 }));
+
+// Setup global function for file cache to check active uploads
+if (typeof window !== 'undefined') {
+  window.__upload_store_check = (itemId: string): boolean => {
+    const state = useUploadStore.getState();
+    const item = state.items.find((item) => item.id === itemId);
+    return !!(
+      item &&
+      (item.status === 'uploading' || item.status === 'paused' || item.status === 'pending')
+    );
+  };
+}

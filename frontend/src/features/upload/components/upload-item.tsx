@@ -1,15 +1,34 @@
 'use client';
 
 import React from 'react';
-import { X, CheckCircle, AlertCircle, XCircle, Upload, Loader2 } from 'lucide-react';
+import {
+  X,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  Upload,
+  Loader2,
+  Pause,
+  Play,
+  Minus,
+} from 'lucide-react';
 import { UploadItem } from '../types';
 
 interface UploadItemComponentProps {
   item: UploadItem;
   onCancel: (itemId: string) => void;
+  onPause: (itemId: string) => void;
+  onResume: (itemId: string) => void;
+  onRemove?: (itemId: string) => void;
 }
 
-export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps) {
+export function UploadItemComponent({
+  item,
+  onCancel,
+  onPause,
+  onResume,
+  onRemove,
+}: UploadItemComponentProps) {
   // Format file size helper
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -20,6 +39,16 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
   };
 
   const getStatusIcon = () => {
+    // Check if this is actively uploading from queue
+    if (typeof window !== 'undefined' && window.__upload_queue_manager) {
+      const queueManager = window.__upload_queue_manager;
+      const isActive = queueManager.isUploadActive(item.id);
+
+      if (isActive && item.progress > 0) {
+        return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+      }
+    }
+
     switch (item.status) {
       case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-600" />;
@@ -29,6 +58,8 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return <XCircle className="h-4 w-4 text-red-600" />;
       case 'uploading':
         return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+      case 'paused':
+        return <Pause className="h-4 w-4 text-orange-600" />;
       default:
         return <Upload className="h-4 w-4 text-gray-600" />;
     }
@@ -44,12 +75,24 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return 'text-red-600';
       case 'uploading':
         return 'text-blue-600';
+      case 'paused':
+        return 'text-orange-600';
       default:
         return 'text-gray-600';
     }
   };
 
   const getProgressBarColor = () => {
+    // Check if this is actively uploading from queue
+    if (typeof window !== 'undefined' && window.__upload_queue_manager) {
+      const queueManager = window.__upload_queue_manager;
+      const isActive = queueManager.isUploadActive(item.id);
+
+      if (isActive && item.progress > 0) {
+        return 'bg-blue-600'; // Show blue for active uploads
+      }
+    }
+
     switch (item.status) {
       case 'completed':
         return 'bg-green-600';
@@ -59,6 +102,8 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return 'bg-red-600';
       case 'uploading':
         return 'bg-blue-600';
+      case 'paused':
+        return 'bg-orange-600';
       default:
         return 'bg-gray-600';
     }
@@ -77,8 +122,33 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
         return 'Cancelled';
       case 'uploading':
         return 'Uploading...';
+      case 'paused':
+        if (item.type === 'folder' && item.uploadedFiles && item.uploadedFiles > 0) {
+          return `Paused - ${item.uploadedFiles} files uploaded`;
+        }
+        return 'Paused';
       case 'pending':
-        return 'Queued';
+        // Check if this is in the upload queue for better status
+        if (typeof window !== 'undefined' && window.__upload_queue_manager) {
+          const queueManager = window.__upload_queue_manager;
+          const isActive = queueManager.isUploadActive(item.id);
+          const position = queueManager.getQueuePosition(item.id);
+
+          // If this upload is actively running, show as uploading
+          if (isActive && item.progress > 0) {
+            return 'Uploading...';
+          }
+
+          // If it's in queue, show queue status
+          if (position >= 0) {
+            if (position === 0) {
+              return 'Next in queue';
+            } else {
+              return `Queued #${position + 1}`;
+            }
+          }
+        }
+        return 'Waiting to start...';
       default:
         return '';
     }
@@ -111,15 +181,73 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
           </div>
 
           <div className="flex items-center gap-1">
-            {(item.status === 'uploading' || item.status === 'pending') && (
-              <button
-                onClick={() => onCancel(item.id)}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-                aria-label="Cancel upload"
-              >
-                <X className="h-3 w-3 text-red-600" />
-              </button>
+            {(item.status === 'uploading' ||
+              (item.status === 'pending' &&
+                typeof window !== 'undefined' &&
+                window.__upload_queue_manager?.isUploadActive(item.id) &&
+                item.progress > 0)) && (
+              <>
+                <button
+                  onClick={() => onPause(item.id)}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
+                  aria-label="Pause upload"
+                >
+                  <Pause className="h-3 w-3 text-orange-600" />
+                </button>
+                <button
+                  onClick={() => onCancel(item.id)}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  aria-label="Cancel upload"
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </button>
+              </>
             )}
+            {item.status === 'paused' && (
+              <>
+                <button
+                  onClick={() => onResume(item.id)}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
+                  aria-label="Resume upload"
+                >
+                  <Play className="h-3 w-3 text-green-600" />
+                </button>
+                <button
+                  onClick={() => onCancel(item.id)}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  aria-label="Cancel upload"
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </button>
+              </>
+            )}
+            {item.status === 'pending' &&
+              !(
+                typeof window !== 'undefined' &&
+                window.__upload_queue_manager?.isUploadActive(item.id) &&
+                item.progress > 0
+              ) && (
+                <button
+                  onClick={() => onCancel(item.id)}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  aria-label="Cancel upload"
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </button>
+              )}
+            {(item.status === 'completed' ||
+              item.status === 'cancelled' ||
+              item.status === 'error') &&
+              onRemove && (
+                <button
+                  onClick={() => onRemove(item.id)}
+                  className="p-1 rounded cursor-pointer transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 hover:scale-110"
+                  aria-label="Remove from list"
+                  title="Remove from list"
+                >
+                  <Minus className="h-3 w-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors" />
+                </button>
+              )}
           </div>
         </div>
 
@@ -131,9 +259,17 @@ export function UploadItemComponent({ item, onCancel }: UploadItemComponentProps
             />
           </div>
 
-          <div className="flex items-center justify-between mt-1 gap-2">
-            <span className={`text-xs truncate flex-1 ${getStatusColor()}`}>{getStatusText()}</span>
-            <span className="text-xs flex-shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+          <div className="flex items-start justify-between mt-1 gap-2">
+            <span
+              className={`text-xs flex-1 leading-tight ${getStatusColor()}`}
+              style={{ wordBreak: 'break-word', lineHeight: '1.2' }}
+            >
+              {getStatusText()}
+            </span>
+            <span
+              className="text-xs flex-shrink-0 ml-2"
+              style={{ color: 'var(--muted-foreground)' }}
+            >
               {item.progress.toFixed(2)}%
             </span>
           </div>

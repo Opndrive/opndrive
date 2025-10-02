@@ -1,0 +1,215 @@
+/**
+ * Uploader State Manager
+ *
+ * Centralized, thread-safe manager for upload instances and their state.
+ * Ensures uploaders are never accidentally deleted and provides debugging capabilities.
+ */
+
+import { MultipartUploader } from '@opndrive/s3-api';
+
+export interface UploaderInfo {
+  uploader: MultipartUploader; // The actual S3 uploader instance
+  status: 'uploading' | 'paused' | 'completed' | 'cancelled' | 'error';
+  createdAt: number;
+  lastActivity: number;
+  progress: number;
+  metadata?: Record<string, unknown>;
+}
+
+class UploaderStateManager {
+  private uploaders = new Map<string, UploaderInfo>();
+  private debugMode = true;
+
+  /**
+   * Store an uploader instance with its metadata
+   */
+  store(
+    itemId: string,
+    uploader: MultipartUploader,
+    initialStatus: UploaderInfo['status'] = 'uploading'
+  ): void {
+    const now = Date.now();
+    const info: UploaderInfo = {
+      uploader,
+      status: initialStatus,
+      createdAt: now,
+      lastActivity: now,
+      progress: 0,
+      metadata: {},
+    };
+
+    this.uploaders.set(itemId, info);
+
+    if (this.debugMode) {
+      console.log(`[UploaderManager] Stored uploader for ${itemId} with status: ${initialStatus}`);
+      console.log(`[UploaderManager] Active uploaders: ${this.getActiveIds()}`);
+    }
+  }
+
+  /**
+   * Get uploader instance (never returns null accidentally)
+   */
+  get(itemId: string): MultipartUploader | null {
+    const info = this.uploaders.get(itemId);
+    if (this.debugMode && !info) {
+      console.warn(
+        `[UploaderManager] No uploader found for ${itemId}. Available: ${this.getActiveIds()}`
+      );
+    }
+    return info?.uploader || null;
+  }
+
+  /**
+   * Get full uploader info
+   */
+  getInfo(itemId: string): UploaderInfo | null {
+    return this.uploaders.get(itemId) || null;
+  }
+
+  /**
+   * Update uploader status (NEVER deletes uploader unless explicitly requested)
+   */
+  updateStatus(itemId: string, status: UploaderInfo['status'], progress?: number): void {
+    const info = this.uploaders.get(itemId);
+    if (!info) {
+      console.warn(`[UploaderManager] Cannot update status for ${itemId}: uploader not found`);
+      return;
+    }
+
+    info.status = status;
+    info.lastActivity = Date.now();
+    if (progress !== undefined) {
+      info.progress = progress;
+    }
+
+    if (this.debugMode) {
+      console.log(
+        `[UploaderManager] Updated ${itemId} status: ${status} (progress: ${info.progress}%)`
+      );
+    }
+
+    // Only remove uploader if explicitly completed or cancelled
+    if (status === 'completed' || status === 'cancelled') {
+      if (this.debugMode) {
+        console.log(`[UploaderManager] Scheduling cleanup for ${itemId} (status: ${status})`);
+      }
+      // Use setTimeout to ensure cleanup happens after all current operations
+      setTimeout(() => this.safeRemove(itemId, status), 100);
+    }
+  }
+
+  /**
+   * Update progress without changing status
+   */
+  updateProgress(itemId: string, progress: number): void {
+    const info = this.uploaders.get(itemId);
+    if (info) {
+      info.progress = progress;
+      info.lastActivity = Date.now();
+    }
+  }
+
+  /**
+   * Check if uploader exists
+   */
+  has(itemId: string): boolean {
+    return this.uploaders.has(itemId);
+  }
+
+  /**
+   * Get all active uploader IDs
+   */
+  getActiveIds(): string[] {
+    return Array.from(this.uploaders.keys());
+  }
+
+  /**
+   * Get uploaders by status
+   */
+  getByStatus(status: UploaderInfo['status']): Map<string, UploaderInfo> {
+    const result = new Map<string, UploaderInfo>();
+    for (const [itemId, info] of this.uploaders) {
+      if (info.status === status) {
+        result.set(itemId, info);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Safe removal with validation
+   */
+  private safeRemove(itemId: string, reason: string): void {
+    const info = this.uploaders.get(itemId);
+    if (!info) {
+      if (this.debugMode) {
+        console.log(`[UploaderManager] Cannot remove ${itemId}: already removed`);
+      }
+      return;
+    }
+
+    // Only remove if status is truly final
+    if (info.status === 'completed' || info.status === 'cancelled' || info.status === 'error') {
+      this.uploaders.delete(itemId);
+      if (this.debugMode) {
+        console.log(`[UploaderManager] Removed uploader for ${itemId} (reason: ${reason})`);
+        console.log(`[UploaderManager] Remaining active uploaders: ${this.getActiveIds()}`);
+      }
+    } else {
+      if (this.debugMode) {
+        console.warn(
+          `[UploaderManager] Refused to remove ${itemId}: status is ${info.status}, not final`
+        );
+      }
+    }
+  }
+
+  /**
+   * Force remove (use only in error cases)
+   */
+  forceRemove(itemId: string, reason: string = 'forced'): void {
+    if (this.uploaders.delete(itemId)) {
+      if (this.debugMode) {
+        console.log(`[UploaderManager] Force removed uploader for ${itemId} (reason: ${reason})`);
+      }
+    }
+  }
+
+  /**
+   * Clear all uploaders (use only on app reset)
+   */
+  clear(): void {
+    const count = this.uploaders.size;
+    this.uploaders.clear();
+    if (this.debugMode) {
+      console.log(`[UploaderManager] Cleared all ${count} uploaders`);
+    }
+  }
+
+  /**
+   * Get debug info
+   */
+  getDebugInfo(): Record<string, unknown> {
+    const info: Record<string, unknown> = {};
+    for (const [itemId, uploaderInfo] of this.uploaders) {
+      info[itemId] = {
+        status: uploaderInfo.status,
+        progress: uploaderInfo.progress,
+        createdAt: new Date(uploaderInfo.createdAt).toISOString(),
+        lastActivity: new Date(uploaderInfo.lastActivity).toISOString(),
+        ageMs: Date.now() - uploaderInfo.createdAt,
+      };
+    }
+    return info;
+  }
+
+  /**
+   * Enable/disable debug logging
+   */
+  setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+  }
+}
+
+// Export singleton instance
+export const uploaderStateManager = new UploaderStateManager();

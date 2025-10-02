@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Minus, Plus, CheckCircle, AlertCircle, XCircle, Pause, Upload } from 'lucide-react';
 import { useUploadStore } from '../hooks/use-upload-store';
 import { UploadItemComponent } from './upload-item';
@@ -20,9 +20,31 @@ export function UploadCard() {
     minimizeCard,
     maximizeCard,
     cancelUpload,
+    pauseUpload,
+    resumeUpload,
+    removeItem,
     clearCompleted,
     hideDuplicateDialog,
+    forceRefresh,
   } = useUploadStore();
+
+  // Force re-render every 2 seconds when there are active uploads to update queue status
+  const [, setRenderTrigger] = useState(0);
+
+  useEffect(() => {
+    const hasActiveUploads = items.some(
+      (item) => item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
+    );
+
+    if (hasActiveUploads) {
+      const interval = setInterval(() => {
+        setRenderTrigger((prev) => prev + 1);
+        forceRefresh();
+      }, 2000); // Update every 2 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [items, forceRefresh]);
 
   // Hide card when not open or when there are no items
   if (!isOpen || items.length === 0) {
@@ -33,7 +55,7 @@ export function UploadCard() {
     // Always close the card when X is clicked - force close even during uploads
     // If there are completed items, clear them first, then close
     const hasActiveUploads = items.some(
-      (item) => item.status === 'uploading' || item.status === 'pending'
+      (item) => item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
     );
 
     if (!hasActiveUploads) {
@@ -54,19 +76,39 @@ export function UploadCard() {
     const errorItems = items.filter((item) => item.status === 'error').length;
     const pausedItems = items.filter((item) => item.status === 'paused').length;
 
-    // Handle active uploads
+    // Handle active uploads with proper queue detection
     if (activeItems.length > 0) {
-      const queuedCount = items.filter((item) => item.status === 'pending').length;
+      let actuallyUploading = items.filter((item) => item.status === 'uploading').length;
+      let actuallyQueued = 0;
 
-      if (queuedCount > 0) {
+      // Check queue manager for accurate status
+      if (typeof window !== 'undefined' && window.__upload_queue_manager) {
+        const queueManager = window.__upload_queue_manager;
+
+        // Count items that are actually uploading (active in queue manager)
+        items.forEach((item) => {
+          if (item.status === 'pending') {
+            if (queueManager.isUploadActive(item.id) && item.progress > 0) {
+              actuallyUploading++;
+            } else {
+              actuallyQueued++;
+            }
+          }
+        });
+      } else {
+        // Fallback: count pending as queued
+        actuallyQueued = items.filter((item) => item.status === 'pending').length;
+      }
+
+      if (actuallyQueued > 0) {
         return {
-          text: `Uploading ${totalItems} file${totalItems === 1 ? '' : 's'} (${queuedCount} queued)`,
+          text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'} (${actuallyQueued} queued)`,
           color: 'text-[var(--primary)]',
           icon: Upload,
         };
       } else {
         return {
-          text: `Uploading ${totalItems} file${totalItems === 1 ? '' : 's'}`,
+          text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'}`,
           color: 'text-[var(--primary)]',
           icon: Upload,
         };
@@ -128,7 +170,7 @@ export function UploadCard() {
 
   const headerInfo = getHeaderInfo();
   const hasActiveUploads = items.some(
-    (item) => item.status === 'uploading' || item.status === 'pending'
+    (item) => item.status === 'uploading' || item.status === 'pending' || item.status === 'paused'
   );
 
   return (
@@ -179,7 +221,14 @@ export function UploadCard() {
           {!isMinimized && (
             <div className="flex-1 overflow-y-auto">
               {items.map((item) => (
-                <UploadItemComponent key={item.id} item={item} onCancel={cancelUpload} />
+                <UploadItemComponent
+                  key={item.id}
+                  item={item}
+                  onCancel={cancelUpload}
+                  onPause={pauseUpload}
+                  onResume={resumeUpload}
+                  onRemove={removeItem}
+                />
               ))}
             </div>
           )}

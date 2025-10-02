@@ -46,22 +46,36 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   }
 
   const { settings, isLoaded } = useSettings();
-  const { registerCancelFunction } = useUploadStore();
-  const { handleFileUpload, handleFolderUpload, cancelUpload } = useUploadHandler(
-    {
-      currentPath,
-      uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
-    },
-    apiS3
-  );
+  const { registerCancelFunction, registerPauseFunction, registerResumeFunction } =
+    useUploadStore();
+  const { handleFileUpload, handleFolderUpload, cancelUpload, pauseUpload, resumeUpload } =
+    useUploadHandler(
+      {
+        currentPath,
+        uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
+      },
+      apiS3
+    );
 
-  // Register cancel function when component mounts
+  // Register upload functions when component mounts
   useEffect(() => {
     registerCancelFunction(cancelUpload);
+    registerPauseFunction(pauseUpload);
+    registerResumeFunction(resumeUpload);
+
     return () => {
       registerCancelFunction(() => Promise.resolve());
+      registerPauseFunction(() => {});
+      registerResumeFunction(() => Promise.resolve());
     };
-  }, [cancelUpload, registerCancelFunction]);
+  }, [
+    cancelUpload,
+    pauseUpload,
+    resumeUpload,
+    registerCancelFunction,
+    registerPauseFunction,
+    registerResumeFunction,
+  ]);
 
   //  file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {
