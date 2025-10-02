@@ -6,6 +6,7 @@ export interface Credentials {
   accessKeyId: string; // AWS Access key ID
   secretAccessKey: string; // AWS Access Secret key
   bucketName: string; //AWS S3 bucket name
+  endpoint?: string;
 }
 
 export interface DirectoryStructure {
