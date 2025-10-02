@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2025-09-30
+### Added
+- Add endpoint parameter to support other s3 compatible storage services like minio, cloudflare r2, etc.,
+
 ## [1.7.0] - 2025-09-30
 ### Fixed
 - Fixed MultipartUploader class params and config
