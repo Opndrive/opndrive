@@ -120,7 +120,7 @@ export type FileExtension =
 
 // File category definitions
 export const FILE_CATEGORIES = {
-  document: ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt'] as const,
+  document: ['.pdf', '.doc', '.docx', '.rtf', '.odt'] as const,
   spreadsheet: ['.xls', '.xlsx', '.csv', '.ods', '.xlsm', '.xlsb'] as const,
   presentation: ['.ppt', '.pptx', '.odp'] as const,
   image: [
@@ -182,6 +182,7 @@ export const FILE_CATEGORIES = {
     '.md',
     '.mdx',
     '.rst',
+    '.txt',
     // Python
     '.py',
     '.pyw',
