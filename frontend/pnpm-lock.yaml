@@ -18,8 +18,8 @@ importers:
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@opndrive/s3-api':
-        specifier: ^1.7.0
-        version: 1.7.0
+        specifier: ^2.0.0
+        version: 2.0.0
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.6
         version: 1.1.14(@types/react-dom@19.1.7(@types/react@19.1.9))(@types/react@19.1.9)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -618,8 +618,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opndrive/s3-api@1.7.0':
-    resolution: {integrity: sha512-iCzMNwG7wxO0oxUwYHO7jpPXbVKldfv0x0rl3nKTpldMIBqmv3Cg1Gw+xZzZKeo/txJUU7ujWH2YBzs/kzL2Ng==}
+  '@opndrive/s3-api@2.0.0':
+    resolution: {integrity: sha512-SsY/ksymILjoawe0bY5K975PXpTYnBF49/yOrx2FloyGhri91foBz+JiSI8Tw83aND/0DffZB79pE1O1+Prlbg==}
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -2958,7 +2958,7 @@ snapshots:
   '@next/swc-win32-x64-msvc@15.2.4':
     optional: true
 
-  '@opndrive/s3-api@1.7.0':
+  '@opndrive/s3-api@2.0.0':
     dependencies:
       '@aws-sdk/client-s3': 3.862.0
       '@aws-sdk/s3-request-presigner': 3.862.0
