@@ -2,7 +2,7 @@
  * Core API interface definition for s3 bucket access for opndrive
  */
 
-import { HeadObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommandOutput, S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
 import {
   Credentials,
   DirectoryStructure,
@@ -29,7 +29,8 @@ export abstract class BaseS3ApiProvider {
 
   constructor(creds: Credentials) {
     this.credentials = creds;
-    this.s3 = new S3Client({
+
+    const s3Config: S3ClientConfig = {
       region: this.credentials.region,
       credentials: {
         accessKeyId: this.credentials.accessKeyId,
@@ -37,7 +38,14 @@ export abstract class BaseS3ApiProvider {
       },
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-    });
+    };
+
+    if (this.credentials.endpoint) {
+      s3Config.endpoint = this.credentials.endpoint;
+      s3Config.forcePathStyle = true;
+    }
+
+    this.s3 = new S3Client(s3Config);
   }
 
   /**
