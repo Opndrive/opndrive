@@ -39,80 +39,105 @@ export function UploadItemComponent({
   };
 
   const getStatusIcon = () => {
+    // First check if upload is completed (100% progress)
+    if (item.progress >= 100 || item.status === 'completed') {
+      return <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />;
+    }
+
     // Check if this is actively uploading from queue
     if (typeof window !== 'undefined' && window.__upload_queue_manager) {
       const queueManager = window.__upload_queue_manager;
       const isActive = queueManager.isUploadActive(item.id);
 
-      if (isActive && item.progress > 0) {
-        return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+      if (isActive && item.progress > 0 && item.progress < 100) {
+        return <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--primary)' }} />;
       }
     }
 
     switch (item.status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
       case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-600" />;
+        return <AlertCircle className="h-4 w-4" style={{ color: '#dc2626' }} />;
       case 'cancelled':
-        return <XCircle className="h-4 w-4 text-red-600" />;
+        return <XCircle className="h-4 w-4" style={{ color: '#dc2626' }} />;
       case 'uploading':
-        return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+        return item.progress >= 100 ? (
+          <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />
+        ) : (
+          <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--primary)' }} />
+        );
       case 'paused':
-        return <Pause className="h-4 w-4 text-orange-600" />;
+        return <Pause className="h-4 w-4" style={{ color: '#d97706' }} />;
+      case 'pending':
+        return <Upload className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />;
       default:
-        return <Upload className="h-4 w-4 text-gray-600" />;
+        // This handles 'completed' and any other states
+        return <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />;
     }
   };
 
-  const getStatusColor = () => {
+  const getStatusColorStyle = () => {
+    // First check if upload is completed (100% progress)
+    if (item.progress >= 100 || item.status === 'completed') {
+      return { color: '#16a34a' }; // green-600
+    }
+
     switch (item.status) {
-      case 'completed':
-        return 'text-green-600';
       case 'error':
-        return 'text-red-600';
+        return { color: '#dc2626' }; // red-600
       case 'cancelled':
-        return 'text-red-600';
+        return { color: '#dc2626' }; // red-600
       case 'uploading':
-        return 'text-blue-600';
+        return item.progress >= 100 ? { color: '#16a34a' } : { color: 'var(--primary)' };
       case 'paused':
-        return 'text-orange-600';
+        return { color: '#d97706' }; // orange-600
+      case 'pending':
+        return { color: 'var(--muted-foreground)' };
       default:
-        return 'text-gray-600';
+        return { color: '#16a34a' }; // green-600
     }
   };
 
-  const getProgressBarColor = () => {
+  const getProgressBarStyle = () => {
+    // First check if upload is completed (100% progress)
+    if (item.progress >= 100 || item.status === 'completed') {
+      return { backgroundColor: '#16a34a' }; // green-600
+    }
+
     // Check if this is actively uploading from queue
     if (typeof window !== 'undefined' && window.__upload_queue_manager) {
       const queueManager = window.__upload_queue_manager;
       const isActive = queueManager.isUploadActive(item.id);
 
-      if (isActive && item.progress > 0) {
-        return 'bg-blue-600'; // Show blue for active uploads
+      if (isActive && item.progress > 0 && item.progress < 100) {
+        return { backgroundColor: 'var(--primary)' }; // Use primary color for active uploads
       }
     }
 
     switch (item.status) {
-      case 'completed':
-        return 'bg-green-600';
       case 'error':
-        return 'bg-red-600';
+        return { backgroundColor: '#dc2626' }; // red-600
       case 'cancelled':
-        return 'bg-red-600';
+        return { backgroundColor: '#dc2626' }; // red-600
       case 'uploading':
-        return 'bg-blue-600';
+        return item.progress >= 100
+          ? { backgroundColor: '#16a34a' }
+          : { backgroundColor: 'var(--primary)' };
       case 'paused':
-        return 'bg-orange-600';
+        return { backgroundColor: '#d97706' }; // orange-600
+      case 'pending':
+        return { backgroundColor: 'var(--muted-foreground)' };
       default:
-        return 'bg-gray-600';
+        return { backgroundColor: '#16a34a' }; // green-600 for completed
     }
   };
 
   const getStatusText = () => {
+    // First check if upload is completed (100% progress)
+    if (item.progress >= 100 || item.status === 'completed') {
+      return 'Completed';
+    }
+
     switch (item.status) {
-      case 'completed':
-        return 'Completed';
       case 'error':
         return item.error || 'Failed';
       case 'cancelled':
@@ -121,7 +146,7 @@ export function UploadItemComponent({
         }
         return 'Cancelled';
       case 'uploading':
-        return 'Uploading...';
+        return item.progress >= 100 ? 'Completed' : 'Uploading...';
       case 'paused':
         if (item.type === 'folder' && item.uploadedFiles && item.uploadedFiles > 0) {
           return `Paused - ${item.uploadedFiles} files uploaded`;
@@ -150,7 +175,8 @@ export function UploadItemComponent({
         }
         return 'Waiting to start...';
       default:
-        return '';
+        // This handles 'completed' and any other states
+        return 'Completed';
     }
   };
 
@@ -192,14 +218,14 @@ export function UploadItemComponent({
                   className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
                   aria-label="Pause upload"
                 >
-                  <Pause className="h-3 w-3 text-orange-600" />
+                  <Pause className="h-3 w-3" style={{ color: '#d97706' }} />
                 </button>
                 <button
                   onClick={() => onCancel(item.id)}
                   className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
                   aria-label="Cancel upload"
                 >
-                  <X className="h-3 w-3 text-red-600" />
+                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
                 </button>
               </>
             )}
@@ -210,14 +236,14 @@ export function UploadItemComponent({
                   className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
                   aria-label="Resume upload"
                 >
-                  <Play className="h-3 w-3 text-green-600" />
+                  <Play className="h-3 w-3" style={{ color: '#16a34a' }} />
                 </button>
                 <button
                   onClick={() => onCancel(item.id)}
                   className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
                   aria-label="Cancel upload"
                 >
-                  <X className="h-3 w-3 text-red-600" />
+                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
                 </button>
               </>
             )}
@@ -232,7 +258,7 @@ export function UploadItemComponent({
                   className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
                   aria-label="Cancel upload"
                 >
-                  <X className="h-3 w-3 text-red-600" />
+                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
                 </button>
               )}
             {(item.status === 'completed' ||
@@ -245,24 +271,37 @@ export function UploadItemComponent({
                   aria-label="Remove from list"
                   title="Remove from list"
                 >
-                  <Minus className="h-3 w-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors" />
+                  <Minus
+                    className="h-3 w-3 transition-colors"
+                    style={{ color: 'var(--muted-foreground)' }}
+                  />
                 </button>
               )}
           </div>
         </div>
 
         <div className="mt-2">
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+          <div
+            className="w-full rounded-full h-1.5"
+            style={{ backgroundColor: 'var(--progress-track)' }}
+          >
             <div
-              className={`h-1.5 rounded-full transition-all duration-300 ${getProgressBarColor()}`}
-              style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }}
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${Math.min(100, Math.max(0, item.progress))}%`,
+                ...getProgressBarStyle(),
+              }}
             />
           </div>
 
           <div className="flex items-start justify-between mt-1 gap-2">
             <span
-              className={`text-xs flex-1 leading-tight ${getStatusColor()}`}
-              style={{ wordBreak: 'break-word', lineHeight: '1.2' }}
+              className="text-xs flex-1 leading-tight"
+              style={{
+                wordBreak: 'break-word',
+                lineHeight: '1.2',
+                ...getStatusColorStyle(),
+              }}
             >
               {getStatusText()}
             </span>

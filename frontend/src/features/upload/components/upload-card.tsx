@@ -65,7 +65,8 @@ export function UploadCard() {
   };
 
   const getHeaderInfo = () => {
-    if (totalItems === 0) return { text: 'No uploads', color: 'text-muted-foreground' };
+    if (totalItems === 0)
+      return { text: 'No uploads', colorStyle: { color: 'var(--muted-foreground)' } };
 
     const activeItems = items.filter(
       (item) => item.status === 'uploading' || item.status === 'pending'
@@ -103,13 +104,13 @@ export function UploadCard() {
       if (actuallyQueued > 0) {
         return {
           text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'} (${actuallyQueued} queued)`,
-          color: 'text-[var(--primary)]',
+          colorStyle: { color: 'var(--primary)' },
           icon: Upload,
         };
       } else {
         return {
           text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'}`,
-          color: 'text-[var(--primary)]',
+          colorStyle: { color: 'var(--primary)' },
           icon: Upload,
         };
       }
@@ -119,7 +120,7 @@ export function UploadCard() {
     if (pausedItems > 0) {
       return {
         text: `${pausedItems} upload${pausedItems === 1 ? '' : 's'} paused`,
-        color: 'text-[#f59e0b]', // Using orange-600 equivalent
+        colorStyle: { color: '#d97706' }, // orange-600
         icon: Pause,
       };
     }
@@ -129,7 +130,7 @@ export function UploadCard() {
       const failedCount = cancelledItems + errorItems;
       return {
         text: `${actuallyCompleted} completed, ${failedCount} failed`,
-        color: 'text-[#f59e0b]', // Using orange-600 equivalent
+        colorStyle: { color: '#d97706' }, // orange-600
         icon: AlertCircle,
       };
     }
@@ -138,7 +139,7 @@ export function UploadCard() {
     if (actuallyCompleted > 0) {
       return {
         text: `${actuallyCompleted} upload${actuallyCompleted === 1 ? '' : 's'} completed`,
-        color: 'text-[#16a34a]', // Using green-600 equivalent
+        colorStyle: { color: '#16a34a' }, // green-600
         icon: CheckCircle,
       };
     }
@@ -147,7 +148,7 @@ export function UploadCard() {
     if (cancelledItems > 0) {
       return {
         text: `${cancelledItems} upload${cancelledItems === 1 ? '' : 's'} cancelled`,
-        color: 'text-[#dc2626]', // Using red-600 equivalent
+        colorStyle: { color: '#dc2626' }, // red-600
         icon: XCircle,
       };
     }
@@ -156,14 +157,14 @@ export function UploadCard() {
     if (errorItems > 0) {
       return {
         text: `${errorItems} upload${errorItems === 1 ? '' : 's'} failed`,
-        color: 'text-[#dc2626]', // Using red-600 equivalent
+        colorStyle: { color: '#dc2626' }, // red-600
         icon: AlertCircle,
       };
     }
 
     return {
       text: `${totalItems} upload${totalItems === 1 ? '' : 's'} completed`,
-      color: 'text-[#16a34a]', // Using green-600 equivalent
+      colorStyle: { color: '#16a34a' }, // green-600
       icon: CheckCircle,
     };
   };
@@ -190,9 +191,9 @@ export function UploadCard() {
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {headerInfo.icon && (
-                <headerInfo.icon className={`h-4 w-4 flex-shrink-0 ${headerInfo.color}`} />
+                <headerInfo.icon className="h-4 w-4 flex-shrink-0" style={headerInfo.colorStyle} />
               )}
-              <span className={`text-sm font-medium truncate ${headerInfo.color}`}>
+              <span className="text-sm font-medium truncate" style={headerInfo.colorStyle}>
                 {headerInfo.text}
               </span>
             </div>
