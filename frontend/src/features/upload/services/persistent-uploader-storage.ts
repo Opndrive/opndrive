@@ -59,13 +59,6 @@ class PersistentUploaderStorage {
 
     storage.set(itemId, entry);
     this.saveStateToLocalStorage();
-
-    console.log(
-      `[PERSISTENT_STORAGE] Stored uploader for ${itemId}, status: ${status}, progress: ${progress}%`
-    );
-    console.log(
-      `[PERSISTENT_STORAGE] Active uploaders: [${Array.from(storage.keys()).join(', ')}]`
-    );
   }
 
   get(itemId: string): MultipartUploader | null {
@@ -73,16 +66,9 @@ class PersistentUploaderStorage {
     const entry = storage.get(itemId);
 
     if (!entry) {
-      console.log(`[PERSISTENT_STORAGE] No uploader found for ${itemId}`);
-      console.log(
-        `[PERSISTENT_STORAGE] Available uploaders: [${Array.from(storage.keys()).join(', ')}]`
-      );
       return null;
     }
 
-    console.log(
-      `[PERSISTENT_STORAGE] Retrieved uploader for ${itemId}, status: ${entry.status}, progress: ${entry.progress}%`
-    );
     return entry.uploader;
   }
 
@@ -99,10 +85,6 @@ class PersistentUploaderStorage {
 
       storage.set(itemId, entry);
       this.saveStateToLocalStorage();
-
-      console.log(
-        `[PERSISTENT_STORAGE] Updated ${itemId}: status=${status}, progress=${entry.progress}%`
-      );
 
       // Only remove if truly completed or cancelled
       if (status === 'completed' || status === 'cancelled') {
@@ -130,16 +112,12 @@ class PersistentUploaderStorage {
     }
   }
 
-  remove(itemId: string, reason: string = 'manual'): boolean {
+  remove(itemId: string, _reason: string = 'manual'): boolean {
     const storage = this.getStorage();
     const removed = storage.delete(itemId);
 
     if (removed) {
       this.saveStateToLocalStorage();
-      console.log(`[PERSISTENT_STORAGE] Removed uploader for ${itemId} (reason: ${reason})`);
-      console.log(
-        `[PERSISTENT_STORAGE] Remaining uploaders: [${Array.from(storage.keys()).join(', ')}]`
-      );
     }
 
     return removed;
@@ -155,10 +133,8 @@ class PersistentUploaderStorage {
 
   clear(): void {
     const storage = this.getStorage();
-    const count = storage.size;
     storage.clear();
     this.saveStateToLocalStorage();
-    console.log(`[PERSISTENT_STORAGE] Cleared all ${count} uploaders`);
   }
 
   private saveStateToLocalStorage(): void {
@@ -204,14 +180,7 @@ class PersistentUploaderStorage {
       // Remove stale entries
       keysToRemove.forEach((key) => {
         localStorage.removeItem(key);
-        console.log(`[PERSISTENT_STORAGE] Cleaned up stale localStorage: ${key}`);
       });
-
-      if (keysToRemove.length > 0) {
-        console.log(
-          `[PERSISTENT_STORAGE] Cleaned up ${keysToRemove.length} stale localStorage entries`
-        );
-      }
     } catch (error) {
       console.warn('[PERSISTENT_STORAGE] Error cleaning up stale localStorage:', error);
     }
@@ -247,12 +216,7 @@ class PersistentUploaderStorage {
       // Remove all found entries
       keysToRemove.forEach((key) => {
         localStorage.removeItem(key);
-        console.log(`[PERSISTENT_STORAGE] Force cleaned up: ${key}`);
       });
-
-      console.log(
-        `[PERSISTENT_STORAGE] Force cleanup completed - removed ${keysToRemove.length} entries`
-      );
     } catch (error) {
       console.warn('[PERSISTENT_STORAGE] Error in force cleanup:', error);
     }

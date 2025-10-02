@@ -3,7 +3,14 @@
 import { MultipartUploader } from '@opndrive/s3-api';
 
 /**
- * Sequential Upload Queue Manager
+ * Seque    if (this.activeUpload?    this.queue.unshift(resumeUpload);
+    this.processQueue();emId === itemId) {
+      return;
+    }
+
+    if (this.queue.some((q) => q.itemId === itemId)) {
+      return;
+    }oad Queue Manager
  * Handles ONE upload at a time to prevent concurrency issues
  */
 
@@ -47,9 +54,6 @@ class UploadQueueManager {
     };
 
     this.queue.push(queuedUpload);
-    console.log(
-      `[QUEUE_DEBUG] Added ${queuedUpload.itemId} to queue. Queue length: ${this.queue.length}`
-    );
     this.processQueue();
   }
 
@@ -62,10 +66,7 @@ class UploadQueueManager {
     // If this was the active upload, clear it
     if (this.activeUpload?.itemId === itemId) {
       this.activeUpload = null;
-      console.log(`[QUEUE_DEBUG] Cleared active upload ${itemId}`);
     }
-
-    console.log(`[QUEUE_DEBUG] Removed ${itemId} from queue. Queue length: ${this.queue.length}`);
     this.processQueue();
   }
 
@@ -76,9 +77,6 @@ class UploadQueueManager {
     if (this.activeUpload?.itemId === itemId) {
       // The uploader itself handles the pause, just clear from active
       this.activeUpload = null;
-      console.log(
-        `[QUEUE_DEBUG] Paused active upload ${itemId} - slot freed, processing next in queue`
-      );
       // Process next item in queue after pause
       this.processQueue();
     }
@@ -90,12 +88,10 @@ class UploadQueueManager {
   resumeUpload(itemId: string, file: File, fileName?: string): void {
     // Check if this upload is already active or in queue
     if (this.activeUpload?.itemId === itemId) {
-      console.log(`[QUEUE_DEBUG] Upload ${itemId} is already active, ignoring resume`);
       return;
     }
 
     if (this.queue.some((upload) => upload.itemId === itemId)) {
-      console.log(`[QUEUE_DEBUG] Upload ${itemId} is already queued, ignoring resume`);
       return;
     }
 
@@ -110,7 +106,6 @@ class UploadQueueManager {
 
     // Insert at the beginning for immediate processing
     this.queue.unshift(resumedUpload);
-    console.log(`[QUEUE_DEBUG] Added resumed upload ${itemId} to front of queue`);
     this.processQueue();
   }
 
@@ -163,14 +158,7 @@ class UploadQueueManager {
    * Process the upload queue
    */
   private async processQueue(): Promise<void> {
-    console.log(
-      `[QUEUE_DEBUG] processQueue called - processing: ${this.processingQueue}, active: ${this.activeUpload?.itemId}, queue length: ${this.queue.length}`
-    );
-
     if (this.processingQueue || this.activeUpload !== null) {
-      console.log(
-        `[QUEUE_DEBUG] Cannot process queue - processing: ${this.processingQueue}, active: ${this.activeUpload?.itemId}`
-      );
       return;
     }
 
@@ -183,13 +171,8 @@ class UploadQueueManager {
 
         const nextUpload = this.queue.shift();
         if (nextUpload) {
-          console.log(
-            `[QUEUE_DEBUG] Starting next upload: ${nextUpload.itemId} (queue remaining: ${this.queue.length})`
-          );
           await this.startUpload(nextUpload);
         }
-      } else {
-        console.log(`[QUEUE_DEBUG] Queue is empty - no more uploads to process`);
       }
     } finally {
       this.processingQueue = false;
@@ -209,8 +192,6 @@ class UploadQueueManager {
       uploader: null, // Will be set by the upload handler
     };
 
-    console.log(`[QUEUE_DEBUG] Set active upload to ${itemId}`);
-
     // Dispatch event to trigger actual upload
     const event = new CustomEvent('startQueuedUpload', {
       detail: { itemId, file, fileName },
@@ -224,7 +205,6 @@ class UploadQueueManager {
   setUploaderInstance(itemId: string, uploader: MultipartUploader | null): void {
     if (this.activeUpload?.itemId === itemId) {
       this.activeUpload.uploader = uploader;
-      console.log(`[QUEUE_DEBUG] Set uploader instance for active upload ${itemId}`);
     }
   }
 
@@ -235,7 +215,6 @@ class UploadQueueManager {
     this.queue = [];
     this.activeUpload = null;
     this.processingQueue = false;
-    console.log(`[QUEUE_DEBUG] Reset queue manager`);
   }
 
   /**

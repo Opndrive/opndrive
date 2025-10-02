@@ -2,7 +2,9 @@
  * Uploader State Manager
  *
  * Centralized, thread-safe manager for upload instances and their state.
- * Ensures uploaders are never accidentally deleted and provides debugging capabilities.
+ * Ensures uploaders are never accide  forceRemove(itemId: string, _reason: string = 'force'): void {
+    this.uploaders.delete(itemId);
+  }deleted and provides debugging capabilities.
  */
 
 import { MultipartUploader } from '@opndrive/s3-api';
@@ -39,11 +41,6 @@ class UploaderStateManager {
     };
 
     this.uploaders.set(itemId, info);
-
-    if (this.debugMode) {
-      console.log(`[UploaderManager] Stored uploader for ${itemId} with status: ${initialStatus}`);
-      console.log(`[UploaderManager] Active uploaders: ${this.getActiveIds()}`);
-    }
   }
 
   /**
@@ -82,17 +79,8 @@ class UploaderStateManager {
       info.progress = progress;
     }
 
-    if (this.debugMode) {
-      console.log(
-        `[UploaderManager] Updated ${itemId} status: ${status} (progress: ${info.progress}%)`
-      );
-    }
-
     // Only remove uploader if explicitly completed or cancelled
     if (status === 'completed' || status === 'cancelled') {
-      if (this.debugMode) {
-        console.log(`[UploaderManager] Scheduling cleanup for ${itemId} (status: ${status})`);
-      }
       // Use setTimeout to ensure cleanup happens after all current operations
       setTimeout(() => this.safeRemove(itemId, status), 100);
     }
@@ -139,22 +127,15 @@ class UploaderStateManager {
   /**
    * Safe removal with validation
    */
-  private safeRemove(itemId: string, reason: string): void {
+  private safeRemove(itemId: string, _reason: string): void {
     const info = this.uploaders.get(itemId);
     if (!info) {
-      if (this.debugMode) {
-        console.log(`[UploaderManager] Cannot remove ${itemId}: already removed`);
-      }
       return;
     }
 
     // Only remove if status is truly final
     if (info.status === 'completed' || info.status === 'cancelled' || info.status === 'error') {
       this.uploaders.delete(itemId);
-      if (this.debugMode) {
-        console.log(`[UploaderManager] Removed uploader for ${itemId} (reason: ${reason})`);
-        console.log(`[UploaderManager] Remaining active uploaders: ${this.getActiveIds()}`);
-      }
     } else {
       if (this.debugMode) {
         console.warn(
@@ -167,23 +148,15 @@ class UploaderStateManager {
   /**
    * Force remove (use only in error cases)
    */
-  forceRemove(itemId: string, reason: string = 'forced'): void {
-    if (this.uploaders.delete(itemId)) {
-      if (this.debugMode) {
-        console.log(`[UploaderManager] Force removed uploader for ${itemId} (reason: ${reason})`);
-      }
-    }
+  forceRemove(itemId: string, _reason: string = 'forced'): void {
+    this.uploaders.delete(itemId);
   }
 
   /**
    * Clear all uploaders (use only on app reset)
    */
   clear(): void {
-    const count = this.uploaders.size;
     this.uploaders.clear();
-    if (this.debugMode) {
-      console.log(`[UploaderManager] Cleared all ${count} uploaders`);
-    }
   }
 
   /**

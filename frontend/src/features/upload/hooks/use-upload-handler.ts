@@ -153,7 +153,6 @@ export function useUploadHandler(
     if (!hasCleanedUp) {
       persistentUploaderStorage.cleanupStaleLocalStorage();
       sessionStorage.setItem('opndrive_storage_cleaned', 'true');
-      console.log('[UPLOADER_DEBUG] Performed initial storage cleanup');
     }
 
     // Setup cleanup utilities for debugging (development only)
@@ -188,9 +187,6 @@ export function useUploadHandler(
 
     // Only refresh if no other uploads are active or pending
     const shouldRefresh = activeUploads.length === 0;
-    console.log(
-      `[UPLOADER_DEBUG] Active uploads check: ${activeUploads.length} active/pending uploads`
-    );
     return shouldRefresh;
   };
 
@@ -207,7 +203,6 @@ export function useUploadHandler(
         const fileName = s3Key.split('/')[s3Key.length - 1];
         const storageKey = `upload:${fileName}:${s3Key}`;
         localStorage.removeItem(storageKey);
-        console.log(`[UPLOADER_DEBUG] Cleaned up S3 localStorage: ${storageKey}`);
       }
 
       if (cachedFiles && cachedFiles.length > 1) {
@@ -235,10 +230,9 @@ export function useUploadHandler(
       }
       keysToRemove.forEach((key) => {
         localStorage.removeItem(key);
-        console.log(`[UPLOADER_DEBUG] Cleaned up localStorage key: ${key}`);
       });
     } catch (error) {
-      console.warn(`[UPLOADER_DEBUG] Error cleaning up localStorage for ${itemId}:`, error);
+      console.error(`Error cleaning up localStorage for ${itemId}:`, error);
     }
   };
 
@@ -295,7 +289,6 @@ export function useUploadHandler(
           const shouldRefresh = shouldRefreshAfterUpload();
           if (shouldRefresh) {
             try {
-              console.log('[UPLOADER_DEBUG] Refreshing data after presigned URL upload completed');
               await refreshCurrentData();
             } catch {
               // Don't fail the upload if refresh fails
@@ -330,9 +323,6 @@ export function useUploadHandler(
           activeUploaders.current.set(itemId, uploader);
           persistentUploaderStorage.store(itemId, uploader, 'uploading', 0);
           uploadQueueManager.setUploaderInstance(itemId, uploader);
-          console.log(
-            `[UPLOADER_DEBUG] Stored uploader for ${itemId}. Active: ${Array.from(activeUploaders.current.keys())}`
-          );
 
           try {
             // Start the upload and wait for completion
@@ -343,22 +333,15 @@ export function useUploadHandler(
 
             // Important: Check if user paused during upload completion
             if (currentItem?.status === 'paused') {
-              console.log(
-                `[UPLOADER_DEBUG] Upload ${itemId} was paused during completion at ${currentItem.progress}% - PRESERVING uploader`
-              );
               // CRITICAL: DO NOT DELETE UPLOADER HERE - keep for resume
               return; // Keep uploader and don't mark as completed
             } else if (currentItem?.status === 'cancelled') {
               // Clean up cancelled upload
-              console.log(`[UPLOADER_DEBUG] Cleaning up cancelled upload ${itemId}`);
               activeUploaders.current.delete(itemId);
               uploadFileCache.remove(itemId);
               return;
             } else {
               // Upload truly completed - clean up and mark as done
-              console.log(
-                `[UPLOADER_DEBUG] Initial upload ${itemId} completed successfully - cleaning up`
-              );
               activeUploaders.current.delete(itemId);
               uploadFileCache.remove(itemId);
               persistentUploaderStorage.remove(itemId);
@@ -372,13 +355,11 @@ export function useUploadHandler(
 
             // If the upload was paused or cancelled, don't treat it as an error
             if (currentItem?.status === 'paused' || currentItem?.status === 'cancelled') {
-              console.log(`Upload ${itemId} paused/cancelled during error handling`);
               return; // Keep uploader for potential resume
             }
 
             // For actual errors, clean up and re-throw
-            console.error(`[UPLOADER_DEBUG] Upload error for ${itemId}:`, uploadError);
-            console.log(`[UPLOADER_DEBUG] DELETING uploader for ${itemId} due to actual error`);
+            console.error(`Upload error for ${itemId}:`, uploadError);
             activeUploaders.current.delete(itemId);
             uploadFileCache.remove(itemId);
             throw uploadError;
@@ -389,18 +370,11 @@ export function useUploadHandler(
         const currentItem = useUploadStore.getState().items.find((item) => item.id === itemId);
 
         if (currentItem?.status === 'paused' || currentItem?.status === 'cancelled') {
-          console.log(
-            `[UPLOADER_DEBUG] Upload ${itemId} was paused/cancelled - PRESERVING uploader, not cleaning up`
-          );
           // Don't delete uploader - keep it for potential resume
           return; // Exit without cleanup
         }
 
         // Only clean up uploader on actual errors (not pauses)
-        console.log(
-          `[UPLOADER_DEBUG] DELETING uploader for ${itemId} due to outer catch error:`,
-          error
-        );
         activeUploaders.current.delete(itemId);
 
         // Handle specific S3 multipart upload errors
@@ -418,7 +392,7 @@ export function useUploadHandler(
 
               // If we can fetch the directory structure without error,
               // assume the upload succeeded despite the error
-              console.warn(
+              console.error(
                 'NoSuchUpload error occurred but file may have been uploaded successfully:',
                 s3Key
               );
@@ -452,7 +426,6 @@ export function useUploadHandler(
 
         if (existingUploader) {
           // This is a resume - use existing uploader
-          console.log(`[QUEUE_DEBUG] Resuming existing upload ${itemId}`);
           updateItemStatus(itemId, 'uploading');
 
           // Update active status
@@ -475,7 +448,6 @@ export function useUploadHandler(
             const finalItem = useUploadStore.getState().items.find((item) => item.id === itemId);
             if (finalItem?.status === 'paused' || finalItem?.status === 'cancelled') {
               // Upload was paused/cancelled during resume
-              console.log(`[QUEUE_DEBUG] Upload ${itemId} was paused/cancelled during resume`);
               return;
             }
 
@@ -483,12 +455,11 @@ export function useUploadHandler(
             updateProgress({ itemId, progress: 100.0 });
             updateItemStatus(itemId, 'completed');
           } catch (resumeError) {
-            console.error(`[QUEUE_DEBUG] Resume error for ${itemId}:`, resumeError);
+            console.error(`Resume error for ${itemId}:`, resumeError);
             throw resumeError;
           }
         } else {
           // This is a new upload - use normal process
-          console.log(`[QUEUE_DEBUG] Starting new upload ${itemId}`);
           updateItemStatus(itemId, 'uploading');
           await processFileUpload(file, itemId, fileName);
         }
@@ -608,13 +579,10 @@ export function useUploadHandler(
       const shouldRefresh = shouldRefreshAfterUpload();
       if (shouldRefresh) {
         try {
-          console.log('[UPLOADER_DEBUG] Refreshing data after last upload completed');
           await refreshCurrentData();
         } catch {
           // Don't fail the upload if refresh fails
         }
-      } else {
-        console.log('[UPLOADER_DEBUG] Skipping data refresh - other uploads still active');
       }
 
       onUploadComplete?.(true);
@@ -758,13 +726,10 @@ export function useUploadHandler(
       const shouldRefresh = shouldRefreshAfterUpload();
       if (shouldRefresh) {
         try {
-          console.log('[UPLOADER_DEBUG] Refreshing data after last folder upload completed');
           await refreshCurrentData();
         } catch {
           // Don't fail the upload if refresh fails
         }
-      } else {
-        console.log('[UPLOADER_DEBUG] Skipping data refresh - other uploads still active');
       }
 
       onUploadComplete?.(true);
@@ -804,7 +769,7 @@ export function useUploadHandler(
               await uploader.cancel();
               activeUploaders.current.delete(key);
             } catch (error) {
-              console.warn('Failed to cancel uploader:', error);
+              console.error('Failed to cancel uploader:', error);
               activeUploaders.current.delete(key);
             }
           }
@@ -896,7 +861,7 @@ export function useUploadHandler(
               error.message.includes('NoSuchUpload') ||
               error.message.includes('The specified upload does not exist')
             ) {
-              console.warn(
+              console.error(
                 'NoSuchUpload error for file in folder upload, but file may have uploaded successfully:',
                 file.name
               );
@@ -954,10 +919,8 @@ export function useUploadHandler(
           try {
             cleanupS3LocalStorageForItem(itemId);
           } catch (cleanupError) {
-            console.warn(`[UPLOADER_DEBUG] Error during S3 cleanup for ${itemId}:`, cleanupError);
+            console.error(`Error during S3 cleanup for ${itemId}:`, cleanupError);
           }
-
-          console.log(`[UPLOADER_DEBUG] Cleaned up cancelled upload ${itemId}`);
         } catch (error) {
           console.error('Failed to cancel upload:', error);
           // Still clean up our references even if S3 cancel failed
@@ -967,10 +930,7 @@ export function useUploadHandler(
           try {
             cleanupS3LocalStorageForItem(itemId);
           } catch (cleanupError) {
-            console.warn(
-              `[UPLOADER_DEBUG] Error during fallback cleanup for ${itemId}:`,
-              cleanupError
-            );
+            console.error(`Error during fallback cleanup for ${itemId}:`, cleanupError);
           }
         }
       } else {
@@ -1007,7 +967,6 @@ export function useUploadHandler(
             uploadQueueManager.isUploadActive(itemId)
           ) {
             uploadQueueManager.removeFromQueue(itemId);
-            console.log(`[UPLOADER_DEBUG] Removed cancelled item ${itemId} from queue`);
           }
         }
 
@@ -1017,8 +976,6 @@ export function useUploadHandler(
 
         // Clean up S3 localStorage entries
         cleanupS3LocalStorageForItem(itemId);
-
-        console.log(`[UPLOADER_DEBUG] Cleaned up cancelled folder upload ${itemId}`);
       }
     },
     [updateItemStatus]
@@ -1034,7 +991,7 @@ export function useUploadHandler(
         item?.status === 'cancelled' ||
         item?.status === 'error'
       ) {
-        console.warn(`Cannot pause upload ${itemId}: Upload is in ${item.status} state`);
+        console.error(`Cannot pause upload ${itemId}: Upload is in ${item.status} state`);
         return;
       }
 
@@ -1043,7 +1000,6 @@ export function useUploadHandler(
         // Remove from queue and mark as paused
         uploadQueueManager.removeFromQueue(itemId);
         updateItemStatus(itemId, 'paused');
-        console.log(`[UPLOADER_DEBUG] Removed queued upload ${itemId} from queue and paused`);
         return;
       }
 
@@ -1057,17 +1013,8 @@ export function useUploadHandler(
         // Remove from active uploads to free up slot
         uploadQueueManager.pauseUpload(itemId);
 
-        // Log current progress for debugging
-        const currentItem = useUploadStore.getState().items.find((item) => item.id === itemId);
-        console.log(
-          `[UPLOADER_DEBUG] Paused upload ${itemId} at ${currentItem?.progress}% - PRESERVING uploader`
-        );
-        console.log(
-          `[UPLOADER_DEBUG] Active uploaders after pause:`,
-          Array.from(activeUploaders.current.keys())
-        );
-
         // Update persistent storage status
+        const currentItem = useUploadStore.getState().items.find((item) => item.id === itemId);
         persistentUploaderStorage.updateStatus(itemId, 'paused', currentItem?.progress);
         // CRITICAL: DO NOT DELETE UPLOADER HERE - it must remain for resume
       } else if (item?.type === 'folder') {
@@ -1082,7 +1029,7 @@ export function useUploadHandler(
 
         updateItemStatus(itemId, 'paused');
       } else {
-        console.warn(`Could not pause upload ${itemId}: Uploader not found.`);
+        console.error(`Could not pause upload ${itemId}: Uploader not found.`);
       }
     },
     [updateItemStatus]
@@ -1208,13 +1155,13 @@ export function useUploadHandler(
 
       // Don't resume if already completed, cancelled, or failed
       if (item.status === 'completed' || item.status === 'cancelled' || item.status === 'error') {
-        console.warn(`Cannot resume upload ${itemId}: Upload is in ${item.status} state`);
+        console.error(`Cannot resume upload ${itemId}: Upload is in ${item.status} state`);
         return;
       }
 
       // Only resume if currently paused
       if (item.status !== 'paused') {
-        console.warn(
+        console.error(
           `Cannot resume upload ${itemId}: Upload is not paused (current status: ${item.status})`
         );
         return;
@@ -1229,11 +1176,6 @@ export function useUploadHandler(
         // Add to queue with high priority (will be processed first)
         uploadQueueManager.resumeUpload(itemId, cachedFile);
         updateItemStatus(itemId, 'pending');
-
-        const position = uploadQueueManager.getQueuePosition(itemId);
-        console.log(
-          `[UPLOADER_DEBUG] Added resumed upload ${itemId} to queue at position ${position + 1}`
-        );
         return;
       } else if (cachedFiles && item.type === 'folder') {
         // Folder upload resume

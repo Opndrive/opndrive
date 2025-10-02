@@ -210,7 +210,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         }
         keysToRemove.forEach((key) => {
           localStorage.removeItem(key);
-          console.log(`[UPLOAD_STORE] Cleaned up localStorage key: ${key}`);
         });
       } catch (error) {
         console.warn('[UPLOAD_STORE] Error cleaning up localStorage:', error);
@@ -350,7 +349,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     // Import persistentUploaderStorage dynamically to avoid circular imports
     import('../services/persistent-uploader-storage').then(({ persistentUploaderStorage }) => {
       persistentUploaderStorage.cleanupStaleLocalStorage();
-      console.log('[UPLOAD_STORE] Triggered stale storage cleanup');
     });
   },
 

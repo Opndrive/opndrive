@@ -50,9 +50,6 @@ class UploadFileCache {
       const cutoffTime = isActiveUpload ? sixHoursAgo : oneHourAgo;
 
       if (meta.createdAt < cutoffTime) {
-        console.log(
-          `[FILE_CACHE] Cleaning up old entry: ${itemId} (${isActiveUpload ? 'was active' : 'inactive'})`
-        );
         this.remove(itemId);
       }
     }
