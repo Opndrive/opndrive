@@ -79,18 +79,38 @@ export function CodeViewer({ file }: CodeViewerProps) {
   const maxLines = Math.min(lines.length, 1000);
 
   return (
-    <div className="w-full h-full overflow-auto bg-white dark:bg-gray-950 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 overflow-hidden font-mono">
+    <div className="w-full h-full overflow-auto p-4" style={{ background: 'var(--background)' }}>
+      <div
+        className="rounded-lg shadow-lg overflow-hidden font-mono"
+        style={{
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+        }}
+      >
         {/* Header */}
-        <div className="bg-gray-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div
+          className="px-4 py-3 flex items-center justify-between"
+          style={{
+            background: 'var(--secondary)',
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
           <div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">{file.name}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <h3 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
+              {file.name}
+            </h3>
+            <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
               {lines.length} lines • {language} • {(file.size / 1024).toFixed(1)} KB
               {maxLines < lines.length && ` (showing first ${maxLines} lines)`}
             </p>
           </div>
-          <div className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded text-xs font-medium text-gray-700 dark:text-gray-300">
+          <div
+            className="px-2 py-1 rounded text-xs font-medium"
+            style={{
+              background: 'var(--muted)',
+              color: 'var(--muted-foreground)',
+            }}
+          >
             {language}
           </div>
         </div>
@@ -99,7 +119,14 @@ export function CodeViewer({ file }: CodeViewerProps) {
         <div className="overflow-auto max-h-[calc(100vh-200px)]">
           <div className="flex">
             {/* Line Numbers */}
-            <div className="bg-gray-100 dark:bg-gray-800 px-3 py-4 text-sm text-gray-500 dark:text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 min-w-[60px] text-right sticky left-0">
+            <div
+              className="px-3 py-4 text-sm select-none min-w-[60px] text-right sticky left-0"
+              style={{
+                background: 'var(--muted)',
+                color: 'var(--muted-foreground)',
+                borderRight: '1px solid var(--border)',
+              }}
+            >
               {lines.slice(0, maxLines).map((_, index) => (
                 <div key={index} className="leading-6">
                   {index + 1}
@@ -108,14 +135,26 @@ export function CodeViewer({ file }: CodeViewerProps) {
             </div>
 
             {/* Code */}
-            <div className="px-4 py-4 text-sm leading-6 flex-1 whitespace-pre-wrap break-words overflow-x-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+            <div
+              className="px-4 py-4 text-sm leading-6 flex-1 whitespace-pre-wrap break-words overflow-x-auto"
+              style={{
+                background: 'var(--card)',
+                color: 'var(--card-foreground)',
+              }}
+            >
               {lines.slice(0, maxLines).map((line, index) => (
                 <div key={index} className="min-h-[24px]">
                   {line || ' '}
                 </div>
               ))}
               {maxLines < lines.length && (
-                <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-center text-gray-600 dark:text-gray-400">
+                <div
+                  className="mt-4 p-3 rounded text-center"
+                  style={{
+                    background: 'var(--muted)',
+                    color: 'var(--muted-foreground)',
+                  }}
+                >
                   ... {lines.length - maxLines} more lines (truncated for performance)
                 </div>
               )}
