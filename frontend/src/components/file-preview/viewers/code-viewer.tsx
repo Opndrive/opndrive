@@ -38,6 +38,7 @@ export function CodeViewer({ file }: CodeViewerProps) {
         }
 
         const codeText = await response.text();
+        // For .txt files and other text files, even empty content is valid
         setCodeContent(codeText);
         setLoading(false);
       } catch (err) {
@@ -48,7 +49,7 @@ export function CodeViewer({ file }: CodeViewerProps) {
     }
 
     loadCode();
-  }, [file.key]);
+  }, [file.key, file.Key, file.name]);
 
   const handleRetry = () => {
     setError(null);
@@ -64,7 +65,8 @@ export function CodeViewer({ file }: CodeViewerProps) {
     return <PreviewError title="Code Preview Error" message={error} onRetry={handleRetry} />;
   }
 
-  if (!codeContent) {
+  // Only show error if codeContent is null (failed to load), not if it's empty string
+  if (codeContent === null) {
     return (
       <PreviewError
         title="Code Preview Error"
@@ -75,7 +77,7 @@ export function CodeViewer({ file }: CodeViewerProps) {
   }
 
   const language = getSyntaxLanguage(file.name);
-  const lines = codeContent.split('\n');
+  const lines = codeContent === '' ? [''] : codeContent.split('\n');
   const maxLines = Math.min(lines.length, 1000);
 
   return (
@@ -100,7 +102,8 @@ export function CodeViewer({ file }: CodeViewerProps) {
               {file.name}
             </h3>
             <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              {lines.length} lines • {language} • {(file.size / 1024).toFixed(1)} KB
+              {codeContent === '' ? '0' : lines.length} lines • {language} •{' '}
+              {(file.size / 1024).toFixed(1)} KB
               {maxLines < lines.length && ` (showing first ${maxLines} lines)`}
             </p>
           </div>
@@ -127,11 +130,15 @@ export function CodeViewer({ file }: CodeViewerProps) {
                 borderRight: '1px solid var(--border)',
               }}
             >
-              {lines.slice(0, maxLines).map((_, index) => (
-                <div key={index} className="leading-6">
-                  {index + 1}
-                </div>
-              ))}
+              {codeContent === '' ? (
+                <div className="leading-6 opacity-50">-</div>
+              ) : (
+                lines.slice(0, maxLines).map((_, index) => (
+                  <div key={index} className="leading-6">
+                    {index + 1}
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Code */}
@@ -142,21 +149,35 @@ export function CodeViewer({ file }: CodeViewerProps) {
                 color: 'var(--card-foreground)',
               }}
             >
-              {lines.slice(0, maxLines).map((line, index) => (
-                <div key={index} className="min-h-[24px]">
-                  {line || ' '}
-                </div>
-              ))}
-              {maxLines < lines.length && (
+              {codeContent === '' ? (
                 <div
-                  className="mt-4 p-3 rounded text-center"
-                  style={{
-                    background: 'var(--muted)',
-                    color: 'var(--muted-foreground)',
-                  }}
+                  className="flex items-center justify-center h-32 text-center"
+                  style={{ color: 'var(--muted-foreground)' }}
                 >
-                  ... {lines.length - maxLines} more lines (truncated for performance)
+                  <div>
+                    <p className="mb-2">This file is empty</p>
+                    <p className="text-xs opacity-75">No content to display</p>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {lines.slice(0, maxLines).map((line, index) => (
+                    <div key={index} className="min-h-[24px]">
+                      {line || ' '}
+                    </div>
+                  ))}
+                  {maxLines < lines.length && (
+                    <div
+                      className="mt-4 p-3 rounded text-center"
+                      style={{
+                        background: 'var(--muted)',
+                        color: 'var(--muted-foreground)',
+                      }}
+                    >
+                      ... {lines.length - maxLines} more lines (truncated for performance)
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
