@@ -35,8 +35,8 @@ export class FolderStructureProcessor {
                   });
 
                   files.push(file);
-                } catch (fileError) {
-                  console.error(`Error reading file ${entry.name}:`, fileError);
+                } catch {
+                  // Silently skip files that can't be read (locked, deleted, or permission issues)
                 }
               } else if (entry.isDirectory) {
                 const subPath = basePath ? `${basePath}/${entry.name}` : entry.name;

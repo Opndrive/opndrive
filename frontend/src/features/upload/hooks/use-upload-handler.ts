@@ -838,6 +838,15 @@ export function useUploadHandler(
             // Start upload for this file
             await uploader.start(file, onProgress);
 
+            // Check if upload was paused during the file upload
+            const itemAfterUpload = useUploadStore
+              .getState()
+              .items.find((item) => item.id === itemId);
+            if (itemAfterUpload?.status === 'paused') {
+              // Keep the uploader for potential resume
+              return;
+            }
+
             activeUploaders.current.delete(fileUploadId);
           }
 
@@ -1019,16 +1028,21 @@ export function useUploadHandler(
         persistentUploaderStorage.updateStatus(itemId, 'paused', currentItem?.progress);
         // CRITICAL: DO NOT DELETE UPLOADER HERE - it must remain for resume
       } else if (item?.type === 'folder') {
-        // Folder upload - pause all active file uploads within this folder
+        // Folder upload - first update status to paused
+        updateItemStatus(itemId, 'paused');
+
+        // Then pause all active file uploads within this folder
         const folderUploaders = Array.from(activeUploaders.current.entries()).filter(([key]) =>
           key.startsWith(`${itemId}-`)
         );
 
-        folderUploaders.forEach(([, uploader]) => {
-          uploader.pause();
-        });
+        if (folderUploaders.length > 0) {
+          folderUploaders.forEach(([, uploader]) => {
+            uploader.pause();
+          });
+        }
 
-        updateItemStatus(itemId, 'paused');
+        // Note: The processFolderUpload function will check the status and stop processing new files
       } else {
         console.error(`Could not pause upload ${itemId}: Uploader not found.`);
       }
