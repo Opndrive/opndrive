@@ -26,6 +26,8 @@ import {
   DeleteObjectCommand,
   CopyObjectCommand,
   S3ServiceException,
+  DeleteObjectsCommand,
+  ObjectIdentifier,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core/index.js';
 import { MultipartUploader } from './utils/multipartUploader.js';
@@ -215,6 +217,39 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         Key: key,
       })
     );
+  }
+
+  async deleteBatch(batch: ObjectIdentifier[]): Promise<void> {
+    await this.s3.send(
+      new DeleteObjectsCommand({
+        Bucket: this.credentials.bucketName,
+        Delete: {
+          Objects: batch,
+          Quiet: true,
+        },
+      })
+    );
+  }
+
+  async listFromPrefix(prefix: string): Promise<string[]> {
+    const allKeys: string[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const list = await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: this.credentials.bucketName,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        })
+      );
+
+      const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
+      allKeys.push(...keys);
+      continuationToken = list.NextContinuationToken;
+    } while (continuationToken);
+
+    return allKeys;
   }
 
   async moveFile(params: MoveFileParams): Promise<void> {
