@@ -63,7 +63,53 @@ export function SuggestedFiles({
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const readDirectoryContents = async (
+    directoryEntry: FileSystemDirectoryEntry
+  ): Promise<File[]> => {
+    return new Promise((resolve, reject) => {
+      const files: File[] = [];
+      const reader = directoryEntry.createReader();
+
+      const readEntries = () => {
+        reader.readEntries(async (entries) => {
+          if (entries.length === 0) {
+            resolve(files);
+            return;
+          }
+
+          try {
+            for (const entry of entries) {
+              if (entry.isFile) {
+                const fileEntry = entry as FileSystemFileEntry;
+                const file = await new Promise<File>((resolveFile, rejectFile) => {
+                  fileEntry.file(resolveFile, rejectFile);
+                });
+
+                const relativePath = entry.fullPath.substring(1);
+                Object.defineProperty(file, 'webkitRelativePath', {
+                  value: relativePath,
+                  writable: false,
+                });
+
+                files.push(file);
+              } else if (entry.isDirectory) {
+                const subFiles = await readDirectoryContents(entry as FileSystemDirectoryEntry);
+                files.push(...subFiles);
+              }
+            }
+
+            readEntries();
+          } catch (error) {
+            reject(error);
+          }
+        }, reject);
+      };
+
+      readEntries();
+    });
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -71,21 +117,76 @@ export function SuggestedFiles({
     setIsDragActive(false);
     dragCounter.current = 0;
 
-    if (onFilesDropped && e.dataTransfer.files) {
-      const allFiles = Array.from(e.dataTransfer.files);
-      if (allFiles.length > 0) {
-        // Separate files and folders based on webkitRelativePath
-        const files = allFiles.filter(
-          (file) => !file.webkitRelativePath || file.webkitRelativePath.split('/').length === 1
-        );
-        const folders = allFiles.filter(
-          (file) => file.webkitRelativePath && file.webkitRelativePath.split('/').length > 1
-        );
+    if (onFilesDropped && e.dataTransfer) {
+      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        const files: File[] = [];
+        const folders: File[] = [];
+
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+          const item = e.dataTransfer.items[i];
+
+          if (item.kind === 'file') {
+            const entry = item.webkitGetAsEntry?.();
+            if (entry) {
+              if (entry.isDirectory) {
+                const file = item.getAsFile();
+                if (file) {
+                  folders.push(file);
+                }
+              } else if (entry.isFile) {
+                const file = item.getAsFile();
+                if (file) {
+                  files.push(file);
+                }
+              }
+            } else {
+              const file = item.getAsFile();
+              if (file) {
+                files.push(file);
+              }
+            }
+          }
+        }
+
+        if (folders.length > 0) {
+          const allFolderFiles: File[] = [];
+
+          for (let i = 0; i < e.dataTransfer.items.length; i++) {
+            const item = e.dataTransfer.items[i];
+            if (item.kind === 'file') {
+              const entry = item.webkitGetAsEntry?.();
+              if (entry && entry.isDirectory) {
+                const folderFiles = await readDirectoryContents(entry as FileSystemDirectoryEntry);
+                allFolderFiles.push(...folderFiles);
+              }
+            }
+          }
+
+          onFilesDropped(files, allFolderFiles);
+        } else {
+          onFilesDropped(files, folders);
+        }
+      } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const allFiles = Array.from(e.dataTransfer.files);
+        const files: File[] = [];
+        const folders: File[] = [];
+
+        allFiles.forEach((file) => {
+          const fileWithPath = file as File & { webkitRelativePath?: string };
+
+          if (fileWithPath.webkitRelativePath && fileWithPath.webkitRelativePath.includes('/')) {
+            folders.push(file);
+          } else if (file.size === 0 && !file.type && !file.name.includes('.')) {
+            folders.push(file);
+          } else {
+            files.push(file);
+          }
+        });
+
         onFilesDropped(files, folders);
       }
     }
 
-    // Force clear drag state after a short delay
     setTimeout(() => {
       setIsDragActive(false);
       dragCounter.current = 0;
@@ -110,12 +211,9 @@ export function SuggestedFiles({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Whitish overlay with dotted border when dragging */}
         {isDragActive && (
           <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-primary rounded-lg pointer-events-none z-10 flex items-center justify-center"></div>
         )}
-
-        {/* Empty state content */}
         <div className="flex flex-col items-center justify-center h-full py-16">
           <div className="w-16 h-16 mb-4 rounded-full bg-muted/30 flex items-center justify-center">
             <svg
@@ -147,7 +245,6 @@ export function SuggestedFiles({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {/* Whitish overlay with dotted border when dragging */}
       {isDragActive && (
         <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-blue-500 rounded-lg pointer-events-none z-10" />
       )}
@@ -199,27 +296,16 @@ export function SuggestedFiles({
             </div>
           ) : (
             <div>
-              {/* Desktop List View */}
               <div className="hidden sm:block space-y-1">
-                {/* Header with responsive grid matching file items */}
                 <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
-                  {/* Name - always visible, responsive sizing */}
                   <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4">
                     Name
                   </div>
-
-                  {/* Last Opened - visible from sm up */}
                   <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
                     Last Opened
                   </div>
-
-                  {/* Owner - visible from lg up */}
                   <div className="hidden lg:block lg:col-span-2 xl:col-span-2">Owner</div>
-
-                  {/* Size - visible from xl up */}
                   <div className="hidden xl:block xl:col-span-2">Size</div>
-
-                  {/* Menu space - always visible */}
                   <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                 </div>
 
@@ -228,7 +314,6 @@ export function SuggestedFiles({
                     <div onClick={() => handleFileClick(file)} className="cursor-pointer">
                       <FileItemList file={file} allFiles={files} _onAction={handleFileAction} />
                     </div>
-                    {/* Professional separator */}
                     {index < files.length - 1 && (
                       <div className="mx-4" aria-hidden="true">
                         <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
@@ -238,7 +323,6 @@ export function SuggestedFiles({
                 ))}
               </div>
 
-              {/* Mobile List View */}
               <div className="sm:hidden">
                 <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
                   Files
