@@ -20,6 +20,7 @@ export interface QueuedUpload {
   fileName?: string; // For renamed files (keep both scenario)
   priority: number; // Higher number = higher priority
   addedAt: number;
+  targetPath?: string; // Target path for uploads to specific folders
 }
 
 export interface ActiveUpload {
@@ -183,7 +184,7 @@ class UploadQueueManager {
    * Start an individual upload
    */
   private async startUpload(queuedUpload: QueuedUpload): Promise<void> {
-    const { itemId, file, fileName } = queuedUpload;
+    const { itemId, file, fileName, targetPath } = queuedUpload;
 
     // Mark as active
     this.activeUpload = {
@@ -194,7 +195,7 @@ class UploadQueueManager {
 
     // Dispatch event to trigger actual upload
     const event = new CustomEvent('startQueuedUpload', {
-      detail: { itemId, file, fileName },
+      detail: { itemId, file, fileName, targetPath },
     });
     window.dispatchEvent(event);
   }

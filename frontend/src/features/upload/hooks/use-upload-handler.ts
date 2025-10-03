@@ -250,9 +250,10 @@ export function useUploadHandler(
 
   // Helper function to process individual file upload
   const processFileUpload = useCallback(
-    async (file: File, itemId: string, customName?: string) => {
+    async (file: File, itemId: string, customName?: string, targetPath?: string) => {
       const selectedMethod = determineUploadMethod(file.size, uploadMethod);
-      const s3Key = generateS3Key(customName || file.name, currentPath);
+      const uploadTargetPath = targetPath || currentPath;
+      const s3Key = generateS3Key(customName || file.name, uploadTargetPath);
       const fileName = s3Key.split('/')[s3Key.length - 1];
 
       try {
@@ -266,16 +267,43 @@ export function useUploadHandler(
             expiresInSeconds: 300, // 5 minutes
           });
 
-          const response = await fetch(presignedUrl, {
-            method: 'PUT',
-            body: file,
-            headers: {
-              'Content-Type': file.type || 'application/octet-stream',
-            },
-          });
+          // Retry logic for S3 rate limiting
+          let retryCount = 0;
+          const maxRetries = 3;
+          let response: Response;
 
-          if (!response.ok) {
-            throw new Error(`Upload failed: ${response.statusText}`);
+          while (retryCount <= maxRetries) {
+            response = await fetch(presignedUrl, {
+              method: 'PUT',
+              body: file,
+              headers: {
+                'Content-Type': file.type || 'application/octet-stream',
+              },
+            });
+
+            if (response.ok) {
+              break; // Success, exit retry loop
+            }
+
+            // Handle retryable errors
+            if (response.status === 503 && response.statusText.includes('Slow Down')) {
+              if (retryCount < maxRetries) {
+                const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+                console.log(
+                  `S3 rate limit hit, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                retryCount++;
+                continue;
+              } else {
+                throw new Error(
+                  `Upload failed: S3 rate limit exceeded after ${maxRetries + 1} attempts. Please try again later.`
+                );
+              }
+            }
+
+            // Non-retryable error
+            throw new Error(`Upload failed: ${response.statusText} (${response.status})`);
           }
 
           // For presigned URL uploads, complete immediately as they cannot be paused
@@ -417,7 +445,7 @@ export function useUploadHandler(
   useEffect(() => {
     const handleQueuedUpload = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      const { itemId, file, fileName } = customEvent.detail;
+      const { itemId, file, fileName, targetPath } = customEvent.detail;
 
       try {
         // Check if this is a resume operation (existing uploader)
@@ -461,7 +489,7 @@ export function useUploadHandler(
         } else {
           // This is a new upload - use normal process
           updateItemStatus(itemId, 'uploading');
-          await processFileUpload(file, itemId, fileName);
+          await processFileUpload(file, itemId, fileName, targetPath);
         }
 
         // Mark upload as completed and remove from queue
@@ -469,12 +497,14 @@ export function useUploadHandler(
         uploadQueueManager.setUploaderInstance(itemId, null);
 
         // Check if we should refresh data after upload completion
+        // Don't let refresh errors affect the upload success status
         const shouldRefresh = shouldRefreshAfterUpload();
         if (shouldRefresh) {
           try {
             await refreshCurrentData();
-          } catch {
-            // Don't fail if refresh fails
+          } catch (refreshError) {
+            // Log refresh error but don't fail the upload
+            console.warn('Data refresh failed after successful upload:', refreshError);
           }
         }
       } catch (error) {
@@ -492,10 +522,13 @@ export function useUploadHandler(
   }, [processFileUpload, updateItemStatus, shouldRefreshAfterUpload, refreshCurrentData]);
 
   const handleFileUpload = useCallback(
-    async (files: FileList | File[]) => {
+    async (files: FileList | File[], overridePath?: string) => {
       if (!files || files.length === 0) return;
 
       onUploadStart?.();
+
+      // Use override path if provided, otherwise use current path
+      const uploadPath = overridePath || currentPath;
 
       const fileArray = Array.from(files);
       const uploadItems: Array<{ file: File; itemId: string; extension: string }> = [];
@@ -523,7 +556,7 @@ export function useUploadHandler(
       for (const { file, itemId, extension } of uploadItems) {
         try {
           // Check if file already exists
-          const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPath);
+          const isDuplicate = await checkForDuplicates(apiS3, file.name, uploadPath);
 
           if (isDuplicate) {
             // Pause this file and show duplicate dialog
@@ -539,23 +572,28 @@ export function useUploadHandler(
                   size: file.size,
                   progress: 0,
                   status: 'paused',
-                  destination: currentPath,
+                  destination: uploadPath,
                   extension,
                 },
                 // onReplace
                 async () => {
-                  uploadQueueManager.addToQueue({ itemId, file });
+                  uploadQueueManager.addToQueue({ itemId, file, targetPath: uploadPath });
                   hideDuplicateDialog();
                   resolve();
                 },
                 // onKeepBoth
                 async () => {
-                  const uniqueName = await generateUniqueFileName(apiS3, file.name, currentPath);
+                  const uniqueName = await generateUniqueFileName(apiS3, file.name, uploadPath);
                   // Create new file with unique name
                   const newFile = new File([file], uniqueName, { type: file.type });
                   // Update the item name
                   updateItemName(itemId, uniqueName);
-                  uploadQueueManager.addToQueue({ itemId, file: newFile, fileName: uniqueName });
+                  uploadQueueManager.addToQueue({
+                    itemId,
+                    file: newFile,
+                    fileName: uniqueName,
+                    targetPath: uploadPath,
+                  });
                   hideDuplicateDialog();
                   resolve();
                 }
@@ -563,7 +601,7 @@ export function useUploadHandler(
             });
           } else {
             // No duplicate, add to upload queue
-            uploadQueueManager.addToQueue({ itemId, file });
+            uploadQueueManager.addToQueue({ itemId, file, targetPath: uploadPath });
           }
         } catch (error) {
           console.error(`Failed to process file ${file.name}:`, error);
@@ -602,10 +640,13 @@ export function useUploadHandler(
   );
 
   const handleFolderUpload = useCallback(
-    async (files: FileList | File[]) => {
+    async (files: FileList | File[], overridePath?: string) => {
       if (!files || files.length === 0) return;
 
       onUploadStart?.();
+
+      // Use override path if provided, otherwise use current path
+      const uploadPath = overridePath || currentPath;
 
       const fileArray = Array.from(files);
 
@@ -630,7 +671,7 @@ export function useUploadHandler(
 
       // Process each folder
       for (const [folderName, folderFiles] of folderMap) {
-        const isDuplicate = await checkForFolderDuplicates(apiS3, folderName, currentPath);
+        const isDuplicate = await checkForFolderDuplicates(apiS3, folderName, uploadPath);
         const folderSize = folderSizes.get(folderName) || 0;
 
         if (isDuplicate) {
@@ -641,7 +682,7 @@ export function useUploadHandler(
             size: folderSize,
             progress: 0.0,
             status: 'paused',
-            destination: currentPath,
+            destination: uploadPath,
             totalFiles: folderFiles.length,
             uploadedFiles: 0,
           });
@@ -658,14 +699,14 @@ export function useUploadHandler(
                 size: folderSize,
                 progress: 0,
                 status: 'paused',
-                destination: currentPath,
+                destination: uploadPath,
                 totalFiles: folderFiles.length,
                 uploadedFiles: 0,
               },
               // onReplace
               async () => {
                 try {
-                  await processFolderUpload(folderFiles, itemId, folderName);
+                  await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
                   hideDuplicateDialog();
                 } catch (error) {
                   updateItemStatus(
@@ -683,12 +724,12 @@ export function useUploadHandler(
                   const uniqueFolderName = await generateUniqueFolderName(
                     apiS3,
                     folderName,
-                    currentPath
+                    uploadPath
                   );
 
                   // Update the item name to show the new unique name
                   updateItemName(itemId, uniqueFolderName);
-                  await processFolderUpload(folderFiles, itemId, uniqueFolderName);
+                  await processFolderUpload(folderFiles, itemId, uniqueFolderName, uploadPath);
                   hideDuplicateDialog();
                 } catch (error) {
                   updateItemStatus(
@@ -710,7 +751,7 @@ export function useUploadHandler(
             size: folderSize,
             progress: 0.0,
             status: 'pending',
-            destination: currentPath,
+            destination: uploadPath,
             totalFiles: folderFiles.length,
             uploadedFiles: 0,
           });
@@ -718,7 +759,7 @@ export function useUploadHandler(
           // Store files in cache
           uploadFileCache.store(itemId, folderFiles, 'folder');
 
-          await processFolderUpload(folderFiles, itemId, folderName);
+          await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
         }
       }
 
@@ -749,7 +790,8 @@ export function useUploadHandler(
 
   // Helper function to process folder upload
   const processFolderUpload = useCallback(
-    async (files: File[], itemId: string, folderName: string) => {
+    async (files: File[], itemId: string, folderName: string, targetPath?: string) => {
+      const folderUploadPath = targetPath || currentPath;
       updateItemStatus(itemId, 'uploading');
 
       let uploadedCount = 0;
@@ -789,7 +831,7 @@ export function useUploadHandler(
           pathParts[0] = folderName;
           const newRelativePath = pathParts.join('/');
 
-          const s3Key = generateS3Key(newRelativePath, currentPath);
+          const s3Key = generateS3Key(newRelativePath, folderUploadPath);
           const selectedMethod = determineUploadMethod(file.size, uploadMethod);
           const fileName = s3Key.split('/')[s3Key.length - 1];
 
@@ -1037,7 +1079,14 @@ export function useUploadHandler(
 
   // Helper function to resume folder upload from where it left off
   const resumeFolderUpload = useCallback(
-    async (files: File[], itemId: string, folderName: string, startFromIndex: number = 0) => {
+    async (
+      files: File[],
+      itemId: string,
+      folderName: string,
+      startFromIndex: number = 0,
+      targetPath?: string
+    ) => {
+      const folderUploadPath = targetPath || currentPath;
       const totalFiles = files.length;
       let uploadedCount = startFromIndex;
 
@@ -1057,7 +1106,7 @@ export function useUploadHandler(
           pathParts[0] = folderName;
           const newRelativePath = pathParts.join('/');
 
-          const s3Key = generateS3Key(newRelativePath, currentPath);
+          const s3Key = generateS3Key(newRelativePath, folderUploadPath);
           const selectedMethod = determineUploadMethod(file.size, uploadMethod);
           const fileName = s3Key.split('/')[s3Key.length - 1];
 
@@ -1181,7 +1230,13 @@ export function useUploadHandler(
         // Folder upload resume
         try {
           updateItemStatus(itemId, 'uploading');
-          await resumeFolderUpload(cachedFiles, itemId, item.name, item.uploadedFiles || 0);
+          await resumeFolderUpload(
+            cachedFiles,
+            itemId,
+            item.name,
+            item.uploadedFiles || 0,
+            item.destination
+          );
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Resume failed';
           console.error(`Resume folder error for ${itemId}:`, errorMessage);

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useRef } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
+import { cn } from '@/shared/utils/utils';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -15,6 +16,7 @@ interface SuggestedFilesProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
+  onFilesDropped?: (files: File[], folders: File[]) => void;
 }
 
 export function SuggestedFiles({
@@ -26,12 +28,68 @@ export function SuggestedFiles({
   isLoadingMore = false,
   className = '',
   hideTitle = false,
+  onFilesDropped,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const dragCounter = useRef(0);
 
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (dragCounter.current === 1) {
+      setIsDragActive(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Immediately clear drag state
+    setIsDragActive(false);
+    dragCounter.current = 0;
+
+    if (onFilesDropped && e.dataTransfer.files) {
+      const allFiles = Array.from(e.dataTransfer.files);
+      if (allFiles.length > 0) {
+        // Separate files and folders based on webkitRelativePath
+        const files = allFiles.filter(
+          (file) => !file.webkitRelativePath || file.webkitRelativePath.split('/').length === 1
+        );
+        const folders = allFiles.filter(
+          (file) => file.webkitRelativePath && file.webkitRelativePath.split('/').length > 1
+        );
+        onFilesDropped(files, folders);
+      }
+    }
+
+    // Force clear drag state after a short delay
+    setTimeout(() => {
+      setIsDragActive(false);
+      dragCounter.current = 0;
+    }, 100);
   };
 
   const handleFileClick = (file: FileItem) => {
@@ -44,14 +102,55 @@ export function SuggestedFiles({
 
   if (files.length === 0) {
     return (
-      <div className={`text-center py-12 ${className}`}>
-        <p className="text-muted-foreground">No files available.</p>
+      <div
+        className={cn(`w-full ${className} transition-all duration-200 relative text-center`)}
+        style={{ minHeight: '300px' }}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Whitish overlay with dotted border when dragging */}
+        {isDragActive && (
+          <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-primary rounded-lg pointer-events-none z-10 flex items-center justify-center"></div>
+        )}
+
+        {/* Empty state content */}
+        <div className="flex flex-col items-center justify-center h-full py-16">
+          <div className="w-16 h-16 mb-4 rounded-full bg-muted/30 flex items-center justify-center">
+            <svg
+              className="w-8 h-8 text-muted-foreground"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <p className="text-muted-foreground text-sm">No files in this folder</p>
+          <p className="text-muted-foreground text-sm mt-2">Drag and drop files here to upload</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`w-full ${className}`}>
+    <div
+      className={cn(`w-full ${className} transition-all duration-200 relative`)}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Whitish overlay with dotted border when dragging */}
+      {isDragActive && (
+        <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-blue-500 rounded-lg pointer-events-none z-10" />
+      )}
       {!hideTitle ? (
         <div className="flex items-center justify-between mb-3">
           <button

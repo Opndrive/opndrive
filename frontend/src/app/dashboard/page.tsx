@@ -9,10 +9,14 @@ import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
 import { useApiS3 } from '@/hooks/use-auth';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
+import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
+import { useNotification } from '@/context/notification-context';
+import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
+import { useSettings } from '@/features/settings/hooks/use-settings';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -75,6 +79,85 @@ export default function HomePage() {
   const handleFileClick = (_file: FileItem) => {};
 
   const handleFileAction = (_action: string, _file: FileItem) => {};
+
+  // Drag and drop handlers
+  const { showNotification } = useNotification();
+  const { settings, isLoaded } = useSettings();
+
+  const { handleFileUpload, handleFolderUpload } = useUploadHandler(
+    {
+      currentPath: currentPrefix || '',
+      uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
+    },
+    apiS3
+  );
+
+  const handleFilesDroppedToDirectory = useCallback(
+    async (files: File[], folders: File[]) => {
+      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
+        showNotification('error', 'Upload system not ready');
+        return;
+      }
+
+      try {
+        if (files.length > 0) {
+          await handleFileUpload(files);
+          showNotification(
+            'success',
+            `Started upload of ${files.length} file${files.length !== 1 ? 's' : ''}`
+          );
+        }
+
+        if (folders.length > 0) {
+          await handleFolderUpload(folders);
+          showNotification(
+            'success',
+            `Started upload of folder contents (${folders.length} files)`
+          );
+        }
+      } catch (error) {
+        console.error('Drag and drop upload error:', error);
+        showNotification('error', 'Failed to start upload');
+      }
+    },
+    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification]
+  );
+
+  const handleFilesDroppedToFolder = useCallback(
+    async (files: File[], folders: File[], targetFolder: DragDropTarget) => {
+      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
+        showNotification('error', 'Upload system not ready');
+        return;
+      }
+
+      try {
+        // Calculate the proper target path: currentPrefix + targetFolder.name + '/'
+        let targetPath;
+        if (currentPrefix && currentPrefix !== '/') {
+          // If we have a current prefix, append the folder name to it
+          targetPath = currentPrefix.endsWith('/')
+            ? `${currentPrefix}${targetFolder.name}/`
+            : `${currentPrefix}/${targetFolder.name}/`;
+        } else {
+          // If we're at root, just use the folder name
+          targetPath = `${targetFolder.name}/`;
+        }
+
+        if (files.length > 0) {
+          // Use the upload handler with the target path override
+          await handleFileUpload(files, targetPath);
+        }
+
+        if (folders.length > 0) {
+          await handleFolderUpload(folders, targetPath);
+        }
+      } catch (error) {
+        console.error('Folder drop upload error:', error);
+        showNotification('error', `Failed to upload to folder "${targetFolder.name}"`);
+      }
+    },
+    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification, currentPrefix]
+  );
 
   const handleLoadMoreFiles = async () => {
     setIsLoadingMoreFiles(true);
@@ -148,6 +231,7 @@ export default function HomePage() {
                   folders={recentData.folders}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolder}
                   onViewMore={handleLoadMoreFolders}
                   hasMore={recentData.hasMoreFolders}
                   isLoadingMore={isLoadingMoreFolders}
@@ -161,6 +245,7 @@ export default function HomePage() {
                   files={recentData.files}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
+                  onFilesDropped={handleFilesDroppedToDirectory}
                   onViewMore={handleLoadMoreFiles}
                   hasMore={recentData.hasMoreFiles}
                   isLoadingMore={isLoadingMoreFiles}

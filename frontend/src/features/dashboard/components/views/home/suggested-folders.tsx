@@ -4,6 +4,8 @@ import { Folder } from '@/features/dashboard/types/folder';
 import type React from 'react';
 import { useState } from 'react';
 import { FolderItem } from '../../ui';
+import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
+import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 
 interface SuggestedFoldersProps {
   folders: Folder[];
@@ -14,6 +16,7 @@ interface SuggestedFoldersProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
+  onFilesDroppedToFolder?: (files: File[], folders: File[], targetFolder: DragDropTarget) => void;
 }
 
 export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
@@ -25,6 +28,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   isLoadingMore = false,
   className = '',
   hideTitle = false,
+  onFilesDroppedToFolder,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -68,12 +72,18 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
         >
           {folders.map((folder) => (
-            <FolderItem
+            <FolderDropTarget
               key={folder.Prefix}
-              folder={folder}
-              onClick={onFolderClick}
-              onMenuClick={onFolderMenuClick}
-            />
+              folder={{
+                id: folder.Prefix || folder.name,
+                name: folder.name,
+                path: folder.Prefix || folder.name,
+              }}
+              onFilesDropped={onFilesDroppedToFolder || (() => {})}
+              className="rounded-lg"
+            >
+              <FolderItem folder={folder} onClick={onFolderClick} onMenuClick={onFolderMenuClick} />
+            </FolderDropTarget>
           ))}
         </div>
       )}
