@@ -8,6 +8,7 @@ import NavbarUserProfile from './navbar-user-profile';
 import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
 import { useEffect, useState } from 'react';
+import { AriaLabel } from '@/shared/components';
 
 interface DashboardNavbarProps {
   toggleSidebar: () => void;
@@ -54,15 +55,16 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
             <Image src="/logo-nobg.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
             <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className="ml-4 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Toggle Sidebar"
-          >
-            <Menu size={20} />
-          </Button>
+          <AriaLabel label="Toggle sidebar navigation" position="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="ml-4 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Menu size={20} />
+            </Button>
+          </AriaLabel>
         </div>
 
         <div className="flex flex-1 justify-center">
@@ -95,17 +97,18 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           }`}
         >
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              className={`text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-300 ${
-                showMobileSearch ? 'h-10 w-10' : 'h-9 w-9'
-              }`}
-              aria-label="Toggle Sidebar"
-            >
-              <Menu size={18} />
-            </Button>
+            <AriaLabel label="Toggle sidebar navigation" position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                className={`text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-300 ${
+                  showMobileSearch ? 'h-10 w-10' : 'h-9 w-9'
+                }`}
+              >
+                <Menu size={18} />
+              </Button>
+            </AriaLabel>
             <Link
               href="/dashboard"
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -143,15 +146,16 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               : 'opacity-0 transform translate-y-2 pointer-events-none absolute inset-0'
           }`}
         >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className="flex-shrink-0 h-10 w-10 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Toggle Sidebar"
-          >
-            <Menu size={20} />
-          </Button>
+          <AriaLabel label="Toggle sidebar navigation" position="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="flex-shrink-0 h-10 w-10 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Menu size={20} />
+            </Button>
+          </AriaLabel>
 
           <div className="flex-1 max-w-none">
             <SearchPage />

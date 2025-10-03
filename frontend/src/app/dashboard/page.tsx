@@ -17,6 +17,7 @@ import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { useNotification } from '@/context/notification-context';
 import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
 import { useSettings } from '@/features/settings/hooks/use-settings';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -207,18 +208,22 @@ export default function HomePage() {
           <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
 
           {/* Sync Button */}
-          <button
-            onClick={handleSync}
-            disabled={isSyncing || !currentPrefix}
-            className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
-            title="Refresh data"
+          <AriaLabel
+            label={isSyncing ? 'Refreshing data...' : 'Refresh data to sync latest changes'}
+            position="bottom"
           >
-            <HiOutlineRefresh
-              className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
-                isSyncing ? 'animate-spin' : ''
-              }`}
-            />
-          </button>
+            <button
+              onClick={handleSync}
+              disabled={isSyncing || !currentPrefix}
+              className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+            >
+              <HiOutlineRefresh
+                className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                  isSyncing ? 'animate-spin' : ''
+                }`}
+              />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="relative z-0">

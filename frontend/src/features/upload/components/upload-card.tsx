@@ -14,6 +14,7 @@ import {
 import { useUploadStore } from '../hooks/use-upload-store';
 import { UploadItemComponent } from './upload-item';
 import { DuplicateDialog } from './duplicate-dialog';
+import { AriaLabel } from '@/shared/components';
 
 export function UploadCard() {
   const {
@@ -208,27 +209,29 @@ export function UploadCard() {
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-              <button
-                onClick={isMinimized ? maximizeCard : minimizeCard}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-[var(--accent)]"
-                style={{ color: 'var(--muted-foreground)' }}
-                aria-label={isMinimized ? 'Maximize' : 'Minimize'}
-              >
-                {isMinimized ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </button>
+              <AriaLabel label={isMinimized ? 'Expand upload panel' : 'Minimize upload panel'}>
+                <button
+                  onClick={isMinimized ? maximizeCard : minimizeCard}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-[var(--accent)]"
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  {isMinimized ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+              </AriaLabel>
 
-              <button
-                onClick={handleCloseCard}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-accent"
-                style={{ color: 'var(--muted-foreground)' }}
-                aria-label="Close"
-              >
-                <X className="h-4 w-4 text-[#dc2626]" />
-              </button>
+              <AriaLabel label="Close upload panel">
+                <button
+                  onClick={handleCloseCard}
+                  className="p-1 rounded cursor-pointer transition-colors hover:bg-accent"
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  <X className="h-4 w-4 text-[#dc2626]" />
+                </button>
+              </AriaLabel>
             </div>
           </div>
 

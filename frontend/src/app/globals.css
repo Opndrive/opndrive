@@ -42,6 +42,13 @@
   --show-more-btn-disabled: #dadce0;
   --show-more-btn-text: #ffffff;
   --show-more-btn-text-disabled: #9aa0a6;
+
+  /* Custom Aria Label Variables */
+  --aria-label-bg: rgba(60, 64, 67, 0.9);
+  --aria-label-text: #ffffff;
+  --aria-label-border: rgba(255, 255, 255, 0.1);
+  --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --aria-label-backdrop: blur(12px);
 }
 
 @theme inline {
@@ -103,6 +110,13 @@
   --show-more-btn-disabled: #3c4043;
   --show-more-btn-text: #202124;
   --show-more-btn-text-disabled: #5f6368;
+
+  /* Custom Aria Label Variables - Auto Dark Mode */
+  --aria-label-bg: rgba(232, 234, 237, 0.9);
+  --aria-label-text: #202124;
+  --aria-label-border: rgba(0, 0, 0, 0.1);
+  --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --aria-label-backdrop: blur(12px);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -144,6 +158,13 @@
     --show-more-btn-disabled: #3c4043;
     --show-more-btn-text: #202124;
     --show-more-btn-text-disabled: #5f6368;
+
+    /* Custom Aria Label Variables - Dark Mode */
+    --aria-label-bg: rgba(232, 234, 237, 0.9);
+    --aria-label-text: #202124;
+    --aria-label-border: rgba(0, 0, 0, 0.1);
+    --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --aria-label-backdrop: blur(12px);
   }
 }
 
@@ -638,5 +659,97 @@ body {
       opacity: 0;
       border-width: 1px;
     }
+  }
+}
+
+/* Custom Aria Label Styles */
+.custom-aria-label {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--aria-label-bg);
+  color: var(--aria-label-text);
+  border: 1px solid var(--aria-label-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 250px;
+  word-wrap: break-word;
+  box-shadow: var(--aria-label-shadow);
+  backdrop-filter: var(--aria-label-backdrop);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-aria-label.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.custom-aria-label.multiline {
+  white-space: normal;
+  max-width: 200px;
+}
+
+.custom-aria-label::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  background: var(--aria-label-bg);
+  border: 1px solid var(--aria-label-border);
+  border-bottom: none;
+  border-right: none;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+
+.custom-aria-label.bottom::before {
+  top: auto;
+  bottom: -4px;
+  border: 1px solid var(--aria-label-border);
+  border-top: none;
+  border-left: none;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.custom-aria-label.left::before {
+  top: 50%;
+  left: -4px;
+  transform: translateY(-50%) rotate(45deg);
+  border: 1px solid var(--aria-label-border);
+  border-top: none;
+  border-right: none;
+}
+
+.custom-aria-label.right::before {
+  top: 50%;
+  left: auto;
+  right: -4px;
+  transform: translateY(-50%) rotate(45deg);
+  border: 1px solid var(--aria-label-border);
+  border-bottom: none;
+  border-left: none;
+}
+
+@media (max-width: 640px) {
+  .custom-aria-label {
+    font-size: 11px;
+    padding: 4px 8px;
+    max-width: 180px;
+    border-radius: 6px;
+  }
+
+  .custom-aria-label.multiline {
+    max-width: 150px;
   }
 }

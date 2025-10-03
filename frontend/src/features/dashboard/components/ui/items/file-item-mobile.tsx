@@ -6,6 +6,7 @@ import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface FileItemMobileProps {
   file: FileItem;
@@ -79,12 +80,14 @@ export function FileItemMobile({
       </div>
 
       {/* Menu Button */}
-      <button
-        className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
-        onClick={handleMenuClick}
-      >
-        <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
-      </button>
+      <AriaLabel label={`More actions`} position="top">
+        <button
+          className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
+          onClick={handleMenuClick}
+        >
+          <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
+        </button>
+      </AriaLabel>
 
       <FileOverflowMenu
         file={file}

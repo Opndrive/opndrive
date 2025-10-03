@@ -13,6 +13,7 @@ import {
   Minus,
 } from 'lucide-react';
 import { UploadItem } from '../types';
+import { AriaLabel } from '@/shared/components';
 
 interface UploadItemComponentProps {
   item: UploadItem;
@@ -213,38 +214,42 @@ export function UploadItemComponent({
                 window.__upload_queue_manager?.isUploadActive(item.id) &&
                 item.progress > 0)) && (
               <>
-                <button
-                  onClick={() => onPause(item.id)}
-                  className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
-                  aria-label="Pause upload"
-                >
-                  <Pause className="h-3 w-3" style={{ color: '#d97706' }} />
-                </button>
-                <button
-                  onClick={() => onCancel(item.id)}
-                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-                  aria-label="Cancel upload"
-                >
-                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
-                </button>
+                <AriaLabel label="Pause upload">
+                  <button
+                    onClick={() => onPause(item.id)}
+                    className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
+                  >
+                    <Pause className="h-3 w-3" style={{ color: '#d97706' }} />
+                  </button>
+                </AriaLabel>
+                <AriaLabel label="Cancel upload">
+                  <button
+                    onClick={() => onCancel(item.id)}
+                    className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  >
+                    <X className="h-3 w-3" style={{ color: '#dc2626' }} />
+                  </button>
+                </AriaLabel>
               </>
             )}
             {item.status === 'paused' && (
               <>
-                <button
-                  onClick={() => onResume(item.id)}
-                  className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
-                  aria-label="Resume upload"
-                >
-                  <Play className="h-3 w-3" style={{ color: '#16a34a' }} />
-                </button>
-                <button
-                  onClick={() => onCancel(item.id)}
-                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-                  aria-label="Cancel upload"
-                >
-                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
-                </button>
+                <AriaLabel label="Resume upload">
+                  <button
+                    onClick={() => onResume(item.id)}
+                    className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
+                  >
+                    <Play className="h-3 w-3" style={{ color: '#16a34a' }} />
+                  </button>
+                </AriaLabel>
+                <AriaLabel label="Cancel upload">
+                  <button
+                    onClick={() => onCancel(item.id)}
+                    className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  >
+                    <X className="h-3 w-3" style={{ color: '#dc2626' }} />
+                  </button>
+                </AriaLabel>
               </>
             )}
             {item.status === 'pending' &&
@@ -253,29 +258,30 @@ export function UploadItemComponent({
                 window.__upload_queue_manager?.isUploadActive(item.id) &&
                 item.progress > 0
               ) && (
-                <button
-                  onClick={() => onCancel(item.id)}
-                  className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-                  aria-label="Cancel upload"
-                >
-                  <X className="h-3 w-3" style={{ color: '#dc2626' }} />
-                </button>
+                <AriaLabel label="Cancel upload">
+                  <button
+                    onClick={() => onCancel(item.id)}
+                    className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                  >
+                    <X className="h-3 w-3" style={{ color: '#dc2626' }} />
+                  </button>
+                </AriaLabel>
               )}
             {(item.status === 'completed' ||
               item.status === 'cancelled' ||
               item.status === 'error') &&
               onRemove && (
-                <button
-                  onClick={() => onRemove(item.id)}
-                  className="p-1 rounded cursor-pointer transition-all duration-200 hover:bg-accent  hover:scale-110"
-                  aria-label="Remove from list"
-                  title="Remove from list"
-                >
-                  <Minus
-                    className="h-3 w-3 transition-colors"
-                    style={{ color: 'var(--muted-foreground)' }}
-                  />
-                </button>
+                <AriaLabel label="Remove from list">
+                  <button
+                    onClick={() => onRemove(item.id)}
+                    className="p-1 rounded cursor-pointer transition-all duration-200 hover:bg-accent  hover:scale-110"
+                  >
+                    <Minus
+                      className="h-3 w-3 transition-colors"
+                      style={{ color: 'var(--muted-foreground)' }}
+                    />
+                  </button>
+                </AriaLabel>
               )}
           </div>
         </div>
