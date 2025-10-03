@@ -267,7 +267,7 @@ export function UploadItemComponent({
               onRemove && (
                 <button
                   onClick={() => onRemove(item.id)}
-                  className="p-1 rounded cursor-pointer transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 hover:scale-110"
+                  className="p-1 rounded cursor-pointer transition-all duration-200 hover:bg-accent  hover:scale-110"
                   aria-label="Remove from list"
                   title="Remove from list"
                 >

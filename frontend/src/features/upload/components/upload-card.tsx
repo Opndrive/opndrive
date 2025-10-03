@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { X, Minus, Plus, CheckCircle, AlertCircle, XCircle, Pause, Upload } from 'lucide-react';
+import {
+  X,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  Pause,
+  Upload,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { useUploadStore } from '../hooks/use-upload-store';
 import { UploadItemComponent } from './upload-item';
 import { DuplicateDialog } from './duplicate-dialog';
@@ -205,12 +214,16 @@ export function UploadCard() {
                 style={{ color: 'var(--muted-foreground)' }}
                 aria-label={isMinimized ? 'Maximize' : 'Minimize'}
               >
-                {isMinimized ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
+                {isMinimized ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </button>
 
               <button
                 onClick={handleCloseCard}
-                className="p-1 rounded cursor-pointer transition-colors hover:bg-[#fecaca]"
+                className="p-1 rounded cursor-pointer transition-colors hover:bg-accent"
                 style={{ color: 'var(--muted-foreground)' }}
                 aria-label="Close"
               >
