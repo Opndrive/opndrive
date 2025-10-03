@@ -34,6 +34,8 @@ interface UploadActions {
     totalFiles?: number
   ) => Promise<void>;
   updateItemName: (itemId: string, name: string) => Promise<void>;
+  updateItemSize: (itemId: string, size: number) => Promise<void>;
+  updateItemCalculatingSize: (itemId: string, isCalculating: boolean) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
 
   // Bulk operations
@@ -83,6 +85,7 @@ function metadataToItem(metadata: UploadMetadata): UploadItem {
     extension: metadata.extension,
     uploadedFiles: metadata.uploadedFiles,
     totalFiles: metadata.totalFiles,
+    operation: metadata.operation,
     // Note: file and files properties will be populated separately via getItemFiles
   };
 }
@@ -100,6 +103,7 @@ function itemToMetadata(item: UploadItem): Omit<UploadMetadata, 'id' | 'createdA
     extension: item.extension,
     uploadedFiles: item.uploadedFiles,
     totalFiles: item.totalFiles,
+    operation: item.operation,
   };
 }
 
@@ -239,6 +243,31 @@ export const useUploadStore = create<UploadStore>()(
         }));
       } catch (error) {
         console.error('Failed to update item name:', error);
+      }
+    },
+
+    updateItemSize: async (itemId, size) => {
+      try {
+        await uploadPersistence.updateUpload(itemId, { size });
+
+        set((state) => ({
+          items: state.items.map((item) => (item.id === itemId ? { ...item, size } : item)),
+        }));
+      } catch (error) {
+        console.error('Failed to update item size:', error);
+      }
+    },
+
+    updateItemCalculatingSize: async (itemId, isCalculating) => {
+      try {
+        // This is UI-only state, no need to persist
+        set((state) => ({
+          items: state.items.map((item) =>
+            item.id === itemId ? { ...item, isCalculatingSize: isCalculating } : item
+          ),
+        }));
+      } catch (error) {
+        console.error('Failed to update item calculating size state:', error);
       }
     },
 

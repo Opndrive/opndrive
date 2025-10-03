@@ -47,7 +47,7 @@ const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
 
   // Handle files dropped to the current directory
   const handleFilesDroppedToDirectory = useCallback(
-    async (files: File[], folders: File[], targetPath: string) => {
+    async (files: File[], folders: File[]) => {
       if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
         showNotification('error', 'Upload system not ready');
         return;
@@ -57,19 +57,11 @@ const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
         // Handle regular files
         if (files.length > 0) {
           await handleFileUpload(files);
-          showNotification(
-            'success',
-            `Started upload of ${files.length} file${files.length !== 1 ? 's' : ''} to ${targetPath}`
-          );
         }
 
         // Handle folder files
         if (folders.length > 0) {
           await handleFolderUpload(folders);
-          showNotification(
-            'success',
-            `Started upload of folder contents (${folders.length} files) to ${targetPath}`
-          );
         }
       } catch (error) {
         console.error('Drag and drop upload error:', error);

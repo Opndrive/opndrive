@@ -29,6 +29,8 @@ interface UploadStore extends UploadState {
   updateProgress: (progress: UploadProgress) => void;
   updateItemStatus: (itemId: string, status: UploadItem['status'], error?: string) => void;
   updateItemName: (itemId: string, name: string) => void;
+  updateItemSize: (itemId: string, size: number, totalFiles?: number) => void;
+  updateItemCalculatingSize: (itemId: string, isCalculating: boolean) => void;
   removeItem: (itemId: string) => void;
   clearCompleted: () => void;
   cancelUpload: (itemId: string) => void;
@@ -106,7 +108,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
     set((state) => {
       const newState = {
-        items: [...state.items, newItem],
+        items: [newItem, ...state.items], // Add new items at the beginning
         totalItems: state.totalItems + 1,
         isOpen: true,
         isUploading: true,
@@ -177,6 +179,39 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           ? {
               ...item,
               name,
+              // Explicitly preserve file-related properties
+              file: item.file,
+              files: item.files,
+            }
+          : item
+      ),
+    }));
+  },
+
+  updateItemSize: (itemId, size, totalFiles) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              size,
+              ...(totalFiles && { totalFiles }),
+              // Explicitly preserve file-related properties
+              file: item.file,
+              files: item.files,
+            }
+          : item
+      ),
+    }));
+  },
+
+  updateItemCalculatingSize: (itemId, isCalculating) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              isCalculatingSize: isCalculating,
               // Explicitly preserve file-related properties
               file: item.file,
               files: item.files,

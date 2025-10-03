@@ -40,9 +40,34 @@ export function UploadItemComponent({
   };
 
   const getStatusIcon = () => {
-    // First check if upload is completed (100% progress)
+    // First check if operation is completed (100% progress)
     if (item.progress >= 100 || item.status === 'completed') {
+      if (item.operation === 'delete') {
+        return <CheckCircle className="h-4 w-4" style={{ color: '#dc2626' }} />; // Red for delete completion
+      }
       return <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />;
+    }
+
+    // For delete operations, use different icons
+    if (item.operation === 'delete') {
+      switch (item.status) {
+        case 'error':
+          return <AlertCircle className="h-4 w-4" style={{ color: '#dc2626' }} />;
+        case 'cancelled':
+          return <XCircle className="h-4 w-4" style={{ color: '#dc2626' }} />;
+        case 'uploading': // Actually 'deleting' for delete operations
+          return item.progress >= 100 ? (
+            <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin" style={{ color: '#dc2626' }} />
+          );
+        case 'paused':
+          return <Pause className="h-4 w-4" style={{ color: '#d97706' }} />;
+        case 'pending':
+          return <Minus className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />;
+        default:
+          return <CheckCircle className="h-4 w-4" style={{ color: '#16a34a' }} />;
+      }
     }
 
     // Check if this is actively uploading from queue
@@ -77,8 +102,11 @@ export function UploadItemComponent({
   };
 
   const getStatusColorStyle = () => {
-    // First check if upload is completed (100% progress)
+    // First check if operation is completed (100% progress)
     if (item.progress >= 100 || item.status === 'completed') {
+      if (item.operation === 'delete') {
+        return { color: '#dc2626' }; // red-600 for delete completion
+      }
       return { color: '#16a34a' }; // green-600
     }
 
@@ -99,7 +127,29 @@ export function UploadItemComponent({
   };
 
   const getProgressBarStyle = () => {
-    // First check if upload is completed (100% progress)
+    // Handle delete operations with different colors
+    if (item.operation === 'delete') {
+      if (item.progress >= 100 || item.status === 'completed') {
+        return { backgroundColor: '#dc2626' }; // red-600 for delete completion
+      }
+
+      switch (item.status) {
+        case 'error':
+          return { backgroundColor: '#dc2626' }; // red-600
+        case 'cancelled':
+          return { backgroundColor: '#6b7280' }; // gray-500
+        case 'uploading': // Actually 'deleting'
+          return { backgroundColor: '#dc2626' }; // red-600 for deleting progress
+        case 'paused':
+          return { backgroundColor: '#d97706' }; // orange-600
+        case 'pending':
+          return { backgroundColor: '#dc2626' }; // red-600 for pending delete
+        default:
+          return { backgroundColor: '#dc2626' }; // red-600 for delete operations
+      }
+    }
+
+    // Original upload operation logic
     if (item.progress >= 100 || item.status === 'completed') {
       return { backgroundColor: '#16a34a' }; // green-600
     }
@@ -133,9 +183,27 @@ export function UploadItemComponent({
   };
 
   const getStatusText = () => {
-    // First check if upload is completed (100% progress)
+    // First check if operation is completed (100% progress)
     if (item.progress >= 100 || item.status === 'completed') {
-      return 'Completed';
+      return item.operation === 'delete' ? 'Deleted' : 'Completed';
+    }
+
+    // Handle delete operations specifically
+    if (item.operation === 'delete') {
+      switch (item.status) {
+        case 'error':
+          return item.error || 'Delete failed';
+        case 'cancelled':
+          return 'Delete cancelled';
+        case 'uploading': // Actually 'deleting' for delete operations
+          return item.progress >= 100 ? 'Deleted' : 'Deleting...';
+        case 'paused':
+          return 'Delete paused';
+        case 'pending':
+          return 'Waiting to delete...';
+        default:
+          return 'Deleted';
+      }
     }
 
     switch (item.status) {
@@ -198,7 +266,14 @@ export function UploadItemComponent({
               className="flex items-center gap-1 sm:gap-2 text-xs flex-wrap"
               style={{ color: 'var(--muted-foreground)' }}
             >
-              <span>{formatFileSize(item.size)}</span>
+              {item.isCalculatingSize ? (
+                <div className="flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Calculating size...</span>
+                </div>
+              ) : (
+                item.size > 0 && <span>{formatFileSize(item.size)}</span>
+              )}
               {item.type === 'folder' && item.totalFiles && (
                 <span className="whitespace-nowrap">
                   • {item.uploadedFiles || 0} of {item.totalFiles} files
@@ -214,15 +289,17 @@ export function UploadItemComponent({
                 window.__upload_queue_manager?.isUploadActive(item.id) &&
                 item.progress > 0)) && (
               <>
-                <AriaLabel label="Pause upload">
-                  <button
-                    onClick={() => onPause(item.id)}
-                    className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
-                  >
-                    <Pause className="h-3 w-3" style={{ color: '#d97706' }} />
-                  </button>
-                </AriaLabel>
-                <AriaLabel label="Cancel upload">
+                {item.operation !== 'delete' && (
+                  <AriaLabel label="Pause upload">
+                    <button
+                      onClick={() => onPause(item.id)}
+                      className="p-1 rounded cursor-pointer transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/20"
+                    >
+                      <Pause className="h-3 w-3" style={{ color: '#d97706' }} />
+                    </button>
+                  </AriaLabel>
+                )}
+                <AriaLabel label={item.operation === 'delete' ? 'Cancel delete' : 'Cancel upload'}>
                   <button
                     onClick={() => onCancel(item.id)}
                     className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
@@ -234,15 +311,17 @@ export function UploadItemComponent({
             )}
             {item.status === 'paused' && (
               <>
-                <AriaLabel label="Resume upload">
-                  <button
-                    onClick={() => onResume(item.id)}
-                    className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
-                  >
-                    <Play className="h-3 w-3" style={{ color: '#16a34a' }} />
-                  </button>
-                </AriaLabel>
-                <AriaLabel label="Cancel upload">
+                {item.operation !== 'delete' && (
+                  <AriaLabel label="Resume upload">
+                    <button
+                      onClick={() => onResume(item.id)}
+                      className="p-1 rounded cursor-pointer transition-colors hover:bg-green-100 dark:hover:bg-green-900/20"
+                    >
+                      <Play className="h-3 w-3" style={{ color: '#16a34a' }} />
+                    </button>
+                  </AriaLabel>
+                )}
+                <AriaLabel label={item.operation === 'delete' ? 'Cancel delete' : 'Cancel upload'}>
                   <button
                     onClick={() => onCancel(item.id)}
                     className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
@@ -258,7 +337,7 @@ export function UploadItemComponent({
                 window.__upload_queue_manager?.isUploadActive(item.id) &&
                 item.progress > 0
               ) && (
-                <AriaLabel label="Cancel upload">
+                <AriaLabel label={item.operation === 'delete' ? 'Cancel delete' : 'Cancel upload'}>
                   <button
                     onClick={() => onCancel(item.id)}
                     className="p-1 rounded cursor-pointer transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"

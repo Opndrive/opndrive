@@ -10,6 +10,7 @@ import {
   Upload,
   ChevronDown,
   ChevronUp,
+  Minus,
 } from 'lucide-react';
 import { useUploadStore } from '../hooks/use-upload-store';
 import { UploadItemComponent } from './upload-item';
@@ -76,7 +77,7 @@ export function UploadCard() {
 
   const getHeaderInfo = () => {
     if (totalItems === 0)
-      return { text: 'No uploads', colorStyle: { color: 'var(--muted-foreground)' } };
+      return { text: 'No operations', colorStyle: { color: 'var(--muted-foreground)' } };
 
     const activeItems = items.filter(
       (item) => item.status === 'uploading' || item.status === 'pending'
@@ -87,8 +88,14 @@ export function UploadCard() {
     const errorItems = items.filter((item) => item.status === 'error').length;
     const pausedItems = items.filter((item) => item.status === 'paused').length;
 
-    // Handle active uploads with proper queue detection
+    // Handle active operations
     if (activeItems.length > 0) {
+      const activeUploads = activeItems.filter((item) => item.operation === 'upload');
+      const activeDeletes = activeItems.filter((item) => item.operation === 'delete');
+      const activeOthers = activeItems.filter(
+        (item) => !['upload', 'delete'].includes(item.operation)
+      );
+
       let actuallyUploading = items.filter((item) => item.status === 'uploading').length;
       let actuallyQueued = 0;
 
@@ -111,31 +118,61 @@ export function UploadCard() {
         actuallyQueued = items.filter((item) => item.status === 'pending').length;
       }
 
-      if (actuallyQueued > 0) {
+      // Mixed operations active
+      if (activeUploads.length > 0 && activeDeletes.length > 0) {
         return {
-          text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'} (${actuallyQueued} queued)`,
+          text: `${activeUploads.length} uploading, ${activeDeletes.length} deleting`,
           colorStyle: { color: 'var(--primary)' },
           icon: Upload,
         };
-      } else {
+      }
+
+      // Only uploads active
+      if (activeUploads.length > 0 && activeDeletes.length === 0) {
+        if (actuallyQueued > 0) {
+          return {
+            text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'} (${actuallyQueued} queued)`,
+            colorStyle: { color: 'var(--primary)' },
+            icon: Upload,
+          };
+        } else {
+          return {
+            text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'}`,
+            colorStyle: { color: 'var(--primary)' },
+            icon: Upload,
+          };
+        }
+      }
+
+      // Only deletes active
+      if (activeDeletes.length > 0 && activeUploads.length === 0) {
         return {
-          text: `Uploading ${actuallyUploading} file${actuallyUploading === 1 ? '' : 's'}`,
+          text: `Deleting ${activeDeletes.length} item${activeDeletes.length === 1 ? '' : 's'}`,
+          colorStyle: { color: '#dc2626' }, // red-600
+          icon: Minus,
+        };
+      }
+
+      // Other operations
+      if (activeOthers.length > 0) {
+        return {
+          text: `Processing ${activeOthers.length} item${activeOthers.length === 1 ? '' : 's'}`,
           colorStyle: { color: 'var(--primary)' },
           icon: Upload,
         };
       }
     }
 
-    // Handle paused uploads
+    // Handle paused operations
     if (pausedItems > 0) {
       return {
-        text: `${pausedItems} upload${pausedItems === 1 ? '' : 's'} paused`,
+        text: `${pausedItems} operation${pausedItems === 1 ? '' : 's'} paused`,
         colorStyle: { color: '#d97706' }, // orange-600
         icon: Pause,
       };
     }
 
-    // Handle finished uploads with mixed results
+    // Handle finished operations with mixed results
     if (actuallyCompleted > 0 && (cancelledItems > 0 || errorItems > 0)) {
       const failedCount = cancelledItems + errorItems;
       return {
@@ -147,17 +184,38 @@ export function UploadCard() {
 
     // Handle only completed
     if (actuallyCompleted > 0) {
-      return {
-        text: `${actuallyCompleted} upload${actuallyCompleted === 1 ? '' : 's'} completed`,
-        colorStyle: { color: '#16a34a' }, // green-600
-        icon: CheckCircle,
-      };
+      const completedUploads = items.filter(
+        (item) => item.status === 'completed' && item.operation === 'upload'
+      ).length;
+      const completedDeletes = items.filter(
+        (item) => item.status === 'completed' && item.operation === 'delete'
+      ).length;
+
+      if (completedUploads > 0 && completedDeletes > 0) {
+        return {
+          text: `${completedUploads} uploaded, ${completedDeletes} deleted`,
+          colorStyle: { color: '#d97706' }, // orange-600 for mixed operations
+          icon: CheckCircle,
+        };
+      } else if (completedDeletes > 0) {
+        return {
+          text: `${completedDeletes} item${completedDeletes === 1 ? '' : 's'} deleted`,
+          colorStyle: { color: '#dc2626' }, // red-600 for deletes
+          icon: Minus,
+        };
+      } else {
+        return {
+          text: `${actuallyCompleted} upload${actuallyCompleted === 1 ? '' : 's'} completed`,
+          colorStyle: { color: '#16a34a' }, // green-600
+          icon: CheckCircle,
+        };
+      }
     }
 
     // Handle only cancelled
     if (cancelledItems > 0) {
       return {
-        text: `${cancelledItems} upload${cancelledItems === 1 ? '' : 's'} cancelled`,
+        text: `${cancelledItems} operation${cancelledItems === 1 ? '' : 's'} cancelled`,
         colorStyle: { color: '#dc2626' }, // red-600
         icon: XCircle,
       };
@@ -166,14 +224,14 @@ export function UploadCard() {
     // Handle only errors
     if (errorItems > 0) {
       return {
-        text: `${errorItems} upload${errorItems === 1 ? '' : 's'} failed`,
+        text: `${errorItems} operation${errorItems === 1 ? '' : 's'} failed`,
         colorStyle: { color: '#dc2626' }, // red-600
         icon: AlertCircle,
       };
     }
 
     return {
-      text: `${totalItems} upload${totalItems === 1 ? '' : 's'} completed`,
+      text: `${totalItems} operation${totalItems === 1 ? '' : 's'} completed`,
       colorStyle: { color: '#16a34a' }, // green-600
       icon: CheckCircle,
     };
@@ -264,7 +322,37 @@ export function UploadCard() {
                 )}
                 <span className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
                   {hasActiveUploads
-                    ? `Uploading ${items.filter((i) => i.status === 'uploading').length} files...`
+                    ? (() => {
+                        const activeUploads = items.filter(
+                          (i) => i.status === 'uploading' && i.operation === 'upload'
+                        );
+                        const activeDeletes = items.filter(
+                          (i) => i.status === 'uploading' && i.operation === 'delete'
+                        );
+                        const calculatingSize = items.filter((i) => i.isCalculatingSize);
+
+                        const parts = [];
+
+                        if (calculatingSize.length > 0) {
+                          parts.push(
+                            `calculating ${calculatingSize.length} item${calculatingSize.length === 1 ? '' : 's'}`
+                          );
+                        }
+
+                        if (activeUploads.length > 0) {
+                          parts.push(
+                            `uploading ${activeUploads.length} file${activeUploads.length === 1 ? '' : 's'}`
+                          );
+                        }
+
+                        if (activeDeletes.length > 0) {
+                          parts.push(
+                            `deleting ${activeDeletes.length} item${activeDeletes.length === 1 ? '' : 's'}`
+                          );
+                        }
+
+                        return parts.length > 0 ? parts.join(', ') + '...' : 'Processing...';
+                      })()
                     : `${completedItems} completed`}
                 </span>
               </div>

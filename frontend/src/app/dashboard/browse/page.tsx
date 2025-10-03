@@ -146,18 +146,10 @@ function BrowsePageContent() {
       try {
         if (files.length > 0) {
           await handleFileUpload(files);
-          showNotification(
-            'success',
-            `Started upload of ${files.length} file${files.length !== 1 ? 's' : ''}`
-          );
         }
 
         if (folders.length > 0) {
           await handleFolderUpload(folders);
-          showNotification(
-            'success',
-            `Started upload of folder contents (${folders.length} files)`
-          );
         }
       } catch (error) {
         console.error('Drag and drop upload error:', error);

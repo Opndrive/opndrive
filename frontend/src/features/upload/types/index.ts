@@ -1,3 +1,5 @@
+export type OperationType = 'upload' | 'delete' | 'move' | 'copy';
+
 export interface UploadItem {
   id: string;
   name: string;
@@ -7,11 +9,14 @@ export interface UploadItem {
   status: 'pending' | 'uploading' | 'completed' | 'error' | 'cancelled' | 'paused';
   error?: string;
   file?: File;
-  files?: File[]; // For folder uploads
+  files?: File[];
   destination: string;
   extension?: string;
-  uploadedFiles?: number; // For folders: how many files completed
-  totalFiles?: number; // For folders: total files to upload
+  uploadedFiles?: number;
+  totalFiles?: number;
+  operation: OperationType;
+  operationLabel?: string;
+  isCalculatingSize?: boolean; // For showing loading state while calculating folder size
 }
 
 export interface UploadState {

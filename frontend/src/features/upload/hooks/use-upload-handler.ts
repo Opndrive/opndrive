@@ -524,6 +524,7 @@ export function useUploadHandler(
           status: 'pending',
           destination: currentPath,
           extension,
+          operation: 'upload',
         });
 
         // Store file in cache
@@ -554,6 +555,7 @@ export function useUploadHandler(
                   status: 'paused',
                   destination: uploadPath,
                   extension,
+                  operation: 'upload',
                 },
                 // onReplace
                 async () => {
@@ -674,6 +676,7 @@ export function useUploadHandler(
           destination: uploadPath,
           totalFiles: folderFiles.length,
           uploadedFiles: 0,
+          operation: 'upload',
         });
 
         uploadFileCache.store(itemId, folderFiles, 'folder');
@@ -690,6 +693,7 @@ export function useUploadHandler(
               destination: uploadPath,
               totalFiles: folderFiles.length,
               uploadedFiles: 0,
+              operation: 'upload',
             },
             async () => {
               try {
@@ -738,6 +742,7 @@ export function useUploadHandler(
           destination: uploadPath,
           totalFiles: folderFiles.length,
           uploadedFiles: 0,
+          operation: 'upload',
         });
 
         uploadFileCache.store(itemId, folderFiles, 'folder');

@@ -17,6 +17,7 @@ interface UploadMetadata {
   extension?: string;
   uploadedFiles?: number;
   totalFiles?: number;
+  operation: 'upload' | 'delete' | 'move' | 'copy';
   createdAt: number;
   updatedAt: number;
   // File-specific metadata for reconstruction

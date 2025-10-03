@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Info, Trash2, Eye, Share } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
-import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
@@ -40,7 +40,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const { openPreview } = useFilePreview();
   const { currentPrefix } = useDriveStore();
   const { openShareDialog } = useShare();
-  const { deleteFile, isDeleting } = useDelete();
+  const { deleteFile, isDeleting } = useDeleteWithProgress();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {

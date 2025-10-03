@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { Eye, Edit3, Trash2 } from 'lucide-react';
-import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDriveStore } from '@/context/data-context';
 import { useRouter } from 'next/navigation';
@@ -37,7 +37,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingAction, setPendingAction] = useState<'rename' | 'delete' | null>(null);
 
-  const { deleteFolder, isDeleting } = useDelete();
+  const { deleteFolder, isDeleting } = useDeleteWithProgress();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { currentPrefix } = useDriveStore();
   const router = useRouter();
