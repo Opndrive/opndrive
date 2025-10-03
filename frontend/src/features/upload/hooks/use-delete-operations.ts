@@ -10,9 +10,7 @@ import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 
 interface FolderContents {
-  files: string[];
-  folders: string[];
-  totalSize: number;
+  allKeys: string[];
   totalItems: number;
 }
 
@@ -22,54 +20,18 @@ export function useDeleteOperations() {
   const { success, error: errorFunction } = useNotification();
   const { registerCancelFunction } = useUploadStore();
 
-  // Helper function to recursively fetch all folder contents
-  const getAllFolderContents = useCallback(
+  // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
+  const getAllS3ObjectsWithPrefix = useCallback(
     async (folderPrefix: string): Promise<FolderContents> => {
       if (!apiS3) {
         throw new Error('API not ready');
       }
 
-      const allFiles: string[] = [];
-      const allFolders: string[] = [];
-      let totalSize = 0;
-      let nextToken: string | undefined;
-
-      const fetchBatch = async (token?: string) => {
-        const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1000, token);
-
-        // Add files from this batch
-        result.files.forEach((file) => {
-          if (file.Key) {
-            allFiles.push(file.Key);
-            totalSize += file.Size || 0;
-          }
-        });
-
-        // Add folders from this batch and recursively fetch their contents
-        for (const folder of result.folders) {
-          if (folder.Prefix) {
-            allFolders.push(folder.Prefix);
-            // Recursively get contents of subfolders
-            const subContents = await getAllFolderContents(folder.Prefix);
-            allFiles.push(...subContents.files);
-            allFolders.push(...subContents.folders);
-            totalSize += subContents.totalSize;
-          }
-        }
-
-        return result.nextToken;
-      };
-
-      // Keep fetching until we have all contents
-      do {
-        nextToken = await fetchBatch(nextToken);
-      } while (nextToken);
+      const allKeys = await apiS3.listFromPrefix(folderPrefix);
 
       return {
-        files: allFiles,
-        folders: allFolders,
-        totalSize,
-        totalItems: allFiles.length + allFolders.length,
+        allKeys: allKeys,
+        totalItems: allKeys.length,
       };
     },
     [apiS3]
@@ -153,18 +115,18 @@ export function useDeleteOperations() {
           throw new Error('Operation cancelled');
         }
 
-        // Get all folder contents recursively to calculate true size and get all items
+        // Get all folder contents using direct S3 API call
         const folderKey = folder.Prefix || folder.name;
         const normalizedKey = folderKey.endsWith('/') ? folderKey : `${folderKey}/`;
 
-        const folderContents = await getAllFolderContents(normalizedKey);
+        const folderContents = await getAllS3ObjectsWithPrefix(normalizedKey);
 
-        // Update operation with actual size and file count, hide loading state
+        // Update operation with actual file count, hide loading state
         operationsManager.setCalculatingSize(itemId, false);
         operationsManager.updateSize(
           itemId,
-          folderContents.totalSize,
-          folderContents.files.length + folderContents.folders.length
+          0, // Size calculation not needed for delete
+          folderContents.totalItems
         );
         operationsManager.updateProgress({ itemId, progress: 5 }); // Small progress after calculation
 
@@ -172,36 +134,41 @@ export function useDeleteOperations() {
           throw new Error('Operation cancelled');
         }
 
-        // Create array of all objects to delete (files first, then folders in reverse order)
-        const allObjects = [
-          ...folderContents.files,
-          ...folderContents.folders.reverse(), // Delete folders in reverse order (deepest first)
-          normalizedKey, // Finally delete the main folder
-        ];
+        // Get all keys (files and folders) to delete
+        const allKeys = folderContents.allKeys;
 
-        if (allObjects.length > 0) {
+        // Add the main folder if it's not already in the list
+        if (!allKeys.includes(normalizedKey)) {
+          allKeys.push(normalizedKey);
+        }
+
+        if (allKeys.length > 0) {
+          // Use batch delete for better performance (S3 allows up to 1000 objects per batch)
+          const batchSize = 1000;
           let deletedCount = 0;
 
-          // Delete all objects individually since there's no batch delete
-          for (const objectKey of allObjects) {
+          for (let i = 0; i < allKeys.length; i += batchSize) {
             if (signal?.aborted) {
               throw new Error('Operation cancelled');
             }
 
-            await apiS3.deleteFile(objectKey);
+            const batch = allKeys.slice(i, i + batchSize);
 
-            deletedCount++;
+            // Use batch delete to delete multiple objects at once
+            await apiS3.deleteBatch(batch.map((key) => ({ Key: key })));
+
+            deletedCount += batch.length;
             // Use range 5-95% for actual deletion (more accurate progress)
-            const progress = 5 + (deletedCount / allObjects.length) * 90;
+            const progress = 5 + (deletedCount / allKeys.length) * 90;
             operationsManager.updateProgress({
               itemId,
               progress,
               completedFiles: deletedCount,
-              totalFiles: allObjects.length,
+              totalFiles: allKeys.length,
             });
           }
         } else {
-          // Empty folder, just delete the folder itself
+          // Empty folder, just delete the folder itself using single delete
           await apiS3.deleteFile(normalizedKey);
           operationsManager.updateProgress({ itemId, progress: 95 });
         }
@@ -223,7 +190,7 @@ export function useDeleteOperations() {
         throw error;
       }
     },
-    [apiS3, refreshCurrentData, errorFunction, getAllFolderContents]
+    [apiS3, refreshCurrentData, errorFunction, getAllS3ObjectsWithPrefix]
   );
 
   const cancelDelete = useCallback((itemId: string) => {
