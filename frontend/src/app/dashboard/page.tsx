@@ -103,18 +103,12 @@ export default function HomePage() {
       try {
         if (files.length > 0) {
           await handleFileUpload(files);
-          showNotification(
-            'success',
-            `Started upload of ${files.length} file${files.length !== 1 ? 's' : ''}`
-          );
+          // Removed success notification for drag and drop uploads
         }
 
         if (folders.length > 0) {
           await handleFolderUpload(folders);
-          showNotification(
-            'success',
-            `Started upload of folder contents (${folders.length} files)`
-          );
+          // Removed success notification for drag and drop uploads
         }
       } catch (error) {
         console.error('Drag and drop upload error:', error);
