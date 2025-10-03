@@ -4,39 +4,19 @@ import { useCallback, useRef, useEffect } from 'react';
 import { useUploadStore } from './use-upload-store';
 import { UploadItem, UploadMethod } from '../types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
+import { generateS3Key } from '../utils/generate-s3-key';
 import { useDriveStore } from '@/context/data-context';
 import { BYOS3ApiProvider, MultipartUploader } from '@opndrive/s3-api';
 import { uploadFileCache } from '../services/upload-file-cache';
 import { persistentUploaderStorage } from '../services/persistent-uploader-storage';
 import { uploadQueueManager } from '../services/upload-queue-manager';
+import { FolderStructureProcessor } from '../utils/folder-structure-processor';
+import { FolderStructure } from '../types/folder-upload-types';
 
 // Helper function to get file extension
 const getFileExtension = (fileName: string): string => {
   const lastDot = fileName.lastIndexOf('.');
   return lastDot > 0 ? fileName.substring(lastDot + 1).toLowerCase() : '';
-};
-
-// Helper function to generate S3 key
-const generateS3Key = (fileName: string, currentPath: string): string => {
-  // Remove leading slash and clean the path
-  let cleanPath = currentPath;
-
-  // Remove leading slash if present
-  if (cleanPath.startsWith('/')) {
-    cleanPath = cleanPath.slice(1);
-  }
-
-  // If path is empty or just root, don't add any prefix
-  if (!cleanPath || cleanPath === '' || cleanPath === '/') {
-    return fileName;
-  }
-
-  // Ensure path ends with slash but doesn't start with one
-  if (!cleanPath.endsWith('/')) {
-    cleanPath = `${cleanPath}/`;
-  }
-
-  return `${cleanPath}${fileName}`;
 };
 
 // Helper function to check if file/folder already exists
@@ -645,147 +625,126 @@ export function useUploadHandler(
 
       onUploadStart?.();
 
-      // Use override path if provided, otherwise use current path
       const uploadPath = overridePath || currentPath;
+      const processedData = FolderStructureProcessor.processFileList(files);
 
-      const fileArray = Array.from(files);
+      if (processedData.folderStructures.length === 0) {
+        onUploadComplete?.(false);
+        return;
+      }
 
-      // Extract folder structure from webkitRelativePath
-      const folderMap = new Map<string, File[]>();
-      const folderSizes = new Map<string, number>();
-
-      fileArray.forEach((file) => {
-        if (file.webkitRelativePath) {
-          const pathParts = file.webkitRelativePath.split('/');
-          const folderName = pathParts[0];
-
-          if (!folderMap.has(folderName)) {
-            folderMap.set(folderName, []);
-            folderSizes.set(folderName, 0);
-          }
-
-          folderMap.get(folderName)?.push(file);
-          folderSizes.set(folderName, (folderSizes.get(folderName) || 0) + file.size);
-        }
+      const folderUploadPromises = processedData.folderStructures.map(async (folderStructure) => {
+        return processSingleFolder(folderStructure, uploadPath);
       });
 
-      // Process each folder
-      for (const [folderName, folderFiles] of folderMap) {
-        const isDuplicate = await checkForFolderDuplicates(apiS3, folderName, uploadPath);
-        const folderSize = folderSizes.get(folderName) || 0;
+      try {
+        await Promise.all(folderUploadPromises);
 
-        if (isDuplicate) {
-          // Show duplicate dialog for folder
-          const itemId = addUploadItem({
-            name: folderName,
-            type: 'folder',
-            size: folderSize,
-            progress: 0.0,
-            status: 'paused',
-            destination: uploadPath,
-            totalFiles: folderFiles.length,
-            uploadedFiles: 0,
-          });
-
-          // Store files in cache
-          uploadFileCache.store(itemId, folderFiles, 'folder');
-
-          await new Promise<void>((resolve) => {
-            showDuplicateDialog(
-              {
-                id: itemId,
-                name: folderName,
-                type: 'folder',
-                size: folderSize,
-                progress: 0,
-                status: 'paused',
-                destination: uploadPath,
-                totalFiles: folderFiles.length,
-                uploadedFiles: 0,
-              },
-              // onReplace
-              async () => {
-                try {
-                  await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
-                  hideDuplicateDialog();
-                } catch (error) {
-                  updateItemStatus(
-                    itemId,
-                    'error',
-                    error instanceof Error ? error.message : 'Upload failed'
-                  );
-                  hideDuplicateDialog();
-                }
-                resolve();
-              },
-              // onKeepBoth
-              async () => {
-                try {
-                  const uniqueFolderName = await generateUniqueFolderName(
-                    apiS3,
-                    folderName,
-                    uploadPath
-                  );
-
-                  // Update the item name to show the new unique name
-                  updateItemName(itemId, uniqueFolderName);
-                  await processFolderUpload(folderFiles, itemId, uniqueFolderName, uploadPath);
-                  hideDuplicateDialog();
-                } catch (error) {
-                  updateItemStatus(
-                    itemId,
-                    'error',
-                    error instanceof Error ? error.message : 'Upload failed'
-                  );
-                  hideDuplicateDialog();
-                }
-                resolve();
-              }
-            );
-          });
-        } else {
-          // No duplicate, proceed with normal upload
-          const itemId = addUploadItem({
-            name: folderName,
-            type: 'folder',
-            size: folderSize,
-            progress: 0.0,
-            status: 'pending',
-            destination: uploadPath,
-            totalFiles: folderFiles.length,
-            uploadedFiles: 0,
-          });
-
-          // Store files in cache
-          uploadFileCache.store(itemId, folderFiles, 'folder');
-
-          await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
+        const shouldRefresh = shouldRefreshAfterUpload();
+        if (shouldRefresh) {
+          try {
+            await refreshCurrentData();
+          } catch {
+            // Don't fail the upload if refresh fails
+          }
         }
-      }
 
-      // Only refresh data if this was the last active upload completing
-      const shouldRefresh = shouldRefreshAfterUpload();
-      if (shouldRefresh) {
-        try {
-          await refreshCurrentData();
-        } catch {
-          // Don't fail the upload if refresh fails
-        }
+        onUploadComplete?.(true);
+      } catch (error) {
+        console.error('Folder upload failed:', error);
+        onUploadComplete?.(false);
       }
-
-      onUploadComplete?.(true);
     },
-    [
-      currentPath,
-      onUploadStart,
-      onUploadComplete,
-      addUploadItem,
-      updateItemStatus,
-      updateItemName,
-      showDuplicateDialog,
-      hideDuplicateDialog,
-      refreshCurrentData,
-    ]
+    [currentPath, onUploadStart, onUploadComplete, refreshCurrentData]
+  );
+
+  const processSingleFolder = useCallback(
+    async (folderStructure: FolderStructure, uploadPath: string) => {
+      const { name: folderName, files: folderFiles, totalSize: folderSize } = folderStructure;
+
+      const isDuplicate = await checkForFolderDuplicates(apiS3, folderName, uploadPath);
+
+      if (isDuplicate) {
+        const itemId = addUploadItem({
+          name: folderName,
+          type: 'folder',
+          size: folderSize,
+          progress: 0.0,
+          status: 'paused',
+          destination: uploadPath,
+          totalFiles: folderFiles.length,
+          uploadedFiles: 0,
+        });
+
+        uploadFileCache.store(itemId, folderFiles, 'folder');
+
+        return new Promise<void>((resolve) => {
+          showDuplicateDialog(
+            {
+              id: itemId,
+              name: folderName,
+              type: 'folder',
+              size: folderSize,
+              progress: 0,
+              status: 'paused',
+              destination: uploadPath,
+              totalFiles: folderFiles.length,
+              uploadedFiles: 0,
+            },
+            async () => {
+              try {
+                await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
+                hideDuplicateDialog();
+              } catch (error) {
+                updateItemStatus(
+                  itemId,
+                  'error',
+                  error instanceof Error ? error.message : 'Upload failed'
+                );
+                hideDuplicateDialog();
+              }
+              resolve();
+            },
+            async () => {
+              try {
+                const uniqueFolderName = await generateUniqueFolderName(
+                  apiS3,
+                  folderName,
+                  uploadPath
+                );
+
+                updateItemName(itemId, uniqueFolderName);
+                await processFolderUpload(folderFiles, itemId, uniqueFolderName, uploadPath);
+                hideDuplicateDialog();
+              } catch (error) {
+                updateItemStatus(
+                  itemId,
+                  'error',
+                  error instanceof Error ? error.message : 'Upload failed'
+                );
+                hideDuplicateDialog();
+              }
+              resolve();
+            }
+          );
+        });
+      } else {
+        const itemId = addUploadItem({
+          name: folderName,
+          type: 'folder',
+          size: folderSize,
+          progress: 0.0,
+          status: 'pending',
+          destination: uploadPath,
+          totalFiles: folderFiles.length,
+          uploadedFiles: 0,
+        });
+
+        uploadFileCache.store(itemId, folderFiles, 'folder');
+        await processFolderUpload(folderFiles, itemId, folderName, uploadPath);
+      }
+    },
+    [addUploadItem, updateItemStatus, updateItemName, showDuplicateDialog, hideDuplicateDialog]
   );
 
   // Helper function to process folder upload

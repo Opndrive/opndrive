@@ -6,6 +6,7 @@ import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
+import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -63,127 +64,31 @@ export function SuggestedFiles({
     e.stopPropagation();
   };
 
-  const readDirectoryContents = async (
-    directoryEntry: FileSystemDirectoryEntry
-  ): Promise<File[]> => {
-    return new Promise((resolve, reject) => {
-      const files: File[] = [];
-      const reader = directoryEntry.createReader();
-
-      const readEntries = () => {
-        reader.readEntries(async (entries) => {
-          if (entries.length === 0) {
-            resolve(files);
-            return;
-          }
-
-          try {
-            for (const entry of entries) {
-              if (entry.isFile) {
-                const fileEntry = entry as FileSystemFileEntry;
-                const file = await new Promise<File>((resolveFile, rejectFile) => {
-                  fileEntry.file(resolveFile, rejectFile);
-                });
-
-                const relativePath = entry.fullPath.substring(1);
-                Object.defineProperty(file, 'webkitRelativePath', {
-                  value: relativePath,
-                  writable: false,
-                });
-
-                files.push(file);
-              } else if (entry.isDirectory) {
-                const subFiles = await readDirectoryContents(entry as FileSystemDirectoryEntry);
-                files.push(...subFiles);
-              }
-            }
-
-            readEntries();
-          } catch (error) {
-            reject(error);
-          }
-        }, reject);
-      };
-
-      readEntries();
-    });
-  };
-
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // Immediately clear drag state
     setIsDragActive(false);
     dragCounter.current = 0;
 
     if (onFilesDropped && e.dataTransfer) {
-      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-        const files: File[] = [];
-        const folders: File[] = [];
+      try {
+        let processedData;
 
-        for (let i = 0; i < e.dataTransfer.items.length; i++) {
-          const item = e.dataTransfer.items[i];
-
-          if (item.kind === 'file') {
-            const entry = item.webkitGetAsEntry?.();
-            if (entry) {
-              if (entry.isDirectory) {
-                const file = item.getAsFile();
-                if (file) {
-                  folders.push(file);
-                }
-              } else if (entry.isFile) {
-                const file = item.getAsFile();
-                if (file) {
-                  files.push(file);
-                }
-              }
-            } else {
-              const file = item.getAsFile();
-              if (file) {
-                files.push(file);
-              }
-            }
-          }
-        }
-
-        if (folders.length > 0) {
-          const allFolderFiles: File[] = [];
-
-          for (let i = 0; i < e.dataTransfer.items.length; i++) {
-            const item = e.dataTransfer.items[i];
-            if (item.kind === 'file') {
-              const entry = item.webkitGetAsEntry?.();
-              if (entry && entry.isDirectory) {
-                const folderFiles = await readDirectoryContents(entry as FileSystemDirectoryEntry);
-                allFolderFiles.push(...folderFiles);
-              }
-            }
-          }
-
-          onFilesDropped(files, allFolderFiles);
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+          processedData = await FolderStructureProcessor.processDataTransferItems(
+            e.dataTransfer.items
+          );
+        } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          processedData = FolderStructureProcessor.processFileList(e.dataTransfer.files);
         } else {
-          onFilesDropped(files, folders);
+          return;
         }
-      } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const allFiles = Array.from(e.dataTransfer.files);
-        const files: File[] = [];
-        const folders: File[] = [];
 
-        allFiles.forEach((file) => {
-          const fileWithPath = file as File & { webkitRelativePath?: string };
-
-          if (fileWithPath.webkitRelativePath && fileWithPath.webkitRelativePath.includes('/')) {
-            folders.push(file);
-          } else if (file.size === 0 && !file.type && !file.name.includes('.')) {
-            folders.push(file);
-          } else {
-            files.push(file);
-          }
-        });
-
-        onFilesDropped(files, folders);
+        const allFolderFiles = processedData.folderStructures.flatMap((folder) => folder.files);
+        onFilesDropped(processedData.individualFiles, allFolderFiles);
+      } catch (error) {
+        console.error('Error processing drag and drop:', error);
       }
     }
 

@@ -32,8 +32,9 @@ export interface ActiveUpload {
 class UploadQueueManager {
   private static instance: UploadQueueManager;
   private queue: QueuedUpload[] = [];
-  private activeUpload: ActiveUpload | null = null; // Only one active upload at a time
+  private activeUploads: Map<string, ActiveUpload> = new Map();
   private processingQueue = false;
+  private maxConcurrentUploads = 3;
 
   private constructor() {}
 
@@ -63,11 +64,7 @@ class UploadQueueManager {
    */
   removeFromQueue(itemId: string): void {
     this.queue = this.queue.filter((upload) => upload.itemId !== itemId);
-
-    // If this was the active upload, clear it
-    if (this.activeUpload?.itemId === itemId) {
-      this.activeUpload = null;
-    }
+    this.activeUploads.delete(itemId);
     this.processQueue();
   }
 
@@ -75,10 +72,8 @@ class UploadQueueManager {
    * Pause an active upload
    */
   pauseUpload(itemId: string): void {
-    if (this.activeUpload?.itemId === itemId) {
-      // The uploader itself handles the pause, just clear from active
-      this.activeUpload = null;
-      // Process next item in queue after pause
+    if (this.activeUploads.has(itemId)) {
+      this.activeUploads.delete(itemId);
       this.processQueue();
     }
   }
@@ -87,25 +82,18 @@ class UploadQueueManager {
    * Resume a paused upload
    */
   resumeUpload(itemId: string, file: File, fileName?: string): void {
-    // Check if this upload is already active or in queue
-    if (this.activeUpload?.itemId === itemId) {
+    if (this.activeUploads.has(itemId) || this.queue.some((upload) => upload.itemId === itemId)) {
       return;
     }
 
-    if (this.queue.some((upload) => upload.itemId === itemId)) {
-      return;
-    }
-
-    // Add to front of queue with high priority
     const resumedUpload: QueuedUpload = {
       itemId,
       file,
       fileName,
-      priority: Date.now() + 1000000, // High priority for resumed uploads
+      priority: Date.now() + 1000000,
       addedAt: Date.now(),
     };
 
-    // Insert at the beginning for immediate processing
     this.queue.unshift(resumedUpload);
     this.processQueue();
   }
@@ -116,9 +104,9 @@ class UploadQueueManager {
   getQueueStatus() {
     return {
       queueLength: this.queue.length,
-      hasActiveUpload: this.activeUpload !== null,
-      activeUploadId: this.activeUpload?.itemId || null,
-      canStartNew: this.activeUpload === null,
+      hasActiveUpload: this.activeUploads.size > 0,
+      activeUploadIds: Array.from(this.activeUploads.keys()),
+      canStartNew: this.activeUploads.size < this.maxConcurrentUploads,
     };
   }
 
@@ -126,7 +114,7 @@ class UploadQueueManager {
    * Check if an upload is currently active
    */
   isUploadActive(itemId: string): boolean {
-    return this.activeUpload?.itemId === itemId;
+    return this.activeUploads.has(itemId);
   }
 
   /**
@@ -159,17 +147,15 @@ class UploadQueueManager {
    * Process the upload queue
    */
   private async processQueue(): Promise<void> {
-    if (this.processingQueue || this.activeUpload !== null) {
+    if (this.processingQueue || this.activeUploads.size >= this.maxConcurrentUploads) {
       return;
     }
 
     this.processingQueue = true;
 
     try {
-      if (this.queue.length > 0) {
-        // Sort queue by priority (highest first)
+      while (this.queue.length > 0 && this.activeUploads.size < this.maxConcurrentUploads) {
         this.queue.sort((a, b) => b.priority - a.priority);
-
         const nextUpload = this.queue.shift();
         if (nextUpload) {
           await this.startUpload(nextUpload);
@@ -186,14 +172,14 @@ class UploadQueueManager {
   private async startUpload(queuedUpload: QueuedUpload): Promise<void> {
     const { itemId, file, fileName, targetPath } = queuedUpload;
 
-    // Mark as active
-    this.activeUpload = {
+    const activeUpload: ActiveUpload = {
       itemId,
       startedAt: Date.now(),
-      uploader: null, // Will be set by the upload handler
+      uploader: null,
     };
 
-    // Dispatch event to trigger actual upload
+    this.activeUploads.set(itemId, activeUpload);
+
     const event = new CustomEvent('startQueuedUpload', {
       detail: { itemId, file, fileName, targetPath },
     });
@@ -201,12 +187,39 @@ class UploadQueueManager {
   }
 
   /**
-   * Update active upload with uploader instance
+   * Set the uploader instance for active upload
    */
   setUploaderInstance(itemId: string, uploader: MultipartUploader | null): void {
-    if (this.activeUpload?.itemId === itemId) {
-      this.activeUpload.uploader = uploader;
+    const activeUpload = this.activeUploads.get(itemId);
+    if (activeUpload) {
+      activeUpload.uploader = uploader;
     }
+  }
+
+  /**
+   * Mark current upload as completed and process next
+   */
+  completeCurrentUpload(): void {
+    this.processQueue();
+  }
+
+  /**
+   * Debug method to get internal state
+   */
+  getDebugInfo() {
+    return {
+      queue: this.queue.map((upload) => ({
+        itemId: upload.itemId,
+        priority: upload.priority,
+        addedAt: new Date(upload.addedAt).toISOString(),
+      })),
+      activeUploads: Array.from(this.activeUploads.entries()).map(([itemId, upload]) => ({
+        itemId,
+        startedAt: new Date(upload.startedAt).toISOString(),
+        duration: Date.now() - upload.startedAt,
+      })),
+      processingQueue: this.processingQueue,
+    };
   }
 
   /**
@@ -214,7 +227,7 @@ class UploadQueueManager {
    */
   reset(): void {
     this.queue = [];
-    this.activeUpload = null;
+    this.activeUploads.clear();
     this.processingQueue = false;
   }
 
@@ -229,13 +242,11 @@ class UploadQueueManager {
         priority: upload.priority,
         addedAt: new Date(upload.addedAt).toISOString(),
       })),
-      activeUpload: this.activeUpload
-        ? {
-            itemId: this.activeUpload.itemId,
-            startedAt: new Date(this.activeUpload.startedAt).toISOString(),
-            duration: Date.now() - this.activeUpload.startedAt,
-          }
-        : null,
+      activeUploads: Array.from(this.activeUploads.entries()).map(([itemId, upload]) => ({
+        itemId,
+        startedAt: new Date(upload.startedAt).toISOString(),
+        duration: Date.now() - upload.startedAt,
+      })),
       stats: this.getQueueStatus(),
     };
   }
