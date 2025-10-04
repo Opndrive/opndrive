@@ -130,4 +130,6 @@ export abstract class BaseS3ApiProvider {
   abstract getPrefix(): string;
 
   abstract getRegion(): string;
+
+  abstract getS3Client(): S3Client;
 }

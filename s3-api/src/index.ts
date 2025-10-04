@@ -28,6 +28,7 @@ import {
   S3ServiceException,
   DeleteObjectsCommand,
   ObjectIdentifier,
+  S3Client,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core/index.js';
 import { MultipartUploader } from './utils/multipartUploader.js';
@@ -412,7 +413,12 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
   getRegion(): string {
     return this.credentials.region;
   }
+
+  getS3Client(): S3Client {
+    return this.s3;
+  }
 }
 
 export { MultipartUploader } from './utils/multipartUploader.js';
+export { UploadManager } from './utils/uploadManager.js';
 export * from './core/types.js';

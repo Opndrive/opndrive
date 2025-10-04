@@ -1,3 +1,4 @@
+import { MultipartUploader } from '@/utils/multipartUploader.js';
 import { _Object, CommonPrefix, S3Client } from '@aws-sdk/client-s3';
 
 export interface Credentials {
@@ -84,3 +85,39 @@ export interface SearchResult {
   matches: _Object[];
   nextToken?: string;
 }
+
+// Uploader
+
+export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+export interface UploadItem {
+  id: string;
+  file: File;
+  status: UploadStatus;
+  progress: number;
+  uploader: MultipartUploader;
+  error?: string;
+  config: {
+    key: string;
+    folderId?: string;
+  };
+}
+
+export type UploadManagerConfig = {
+  s3: S3Client;
+  bucket: string;
+  prefix: string; // Base prefix for all uploads
+  maxConcurrency?: number;
+  partSizeMB?: number; // Default part size for all uploads
+};
+
+// For the event emitter
+export type UploadEvent = 'statusChange' | 'progress';
+export type EventPayload = {
+  id: string;
+  status: UploadStatus;
+  progress: number;
+  error?: string;
+};
+
+export type EventListener = (payload: EventPayload) => void;
