@@ -180,7 +180,8 @@ export function useUploadHandler(
       if (cachedFile) {
         // Clean up single file S3 state
         const s3Key = generateS3Key(cachedFile.name, currentPath);
-        const fileName = s3Key.split('/')[s3Key.length - 1];
+        const splits = s3Key.split('/');
+        const fileName = splits[splits.length - 1];
         const storageKey = `upload:${fileName}:${s3Key}`;
         localStorage.removeItem(storageKey);
       }
@@ -189,7 +190,8 @@ export function useUploadHandler(
         // Clean up folder files S3 state
         cachedFiles.forEach((file) => {
           const s3Key = generateS3Key(file.name, currentPath);
-          const fileName = s3Key.split('/')[s3Key.length - 1];
+          const splits = s3Key.split('/');
+          const fileName = splits[splits.length - 1];
           const storageKey = `upload:${fileName}:${s3Key}`;
           localStorage.removeItem(storageKey);
         });
@@ -234,7 +236,8 @@ export function useUploadHandler(
       const selectedMethod = determineUploadMethod(file.size, uploadMethod);
       const uploadTargetPath = targetPath || currentPath;
       const s3Key = generateS3Key(customName || file.name, uploadTargetPath);
-      const fileName = s3Key.split('/')[s3Key.length - 1];
+      const splits = s3Key.split('/');
+      const fileName = splits[splits.length - 1];
 
       try {
         updateItemStatus(itemId, 'uploading');
@@ -797,7 +800,8 @@ export function useUploadHandler(
 
           const s3Key = generateS3Key(newRelativePath, folderUploadPath);
           const selectedMethod = determineUploadMethod(file.size, uploadMethod);
-          const fileName = s3Key.split('/')[s3Key.length - 1];
+          const splits = s3Key.split('/');
+          const fileName = splits[splits.length - 1];
 
           if (selectedMethod === 'signed-url') {
             // Use signed URL for small files
@@ -1086,7 +1090,8 @@ export function useUploadHandler(
 
           const s3Key = generateS3Key(newRelativePath, folderUploadPath);
           const selectedMethod = determineUploadMethod(file.size, uploadMethod);
-          const fileName = s3Key.split('/')[s3Key.length - 1];
+          const splits = s3Key.split('/');
+          const fileName = splits[splits.length - 1];
 
           if (selectedMethod === 'signed-url') {
             const presignedUrl = await apiS3.uploadWithPreSignedUrl({
