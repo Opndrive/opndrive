@@ -27,6 +27,7 @@ export default function ConnectPage() {
     secretAccessKey: '',
     bucketName: '',
     prefix: '',
+    endpoint: '',
     region: 'us-east-1',
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +63,18 @@ export default function ConnectPage() {
     setIsLoading(true);
 
     try {
-      await createSession(formCreds);
+      // Only include endpoint if it has a value
+      const credentials: Credentials = {
+        accessKeyId: formCreds.accessKeyId,
+        secretAccessKey: formCreds.secretAccessKey,
+        bucketName: formCreds.bucketName,
+        prefix: formCreds.prefix,
+        region: formCreds.region,
+        ...(formCreds.endpoint &&
+          formCreds.endpoint.trim() && { endpoint: formCreds.endpoint.trim() }),
+      };
+
+      await createSession(credentials);
       router.push('/dashboard');
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -190,6 +202,8 @@ export default function ConnectPage() {
                   onChange={(value) => setFormCreds({ ...formCreds, region: value })}
                   placeholder="Select AWS Region"
                   disabled={isLoading}
+                  allowCustomValue={true}
+                  customValuePlaceholder="Enter custom region..."
                 />
               </div>
 
@@ -207,6 +221,22 @@ export default function ConnectPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Optional folder path within your bucket to use as the root directory.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Folder className="h-4 w-4" />
+                  Endpoint
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+                  placeholder="Endpoint URL (optional)"
+                  value={formCreds.endpoint}
+                  onChange={(e) => setFormCreds({ ...formCreds, endpoint: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional custom endpoint URL for your S3 bucket.
                 </p>
               </div>
 
