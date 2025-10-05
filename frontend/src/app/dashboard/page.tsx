@@ -17,6 +17,7 @@ import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { EmptyStateDropzone } from '@/features/dashboard/components/views/home/empty-state-dropzone';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -196,9 +197,10 @@ export default function HomePage() {
               {/* Empty state when no folders or files */}
               {(!recentData.folders || recentData.folders.length === 0) &&
                 (!recentData.files || recentData.files.length === 0) && (
-                  <div className="text-center py-12 mt-8">
-                    <p className="text-muted-foreground">No files or folders available.</p>
-                  </div>
+                  <EmptyStateDropzone
+                    onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                    className="mt-8"
+                  />
                 )}
             </>
           ) : (
