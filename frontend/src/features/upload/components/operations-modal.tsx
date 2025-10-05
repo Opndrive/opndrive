@@ -25,11 +25,74 @@ interface OperationItem {
   extension?: FileExtension;
 }
 
+// Upload speed tracking for better time estimation
+interface SpeedTracker {
+  speeds: number[]; // bytes per second samples
+  timestamps: number[];
+  maxSamples: number;
+}
+
+const speedTracker: SpeedTracker = {
+  speeds: [],
+  timestamps: [],
+  maxSamples: 10, // Keep last 10 speed samples
+};
+
+const trackUploadSpeed = (bytesUploaded: number, timeElapsed: number) => {
+  if (timeElapsed > 0) {
+    const speed = bytesUploaded / timeElapsed; // bytes per second
+    const now = Date.now();
+
+    speedTracker.speeds.push(speed);
+    speedTracker.timestamps.push(now);
+
+    // Keep only recent samples (last 30 seconds)
+    const cutoffTime = now - 30000;
+    const validIndices = speedTracker.timestamps
+      .map((time, index) => (time > cutoffTime ? index : -1))
+      .filter((index) => index !== -1);
+
+    speedTracker.speeds = validIndices.map((i) => speedTracker.speeds[i]);
+    speedTracker.timestamps = validIndices.map((i) => speedTracker.timestamps[i]);
+
+    // Keep max samples limit
+    if (speedTracker.speeds.length > speedTracker.maxSamples) {
+      speedTracker.speeds = speedTracker.speeds.slice(-speedTracker.maxSamples);
+      speedTracker.timestamps = speedTracker.timestamps.slice(-speedTracker.maxSamples);
+    }
+  }
+};
+
+const getAverageUploadSpeed = (): number => {
+  if (speedTracker.speeds.length === 0) return 0;
+
+  const totalSpeed = speedTracker.speeds.reduce((sum, speed) => sum + speed, 0);
+  return totalSpeed / speedTracker.speeds.length;
+};
+
 export const OperationsModal: React.FC = () => {
   const { uploads, deletes, removeUpload, removeDeleteOperation } = useUploadStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+
+  // Simulate speed tracking for active uploads (demo purposes) - moved to top to fix hook order
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      // Check if there are any uploading operations
+      const hasActiveUploads = Object.values(uploads).some(
+        (upload) => upload.status === 'uploading'
+      );
+
+      if (hasActiveUploads) {
+        // Simulate varying upload speeds (0.5MB/s to 2MB/s)
+        const simulatedSpeed = (0.5 + Math.random() * 1.5) * 1024 * 1024;
+        trackUploadSpeed(simulatedSpeed, 1);
+      }
+    }, 3000); // Update every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [uploads]); // Depend on uploads object
 
   // Helper function to cancel operations (both upload and delete)
   const cancelOperation = (
@@ -45,6 +108,8 @@ export const OperationsModal: React.FC = () => {
           folder.fileIds.forEach((fileId) => {
             uploadManager.cancelUpload(fileId);
           });
+          folder.status = 'cancelled';
+          folder.progress = 100;
           // The folder status will be updated by the upload manager
         }
       } else {
@@ -65,6 +130,41 @@ export const OperationsModal: React.FC = () => {
 
     const fileProgresses = folder.fileIds.map((id) => uploads[id]?.progress || 0);
     return fileProgresses.reduce((sum, progress) => sum + progress, 0) / fileProgresses.length;
+  };
+
+  // Calculate folder status based on its files
+  const getFolderStatus = (folderId: string): string => {
+    const folder = uploads[folderId];
+    if (!folder || !folder.fileIds) return folder?.status || 'queued';
+
+    const fileStatuses = folder.fileIds.map((id) => uploads[id]?.status).filter(Boolean);
+
+    // If folder itself is cancelled, return cancelled
+    if (folder.status === 'cancelled') return 'cancelled';
+
+    // If any file is uploading, folder is uploading
+    if (fileStatuses.some((status) => status === 'uploading')) return 'uploading';
+
+    // If any file is paused, folder is paused
+    if (fileStatuses.some((status) => status === 'paused')) return 'paused';
+
+    // If all files are completed, folder is completed
+    if (fileStatuses.length > 0 && fileStatuses.every((status) => status === 'completed'))
+      return 'completed';
+
+    // If some files are completed but others are not, folder is still uploading
+    if (
+      fileStatuses.some((status) => status === 'completed') &&
+      fileStatuses.some((status) => ['uploading', 'queued', 'paused'].includes(status))
+    ) {
+      return 'uploading';
+    }
+
+    // If any file failed, folder has failed
+    if (fileStatuses.some((status) => status === 'failed')) return 'failed';
+
+    // Default to queued if all files are queued
+    return 'queued';
   };
 
   // Extract file extension from filename
@@ -88,7 +188,7 @@ export const OperationsModal: React.FC = () => {
         name: upload.name,
         type: upload.type,
         operationType: 'upload' as const,
-        status: upload.status,
+        status: upload.type === 'folder' ? getFolderStatus(upload.id) : upload.status,
         progress: upload.type === 'folder' ? getFolderProgress(upload.id) : upload.progress,
         fileIds: upload.fileIds,
         parentFolderId: upload.parentFolderId,
@@ -111,71 +211,239 @@ export const OperationsModal: React.FC = () => {
     })),
   ];
 
+  // Sort operations to prioritize active ones (uploading, deleting, queued) at the top
+  const sortedOperations = allOperations.sort((a, b) => {
+    const getStatusPriority = (status: string) => {
+      switch (status) {
+        case 'uploading':
+        case 'deleting':
+          return 1; // Highest priority (actively processing)
+        case 'queued':
+          return 2; // Second priority (waiting to be processed)
+        case 'completed':
+          return 3; // Third priority (finished successfully)
+        case 'cancelled':
+          return 4; // Fourth priority (user cancelled)
+        case 'failed':
+          return 5; // Lowest priority (failed operations)
+        default:
+          return 6; // Unknown status
+      }
+    };
+
+    const aPriority = getStatusPriority(a.status);
+    const bPriority = getStatusPriority(b.status);
+
+    // If priorities are different, sort by priority
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
+
+    // If priorities are the same, maintain original order (stable sort)
+    // This means newer operations with the same status will appear after older ones
+    return 0;
+  });
+
   // If no operations, don't show modal
-  if (allOperations.length === 0) {
+  if (sortedOperations.length === 0) {
     return null;
   }
 
   // Count different types of operations
-  const activeUploads = allOperations.filter(
+  const activeUploads = sortedOperations.filter(
     (op) => op.operationType === 'upload' && ['uploading', 'queued'].includes(op.status)
   ).length;
 
-  const completedOps = allOperations.filter((op) => op.status === 'completed').length;
+  const activeDeletes = sortedOperations.filter(
+    (op) => op.operationType === 'delete' && ['deleting', 'queued'].includes(op.status)
+  ).length;
 
-  const cancelledOps = allOperations.filter((op) => op.status === 'cancelled').length;
+  const completedOps = sortedOperations.filter((op) => op.status === 'completed').length;
+  const cancelledOps = sortedOperations.filter((op) => op.status === 'cancelled').length;
+
+  const completedUploads = sortedOperations.filter(
+    (op) => op.operationType === 'upload' && op.status === 'completed'
+  ).length;
+
+  const completedDeletes = sortedOperations.filter(
+    (op) => op.operationType === 'delete' && op.status === 'completed'
+  ).length;
 
   // Get title based on operations
   const getTitle = () => {
-    if (cancelledOps > 0 && activeUploads === 0) {
-      return `${cancelledOps} upload${cancelledOps > 1 ? 's' : ''} cancelled`;
+    const hasActiveOperations = activeUploads > 0 || activeDeletes > 0;
+
+    if (hasActiveOperations) {
+      // Show active operations
+      if (activeUploads > 0 && activeDeletes > 0) {
+        return `${activeUploads + activeDeletes} operations in progress`;
+      } else if (activeUploads > 0) {
+        return `Uploading ${activeUploads} item${activeUploads > 1 ? 's' : ''}`;
+      } else if (activeDeletes > 0) {
+        return `Deleting ${activeDeletes} item${activeDeletes > 1 ? 's' : ''}`;
+      }
     }
-    if (completedOps > 0 && activeUploads === 0) {
-      return `Upload complete`;
+
+    // Show completed/cancelled operations when no active ones
+    if (cancelledOps > 0 && completedOps === 0) {
+      return `${cancelledOps} operation${cancelledOps > 1 ? 's' : ''} cancelled`;
     }
-    if (activeUploads > 0) {
-      return `Uploading ${activeUploads} item${activeUploads > 1 ? 's' : ''}`;
+
+    if (completedOps > 0 && cancelledOps === 0) {
+      if (completedUploads > 0 && completedDeletes > 0) {
+        return `Operations complete`;
+      } else if (completedUploads > 0) {
+        return `Upload complete`;
+      } else if (completedDeletes > 0) {
+        return `Delete complete`;
+      }
     }
-    return `${allOperations.length} operation${allOperations.length > 1 ? 's' : ''}`;
+
+    if (completedOps > 0 && cancelledOps > 0) {
+      return `${completedOps} complete, ${cancelledOps} cancelled`;
+    }
+
+    return `${sortedOperations.length} operation${sortedOperations.length > 1 ? 's' : ''}`;
   };
 
-  // Get subtitle based on active uploads
+  // Enhanced time estimation with size-awareness and speed tracking
+  const getEnhancedTimeEstimate = (operations: OperationItem[]) => {
+    const uploadOps = operations.filter((op) => op.operationType === 'upload');
+    if (uploadOps.length === 0) return null;
+
+    // Calculate total bytes and completed bytes
+    let totalBytes = 0;
+    let completedBytes = 0;
+    let hasFileSizes = false;
+
+    uploadOps.forEach((op) => {
+      if (op.size && op.size > 0) {
+        hasFileSizes = true;
+        totalBytes += op.size;
+        completedBytes += (op.size * op.progress) / 100;
+      }
+    });
+
+    // If we don't have file sizes, fall back to simple progress-based estimation
+    if (!hasFileSizes) {
+      const totalProgress = uploadOps.reduce((sum, op) => sum + op.progress, 0);
+      const avgProgress = Math.round(totalProgress / uploadOps.length);
+      if (avgProgress > 0) {
+        const remainingProgress = (100 - avgProgress) * uploadOps.length;
+        const estimatedMinutes = Math.max(1, Math.round(remainingProgress / 15)); // Slightly faster than before
+        return estimatedMinutes;
+      }
+      return null;
+    }
+
+    const remainingBytes = totalBytes - completedBytes;
+    if (remainingBytes <= 0) return 0;
+
+    // Get current upload speed
+    const avgSpeed = getAverageUploadSpeed();
+
+    // If we don't have speed data yet, estimate based on typical speeds
+    if (avgSpeed === 0) {
+      // Assume reasonable upload speed based on file types and connection
+      const estimatedSpeed = 1024 * 1024; // 1 MB/s as baseline
+      const estimatedSeconds = remainingBytes / estimatedSpeed;
+
+      // Account for concurrency (max 2 uploads)
+      const maxConcurrency = 2;
+      const activeUploads = uploadOps.filter((op) => op.status === 'uploading').length;
+      const concurrencyFactor =
+        Math.min(maxConcurrency, uploadOps.length) / Math.max(1, activeUploads);
+
+      return Math.max(1, Math.ceil((estimatedSeconds * concurrencyFactor) / 60));
+    }
+
+    // Use actual speed data
+    const estimatedSeconds = remainingBytes / avgSpeed;
+
+    // Account for queue and concurrency
+    const maxConcurrency = 2;
+    const activeCount = uploadOps.filter((op) => op.status === 'uploading').length;
+    const queuedCount = uploadOps.filter((op) => op.status === 'queued').length;
+
+    // If we have queued items, add estimated queue time
+    let queueTime = 0;
+    if (queuedCount > 0 && activeCount < maxConcurrency) {
+      const availableSlots = maxConcurrency - activeCount;
+      const avgFileTime = estimatedSeconds / Math.max(1, activeCount);
+      queueTime = (queuedCount / availableSlots) * avgFileTime;
+    }
+
+    const totalEstimatedSeconds = estimatedSeconds + queueTime;
+    return Math.max(1, Math.ceil(totalEstimatedSeconds / 60));
+  };
+
+  // Get subtitle based on active operations
   const getSubtitle = () => {
-    if (activeUploads > 0) {
-      // Separate uploading and queued items
-      const uploadingItems = allOperations.filter((op) => op.status === 'uploading');
-      const queuedItems = allOperations.filter((op) => op.status === 'queued');
+    const totalActiveOps = activeUploads + activeDeletes;
 
-      // If we have items actually uploading, show progress
-      if (uploadingItems.length > 0) {
-        const totalProgress = uploadingItems.reduce((sum, op) => sum + op.progress, 0);
-        const avgProgress = Math.round(totalProgress / uploadingItems.length);
+    if (totalActiveOps > 0) {
+      // Separate actively processing and queued items
+      const processingItems = sortedOperations.filter((op) =>
+        ['uploading', 'deleting'].includes(op.status)
+      );
+      const queuedItems = sortedOperations.filter((op) => op.status === 'queued');
 
-        if (avgProgress > 0) {
-          // Show progress-based time estimate
-          const remainingProgress = (100 - avgProgress) * uploadingItems.length;
-          const estimatedMinutes = Math.max(1, Math.round(remainingProgress / 20));
+      // If we have items actually processing, show enhanced time estimate
+      if (processingItems.length > 0) {
+        const estimatedMinutes = getEnhancedTimeEstimate(sortedOperations);
+
+        if (estimatedMinutes !== null && estimatedMinutes > 0) {
+          // Show more granular time for short durations
+          if (estimatedMinutes < 2) {
+            const estimatedSeconds = estimatedMinutes * 60;
+            if (estimatedSeconds < 60) {
+              return `${Math.max(30, estimatedSeconds)} sec left...`;
+            }
+            return `1 min left...`;
+          }
+
+          // Show queue information if relevant
+          const queuedCount = queuedItems.length;
+          if (queuedCount > 0) {
+            return `${estimatedMinutes} min total, ${queuedCount} queued`;
+          }
+
           return `${estimatedMinutes} min left...`;
+        } else {
+          // Still calculating speed/gathering data
+          return 'Calculating time...';
         }
       }
 
-      // If all items are queued or just started uploading (0% progress)
+      // If all items are queued or just started processing (0% progress)
       if (
-        queuedItems.length === activeUploads ||
-        uploadingItems.every((item) => item.progress === 0)
+        queuedItems.length === totalActiveOps ||
+        processingItems.every((item) => item.progress === 0)
       ) {
-        return 'Starting uploads...';
+        if (activeUploads > 0 && activeDeletes > 0) {
+          return 'Starting operations...';
+        } else if (activeUploads > 0) {
+          return 'Starting uploads...';
+        } else if (activeDeletes > 0) {
+          return 'Starting deletes...';
+        }
       }
 
       // Fallback for mixed states
-      return 'Uploading...';
+      if (activeUploads > 0 && activeDeletes > 0) {
+        return 'Processing...';
+      } else if (activeUploads > 0) {
+        return 'Uploading...';
+      } else if (activeDeletes > 0) {
+        return 'Deleting...';
+      }
     }
     return null;
   };
 
   return (
     <>
-      {/* Desktop Modal - Google Drive Style */}
+      {/* Desktop Modal */}
       <div className="hidden md:block">
         <div
           className={`fixed right-4 bottom-4 z-50 transition-all duration-300 ease-in-out ${
@@ -188,7 +456,7 @@ export const OperationsModal: React.FC = () => {
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
           }}
         >
-          {/* Header - Google Drive Style */}
+          {/* Header  */}
           <div
             className="flex items-center justify-between px-4 py-3 border-b"
             style={{ borderColor: 'var(--border)' }}
@@ -220,23 +488,17 @@ export const OperationsModal: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  const hasActiveOperations = allOperations.some((op) =>
+                  const hasActiveOperations = sortedOperations.some((op) =>
                     ['uploading', 'queued', 'deleting'].includes(op.status)
                   );
                   if (hasActiveOperations) {
                     setShowCancelDialog(true);
                   } else {
-                    // No active operations, close the modal by removing all completed operations
-                    allOperations.forEach((op) => {
-                      if (
-                        op.operationType === 'upload' &&
-                        ['completed', 'cancelled', 'failed'].includes(op.status)
-                      ) {
+                    // Close the modal by removing all operations
+                    sortedOperations.forEach((op) => {
+                      if (op.operationType === 'upload') {
                         removeUpload(op.id);
-                      } else if (
-                        op.operationType === 'delete' &&
-                        ['completed', 'cancelled', 'failed'].includes(op.status)
-                      ) {
+                      } else if (op.operationType === 'delete') {
                         removeDeleteOperation(op.id);
                       }
                     });
@@ -272,7 +534,7 @@ export const OperationsModal: React.FC = () => {
                 style={{ color: 'var(--primary)' }}
                 onClick={() => {
                   // Cancel all active operations (uploads and deletes)
-                  allOperations
+                  sortedOperations
                     .filter((op) => ['uploading', 'queued', 'deleting'].includes(op.status))
                     .forEach((op) =>
                       cancelOperation(op.id, op.operationType, op.type === 'folder')
@@ -287,8 +549,10 @@ export const OperationsModal: React.FC = () => {
           {/* Operations List */}
           {isExpanded && (
             <div className="max-h-96 overflow-y-auto custom-scrollbar">
-              {allOperations.map((operation) => {
-                const canCancel = ['uploading', 'queued'].includes(operation.status);
+              {sortedOperations.map((operation) => {
+                const canCancel = ['uploading', 'queued', 'deleting', 'paused'].includes(
+                  operation.status
+                );
                 const isActive = ['uploading', 'queued', 'deleting'].includes(operation.status);
 
                 return (
@@ -326,14 +590,22 @@ export const OperationsModal: React.FC = () => {
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <p
-                        className="text-sm font-medium truncate"
+                        className="text-xs font-medium truncate"
                         title={operation.name}
                         style={{ color: 'var(--foreground)' }}
                       >
                         {operation.name}
                       </p>
                       {operation.status === 'completed' && (
-                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        <p
+                          className="text-xs"
+                          style={{
+                            color:
+                              operation.operationType === 'upload'
+                                ? 'var(--muted-foreground)'
+                                : '#ef4444',
+                          }}
+                        >
                           {operation.operationType === 'upload'
                             ? 'Upload complete'
                             : 'Delete complete'}
@@ -346,6 +618,21 @@ export const OperationsModal: React.FC = () => {
                             : 'Delete cancelled'}
                         </p>
                       )}
+                      {operation.status === 'uploading' && (
+                        <p className="text-xs" style={{ color: 'var(--primary)' }}>
+                          Uploading...
+                        </p>
+                      )}
+                      {operation.status === 'queued' && (
+                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          Queued
+                        </p>
+                      )}
+                      {operation.status === 'paused' && (
+                        <p className="text-xs" style={{ color: '#f59e0b' }}>
+                          Paused
+                        </p>
+                      )}
                       {operation.totalFiles && operation.completedFiles !== undefined && (
                         <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                           {operation.completedFiles} of {operation.totalFiles}
@@ -353,107 +640,230 @@ export const OperationsModal: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Progress Circle or Cancel Button */}
-                    <div className="flex-shrink-0 relative">
-                      {isActive ? (
-                        <div className="relative w-6 h-6">
-                          {/* Progress Circle Background */}
-                          <svg className="w-6 h-6 transform -rotate-90" viewBox="0 0 24 24">
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              fill="none"
-                              stroke="var(--progress-track)"
-                              strokeWidth="2"
-                            />
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              fill="none"
-                              stroke={
-                                operation.operationType === 'delete' ? '#ef4444' : 'var(--primary)'
-                              }
-                              strokeWidth="2"
-                              strokeDasharray={`${2 * Math.PI * 10}`}
-                              strokeDashoffset={`${2 * Math.PI * 10 * (1 - operation.progress / 100)}`}
-                              strokeLinecap="round"
-                              className="transition-all duration-300"
-                            />
-                          </svg>
+                    {/* Pause/Resume Buttons and Progress Circle */}
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                      {/* Pause/Resume Buttons for file uploads only */}
+                      {operation.operationType === 'upload' &&
+                        operation.type === 'file' &&
+                        (isActive || operation.status === 'paused') && (
+                          <div className="flex items-center">
+                            {/* Pause Button - only for actively uploading files, no background, like X button */}
+                            {operation.status === 'uploading' &&
+                              operation.operationType === 'upload' &&
+                              operation.type === 'file' &&
+                              hoveredItem === operation.id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    uploadManager.pauseUpload(operation.id);
+                                  }}
+                                  className="w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center"
+                                  style={{
+                                    color: 'var(--muted-foreground)',
+                                    background: 'var(--accent)',
+                                    border: '1px solid var(--border)',
+                                  }}
+                                  title="Pause"
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
 
-                          {/* Cancel Button on Hover */}
-                          {hoveredItem === operation.id && canCancel && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                cancelOperation(
-                                  operation.id,
-                                  operation.operationType,
-                                  operation.type === 'folder'
-                                );
-                              }}
-                              className="absolute inset-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200"
-                              style={{
-                                background: 'var(--card)',
-                                border: '1px solid var(--border)',
-                              }}
-                            >
-                              <HiOutlineXMark
-                                className="w-3 h-3"
-                                style={{ color: 'var(--muted-foreground)' }}
+                            {/* Resume Button - for paused files, near the progress circle */}
+                            {operation.status === 'paused' &&
+                              operation.operationType === 'upload' &&
+                              operation.type === 'file' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    console.log(
+                                      'Resume clicked for:',
+                                      operation.id,
+                                      operation.name
+                                    );
+                                    uploadManager.resumeUpload(operation.id);
+                                  }}
+                                  className="w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center"
+                                  style={{
+                                    color: 'var(--muted-foreground)',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'var(--accent)';
+                                    e.currentTarget.style.border = '1px solid var(--border)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.border = 'none';
+                                  }}
+                                  title="Resume Upload"
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                          </div>
+                        )}
+
+                      {/* Progress Circle */}
+                      <div className="relative">
+                        {isActive || operation.status === 'paused' ? (
+                          <div className="relative w-6 h-6">
+                            {/* Progress Circle Background */}
+                            <svg className="w-6 h-6 transform -rotate-90" viewBox="0 0 24 24">
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                fill="none"
+                                stroke="var(--progress-track)"
+                                strokeWidth="2"
                               />
-                            </button>
-                          )}
-                        </div>
-                      ) : operation.status === 'completed' ? (
-                        <div className="w-6 h-6 flex items-center justify-center">
-                          <div
-                            className="w-4 h-4 rounded-full flex items-center justify-center"
-                            style={{ background: '#22c55e' }}
-                          >
-                            <svg className="w-2.5 h-2.5" fill="white" viewBox="0 0 20 20">
-                              <path
-                                fillRule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clipRule="evenodd"
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                fill="none"
+                                stroke={
+                                  operation.operationType === 'delete'
+                                    ? '#ef4444'
+                                    : 'var(--primary)'
+                                }
+                                strokeWidth="2"
+                                strokeDasharray={`${2 * Math.PI * 10}`}
+                                strokeDashoffset={`${2 * Math.PI * 10 * (1 - operation.progress / 100)}`}
+                                strokeLinecap="round"
+                                className="transition-all duration-300"
                               />
                             </svg>
+
+                            {/* Cancel Button on Hover for Paused Files */}
+                            {operation.status === 'paused' &&
+                              operation.operationType === 'upload' &&
+                              operation.type === 'file' &&
+                              hoveredItem === operation.id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    cancelOperation(
+                                      operation.id,
+                                      operation.operationType,
+                                      operation.type === 'folder'
+                                    );
+                                  }}
+                                  className="absolute inset-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200"
+                                  style={{
+                                    background: 'var(--card)',
+                                    border: '1px solid var(--border)',
+                                  }}
+                                  title="Cancel"
+                                >
+                                  <HiOutlineXMark
+                                    className="w-3 h-3"
+                                    style={{ color: 'var(--muted-foreground)' }}
+                                  />
+                                </button>
+                              )}
+
+                            {/* Cancel Button on Hover for non-paused active operations */}
+                            {hoveredItem === operation.id &&
+                              canCancel &&
+                              operation.status !== 'paused' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    cancelOperation(
+                                      operation.id,
+                                      operation.operationType,
+                                      operation.type === 'folder'
+                                    );
+                                  }}
+                                  className="absolute inset-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200"
+                                  style={{
+                                    background: 'var(--card)',
+                                    border: '1px solid var(--border)',
+                                  }}
+                                >
+                                  <HiOutlineXMark
+                                    className="w-3 h-3"
+                                    style={{ color: 'var(--muted-foreground)' }}
+                                  />
+                                </button>
+                              )}
                           </div>
-                        </div>
-                      ) : operation.status === 'cancelled' ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 flex items-center justify-center">
-                            <div
-                              className="w-4 h-4 rounded-full flex items-center justify-center"
-                              style={{ background: '#ef4444' }}
-                            >
-                              <HiOutlineXMark className="w-2.5 h-2.5" style={{ color: 'white' }} />
+                        ) : operation.status === 'completed' ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              <div
+                                className="w-4 h-4 rounded-full flex items-center justify-center"
+                                style={{ background: '#22c55e' }}
+                              >
+                                <svg className="w-2.5 h-2.5" fill="white" viewBox="0 0 20 20">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </div>
                             </div>
+                            <button
+                              onClick={() => {
+                                // Remove completed item from list
+                                if (operation.operationType === 'upload') {
+                                  removeUpload(operation.id);
+                                } else if (operation.operationType === 'delete') {
+                                  removeDeleteOperation(operation.id);
+                                }
+                              }}
+                              className="p-1 rounded transition-colors duration-200"
+                              style={{ color: 'var(--muted-foreground)' }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <HiOutlineXMark className="w-3 h-3" />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => {
-                              // Remove cancelled item from list
-                              if (operation.operationType === 'upload') {
-                                removeUpload(operation.id);
-                              } else if (operation.operationType === 'delete') {
-                                removeDeleteOperation(operation.id);
-                              }
-                            }}
-                            className="p-1 rounded transition-colors duration-200"
-                            style={{ color: 'var(--muted-foreground)' }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'var(--accent)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'transparent';
-                            }}
-                          >
-                            <HiOutlineXMark className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : null}
+                        ) : operation.status === 'cancelled' ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                // Remove cancelled item from list
+                                if (operation.operationType === 'upload') {
+                                  removeUpload(operation.id);
+                                } else if (operation.operationType === 'delete') {
+                                  removeDeleteOperation(operation.id);
+                                }
+                              }}
+                              className="p-1 rounded transition-colors duration-200"
+                              style={{ color: 'var(--muted-foreground)' }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                              title="Remove from list"
+                            >
+                              <HiOutlineXMark className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
@@ -481,14 +891,20 @@ export const OperationsModal: React.FC = () => {
             </h3>
             <button
               onClick={() => {
-                const hasActiveOperations = allOperations.some((op) =>
+                const hasActiveOperations = sortedOperations.some((op) =>
                   ['uploading', 'queued', 'deleting'].includes(op.status)
                 );
                 if (hasActiveOperations) {
                   setShowCancelDialog(true);
                 } else {
-                  // No active operations, close the modal
-                  // Modal will close automatically since no operations exist
+                  // Close the modal by removing all operations
+                  sortedOperations.forEach((op) => {
+                    if (op.operationType === 'upload') {
+                      removeUpload(op.id);
+                    } else if (op.operationType === 'delete') {
+                      removeDeleteOperation(op.id);
+                    }
+                  });
                 }
               }}
               className="p-1 rounded"
@@ -500,7 +916,7 @@ export const OperationsModal: React.FC = () => {
 
           {/* Mobile Operations List */}
           <div className="max-h-60 overflow-y-auto custom-scrollbar">
-            {allOperations.slice(0, 3).map((operation) => {
+            {sortedOperations.slice(0, 3).map((operation) => {
               const isActive = ['uploading', 'queued', 'deleting'].includes(operation.status);
 
               return (
@@ -526,7 +942,15 @@ export const OperationsModal: React.FC = () => {
                       {operation.name}
                     </p>
                     {operation.status === 'completed' && (
-                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      <p
+                        className="text-xs"
+                        style={{
+                          color:
+                            operation.operationType === 'upload'
+                              ? 'var(--muted-foreground)'
+                              : '#ef4444',
+                        }}
+                      >
                         {operation.operationType === 'upload'
                           ? 'Upload complete'
                           : 'Delete complete'}
@@ -622,7 +1046,7 @@ export const OperationsModal: React.FC = () => {
               <button
                 onClick={() => {
                   // Cancel all active operations
-                  allOperations
+                  sortedOperations
                     .filter((op) => ['uploading', 'queued', 'deleting'].includes(op.status))
                     .forEach((op) =>
                       cancelOperation(op.id, op.operationType, op.type === 'folder')

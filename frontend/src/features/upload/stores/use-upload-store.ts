@@ -41,7 +41,6 @@ interface UploadStore {
   removeUpload: (id: string) => void;
   clearCompleted: () => void;
   clearAll: () => void;
-  scheduleUploadRemoval: (uploadId: string) => void;
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
     currentPrefix: string | null
@@ -110,33 +109,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     })),
 
   clearAll: () => set({ uploads: {} }),
-
-  // Helper function to schedule removal of completed/cancelled uploads
-  scheduleUploadRemoval: (uploadId: string) => {
-    const { uploads } = get();
-    const upload = uploads[uploadId];
-
-    if (upload && (upload.status === 'completed' || upload.status === 'cancelled')) {
-      setTimeout(() => {
-        const { uploads: currentUploads, removeUpload } = get();
-        const currentUpload = currentUploads[uploadId];
-
-        if (
-          currentUpload &&
-          (currentUpload.status === 'completed' || currentUpload.status === 'cancelled')
-        ) {
-          // If it's a folder, remove all its files first
-          if (currentUpload.type === 'folder' && currentUpload.fileIds) {
-            currentUpload.fileIds.forEach((fileId) => {
-              removeUpload(fileId);
-            });
-          }
-          // Remove the folder/file itself
-          removeUpload(uploadId);
-        }
-      }, 5000);
-    }
-  },
 
   handleFilesDroppedToDirectory: async (
     processedData: ProcessedDragData,

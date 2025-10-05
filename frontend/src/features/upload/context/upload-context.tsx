@@ -8,7 +8,7 @@ import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 const UploadContext = createContext<null>(null);
 
 export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { updateUpload, scheduleUploadRemoval } = useUploadStore();
+  const { updateUpload } = useUploadStore();
 
   useEffect(() => {
     const handleStatusChange = ({
@@ -21,11 +21,6 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       progress: number;
     }) => {
       updateUpload(id, { status, progress });
-
-      // Schedule removal for completed or cancelled uploads
-      if (status === 'completed' || status === 'cancelled') {
-        scheduleUploadRemoval(id);
-      }
     };
 
     const handleProgress = ({
@@ -38,11 +33,6 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       status: UploadStatus;
     }) => {
       updateUpload(id, { progress, status });
-
-      // Schedule removal for completed or cancelled uploads
-      if (status === 'completed' || status === 'cancelled') {
-        scheduleUploadRemoval(id);
-      }
     };
 
     uploadManager.on('statusChange', handleStatusChange);
@@ -53,7 +43,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       uploadManager.off('statusChange', handleStatusChange);
       uploadManager.off('progress', handleProgress);
     };
-  }, [updateUpload, scheduleUploadRemoval]);
+  }, [updateUpload]);
 
   return <UploadContext.Provider value={null}>{children}</UploadContext.Provider>;
 };
