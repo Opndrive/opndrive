@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useDeleteOperations } from '@/features/upload/hooks/use-delete-operations';
-import { useUploadStore } from '@/features/upload/hooks/use-upload-store';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 
@@ -15,58 +15,48 @@ export interface UseDeleteWithProgressReturn {
 
 export const useDeleteWithProgress = (): UseDeleteWithProgressReturn => {
   const { deleteFileWithProgress, deleteFolderWithProgress } = useDeleteOperations();
-  const { items, openCard } = useUploadStore();
+  const { deletes } = useUploadStore();
 
   const deleteFile = useCallback(
     async (file: FileItem) => {
       try {
-        // Open the upload card to show delete progress
-        openCard();
-
         await deleteFileWithProgress(file);
       } catch (error) {
         console.error('Delete file error:', error);
         throw error;
       }
     },
-    [deleteFileWithProgress, openCard]
+    [deleteFileWithProgress]
   );
 
   const deleteFolder = useCallback(
     async (folder: Folder) => {
       try {
-        // Open the upload card to show delete progress
-        openCard();
-
         await deleteFolderWithProgress(folder);
       } catch (error) {
         console.error('Delete folder error:', error);
         throw error;
       }
     },
-    [deleteFolderWithProgress, openCard]
+    [deleteFolderWithProgress]
   );
 
   const isDeleting = useCallback(
     (itemId: string) => {
-      return items.some(
-        (item) =>
-          item.operation === 'delete' &&
-          (item.status === 'uploading' || item.status === 'pending') &&
-          (item.id === itemId || item.name.includes(itemId))
+      return Object.values(deletes).some(
+        (deleteOp) =>
+          (deleteOp.status === 'deleting' || deleteOp.status === 'queued') &&
+          (deleteOp.id === itemId || deleteOp.name.includes(itemId))
       );
     },
-    [items]
+    [deletes]
   );
 
   const getActiveDeletes = useCallback(() => {
-    return items
-      .filter(
-        (item) =>
-          item.operation === 'delete' && (item.status === 'uploading' || item.status === 'pending')
-      )
-      .map((item) => item.id);
-  }, [items]);
+    return Object.values(deletes)
+      .filter((deleteOp) => deleteOp.status === 'deleting' || deleteOp.status === 'queued')
+      .map((deleteOp) => deleteOp.id);
+  }, [deletes]);
 
   return {
     deleteFile,

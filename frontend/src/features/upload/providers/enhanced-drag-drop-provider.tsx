@@ -9,12 +9,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import {
-  DragDropTarget,
-  DragDropSource,
-  DragDropContext,
-  DragDropCallbacks,
-} from '../types/drag-drop-types';
+import { DragDropTarget, DragDropSource, DragDropContext } from '../types/drag-drop-types';
 
 interface EnhancedDragDropContextType extends DragDropContext {
   registerDropTarget: (target: DragDropTarget) => void;
@@ -32,13 +27,11 @@ const EnhancedDragDropContext = createContext<EnhancedDragDropContextType | unde
 
 interface EnhancedDragDropProviderProps {
   children: ReactNode;
-  callbacks: DragDropCallbacks;
   currentPath: string;
 }
 
 export function EnhancedDragDropProvider({
   children,
-  callbacks: _callbacks,
   currentPath: _currentPath,
 }: EnhancedDragDropProviderProps) {
   const [dragContext, setDragContext] = useState<DragDropContext>({

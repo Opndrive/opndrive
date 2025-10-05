@@ -14,10 +14,9 @@ import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
-import { useNotification } from '@/context/notification-context';
-import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
-import { useSettings } from '@/features/settings/hooks/use-settings';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -34,6 +33,7 @@ export default function HomePage() {
     setApiS3,
   } = useDriveStore();
 
+  const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -81,77 +81,18 @@ export default function HomePage() {
 
   const handleFileAction = (_action: string, _file: FileItem) => {};
 
-  // Drag and drop handlers
-  const { showNotification } = useNotification();
-  const { settings, isLoaded } = useSettings();
-
-  const { handleFileUpload, handleFolderUpload } = useUploadHandler(
-    {
-      currentPath: currentPrefix || '',
-      uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
+  const handleFilesDroppedToDirectoryWrapper = useCallback(
+    async (processedData: ProcessedDragData) => {
+      await handleFilesDroppedToDirectory(processedData, currentPrefix);
     },
-    apiS3
+    [currentPrefix, handleFilesDroppedToDirectory]
   );
 
-  const handleFilesDroppedToDirectory = useCallback(
-    async (files: File[], folders: File[]) => {
-      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
-        showNotification('error', 'Upload system not ready');
-        return;
-      }
-
-      try {
-        if (files.length > 0) {
-          await handleFileUpload(files);
-          // Removed success notification for drag and drop uploads
-        }
-
-        if (folders.length > 0) {
-          await handleFolderUpload(folders);
-          // Removed success notification for drag and drop uploads
-        }
-      } catch (error) {
-        console.error('Drag and drop upload error:', error);
-        showNotification('error', 'Failed to start upload');
-      }
+  const handleFilesDroppedToFolderWrapper = useCallback(
+    async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
+      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix);
     },
-    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification]
-  );
-
-  const handleFilesDroppedToFolder = useCallback(
-    async (files: File[], folders: File[], targetFolder: DragDropTarget) => {
-      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
-        showNotification('error', 'Upload system not ready');
-        return;
-      }
-
-      try {
-        // Calculate the proper target path: currentPrefix + targetFolder.name + '/'
-        let targetPath;
-        if (currentPrefix && currentPrefix !== '/') {
-          // If we have a current prefix, append the folder name to it
-          targetPath = currentPrefix.endsWith('/')
-            ? `${currentPrefix}${targetFolder.name}/`
-            : `${currentPrefix}/${targetFolder.name}/`;
-        } else {
-          // If we're at root, just use the folder name
-          targetPath = `${targetFolder.name}/`;
-        }
-
-        if (files.length > 0) {
-          // Use the upload handler with the target path override
-          await handleFileUpload(files, targetPath);
-        }
-
-        if (folders.length > 0) {
-          await handleFolderUpload(folders, targetPath);
-        }
-      } catch (error) {
-        console.error('Folder drop upload error:', error);
-        showNotification('error', `Failed to upload to folder "${targetFolder.name}"`);
-      }
-    },
-    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification, currentPrefix]
+    [currentPrefix, handleFilesDroppedToFolder]
   );
 
   const handleLoadMoreFiles = async () => {
@@ -230,7 +171,7 @@ export default function HomePage() {
                   folders={recentData.folders}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolder}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                   onViewMore={handleLoadMoreFolders}
                   hasMore={recentData.hasMoreFolders}
                   isLoadingMore={isLoadingMoreFolders}
@@ -244,7 +185,7 @@ export default function HomePage() {
                   files={recentData.files}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
-                  onFilesDropped={handleFilesDroppedToDirectory}
+                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   onViewMore={handleLoadMoreFiles}
                   hasMore={recentData.hasMoreFiles}
                   isLoadingMore={isLoadingMoreFiles}

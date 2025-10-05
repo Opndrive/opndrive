@@ -7,6 +7,7 @@ import { FolderItem } from '../../ui';
 import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 
 interface SuggestedFoldersProps {
   folders: Folder[];
@@ -17,7 +18,7 @@ interface SuggestedFoldersProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
-  onFilesDroppedToFolder?: (files: File[], folders: File[], targetFolder: DragDropTarget) => void;
+  onFilesDroppedToFolder?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
 export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({

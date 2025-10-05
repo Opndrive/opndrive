@@ -3,11 +3,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
-import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
-import { useUploadStore } from '@/features/upload/hooks/use-upload-store';
-import { useSettings } from '@/features/settings/hooks/use-settings';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 import { useApiS3 } from '@/hooks/use-auth';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useDriveStore } from '@/context/data-context';
+import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 
 interface CreateMenuAction {
   id: string;
@@ -31,9 +32,9 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   onNewFolderClick,
   anchorElement,
   className = '',
-  currentPath = '',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const { handleFilesDroppedToDirectory } = useUploadStore();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -44,38 +45,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   if (!apiS3) {
     return 'Loading...';
   }
-
-  const { settings, isLoaded } = useSettings();
-  const { registerCancelFunction, registerPauseFunction, registerResumeFunction } =
-    useUploadStore();
-  const { handleFileUpload, handleFolderUpload, cancelUpload, pauseUpload, resumeUpload } =
-    useUploadHandler(
-      {
-        currentPath,
-        uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
-      },
-      apiS3
-    );
-
-  // Register upload functions when component mounts
-  useEffect(() => {
-    registerCancelFunction(cancelUpload);
-    registerPauseFunction(pauseUpload);
-    registerResumeFunction(resumeUpload);
-
-    return () => {
-      registerCancelFunction(() => Promise.resolve());
-      registerPauseFunction(() => {});
-      registerResumeFunction(() => Promise.resolve());
-    };
-  }, [
-    cancelUpload,
-    pauseUpload,
-    resumeUpload,
-    registerCancelFunction,
-    registerPauseFunction,
-    registerResumeFunction,
-  ]);
+  const { currentPrefix } = useDriveStore();
 
   //  file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {
@@ -83,26 +53,32 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       const result = await pickMultipleFiles();
 
       if (!result.cancelled && result.files && result.files.length > 0) {
-        handleFileUpload(result.files);
+        const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
+          result.files
+        );
+        handleFilesDroppedToDirectory(processedData, currentPrefix);
         onClose(); // Close menu after successful file selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFileUpload, onClose]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix]);
 
   const triggerFolderUpload = useCallback(async () => {
     try {
       const result = await pickFolder();
 
       if (!result.cancelled && result.files && result.files.length > 0) {
-        handleFolderUpload(result.files);
+        const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
+          result.files
+        );
+        handleFilesDroppedToDirectory(processedData, currentPrefix);
         onClose(); // Close menu after successful folder selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFolderUpload, onClose]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix]);
 
   // Handle new folder action - simple approach
   const handleNewFolderClick = useCallback(() => {

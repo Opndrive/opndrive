@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { getSidebarItems } from '@/lib/dashboard-sidebar-config';
 import LoadingBar from '@/shared/components/layout/loading-bar';
@@ -13,113 +13,20 @@ import { RenameProvider } from '@/context/rename-context';
 import { ShareProvider } from '@/context/share-context';
 import { EnhancedDragDropProvider } from '@/features/upload/providers/enhanced-drag-drop-provider';
 import { DragDetectionWrapper } from '@/features/upload/components/drag-detection-wrapper';
-import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
 import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
-import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
-import { useAuth, useApiS3 } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/use-auth';
 import { useDriveStore } from '@/context/data-context';
-import { useSettings } from '@/features/settings/hooks/use-settings';
-import { useNotification } from '@/context/notification-context';
-import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
+import { UploadCard } from '@/features/upload/components/upload-card';
 
 const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
   const { currentPrefix } = useDriveStore();
-  const apiS3 = useApiS3();
-  const { settings, isLoaded } = useSettings();
-  const { showNotification } = useNotification();
-
-  // Initialize upload handlers using hooks properly (only if apiS3 is available)
-  const uploadHandlerResult = apiS3
-    ? useUploadHandler(
-        {
-          currentPath: currentPrefix || '',
-          uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
-        },
-        apiS3
-      )
-    : { handleFileUpload: null, handleFolderUpload: null };
-
-  const { handleFileUpload, handleFolderUpload } = uploadHandlerResult;
-
-  // Handle files dropped to the current directory
-  const handleFilesDroppedToDirectory = useCallback(
-    async (files: File[], folders: File[]) => {
-      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
-        showNotification('error', 'Upload system not ready');
-        return;
-      }
-
-      try {
-        // Handle regular files
-        if (files.length > 0) {
-          await handleFileUpload(files);
-        }
-
-        // Handle folder files
-        if (folders.length > 0) {
-          await handleFolderUpload(folders);
-        }
-      } catch (error) {
-        console.error('Drag and drop upload error:', error);
-        showNotification('error', 'Failed to start upload');
-      }
-    },
-    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification]
-  );
-
-  // Handle files dropped to a specific folder
-  const handleFilesDroppedToFolder = useCallback(
-    async (files: File[], folders: File[], targetFolder: DragDropTarget) => {
-      if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
-        showNotification('error', 'Upload system not ready');
-        return;
-      }
-
-      try {
-        // Calculate the proper target path: currentPrefix + targetFolder.name + '/'
-        let targetPath;
-        if (currentPrefix && currentPrefix !== '/') {
-          // If we have a current prefix, append the folder name to it
-          targetPath = currentPrefix.endsWith('/')
-            ? `${currentPrefix}${targetFolder.name}/`
-            : `${currentPrefix}/${targetFolder.name}/`;
-        } else {
-          // If we're at root, just use the folder name
-          targetPath = `${targetFolder.name}/`;
-        }
-
-        if (files.length > 0) {
-          // Use the upload handler with the target path override
-          await handleFileUpload(files, targetPath);
-        }
-
-        if (folders.length > 0) {
-          await handleFolderUpload(folders, targetPath);
-        }
-      } catch (error) {
-        console.error('Folder drop upload error:', error);
-        showNotification('error', `Failed to upload to folder "${targetFolder.name}"`);
-      }
-    },
-    [apiS3, isLoaded, handleFileUpload, handleFolderUpload, showNotification, currentPrefix]
-  );
-
-  // Don't render drag zone if upload system isn't ready
-  if (!apiS3 || !isLoaded || !handleFileUpload || !handleFolderUpload) {
-    return <>{children}</>;
-  }
-
-  const callbacks = {
-    onFilesDroppedToDirectory: handleFilesDroppedToDirectory,
-    onFilesDroppedToFolder: handleFilesDroppedToFolder,
-  };
 
   return (
-    <EnhancedDragDropProvider callbacks={callbacks} currentPath={currentPrefix || 'My Drive'}>
+    <EnhancedDragDropProvider currentPath={currentPrefix || 'My Drive'}>
       <DragDetectionWrapper>{children}</DragDetectionWrapper>
     </EnhancedDragDropProvider>
   );

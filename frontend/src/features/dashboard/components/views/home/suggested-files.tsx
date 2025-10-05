@@ -7,6 +7,7 @@ import type { FileItem } from '@/features/dashboard/types/file';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -17,7 +18,7 @@ interface SuggestedFilesProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
-  onFilesDropped?: (files: File[], folders: File[]) => void;
+  onFilesDropped?: (processedData: ProcessedDragData) => void;
 }
 
 export function SuggestedFiles({
@@ -73,20 +74,12 @@ export function SuggestedFiles({
 
     if (onFilesDropped && e.dataTransfer) {
       try {
-        let processedData;
+        const dataTransfer = e.dataTransfer;
+        const processedData = await FolderStructureProcessor.processDataTransferItems(
+          dataTransfer.items
+        );
 
-        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-          processedData = await FolderStructureProcessor.processDataTransferItems(
-            e.dataTransfer.items
-          );
-        } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          processedData = FolderStructureProcessor.processFileList(e.dataTransfer.files);
-        } else {
-          return;
-        }
-
-        const allFolderFiles = processedData.folderStructures.flatMap((folder) => folder.files);
-        onFilesDropped(processedData.individualFiles, allFolderFiles);
+        onFilesDropped(processedData);
       } catch (error) {
         console.error('Error processing drag and drop:', error);
       }

@@ -9,6 +9,7 @@
 import React, { ReactNode } from 'react';
 import { useFolderDropTarget } from '../hooks/use-folder-drop-target';
 import { DragDropTarget } from '../types/drag-drop-types';
+import { ProcessedDragData } from '../types/folder-upload-types';
 
 interface FolderDropTargetProps {
   children: ReactNode;
@@ -17,7 +18,7 @@ interface FolderDropTargetProps {
     name: string;
     path: string;
   };
-  onFilesDropped: (files: File[], folders: File[], targetFolder: DragDropTarget) => void;
+  onFilesDropped: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
   className?: string;
 }
 

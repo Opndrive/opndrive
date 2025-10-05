@@ -10,6 +10,7 @@ import { useCallback, useEffect } from 'react';
 import { useEnhancedDragDrop } from '../providers/enhanced-drag-drop-provider';
 import { DragDropTarget } from '../types/drag-drop-types';
 import { FolderStructureProcessor } from '../utils/folder-structure-processor';
+import { ProcessedDragData } from '../types/folder-upload-types';
 
 interface UseFolderDropTargetProps {
   folder: {
@@ -17,7 +18,7 @@ interface UseFolderDropTargetProps {
     name: string;
     path: string;
   };
-  onFilesDropped: (files: File[], folders: File[], targetFolder: DragDropTarget) => void;
+  onFilesDropped: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
 export function useFolderDropTarget({ folder, onFilesDropped }: UseFolderDropTargetProps) {
@@ -103,21 +104,16 @@ export function useFolderDropTarget({ folder, onFilesDropped }: UseFolderDropTar
         };
 
         try {
-          let processedData;
+          const processedData = await FolderStructureProcessor.processDataTransferItems(
+            e.dataTransfer.items
+          );
 
-          if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-            processedData = await FolderStructureProcessor.processDataTransferItems(
-              e.dataTransfer.items
-            );
-          } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            processedData = FolderStructureProcessor.processFileList(e.dataTransfer.files);
-          } else {
+          if (!processedData) {
             setHoverTarget(null);
             return;
           }
 
-          const allFolderFiles = processedData.folderStructures.flatMap((folder) => folder.files);
-          onFilesDropped(processedData.individualFiles, allFolderFiles, target);
+          onFilesDropped(processedData, target);
         } catch (error) {
           console.error('Error processing folder drop:', error);
         }
