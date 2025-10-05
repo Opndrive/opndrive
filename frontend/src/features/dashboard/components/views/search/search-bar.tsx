@@ -16,6 +16,7 @@ import {
 } from '@/shared/components/ui/credit-warning-dialog';
 import type { FileExtension } from '@/features/dashboard/types/file';
 import type { _Object } from '@aws-sdk/client-s3';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface SearchSuggestion {
   id: string;
@@ -463,12 +464,14 @@ export function SearchBar({
             `}
           />
           {query && (
-            <button
-              onClick={clearSearch}
-              className="absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <AriaLabel label="Clear search query" position="top">
+              <button
+                onClick={clearSearch}
+                className="absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </AriaLabel>
           )}
         </div>
       </div>

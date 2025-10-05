@@ -3,6 +3,7 @@
 import { ViewLayout } from '@/features/dashboard/types/file';
 import { List, Grid3X3 } from 'lucide-react';
 import { useLayoutPreference } from '@/hooks/use-layout-preference';
+import { AriaLabel } from '@/shared/components';
 
 interface LayoutToggleProps {
   onLayoutChange?: (layout: ViewLayout) => void; // Made optional since we'll handle it internally
@@ -33,28 +34,30 @@ export function LayoutToggle({ onLayoutChange, className = '' }: LayoutTogglePro
 
   return (
     <div className={`flex rounded-lg bg-secondary p-1 ${className}`}>
-      <button
-        onClick={() => handleLayoutChange('list')}
-        className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
-          layout === 'list'
-            ? 'bg-primary text-primary-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-        aria-label="List view"
-      >
-        <List className="h-4 w-4" />
-      </button>
-      <button
-        onClick={() => handleLayoutChange('grid')}
-        className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
-          layout === 'grid'
-            ? 'bg-primary text-primary-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-        aria-label="Grid view"
-      >
-        <Grid3X3 className="h-4 w-4" />
-      </button>
+      <AriaLabel label="Switch to list view" position="bottom">
+        <button
+          onClick={() => handleLayoutChange('list')}
+          className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
+            layout === 'list'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <List className="h-4 w-4" />
+        </button>
+      </AriaLabel>
+      <AriaLabel label="Switch to grid view" position="bottom">
+        <button
+          onClick={() => handleLayoutChange('grid')}
+          className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
+            layout === 'grid'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Grid3X3 className="h-4 w-4" />
+        </button>
+      </AriaLabel>
     </div>
   );
 }

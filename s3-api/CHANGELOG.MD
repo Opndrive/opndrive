@@ -1,7 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [1.8.0] - 2025-09-30
+## [2.2.1] - 2025-10-5
+### Added
+- Fixed basePrefix logic in addFolderUpload (UploadManager)
+
+## [2.2.0] - 2025-10-4
+### Added
+- UploadManager for files and folders implemented using queue
+
+## [2.1.0] - 2025-10-3
+### Added
+- List all keys from a prefix and delete batch function
+
+## [2.0.0] - 2025-09-30
 ### Added
 - Add endpoint parameter to support other s3 compatible storage services like minio, cloudflare r2, etc.,
 

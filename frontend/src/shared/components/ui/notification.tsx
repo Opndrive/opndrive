@@ -4,6 +4,7 @@ import type React from 'react';
 import { useState, useEffect } from 'react';
 import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 export interface NotificationProps {
   id: string;
@@ -93,12 +94,14 @@ export const Notification: React.FC<NotificationProps> = ({
       <div className="flex items-center p-4">
         <div className="flex-shrink-0 mr-3">{icons[type]}</div>
         <div className="flex-1 mr-2 font-medium">{message}</div>
-        <button
-          onClick={handleClose}
-          className="flex-shrink-0 text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <AriaLabel label="Close notification" position="top">
+          <button
+            onClick={handleClose}
+            className="flex-shrink-0 text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </AriaLabel>
       </div>
     </div>
   );

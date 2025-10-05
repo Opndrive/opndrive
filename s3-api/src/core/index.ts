@@ -2,7 +2,12 @@
  * Core API interface definition for s3 bucket access for opndrive
  */
 
-import { HeadObjectCommandOutput, S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
+import {
+  HeadObjectCommandOutput,
+  ObjectIdentifier,
+  S3Client,
+  S3ClientConfig,
+} from '@aws-sdk/client-s3';
 import {
   Credentials,
   DirectoryStructure,
@@ -116,9 +121,15 @@ export abstract class BaseS3ApiProvider {
 
   abstract search(params: SearchParams): Promise<SearchResult>;
 
+  abstract listFromPrefix(prefix: string): Promise<string[]>;
+
+  abstract deleteBatch(batch: ObjectIdentifier[]): Promise<void>;
+
   abstract getBucketName(): string;
 
   abstract getPrefix(): string;
 
   abstract getRegion(): string;
+
+  abstract getS3Client(): S3Client;
 }

@@ -9,10 +9,15 @@ import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
 import { useApiS3 } from '@/hooks/use-auth';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
+import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { EmptyStateDropzone } from '@/features/dashboard/components/views/home/empty-state-dropzone';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -29,6 +34,7 @@ export default function HomePage() {
     setApiS3,
   } = useDriveStore();
 
+  const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -75,6 +81,20 @@ export default function HomePage() {
   const handleFileClick = (_file: FileItem) => {};
 
   const handleFileAction = (_action: string, _file: FileItem) => {};
+
+  const handleFilesDroppedToDirectoryWrapper = useCallback(
+    async (processedData: ProcessedDragData) => {
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+    },
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
+  );
+
+  const handleFilesDroppedToFolderWrapper = useCallback(
+    async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
+      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix, apiS3);
+    },
+    [currentPrefix, handleFilesDroppedToFolder, apiS3]
+  );
 
   const handleLoadMoreFiles = async () => {
     setIsLoadingMoreFiles(true);
@@ -124,18 +144,22 @@ export default function HomePage() {
           <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
 
           {/* Sync Button */}
-          <button
-            onClick={handleSync}
-            disabled={isSyncing || !currentPrefix}
-            className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
-            title="Refresh data"
+          <AriaLabel
+            label={isSyncing ? 'Refreshing data...' : 'Refresh data to sync latest changes'}
+            position="bottom"
           >
-            <HiOutlineRefresh
-              className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
-                isSyncing ? 'animate-spin' : ''
-              }`}
-            />
-          </button>
+            <button
+              onClick={handleSync}
+              disabled={isSyncing || !currentPrefix}
+              className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+            >
+              <HiOutlineRefresh
+                className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                  isSyncing ? 'animate-spin' : ''
+                }`}
+              />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="relative z-0">
@@ -148,6 +172,7 @@ export default function HomePage() {
                   folders={recentData.folders}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                   onViewMore={handleLoadMoreFolders}
                   hasMore={recentData.hasMoreFolders}
                   isLoadingMore={isLoadingMoreFolders}
@@ -161,6 +186,7 @@ export default function HomePage() {
                   files={recentData.files}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
+                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   onViewMore={handleLoadMoreFiles}
                   hasMore={recentData.hasMoreFiles}
                   isLoadingMore={isLoadingMoreFiles}
@@ -171,9 +197,10 @@ export default function HomePage() {
               {/* Empty state when no folders or files */}
               {(!recentData.folders || recentData.folders.length === 0) &&
                 (!recentData.files || recentData.files.length === 0) && (
-                  <div className="text-center py-12 mt-8">
-                    <p className="text-muted-foreground">No files or folders available.</p>
-                  </div>
+                  <EmptyStateDropzone
+                    onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                    className="mt-8"
+                  />
                 )}
             </>
           ) : (

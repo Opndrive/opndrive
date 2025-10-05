@@ -7,6 +7,7 @@ import { FileItem } from '@/features/dashboard/types/file';
 import { FaFolder } from 'react-icons/fa';
 import { createPortal } from 'react-dom';
 import { useEffect } from 'react';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 const isFileItem = (item: FileItem | null): item is FileItem => {
   if (!item) return false;
@@ -108,13 +109,14 @@ export const MobileDetailsDialog = () => {
           <h2 id="details-title" className="text-lg font-semibold text-foreground">
             {isFile ? file?.name : 'Unknown'}
           </h2>
-          <button
-            onClick={close}
-            className="p-2 rounded-full cursor-pointer hover:bg-muted transition-colors"
-            aria-label="Close details"
-          >
-            <X className="h-5 w-5 text-foreground" />
-          </button>
+          <AriaLabel label="Close details panel" position="top">
+            <button
+              onClick={close}
+              className="p-2 rounded-full cursor-pointer hover:bg-muted transition-colors"
+            >
+              <X className="h-5 w-5 text-foreground" />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] custom-scrollbar">

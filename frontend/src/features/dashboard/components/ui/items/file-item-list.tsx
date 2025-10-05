@@ -7,6 +7,7 @@ import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface FileItemListProps {
   file: FileItem;
@@ -87,15 +88,17 @@ export function FileItemList({ file, allFiles = [], _onAction }: FileItemListPro
 
         {/* Menu button - always visible */}
         <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1 flex justify-end">
-          <button
-            className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
-            onClick={handleMenuClick}
-          >
-            <HiOutlineDotsVertical
-              size={16}
-              className="sm:w-[18px] sm:h-[18px] text-muted-foreground"
-            />
-          </button>
+          <AriaLabel label={`More actions`} position="top">
+            <button
+              className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
+              onClick={handleMenuClick}
+            >
+              <HiOutlineDotsVertical
+                size={16}
+                className="sm:w-[18px] sm:h-[18px] text-muted-foreground"
+              />
+            </button>
+          </AriaLabel>
         </div>
       </div>
 

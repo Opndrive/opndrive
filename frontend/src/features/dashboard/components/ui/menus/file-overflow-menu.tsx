@@ -5,13 +5,14 @@ import { createPortal } from 'react-dom';
 import type { FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { Download, Edit3, Info, Trash2, Eye, Share } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
-import { useDelete } from '@/features/dashboard/hooks/use-delete';
+import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
 import { useDriveStore } from '@/context/data-context';
 import { useShare } from '@/context/share-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -40,7 +41,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const { openPreview } = useFilePreview();
   const { currentPrefix } = useDriveStore();
   const { openShareDialog } = useShare();
-  const { deleteFile, isDeleting } = useDelete();
+  const { deleteFile, isDeleting } = useDeleteWithProgress();
 
   const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
     {
@@ -216,28 +217,28 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   };
 
   const menuContent = (
-    <div
-      ref={menuRef}
-      className={`
-        fixed z-50 min-w-[200px] p-2
-        bg-secondary border border-border rounded-lg shadow-xl
-        transition-all duration-200 ease-out
-        ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        ${className}
-      `}
-      style={{
-        top: position.top,
-        left: position.left,
-        transformOrigin: getTransformOrigin(),
-      }}
-      role="menu"
-      aria-label={`Actions for ${file.name}`}
-    >
-      {actions.map((action, index) => (
-        <React.Fragment key={action.id}>
-          {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
-          <button
-            className={`
+    <AriaLabel label={`Actions for ${file.name}`} position="top">
+      <div
+        ref={menuRef}
+        className={`
+          fixed z-50 min-w-[200px] p-2
+          bg-secondary border border-border rounded-lg shadow-xl
+          transition-all duration-200 ease-out
+          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
+          ${className}
+        `}
+        style={{
+          top: position.top,
+          left: position.left,
+          transformOrigin: getTransformOrigin(),
+        }}
+        role="menu"
+      >
+        {actions.map((action, index) => (
+          <React.Fragment key={action.id}>
+            {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
+            <button
+              className={`
               w-full flex items-center gap-3 px-3 cursor-pointer py-2.5 text-sm rounded-md
               text-left transition-colors duration-150
               ${
@@ -247,20 +248,21 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
-            onClick={() => {
-              if (!action.disabled) {
-                action.onClick?.(file);
-              }
-            }}
-            disabled={action.disabled}
-            role="menuitem"
-          >
-            <action.icon className="flex-shrink-0 h-4 w-4" />
-            <span className="flex-1">{action.label}</span>
-          </button>
-        </React.Fragment>
-      ))}
-    </div>
+              onClick={() => {
+                if (!action.disabled) {
+                  action.onClick?.(file);
+                }
+              }}
+              disabled={action.disabled}
+              role="menuitem"
+            >
+              <action.icon className="flex-shrink-0 h-4 w-4" />
+              <span className="flex-1">{action.label}</span>
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+    </AriaLabel>
   );
 
   return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;

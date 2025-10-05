@@ -38,7 +38,6 @@ export const useDelete = (): UseDeleteReturn => {
       try {
         await deleteService.deleteFile(file, {
           onComplete: () => {
-            success(`"${file.name}" deleted successfully`);
             // Refresh data to reflect the deletion
             refreshCurrentData().catch(() => {
               // Don't fail the delete if refresh fails
@@ -71,7 +70,6 @@ export const useDelete = (): UseDeleteReturn => {
       try {
         await deleteService.deleteFolder(folder, {
           onComplete: () => {
-            success(`"${folder.name}" deleted successfully`);
             // Refresh data to reflect the deletion
             refreshCurrentData().catch(() => {
               // Don't fail the delete if refresh fails

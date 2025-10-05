@@ -18,8 +18,8 @@ importers:
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@opndrive/s3-api':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^2.2.1
+        version: 2.2.1
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.6
         version: 1.1.14(@types/react-dom@19.1.7(@types/react@19.1.9))(@types/react@19.1.9)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -71,6 +71,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.49.4
         version: 2.53.1
+      '@types/css-modules':
+        specifier: ^1.0.5
+        version: 1.0.5
       '@use-gesture/react':
         specifier: ^10.3.1
         version: 10.3.1(react@19.1.1)
@@ -618,8 +621,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opndrive/s3-api@2.0.0':
-    resolution: {integrity: sha512-SsY/ksymILjoawe0bY5K975PXpTYnBF49/yOrx2FloyGhri91foBz+JiSI8Tw83aND/0DffZB79pE1O1+Prlbg==}
+  '@opndrive/s3-api@2.2.1':
+    resolution: {integrity: sha512-61P40OMtuWkcMu8asQVkelz6zJ9uJlVmlFJ2F/2PsBx8RQ+1ZGvpewNo4jhrfA0xtJz5199envVAwYqRt86BVw==}
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -1421,6 +1424,9 @@ packages:
   '@tailwindcss/postcss@4.1.11':
     resolution: {integrity: sha512-q/EAIIpF6WpLhKEuQSEVMZNMIY8KhWoAemZ9eylNAih9jxMGAYPPWBn3I9QL/2jZ+e7OEz/tZkX5HwbBR4HohA==}
 
+  '@types/css-modules@1.0.5':
+    resolution: {integrity: sha512-oeKafs/df9lwOvtfiXVliZsocFVOexK9PZtLQWuPeuVCFR7jwiqlg60lu80JTe5NFNtH3tnV6Fs/ySR8BUPHAw==}
+
   '@types/d3-array@3.2.1':
     resolution: {integrity: sha512-Y2Jn2idRrLzUfAKV2LyRImR+y4oa2AntrgID95SHJxuMUrkNXmanDSed71sRNZysveJVt1hLLemQZIady0FpEg==}
 
@@ -2180,6 +2186,10 @@ packages:
 
   uuid@11.1.0:
     resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
+    hasBin: true
+
+  uuid@13.0.0:
+    resolution: {integrity: sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w==}
     hasBin: true
 
   uuid@9.0.1:
@@ -2958,11 +2968,12 @@ snapshots:
   '@next/swc-win32-x64-msvc@15.2.4':
     optional: true
 
-  '@opndrive/s3-api@2.0.0':
+  '@opndrive/s3-api@2.2.1':
     dependencies:
       '@aws-sdk/client-s3': 3.862.0
       '@aws-sdk/s3-request-presigner': 3.862.0
       dotenv: 17.2.3
+      uuid: 13.0.0
     transitivePeerDependencies:
       - aws-crt
 
@@ -3896,6 +3907,8 @@ snapshots:
       postcss: 8.5.6
       tailwindcss: 4.1.11
 
+  '@types/css-modules@1.0.5': {}
+
   '@types/d3-array@3.2.1': {}
 
   '@types/d3-color@3.1.3': {}
@@ -4590,6 +4603,8 @@ snapshots:
       react: 19.1.1
 
   uuid@11.1.0: {}
+
+  uuid@13.0.0: {}
 
   uuid@9.0.1: {}
 

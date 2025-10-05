@@ -18,6 +18,10 @@ import {
   getFolderNameFromPrefix,
 } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
+import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 function BrowsePageContent() {
   const { setSearchHidden } = useScroll();
@@ -45,6 +49,8 @@ function BrowsePageContent() {
   } = useDriveStore();
 
   const apiS3 = useApiS3();
+
+  const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
 
   if (!apiS3) {
     return 'Loading...';
@@ -119,6 +125,20 @@ function BrowsePageContent() {
   const handleFileClick = (_file: FileItem) => {};
 
   const handleFileAction = (_action: string, _file: FileItem) => {};
+
+  const handleFilesDroppedToDirectoryWrapper = useCallback(
+    async (processedData: ProcessedDragData) => {
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+    },
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
+  );
+
+  const handleFilesDroppedToFolderWrapper = useCallback(
+    async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
+      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix, apiS3);
+    },
+    [currentPrefix, handleFilesDroppedToFolder, apiS3]
+  );
 
   const handleSync = async () => {
     if (isSyncing || !currentPrefix) return;
@@ -270,21 +290,21 @@ function BrowsePageContent() {
             )}
           </div>
 
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
-              isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
-            }`}
-            title="Refresh files and folders"
-            aria-label="Refresh files and folders"
-          >
-            <HiOutlineRefresh
-              className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
-                isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+          <AriaLabel label="Refresh files and folders" position="bottom">
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
+                isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
               }`}
-            />
-          </button>
+            >
+              <HiOutlineRefresh
+                className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
+                  isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+                }`}
+              />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="relative z-0">
@@ -296,6 +316,7 @@ function BrowsePageContent() {
                 folders={displayedFolders}
                 onFolderClick={handleFolderClick}
                 onFolderMenuClick={handleFolderMenuClick}
+                onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                 className="mt-8"
                 hideTitle={pathSegments.length > 0}
               />
@@ -305,6 +326,7 @@ function BrowsePageContent() {
                 files={displayedFiles}
                 onFileClick={handleFileClick}
                 onFileAction={handleFileAction}
+                onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                 className="mt-8"
                 hideTitle={pathSegments.length > 0}
               />

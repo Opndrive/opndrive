@@ -4,6 +4,7 @@ import React from 'react';
 import { X, Download, CheckCircle, AlertCircle } from 'lucide-react';
 import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { cn } from '@/shared/utils/utils';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 export const DownloadProgressManager: React.FC = () => {
   const { getAllDownloads, cancelDownload } = useDownload();
@@ -87,13 +88,14 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
           )}
         </div>
         {download.status === 'downloading' && (
-          <button
-            onClick={onCancel}
-            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
-            title="Cancel download"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <AriaLabel label={`Cancel download of ${download.fileName}`} position="left">
+            <button
+              onClick={onCancel}
+              className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </AriaLabel>
         )}
       </div>
     </div>

@@ -6,6 +6,7 @@ import { FolderIcon, MoreVerticalIcon } from '@/shared/components/icons/folder-i
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface FolderItemProps {
   folder: Folder;
@@ -71,17 +72,18 @@ export const FolderItem: React.FC<FolderItemProps> = ({
           )}
         </div>
 
-        <button
-          className="
-            flex-shrink-0 p-1 rounded-full cursor-pointer
-            hover:bg-secondary/60 transition-all duration-200
-            text-muted-foreground hover:text-foreground
-          "
-          onClick={handleMenuClick}
-          aria-label={`More options for ${folder.name}`}
-        >
-          <MoreVerticalIcon size={16} />
-        </button>
+        <AriaLabel label={`More actions`} position="top">
+          <button
+            className="
+              flex-shrink-0 p-1 rounded-full cursor-pointer
+              hover:bg-accent transition-all duration-200
+              text-muted-foreground hover:text-foreground
+            "
+            onClick={handleMenuClick}
+          >
+            <MoreVerticalIcon size={16} />
+          </button>
+        </AriaLabel>
       </div>
 
       <FolderOverflowMenu

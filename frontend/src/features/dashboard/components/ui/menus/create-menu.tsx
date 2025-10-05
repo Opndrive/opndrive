@@ -3,11 +3,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
-import { useUploadHandler } from '@/features/upload/hooks/use-upload-handler';
-import { useUploadStore } from '@/features/upload/hooks/use-upload-store';
-import { useSettings } from '@/features/settings/hooks/use-settings';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 import { useApiS3 } from '@/hooks/use-auth';
+import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useDriveStore } from '@/context/data-context';
+import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface CreateMenuAction {
   id: string;
@@ -31,9 +33,9 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   onNewFolderClick,
   anchorElement,
   className = '',
-  currentPath = '',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const { handleFilesDroppedToDirectory } = useUploadStore();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -44,38 +46,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   if (!apiS3) {
     return 'Loading...';
   }
-
-  const { settings, isLoaded } = useSettings();
-  const { registerCancelFunction, registerPauseFunction, registerResumeFunction } =
-    useUploadStore();
-  const { handleFileUpload, handleFolderUpload, cancelUpload, pauseUpload, resumeUpload } =
-    useUploadHandler(
-      {
-        currentPath,
-        uploadMethod: isLoaded ? settings.general.uploadMethod : 'auto',
-      },
-      apiS3
-    );
-
-  // Register upload functions when component mounts
-  useEffect(() => {
-    registerCancelFunction(cancelUpload);
-    registerPauseFunction(pauseUpload);
-    registerResumeFunction(resumeUpload);
-
-    return () => {
-      registerCancelFunction(() => Promise.resolve());
-      registerPauseFunction(() => {});
-      registerResumeFunction(() => Promise.resolve());
-    };
-  }, [
-    cancelUpload,
-    pauseUpload,
-    resumeUpload,
-    registerCancelFunction,
-    registerPauseFunction,
-    registerResumeFunction,
-  ]);
+  const { currentPrefix } = useDriveStore();
 
   //  file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {
@@ -83,26 +54,32 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       const result = await pickMultipleFiles();
 
       if (!result.cancelled && result.files && result.files.length > 0) {
-        handleFileUpload(result.files);
+        const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
+          result.files
+        );
+        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
         onClose(); // Close menu after successful file selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFileUpload, onClose]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
 
   const triggerFolderUpload = useCallback(async () => {
     try {
       const result = await pickFolder();
 
       if (!result.cancelled && result.files && result.files.length > 0) {
-        handleFolderUpload(result.files);
+        const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
+          result.files
+        );
+        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
         onClose(); // Close menu after successful folder selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFolderUpload, onClose]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
 
   // Handle new folder action - simple approach
   const handleNewFolderClick = useCallback(() => {
@@ -214,44 +191,45 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   };
 
   const menuContent = (
-    <div
-      ref={menuRef}
-      className={`
-        fixed z-50 min-w-[200px] p-2
-        bg-secondary border border-border rounded-lg shadow-xl
-        transition-all duration-200 ease-out
-        ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        ${className}
-      `}
-      style={{
-        top: position.top,
-        left: position.left,
-        transformOrigin: getTransformOrigin(),
-      }}
-      role="menu"
-      aria-label="Create new items"
-    >
-      {actions.map((action, index) => (
-        <React.Fragment key={action.id}>
-          <button
-            className="
+    <AriaLabel label="Create new items" position="top">
+      <div
+        ref={menuRef}
+        className={`
+          fixed z-50 min-w-[200px] p-2
+          bg-secondary border border-border rounded-lg shadow-xl
+          transition-all duration-200 ease-out
+          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
+          ${className}
+        `}
+        style={{
+          top: position.top,
+          left: position.left,
+          transformOrigin: getTransformOrigin(),
+        }}
+        role="menu"
+      >
+        {actions.map((action, index) => (
+          <React.Fragment key={action.id}>
+            <button
+              className="
               w-full flex items-center gap-3 px-3 py-3 text-sm rounded-md
               text-left transition-colors duration-150
               text-foreground hover:bg-card cursor-pointer
             "
-            onClick={() => {
-              action.onClick();
-              onClose();
-            }}
-            role="menuitem"
-          >
-            <span className="flex-shrink-0">{action.icon}</span>
-            <span className="flex-1">{action.label}</span>
-          </button>
-          {index === 0 && <div className="my-1 h-px bg-border" />}
-        </React.Fragment>
-      ))}
-    </div>
+              onClick={() => {
+                action.onClick();
+                onClose();
+              }}
+              role="menuitem"
+            >
+              <span className="flex-shrink-0">{action.icon}</span>
+              <span className="flex-1">{action.label}</span>
+            </button>
+            {index === 0 && <div className="my-1 h-px bg-border" />}
+          </React.Fragment>
+        ))}
+      </div>
+    </AriaLabel>
   );
 
   return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;

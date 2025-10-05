@@ -8,6 +8,7 @@ import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface FileItemGridProps {
   file: FileItem;
@@ -69,12 +70,14 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
             <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
           </div>
 
-          <button
-            className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
-            onClick={handleMenuClick}
-          >
-            <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
-          </button>
+          <AriaLabel label={`More actions`} position="top">
+            <button
+              className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
+              onClick={handleMenuClick}
+            >
+              <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="space-y-1">

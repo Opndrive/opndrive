@@ -11,13 +11,26 @@ import { DetailsProvider, useDetails } from '@/context/details-context';
 import { FilePreviewProvider } from '@/context/file-preview-context';
 import { RenameProvider } from '@/context/rename-context';
 import { ShareProvider } from '@/context/share-context';
+import { EnhancedDragDropProvider } from '@/features/upload/providers/enhanced-drag-drop-provider';
+import { DragDetectionWrapper } from '@/features/upload/components/drag-detection-wrapper';
 import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
 import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
-import { UploadCard } from '@/features/upload';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 import { useAuth } from '@/hooks/use-auth';
+import { useDriveStore } from '@/context/data-context';
+import { UploadCard } from '@/features/upload/components/upload-card';
+
+const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
+  const { currentPrefix } = useDriveStore();
+
+  return (
+    <EnhancedDragDropProvider currentPath={currentPrefix || 'My Drive'}>
+      <DragDetectionWrapper>{children}</DragDetectionWrapper>
+    </EnhancedDragDropProvider>
+  );
+};
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -110,7 +123,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
               ref={mainRef}
               className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 min-h-0 scroll-smooth custom-scrollbar"
             >
-              {children}
+              <DragAndDropWrapper>{children}</DragAndDropWrapper>
             </main>
           </div>
         </div>
