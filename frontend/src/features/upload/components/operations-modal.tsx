@@ -8,6 +8,7 @@ import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { DuplicateDialog } from './duplicate-dialog';
 import type { FileExtension } from '@/config/file-extensions';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface OperationItem {
   id: string;
@@ -659,29 +660,37 @@ export const OperationsModal: React.FC = () => {
                             {operation.status === 'uploading' &&
                               operation.operationType === 'upload' &&
                               operation.type === 'file' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    uploadManager.pauseUpload(operation.id);
-                                  }}
-                                  className={`w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center ${
-                                    hoveredItem === operation.id ? 'flex' : 'flex sm:hidden'
-                                  }`}
-                                  style={{
-                                    color: 'var(--muted-foreground)',
-                                    background: 'var(--accent)',
-                                    border: '1px solid var(--border)',
-                                  }}
-                                  title="Pause"
+                                <AriaLabel
+                                  label={`Pause upload of ${operation.name}`}
+                                  position="top"
                                 >
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      uploadManager.pauseUpload(operation.id);
+                                    }}
+                                    className={`w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center ${
+                                      hoveredItem === operation.id ? 'flex' : 'flex sm:hidden'
+                                    }`}
+                                    style={{
+                                      color: 'var(--muted-foreground)',
+                                      background: 'var(--accent)',
+                                      border: '1px solid var(--border)',
+                                    }}
+                                  >
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </button>
+                                </AriaLabel>
                               )}
 
                             {/* Resume Button - for paused files, near the progress circle */}

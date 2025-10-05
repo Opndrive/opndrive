@@ -21,6 +21,7 @@ import { HiOutlineRefresh } from 'react-icons/hi';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 function BrowsePageContent() {
   const { setSearchHidden } = useScroll();
@@ -289,21 +290,21 @@ function BrowsePageContent() {
             )}
           </div>
 
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
-              isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
-            }`}
-            title="Refresh files and folders"
-            aria-label="Refresh files and folders"
-          >
-            <HiOutlineRefresh
-              className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
-                isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+          <AriaLabel label="Refresh files and folders" position="bottom">
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
+                isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
               }`}
-            />
-          </button>
+            >
+              <HiOutlineRefresh
+                className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
+                  isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+                }`}
+              />
+            </button>
+          </AriaLabel>
         </div>
 
         <div className="relative z-0">

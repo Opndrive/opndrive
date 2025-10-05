@@ -13,6 +13,7 @@ import {
   CreditWarningDialog,
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -239,28 +240,28 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   };
 
   const menuContent = (
-    <div
-      ref={menuRef}
-      className={`
-        fixed z-50 min-w-[200px] p-2
-        bg-secondary border border-border rounded-lg shadow-xl
-        transition-all duration-200 ease-out
-        ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        ${className}
-      `}
-      style={{
-        top: position.top,
-        left: position.left,
-        transformOrigin: getTransformOrigin(),
-      }}
-      role="menu"
-      aria-label={`Actions for ${folder.name}`}
-    >
-      {actions.map((action, index) => (
-        <React.Fragment key={action.id}>
-          {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
-          <button
-            className={`
+    <AriaLabel label={`Actions for ${folder.name}`} position="top">
+      <div
+        ref={menuRef}
+        className={`
+          fixed z-50 min-w-[200px] p-2
+          bg-secondary border border-border rounded-lg shadow-xl
+          transition-all duration-200 ease-out
+          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
+          ${className}
+        `}
+        style={{
+          top: position.top,
+          left: position.left,
+          transformOrigin: getTransformOrigin(),
+        }}
+        role="menu"
+      >
+        {actions.map((action, index) => (
+          <React.Fragment key={action.id}>
+            {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
+            <button
+              className={`
               w-full flex items-center gap-3 px-3 cursor-pointer py-2.5 text-sm rounded-md
               text-left transition-colors duration-150
               ${
@@ -270,20 +271,21 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
-            onClick={() => {
-              if (!action.disabled) {
-                action.onClick?.(folder);
-              }
-            }}
-            disabled={action.disabled}
-            role="menuitem"
-          >
-            <span className="flex-shrink-0">{action.icon}</span>
-            <span className="flex-1">{action.label}</span>
-          </button>
-        </React.Fragment>
-      ))}
-    </div>
+              onClick={() => {
+                if (!action.disabled) {
+                  action.onClick?.(folder);
+                }
+              }}
+              disabled={action.disabled}
+              role="menuitem"
+            >
+              <span className="flex-shrink-0">{action.icon}</span>
+              <span className="flex-1">{action.label}</span>
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+    </AriaLabel>
   );
 
   return (

@@ -9,6 +9,7 @@ import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useDriveStore } from '@/context/data-context';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 interface CreateMenuAction {
   id: string;
@@ -190,44 +191,45 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   };
 
   const menuContent = (
-    <div
-      ref={menuRef}
-      className={`
-        fixed z-50 min-w-[200px] p-2
-        bg-secondary border border-border rounded-lg shadow-xl
-        transition-all duration-200 ease-out
-        ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        ${className}
-      `}
-      style={{
-        top: position.top,
-        left: position.left,
-        transformOrigin: getTransformOrigin(),
-      }}
-      role="menu"
-      aria-label="Create new items"
-    >
-      {actions.map((action, index) => (
-        <React.Fragment key={action.id}>
-          <button
-            className="
+    <AriaLabel label="Create new items" position="top">
+      <div
+        ref={menuRef}
+        className={`
+          fixed z-50 min-w-[200px] p-2
+          bg-secondary border border-border rounded-lg shadow-xl
+          transition-all duration-200 ease-out
+          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
+          ${className}
+        `}
+        style={{
+          top: position.top,
+          left: position.left,
+          transformOrigin: getTransformOrigin(),
+        }}
+        role="menu"
+      >
+        {actions.map((action, index) => (
+          <React.Fragment key={action.id}>
+            <button
+              className="
               w-full flex items-center gap-3 px-3 py-3 text-sm rounded-md
               text-left transition-colors duration-150
               text-foreground hover:bg-card cursor-pointer
             "
-            onClick={() => {
-              action.onClick();
-              onClose();
-            }}
-            role="menuitem"
-          >
-            <span className="flex-shrink-0">{action.icon}</span>
-            <span className="flex-1">{action.label}</span>
-          </button>
-          {index === 0 && <div className="my-1 h-px bg-border" />}
-        </React.Fragment>
-      ))}
-    </div>
+              onClick={() => {
+                action.onClick();
+                onClose();
+              }}
+              role="menuitem"
+            >
+              <span className="flex-shrink-0">{action.icon}</span>
+              <span className="flex-1">{action.label}</span>
+            </button>
+            {index === 0 && <div className="my-1 h-px bg-border" />}
+          </React.Fragment>
+        ))}
+      </div>
+    </AriaLabel>
   );
 
   return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
