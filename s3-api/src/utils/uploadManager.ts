@@ -105,10 +105,10 @@ export class UploadManager {
 
       let key = '';
 
-      if (config.basePrefix) {
+      if (!config.basePrefix) {
         key = file.webkitRelativePath;
       } else {
-        key = `${config.basePrefix}/${file.webkitRelativePath}`;
+        key = `${config.basePrefix}${file.webkitRelativePath}`;
       }
 
       const fileId = this.addUpload(file, { key });

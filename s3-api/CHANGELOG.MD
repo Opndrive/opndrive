@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2025-10-5
+### Added
+- Fixed basePrefix logic in addFolderUpload (UploadManager)
+
 ## [2.2.0] - 2025-10-4
 ### Added
 - UploadManager for files and folders implemented using queue
