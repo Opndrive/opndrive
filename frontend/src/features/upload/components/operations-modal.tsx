@@ -6,6 +6,7 @@ import { uploadManager } from '@/lib/uploadManagerInstance';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
+import { DuplicateDialog } from './duplicate-dialog';
 import type { FileExtension } from '@/config/file-extensions';
 
 interface OperationItem {
@@ -71,7 +72,14 @@ const getAverageUploadSpeed = (): number => {
 };
 
 export const OperationsModal: React.FC = () => {
-  const { uploads, deletes, removeUpload, removeDeleteOperation } = useUploadStore();
+  const {
+    uploads,
+    deletes,
+    removeUpload,
+    removeDeleteOperation,
+    duplicateDialog,
+    hideDuplicateDialog,
+  } = useUploadStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -447,8 +455,8 @@ export const OperationsModal: React.FC = () => {
       <div>
         <div
           className="fixed z-50 transition-all duration-300 ease-in-out bottom-4
-            w-[calc(100vw-2rem)] max-w-sm left-1/2 transform -translate-x-1/2
-            sm:w-80 sm:max-w-none sm:right-4 sm:left-auto sm:transform-none"
+            w-[calc(100vw-2rem)] max-w-sm left-1/2 -translate-x-1/2
+            sm:w-80 sm:max-w-none sm:right-4 sm:left-auto sm:translate-x-0"
           style={{
             background: 'var(--card)',
             border: '1px solid var(--border)',
@@ -961,6 +969,15 @@ export const OperationsModal: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Duplicate Dialog */}
+      <DuplicateDialog
+        isOpen={duplicateDialog.isOpen}
+        onClose={hideDuplicateDialog}
+        duplicateItem={duplicateDialog.duplicateItem}
+        onReplace={duplicateDialog.onReplace || (() => {})}
+        onKeepBoth={duplicateDialog.onKeepBoth || (() => {})}
+      />
     </>
   );
 };

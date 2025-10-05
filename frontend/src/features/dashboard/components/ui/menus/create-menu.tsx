@@ -56,13 +56,13 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
           result.files
         );
-        handleFilesDroppedToDirectory(processedData, currentPrefix);
+        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
         onClose(); // Close menu after successful file selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFilesDroppedToDirectory, onClose, currentPrefix]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
 
   const triggerFolderUpload = useCallback(async () => {
     try {
@@ -72,13 +72,13 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
           result.files
         );
-        handleFilesDroppedToDirectory(processedData, currentPrefix);
+        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
         onClose(); // Close menu after successful folder selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFilesDroppedToDirectory, onClose, currentPrefix]);
+  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
 
   // Handle new folder action - simple approach
   const handleNewFolderClick = useCallback(() => {

@@ -83,16 +83,16 @@ export default function HomePage() {
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix);
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
     },
-    [currentPrefix, handleFilesDroppedToDirectory]
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
   );
 
   const handleFilesDroppedToFolderWrapper = useCallback(
     async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix);
+      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix, apiS3);
     },
-    [currentPrefix, handleFilesDroppedToFolder]
+    [currentPrefix, handleFilesDroppedToFolder, apiS3]
   );
 
   const handleLoadMoreFiles = async () => {

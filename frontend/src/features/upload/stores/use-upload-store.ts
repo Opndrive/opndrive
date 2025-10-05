@@ -1,10 +1,99 @@
 'use client';
 
-import { UploadStatus } from '@opndrive/s3-api';
+import { UploadStatus, BYOS3ApiProvider } from '@opndrive/s3-api';
 import { create } from 'zustand';
 import { uploadManager } from '@/lib/uploadManagerInstance';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
+import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
+
+// Helper function to generate S3 key
+const generateS3Key = (fileName: string, currentPath: string): string => {
+  // Remove leading slash and clean the path
+  let cleanPath = currentPath;
+
+  // Remove leading slash if present
+  if (cleanPath.startsWith('/')) {
+    cleanPath = cleanPath.slice(1);
+  }
+
+  // If path is empty or just root, don't add any prefix
+  if (!cleanPath || cleanPath === '' || cleanPath === '/') {
+    return fileName;
+  }
+
+  // Ensure path ends with slash but doesn't start with one
+  if (!cleanPath.endsWith('/')) {
+    cleanPath = `${cleanPath}/`;
+  }
+
+  return `${cleanPath}${fileName}`;
+};
+
+// Helper function to check if file already exists
+const checkForDuplicates = async (
+  apiS3: BYOS3ApiProvider,
+  fileName: string,
+  currentPath: string
+): Promise<boolean> => {
+  try {
+    const s3Key = generateS3Key(fileName, currentPath);
+    const metadata = await apiS3.fetchMetadata(s3Key);
+    return metadata !== null; // Returns true if file exists
+  } catch {
+    // If there's an error checking, assume it doesn't exist
+    return false;
+  }
+};
+
+// Helper function to check if folder already exists
+const checkForFolderDuplicates = async (
+  apiS3: BYOS3ApiProvider,
+  folderName: string,
+  currentPath: string
+): Promise<boolean> => {
+  try {
+    // Generate the folder prefix that would be used for this folder
+    let folderPrefix = currentPath;
+
+    // Remove leading slash if present
+    if (folderPrefix.startsWith('/')) {
+      folderPrefix = folderPrefix.slice(1);
+    }
+
+    // If path is empty or just root, don't add any prefix
+    if (!folderPrefix || folderPrefix === '' || folderPrefix === '/') {
+      folderPrefix = `${folderName}/`;
+    } else {
+      // Ensure path ends with slash but doesn't start with one
+      if (!folderPrefix.endsWith('/')) {
+        folderPrefix = `${folderPrefix}/`;
+      }
+      folderPrefix = `${folderPrefix}${folderName}/`;
+    }
+
+    // Use fetchDirectoryStructure to check if any objects exist with this prefix
+    const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
+
+    // If we find any objects (files or folders) with this prefix, the folder exists
+    return result.files.length > 0 || result.folders.length > 0;
+  } catch {
+    // If there's an error checking, assume it doesn't exist
+    return false;
+  }
+};
+
+interface DuplicateDialogState {
+  isOpen: boolean;
+  duplicateItem: {
+    name: string;
+    type: 'file' | 'folder';
+    size?: number;
+    files?: File[];
+  } | null;
+  onReplace: (() => void) | null;
+  onKeepBoth: (() => void) | null;
+}
 
 interface UploadProgress {
   id: string;
@@ -35,6 +124,7 @@ interface DeleteProgress {
 interface UploadStore {
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
+  duplicateDialog: DuplicateDialogState;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
@@ -43,12 +133,14 @@ interface UploadStore {
   clearAll: () => void;
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
-    currentPrefix: string | null
+    currentPrefix: string | null,
+    apiS3?: BYOS3ApiProvider
   ) => Promise<void>;
   handleFilesDroppedToFolder: (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
-    currentPrefix: string | null
+    currentPrefix: string | null,
+    apiS3?: BYOS3ApiProvider
   ) => Promise<void>;
 
   // Delete operation methods
@@ -67,11 +159,25 @@ interface UploadStore {
   isDeleteOperationActive: (id: string) => boolean;
   getDeleteAbortController: (id: string) => AbortController | undefined;
   removeDeleteOperation: (id: string) => void;
+
+  // Duplicate dialog methods
+  showDuplicateDialog: (
+    duplicateItem: { name: string; type: 'file' | 'folder'; size?: number; files?: File[] },
+    onReplace: () => void,
+    onKeepBoth: () => void
+  ) => void;
+  hideDuplicateDialog: () => void;
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
   uploads: {},
   deletes: {},
+  duplicateDialog: {
+    isOpen: false,
+    duplicateItem: null,
+    onReplace: null,
+    onKeepBoth: null,
+  },
 
   setUploads: (uploads: Record<string, UploadProgress>) => set({ uploads }),
 
@@ -112,13 +218,97 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   handleFilesDroppedToDirectory: async (
     processedData: ProcessedDragData,
-    currentPrefix: string | null
+    currentPrefix: string | null,
+    apiS3?: BYOS3ApiProvider
   ) => {
-    const { addUpload } = get();
+    const { addUpload, showDuplicateDialog } = get();
 
     if (processedData.individualFiles.length > 0) {
-      processedData.individualFiles.forEach((file) => {
-        // The key is the full path in S3
+      // Process individual files with duplicate checking
+      for (const file of processedData.individualFiles) {
+        // Check for duplicates if API is available
+        if (apiS3) {
+          const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPrefix || '');
+
+          if (isDuplicate) {
+            // Show duplicate dialog
+            return new Promise<void>((resolve) => {
+              showDuplicateDialog(
+                {
+                  name: file.name,
+                  type: 'file',
+                  size: file.size,
+                },
+                // onReplace - overwrite the existing file
+                async () => {
+                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                  let key = '';
+
+                  if (uploadManager['prefix'] && currPrefix) {
+                    key = `${uploadManager['prefix']}${currPrefix}${file.name}`;
+                  } else if (uploadManager['prefix'] && !currPrefix) {
+                    key = `${uploadManager['prefix']}${file.name}`;
+                  } else if (!uploadManager['prefix'] && currPrefix) {
+                    key = `${currPrefix}${file.name}`;
+                  } else {
+                    key = file.name;
+                  }
+
+                  const id = uploadManager.addUpload(file, { key });
+                  addUpload(id, {
+                    id,
+                    name: file.name,
+                    status: 'queued',
+                    progress: 0,
+                    type: 'file',
+                  });
+                  resolve();
+                },
+                // onKeepBoth - generate unique name
+                async () => {
+                  try {
+                    const uniqueName = await generateUniqueFileName(
+                      apiS3,
+                      file.name,
+                      currentPrefix || ''
+                    );
+
+                    // Create new file with unique name
+                    const renamedFile = new File([file], uniqueName, { type: file.type });
+
+                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                    let key = '';
+
+                    if (uploadManager['prefix'] && currPrefix) {
+                      key = `${uploadManager['prefix']}${currPrefix}${uniqueName}`;
+                    } else if (uploadManager['prefix'] && !currPrefix) {
+                      key = `${uploadManager['prefix']}${uniqueName}`;
+                    } else if (!uploadManager['prefix'] && currPrefix) {
+                      key = `${currPrefix}${uniqueName}`;
+                    } else {
+                      key = uniqueName;
+                    }
+
+                    const id = uploadManager.addUpload(renamedFile, { key });
+                    addUpload(id, {
+                      id,
+                      name: uniqueName,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'file',
+                    });
+                    resolve();
+                  } catch (error) {
+                    console.error('Failed to generate unique filename:', error);
+                    resolve();
+                  }
+                }
+              );
+            });
+          }
+        }
+
+        // No duplicate or no API - proceed normally
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
@@ -133,15 +323,135 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         }
 
         const id = uploadManager.addUpload(file, { key });
-        // Add to our local state immediately for instant UI feedback
         addUpload(id, { id, name: file.name, status: 'queued', progress: 0, type: 'file' });
-      });
+      }
     }
 
     // 2. Upload Folders
     if (processedData.folderStructures.length > 0) {
-      processedData.folderStructures.forEach((folder) => {
-        // The `addFolderUpload` method handles the rest
+      for (const folder of processedData.folderStructures) {
+        // Check for folder duplicates if API is available
+        if (apiS3) {
+          const isDuplicate = await checkForFolderDuplicates(
+            apiS3,
+            folder.name,
+            currentPrefix || ''
+          );
+
+          if (isDuplicate) {
+            // Show duplicate dialog for folder
+            return new Promise<void>((resolve) => {
+              showDuplicateDialog(
+                {
+                  name: folder.name,
+                  type: 'folder',
+                  files: Array.from(folder.files),
+                },
+                // onReplace - overwrite the existing folder
+                async () => {
+                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                  let key = '';
+
+                  if (uploadManager['prefix'] && currPrefix) {
+                    key = `${uploadManager['prefix']}${currPrefix}`;
+                  } else if (uploadManager['prefix'] && !currPrefix) {
+                    key = `${uploadManager['prefix']}`;
+                  } else if (!uploadManager['prefix'] && currPrefix) {
+                    key = `${currPrefix}`;
+                  }
+
+                  const { folderId, fileIds } = uploadManager.addFolderUpload(
+                    folder.files as unknown as FileList,
+                    {
+                      basePrefix: key,
+                    }
+                  );
+
+                  // Add folder to our local state
+                  addUpload(folderId, {
+                    id: folderId,
+                    name: folder.name,
+                    status: 'queued',
+                    progress: 0,
+                    type: 'folder',
+                    fileIds: fileIds,
+                  });
+
+                  // Add all files from the folder to our local state for UI feedback
+                  fileIds.forEach((id: string, index: number) => {
+                    const file = folder.files[index];
+                    addUpload(id, {
+                      id,
+                      name: file.webkitRelativePath,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'file',
+                      parentFolderId: folderId,
+                    });
+                  });
+                  resolve();
+                },
+                // onKeepBoth - generate unique folder name
+                async () => {
+                  try {
+                    const uniqueName = await generateUniqueFolderName(
+                      apiS3,
+                      folder.name,
+                      currentPrefix || ''
+                    );
+
+                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                    let key = '';
+
+                    if (uploadManager['prefix'] && currPrefix) {
+                      key = `${uploadManager['prefix']}${currPrefix}`;
+                    } else if (uploadManager['prefix'] && !currPrefix) {
+                      key = `${uploadManager['prefix']}`;
+                    } else if (!uploadManager['prefix'] && currPrefix) {
+                      key = `${currPrefix}`;
+                    }
+
+                    const { folderId, fileIds } = uploadManager.addFolderUpload(
+                      folder.files as unknown as FileList,
+                      {
+                        basePrefix: key,
+                      }
+                    );
+
+                    // Add folder to our local state with unique name
+                    addUpload(folderId, {
+                      id: folderId,
+                      name: uniqueName,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'folder',
+                      fileIds: fileIds,
+                    });
+
+                    // Add all files from the folder to our local state for UI feedback
+                    fileIds.forEach((id: string, index: number) => {
+                      const file = folder.files[index];
+                      addUpload(id, {
+                        id,
+                        name: file.webkitRelativePath.replace(folder.name, uniqueName),
+                        status: 'queued',
+                        progress: 0,
+                        type: 'file',
+                        parentFolderId: folderId,
+                      });
+                    });
+                    resolve();
+                  } catch (error) {
+                    console.error('Failed to generate unique folder name:', error);
+                    resolve();
+                  }
+                }
+              );
+            });
+          }
+        }
+
+        // No duplicate or no API - proceed normally
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
@@ -182,20 +492,107 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
             parentFolderId: folderId,
           });
         });
-      });
+      }
     }
   },
 
   handleFilesDroppedToFolder: async (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
-    currentPrefix: string | null
+    currentPrefix: string | null,
+    apiS3?: BYOS3ApiProvider
   ) => {
-    const { addUpload } = get();
+    const { addUpload, showDuplicateDialog } = get();
 
     if (processedData.individualFiles.length > 0) {
-      processedData.individualFiles.forEach((file) => {
-        // The key is the full path in S3
+      // Process individual files with duplicate checking
+      for (const file of processedData.individualFiles) {
+        const targetPath =
+          currentPrefix === '/'
+            ? targetFolder.name
+            : currentPrefix
+              ? `${currentPrefix}${targetFolder.name}`
+              : targetFolder.name;
+
+        // Check for duplicates if API is available
+        if (apiS3) {
+          const isDuplicate = await checkForDuplicates(apiS3, file.name, targetPath);
+
+          if (isDuplicate) {
+            // Show duplicate dialog
+            return new Promise<void>((resolve) => {
+              showDuplicateDialog(
+                {
+                  name: file.name,
+                  type: 'file',
+                  size: file.size,
+                },
+                // onReplace - overwrite the existing file
+                async () => {
+                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                  let key = '';
+
+                  if (uploadManager['prefix'] && currPrefix) {
+                    key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/${file.name}`;
+                  } else if (uploadManager['prefix'] && !currPrefix) {
+                    key = `${uploadManager['prefix']}${targetFolder.name}/${file.name}`;
+                  } else if (!uploadManager['prefix'] && currPrefix) {
+                    key = `${currPrefix}${targetFolder.name}/${file.name}`;
+                  } else {
+                    key = `${targetFolder.name}/${file.name}`;
+                  }
+
+                  const id = uploadManager.addUpload(file, { key });
+                  addUpload(id, {
+                    id,
+                    name: file.name,
+                    status: 'queued',
+                    progress: 0,
+                    type: 'file',
+                  });
+                  resolve();
+                },
+                // onKeepBoth - generate unique name
+                async () => {
+                  try {
+                    const uniqueName = await generateUniqueFileName(apiS3, file.name, targetPath);
+
+                    // Create new file with unique name
+                    const renamedFile = new File([file], uniqueName, { type: file.type });
+
+                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                    let key = '';
+
+                    if (uploadManager['prefix'] && currPrefix) {
+                      key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/${uniqueName}`;
+                    } else if (uploadManager['prefix'] && !currPrefix) {
+                      key = `${uploadManager['prefix']}${targetFolder.name}/${uniqueName}`;
+                    } else if (!uploadManager['prefix'] && currPrefix) {
+                      key = `${currPrefix}${targetFolder.name}/${uniqueName}`;
+                    } else {
+                      key = `${targetFolder.name}/${uniqueName}`;
+                    }
+
+                    const id = uploadManager.addUpload(renamedFile, { key });
+                    addUpload(id, {
+                      id,
+                      name: uniqueName,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'file',
+                    });
+                    resolve();
+                  } catch (error) {
+                    console.error('Failed to generate unique filename:', error);
+                    resolve();
+                  }
+                }
+              );
+            });
+          }
+        }
+
+        // No duplicate or no API - proceed normally
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
@@ -210,15 +607,142 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         }
 
         const id = uploadManager.addUpload(file, { key });
-        // Add to our local state immediately for instant UI feedback
         addUpload(id, { id, name: file.name, status: 'queued', progress: 0, type: 'file' });
-      });
+      }
     }
 
     // 2. Upload Folders
     if (processedData.folderStructures.length > 0) {
-      processedData.folderStructures.forEach((folder) => {
-        // The `addFolderUpload` method handles the rest
+      for (const folder of processedData.folderStructures) {
+        const targetPath =
+          currentPrefix === '/'
+            ? targetFolder.name
+            : currentPrefix
+              ? `${currentPrefix}${targetFolder.name}`
+              : targetFolder.name;
+
+        // Check for folder duplicates if API is available
+        if (apiS3) {
+          const isDuplicate = await checkForFolderDuplicates(apiS3, folder.name, targetPath);
+
+          if (isDuplicate) {
+            // Show duplicate dialog for folder
+            return new Promise<void>((resolve) => {
+              showDuplicateDialog(
+                {
+                  name: folder.name,
+                  type: 'folder',
+                  files: Array.from(folder.files),
+                },
+                // onReplace - overwrite the existing folder
+                async () => {
+                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                  let key = '';
+
+                  if (uploadManager['prefix'] && currPrefix) {
+                    key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/`;
+                  } else if (uploadManager['prefix'] && !currPrefix) {
+                    key = `${uploadManager['prefix']}${targetFolder.name}/`;
+                  } else if (!uploadManager['prefix'] && currPrefix) {
+                    key = `${currPrefix}${targetFolder.name}/`;
+                  } else {
+                    key = `${targetFolder.name}/`;
+                  }
+
+                  const { folderId, fileIds } = uploadManager.addFolderUpload(
+                    folder.files as unknown as FileList,
+                    {
+                      basePrefix: key,
+                    }
+                  );
+
+                  // Add folder to our local state
+                  addUpload(folderId, {
+                    id: folderId,
+                    name: folder.name,
+                    status: 'queued',
+                    progress: 0,
+                    type: 'folder',
+                    fileIds: fileIds,
+                  });
+
+                  // Add all files from the folder to our local state for UI feedback
+                  fileIds.forEach((id: string, index: number) => {
+                    const file = folder.files[index];
+                    addUpload(id, {
+                      id,
+                      name: file.webkitRelativePath,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'file',
+                      parentFolderId: folderId,
+                    });
+                  });
+                  resolve();
+                },
+                // onKeepBoth - generate unique folder name
+                async () => {
+                  try {
+                    const uniqueName = await generateUniqueFolderName(
+                      apiS3,
+                      folder.name,
+                      targetPath
+                    );
+
+                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
+                    let key = '';
+
+                    if (uploadManager['prefix'] && currPrefix) {
+                      key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/`;
+                    } else if (uploadManager['prefix'] && !currPrefix) {
+                      key = `${uploadManager['prefix']}${targetFolder.name}/`;
+                    } else if (!uploadManager['prefix'] && currPrefix) {
+                      key = `${currPrefix}${targetFolder.name}/`;
+                    } else {
+                      key = `${targetFolder.name}/`;
+                    }
+
+                    const { folderId, fileIds } = uploadManager.addFolderUpload(
+                      folder.files as unknown as FileList,
+                      {
+                        basePrefix: key,
+                      }
+                    );
+
+                    // Add folder to our local state with unique name
+                    addUpload(folderId, {
+                      id: folderId,
+                      name: uniqueName,
+                      status: 'queued',
+                      progress: 0,
+                      type: 'folder',
+                      fileIds: fileIds,
+                    });
+
+                    // Add all files from the folder to our local state for UI feedback
+                    fileIds.forEach((id: string, index: number) => {
+                      const file = folder.files[index];
+                      addUpload(id, {
+                        id,
+                        name: file.webkitRelativePath.replace(folder.name, uniqueName),
+                        status: 'queued',
+                        progress: 0,
+                        type: 'file',
+                        parentFolderId: folderId,
+                      });
+                    });
+                    resolve();
+                  } catch (error) {
+                    console.error('Failed to generate unique folder name:', error);
+                    resolve();
+                  }
+                }
+              );
+            });
+          }
+        }
+
+        // No duplicate or no API - proceed normally
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
@@ -261,7 +785,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
             parentFolderId: folderId,
           });
         });
-      });
+      }
     }
   },
 
@@ -371,4 +895,25 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     set((state) => ({
       deletes: Object.fromEntries(Object.entries(state.deletes).filter(([key]) => key !== id)),
     })),
+
+  // Duplicate dialog methods
+  showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth) =>
+    set({
+      duplicateDialog: {
+        isOpen: true,
+        duplicateItem,
+        onReplace,
+        onKeepBoth,
+      },
+    }),
+
+  hideDuplicateDialog: () =>
+    set({
+      duplicateDialog: {
+        isOpen: false,
+        duplicateItem: null,
+        onReplace: null,
+        onKeepBoth: null,
+      },
+    }),
 }));
