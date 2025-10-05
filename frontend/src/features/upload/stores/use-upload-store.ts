@@ -6,6 +6,10 @@ import { uploadManager } from '@/lib/uploadManagerInstance';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
+import { useDriveStore } from '@/context/data-context';
+
+// Debounce timer for batch refresh
+let refreshDebounceTimer: NodeJS.Timeout | null = null;
 
 // Helper function to generate S3 key
 const generateS3Key = (fileName: string, currentPath: string): string => {
@@ -167,6 +171,9 @@ interface UploadStore {
     onKeepBoth: () => void
   ) => void;
   hideDuplicateDialog: () => void;
+
+  // Data refresh methods
+  refreshDataAfterUploadBatch: () => Promise<void>;
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
@@ -189,7 +196,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     })),
 
-  updateUpload: (id: string, updates: Partial<UploadProgress>) =>
+  updateUpload: (id: string, updates: Partial<UploadProgress>) => {
     set((state) => ({
       uploads: {
         ...state.uploads,
@@ -198,7 +205,25 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           ...updates,
         },
       },
-    })),
+    }));
+
+    // Trigger batch refresh check when upload completes
+    if (updates.status === 'completed') {
+      // Clear existing timer and set new one to debounce multiple rapid completions
+      if (refreshDebounceTimer) {
+        clearTimeout(refreshDebounceTimer);
+      }
+
+      refreshDebounceTimer = setTimeout(() => {
+        get()
+          .refreshDataAfterUploadBatch()
+          .catch(() => {
+            // Silent failure - already handled in refreshDataAfterUploadBatch
+          });
+        refreshDebounceTimer = null;
+      }, 1000); // Wait 1 second after last completion to ensure batch is done
+    }
+  },
 
   removeUpload: (id: string) =>
     set((state) => ({
@@ -916,4 +941,26 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         onKeepBoth: null,
       },
     }),
+
+  // Data refresh methods - mirror delete behavior exactly
+  refreshDataAfterUploadBatch: async () => {
+    const { uploads } = get();
+
+    // Check if all uploads in the current batch are completed or cancelled/failed
+    const activeUploads = Object.values(uploads).filter((upload) =>
+      ['uploading', 'queued'].includes(upload.status)
+    );
+
+    // Only refresh if no active uploads remaining (batch complete)
+    if (activeUploads.length === 0) {
+      try {
+        // Get refreshCurrentData function from data context
+        const { refreshCurrentData } = useDriveStore.getState();
+        await refreshCurrentData();
+      } catch (error) {
+        // Silent failure - don't break upload completion if refresh fails
+        console.warn('Failed to refresh data after upload batch completion:', error);
+      }
+    }
+  },
 }));
