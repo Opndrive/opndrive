@@ -443,12 +443,12 @@ export const OperationsModal: React.FC = () => {
 
   return (
     <>
-      {/* Desktop Modal */}
-      <div className="hidden md:block">
+      {/* Operations Modal - All Screen Sizes */}
+      <div>
         <div
-          className={`fixed right-4 bottom-4 z-50 transition-all duration-300 ease-in-out ${
-            isExpanded ? 'w-80' : 'w-80'
-          }`}
+          className="fixed z-50 transition-all duration-300 ease-in-out bottom-4
+            w-[calc(100vw-2rem)] max-w-sm left-1/2 transform -translate-x-1/2
+            sm:w-80 sm:max-w-none sm:right-4 sm:left-auto sm:transform-none"
           style={{
             background: 'var(--card)',
             border: '1px solid var(--border)',
@@ -458,7 +458,7 @@ export const OperationsModal: React.FC = () => {
         >
           {/* Header  */}
           <div
-            className="flex items-center justify-between px-4 py-3 border-b"
+            className="flex items-center justify-between px-4 py-3 "
             style={{ borderColor: 'var(--border)' }}
           >
             <div className="flex items-center gap-2">
@@ -469,7 +469,7 @@ export const OperationsModal: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1 rounded transition-colors duration-200"
+                className="p-2 sm:p-1 rounded transition-colors duration-200"
                 style={{
                   color: 'var(--muted-foreground)',
                 }}
@@ -481,9 +481,9 @@ export const OperationsModal: React.FC = () => {
                 }}
               >
                 {isExpanded ? (
-                  <HiOutlineChevronDown className="w-4 h-4" />
+                  <HiOutlineChevronDown className="w-5 h-5 sm:w-4 sm:h-4" />
                 ) : (
-                  <HiOutlineChevronUp className="w-4 h-4" />
+                  <HiOutlineChevronUp className="w-5 h-5 sm:w-4 sm:h-4" />
                 )}
               </button>
               <button
@@ -504,7 +504,7 @@ export const OperationsModal: React.FC = () => {
                     });
                   }
                 }}
-                className="p-1 rounded transition-colors duration-200"
+                className="p-2 sm:p-1 rounded transition-colors duration-200"
                 style={{
                   color: 'var(--muted-foreground)',
                 }}
@@ -515,7 +515,7 @@ export const OperationsModal: React.FC = () => {
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <HiOutlineXMark className="w-4 h-4" />
+                <HiOutlineXMark className="w-5 h-5 sm:w-4 sm:h-4" />
               </button>
             </div>
           </div>
@@ -548,7 +548,7 @@ export const OperationsModal: React.FC = () => {
 
           {/* Operations List */}
           {isExpanded && (
-            <div className="max-h-96 overflow-y-auto custom-scrollbar">
+            <div className="max-h-60 sm:max-h-96 overflow-y-auto custom-scrollbar">
               {sortedOperations.map((operation) => {
                 const canCancel = ['uploading', 'queued', 'deleting', 'paused'].includes(
                   operation.status
@@ -647,17 +647,18 @@ export const OperationsModal: React.FC = () => {
                         operation.type === 'file' &&
                         (isActive || operation.status === 'paused') && (
                           <div className="flex items-center">
-                            {/* Pause Button - only for actively uploading files, no background, like X button */}
+                            {/* Pause Button - always visible on mobile, hover-based on desktop */}
                             {operation.status === 'uploading' &&
                               operation.operationType === 'upload' &&
-                              operation.type === 'file' &&
-                              hoveredItem === operation.id && (
+                              operation.type === 'file' && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     uploadManager.pauseUpload(operation.id);
                                   }}
-                                  className="w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center"
+                                  className={`w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center ${
+                                    hoveredItem === operation.id ? 'flex' : 'flex sm:hidden'
+                                  }`}
                                   style={{
                                     color: 'var(--muted-foreground)',
                                     background: 'var(--accent)',
@@ -870,133 +871,6 @@ export const OperationsModal: React.FC = () => {
               })}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Mobile Modal - Bottom Sheet Style */}
-      <div className="md:hidden">
-        <div
-          className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm transition-all duration-300 ease-in-out"
-          style={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-          }}
-        >
-          {/* Mobile Header */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <h3 className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-              {getTitle()}
-            </h3>
-            <button
-              onClick={() => {
-                const hasActiveOperations = sortedOperations.some((op) =>
-                  ['uploading', 'queued', 'deleting'].includes(op.status)
-                );
-                if (hasActiveOperations) {
-                  setShowCancelDialog(true);
-                } else {
-                  // Close the modal by removing all operations
-                  sortedOperations.forEach((op) => {
-                    if (op.operationType === 'upload') {
-                      removeUpload(op.id);
-                    } else if (op.operationType === 'delete') {
-                      removeDeleteOperation(op.id);
-                    }
-                  });
-                }
-              }}
-              className="p-1 rounded"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              <HiOutlineXMark className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Mobile Operations List */}
-          <div className="max-h-60 overflow-y-auto custom-scrollbar">
-            {sortedOperations.slice(0, 3).map((operation) => {
-              const isActive = ['uploading', 'queued', 'deleting'].includes(operation.status);
-
-              return (
-                <div
-                  key={operation.id}
-                  className="flex items-center gap-3 px-4 py-2"
-                  style={{ borderTop: '1px solid var(--border)' }}
-                >
-                  <div className="flex-shrink-0">
-                    {operation.type === 'folder' ? (
-                      <FolderIcon />
-                    ) : (
-                      <FileIcon
-                        extension={operation.extension}
-                        filename={operation.name}
-                        className="w-5 h-5"
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate" style={{ color: 'var(--foreground)' }}>
-                      {operation.name}
-                    </p>
-                    {operation.status === 'completed' && (
-                      <p
-                        className="text-xs"
-                        style={{
-                          color:
-                            operation.operationType === 'upload'
-                              ? 'var(--muted-foreground)'
-                              : '#ef4444',
-                        }}
-                      >
-                        {operation.operationType === 'upload'
-                          ? 'Upload complete'
-                          : 'Delete complete'}
-                      </p>
-                    )}
-                    {operation.status === 'cancelled' && (
-                      <p className="text-xs" style={{ color: '#ef4444' }}>
-                        {operation.operationType === 'upload'
-                          ? 'Upload cancelled'
-                          : 'Delete cancelled'}
-                      </p>
-                    )}
-                  </div>
-
-                  {isActive && (
-                    <div className="w-5 h-5">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 20 20">
-                        <circle
-                          cx="10"
-                          cy="10"
-                          r="8"
-                          fill="none"
-                          stroke="var(--progress-track)"
-                          strokeWidth="2"
-                        />
-                        <circle
-                          cx="10"
-                          cy="10"
-                          r="8"
-                          fill="none"
-                          stroke={
-                            operation.operationType === 'delete' ? '#ef4444' : 'var(--primary)'
-                          }
-                          strokeWidth="2"
-                          strokeDasharray={`${2 * Math.PI * 8}`}
-                          strokeDashoffset={`${2 * Math.PI * 8 * (1 - operation.progress / 100)}`}
-                          strokeLinecap="round"
-                          className="transition-all duration-300"
-                        />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
 
