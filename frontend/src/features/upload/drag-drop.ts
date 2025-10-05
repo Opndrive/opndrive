@@ -23,4 +23,4 @@ export type {
 } from './types/drag-drop-types';
 
 // Re-export existing upload components
-export { UploadCard } from './index';
+export { UploadCard } from './components/upload-card';
