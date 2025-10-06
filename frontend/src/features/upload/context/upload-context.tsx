@@ -2,15 +2,17 @@
 
 import React, { createContext, useContext, useEffect, ReactNode } from 'react';
 import { UploadStatus } from '@opndrive/s3-api';
-import { uploadManager } from '@/lib/uploadManagerInstance';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadManager } from '@/hooks/use-auth';
 
 const UploadContext = createContext<null>(null);
 
 export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { updateUpload } = useUploadStore();
+  const uploadManager = useUploadManager();
 
   useEffect(() => {
+    if (!uploadManager) return;
     const handleStatusChange = ({
       id,
       status,
@@ -43,7 +45,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       uploadManager.off('statusChange', handleStatusChange);
       uploadManager.off('progress', handleProgress);
     };
-  }, [updateUpload]);
+  }, [uploadManager, updateUpload]);
 
   return <UploadContext.Provider value={null}>{children}</UploadContext.Provider>;
 };

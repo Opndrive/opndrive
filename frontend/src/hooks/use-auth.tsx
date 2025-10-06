@@ -13,15 +13,15 @@ export function useAuth() {
   return context;
 }
 
-export function useApiS3() {
-  const { apiS3, isLoading } = useAuth();
+export function useUploadManager() {
+  const { uploadManager, isLoading } = useAuth();
 
   if (isLoading) {
     return null;
   }
 
-  if (!apiS3) {
+  if (!uploadManager) {
     return null;
   }
-  return apiS3;
+  return uploadManager;
 }

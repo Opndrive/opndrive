@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useApiS3 } from '@/hooks/use-auth';
 import { useDriveStore } from '@/context/data-context';
 import { useUploadStore } from '../stores/use-upload-store';
 import { useNotification } from '@/context/notification-context';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface FolderContents {
   allKeys: string[];
@@ -14,7 +14,7 @@ interface FolderContents {
 }
 
 export function useDeleteOperations() {
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
   const { refreshCurrentData } = useDriveStore();
   const { error: errorFunction } = useNotification();
   const {

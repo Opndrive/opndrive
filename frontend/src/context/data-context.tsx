@@ -45,6 +45,7 @@ type Store = {
   setRecentStatus: (prefix: string, s: Status) => void;
   setLoadMoreStatus: (prefix: string, s: Status) => void;
   setRootPrefix: (prefix: string) => void;
+  clearAllData: () => void;
 
   fetchData: (opts?: { sync?: boolean }) => Promise<void>;
   fetchRecentItems: (opts?: { sync?: boolean; itemsPerType?: number }) => Promise<void>;
@@ -149,6 +150,18 @@ export const useDriveStore = create<Store>((set, get) => ({
   setRootPrefix: (prefix) => set({ rootPrefix: prefix }),
 
   setCurrentPrefix: (prefix) => set({ currentPrefix: prefix }),
+
+  clearAllData: () =>
+    set({
+      apiS3: null,
+      cache: {},
+      recentCache: {},
+      status: {},
+      recentStatus: {},
+      loadMoreStatus: {},
+      currentPrefix: null,
+      rootPrefix: null,
+    }),
 
   fetchData: async (opts = { sync: false }) => {
     const { apiS3, currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();

@@ -8,7 +8,8 @@ import {
   getFileBackground,
   canHaveThumbnailPreview,
 } from '@/config/file-extensions';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { PreviewLoading } from '@/components/file-preview/preview-loading';
 
 interface FileThumbnailWithImageProps {
   extension: FileExtension;
@@ -27,7 +28,16 @@ export function FileThumbnailWithImage({
 }: FileThumbnailWithImageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [showImage, setShowImage] = useState(false);
-  const apiS3 = useApiS3();
+
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   useEffect(() => {
     async function loadImagePreview() {

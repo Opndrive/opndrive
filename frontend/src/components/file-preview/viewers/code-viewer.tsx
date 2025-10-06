@@ -6,7 +6,7 @@ import { createS3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
 import { getSyntaxLanguage } from '@/config/file-extensions';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface CodeViewerProps {
   file: PreviewableFile;
@@ -16,10 +16,14 @@ export function CodeViewer({ file }: CodeViewerProps) {
   const [codeContent, setCodeContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const apiS3 = useApiS3();
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (!apiS3) {
-    return 'Loading...';
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
   }
 
   const s3PreviewService = createS3PreviewService(apiS3);

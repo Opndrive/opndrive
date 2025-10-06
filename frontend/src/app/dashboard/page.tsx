@@ -8,7 +8,7 @@ import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/d
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -38,10 +38,14 @@ export default function HomePage() {
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const apiS3 = useApiS3();
+  const { apiS3, uploadManager, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (!apiS3) {
-    return 'Loading...';
+  if (isLoading) {
+    return <DashboardLoading />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
   }
 
   useEffect(() => {
@@ -84,16 +88,22 @@ export default function HomePage() {
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3, uploadManager);
     },
-    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3, uploadManager]
   );
 
   const handleFilesDroppedToFolderWrapper = useCallback(
     async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix, apiS3);
+      await handleFilesDroppedToFolder(
+        processedData,
+        targetFolder,
+        currentPrefix,
+        apiS3,
+        uploadManager
+      );
     },
-    [currentPrefix, handleFilesDroppedToFolder, apiS3]
+    [currentPrefix, handleFilesDroppedToFolder, apiS3, uploadManager]
   );
 
   const handleLoadMoreFiles = async () => {

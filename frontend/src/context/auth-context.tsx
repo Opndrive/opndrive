@@ -3,10 +3,12 @@
 import type React from 'react';
 import { createContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { BYOS3ApiProvider, Credentials } from '@opndrive/s3-api';
+import { BYOS3ApiProvider, Credentials, UploadManager } from '@opndrive/s3-api';
+import { useDriveStore } from './data-context';
 
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
+  uploadManager: UploadManager | null;
   userCreds: Credentials | null;
   isLoading: boolean;
   createSession: (creds: Credentials) => Promise<void>;
@@ -23,6 +25,7 @@ function isValidCreds(c: Credentials): c is Credentials {
 
 export const AuthContext = createContext<AuthContextType>({
   apiS3: null,
+  uploadManager: null,
   userCreds: null,
   isLoading: true,
   createSession: async () => {
@@ -35,13 +38,17 @@ export const AuthContext = createContext<AuthContextType>({
 
 const STORAGE_KEY = 's3_user_session';
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [userCreds, setUserCreds] = useState<Credentials | null>(null);
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [apiS3, setApiS3] = useState<BYOS3ApiProvider | null>(null);
+  const [uploadManager, setUploadManager] = useState<UploadManager | null>(null);
+  const [userCreds, setUserCreds] = useState<Credentials | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const router = useRouter();
   const pathname = usePathname();
+
+  // Get clearAllData at the top level where hooks are allowed
+  const clearAllData = useDriveStore((state) => state.clearAllData);
 
   // Restore session from localStorage on app load
   useEffect(() => {
@@ -53,6 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const creds = JSON.parse(storedCreds);
           if (isValidCreds(creds)) {
             const api = new BYOS3ApiProvider(creds, 'BYO');
+
+            const manager = UploadManager.getInstance({
+              s3: api.getS3Client(),
+              bucket: api.getBucketName(),
+              prefix: creds.prefix || '',
+              maxConcurrency: 2,
+              partSizeMB: 5,
+            });
+
+            setUploadManager(manager);
             setUserCreds(creds);
             setApiS3(api);
 
@@ -82,9 +99,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true);
       const api = new BYOS3ApiProvider(creds, 'BYO');
 
+      // Initialize upload manager with the API
+      const manager = UploadManager.getInstance({
+        s3: api.getS3Client(),
+        bucket: api.getBucketName(),
+        prefix: creds.prefix || '',
+        maxConcurrency: 2,
+        partSizeMB: 5,
+      });
+
       // Persist to state and localStorage
       setUserCreds(creds);
       setApiS3(api);
+      setUploadManager(manager);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
 
       // You can redirect somewhere after login
@@ -102,17 +129,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Clear session completely
   const clearSession = () => {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      setUserCreds(null);
+      // Set loading state to prevent components from using context values
+      setIsLoading(true);
 
+      // Clean up upload manager if it exists
+      if (uploadManager) {
+        try {
+          // Cancel any ongoing uploads before clearing
+          // Note: Implement proper cleanup based on UploadManager API
+          console.log('Cleaning up upload manager during logout');
+        } catch (error) {
+          console.warn('Error cleaning up uploads during logout:', error);
+        }
+      }
+
+      // Clear all drive store data to prevent data leakage between sessions
+      clearAllData();
+
+      // Clear localStorage
+      localStorage.removeItem(STORAGE_KEY);
+
+      // Navigate away from authenticated routes first
       router.push('/');
+
+      // Use setTimeout to allow navigation and component unmounting to complete
+      setTimeout(() => {
+        setUserCreds(null);
+        setApiS3(null);
+        setUploadManager(null);
+        // Keep loading state true briefly to prevent flash of content
+        setTimeout(() => setIsLoading(false), 50);
+      }, 100); // Reduced delay but still allows navigation to start
     } catch (error) {
       console.error('Logout failed', error);
+      // Even on error, clear the session after a delay
+      setTimeout(() => {
+        setUserCreds(null);
+        setApiS3(null);
+        setUploadManager(null);
+        setIsLoading(false);
+        // Clear drive data on error too
+        clearAllData();
+      }, 50);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ apiS3, userCreds, isLoading, createSession, clearSession }}>
+    <AuthContext.Provider
+      value={{ apiS3, uploadManager, userCreds, isLoading, createSession, clearSession }}
+    >
       {isLoading ? (
         <div className="flex h-screen items-center justify-center">
           <p>Loading...</p>
@@ -122,4 +187,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )}
     </AuthContext.Provider>
   );
-}
+};

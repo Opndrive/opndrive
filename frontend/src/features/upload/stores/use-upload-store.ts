@@ -1,8 +1,7 @@
 'use client';
 
-import { UploadStatus, BYOS3ApiProvider } from '@opndrive/s3-api';
+import { UploadStatus, BYOS3ApiProvider, UploadManager } from '@opndrive/s3-api';
 import { create } from 'zustand';
-import { uploadManager } from '@/lib/uploadManagerInstance';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
@@ -126,9 +125,11 @@ interface DeleteProgress {
 }
 
 interface UploadStore {
+  uploadManager: UploadManager | null;
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
   duplicateDialog: DuplicateDialogState;
+  setUploadManager: (manager: UploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
@@ -138,13 +139,15 @@ interface UploadStore {
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => Promise<void>;
   handleFilesDroppedToFolder: (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => Promise<void>;
 
   // Delete operation methods
@@ -177,6 +180,10 @@ interface UploadStore {
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
+  uploadManager: null,
+
+  setUploadManager: (manager) => set({ uploadManager: manager }),
+
   uploads: {},
   deletes: {},
   duplicateDialog: {
@@ -244,9 +251,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   handleFilesDroppedToDirectory: async (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider | null
   ) => {
-    const { addUpload, showDuplicateDialog } = get();
+    const { uploadManager, addUpload, showDuplicateDialog } = get();
+
+    if (!uploadManager) {
+      return;
+    }
 
     if (processedData.individualFiles.length > 0) {
       // Process individual files with duplicate checking
@@ -525,9 +536,19 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => {
     const { addUpload, showDuplicateDialog } = get();
+
+    if (!uploadManager) {
+      console.error('UploadManager not available');
+      return;
+    }
+
+    if (!uploadManager) {
+      return;
+    }
 
     if (processedData.individualFiles.length > 0) {
       // Process individual files with duplicate checking

@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2 } from 'lucide-react';
-import { useApiS3 } from '@/hooks/use-auth';
 import { getContentTypeForS3 } from '@/config/file-extensions';
+import { PreviewLoading } from '../preview-loading';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface ImageViewerProps {
   file: PreviewableFile;
@@ -20,7 +21,15 @@ export function ImageViewer({ file }: ImageViewerProps) {
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [lastTap, setLastTap] = useState(0);
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
-  const apiS3 = useApiS3();
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   useEffect(() => {
     async function loadImage() {

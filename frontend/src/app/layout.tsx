@@ -1,6 +1,7 @@
 import '@/app/globals.css';
 import { AuthProvider } from '@/context/auth-context';
 import { NotificationProvider } from '@/context/notification-context';
+import { ZustandBridge } from '@/context/zustand-bridge';
 import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
 
@@ -40,6 +41,7 @@ export default function RootLayout({
       </head>
       <body>
         <AuthProvider>
+          <ZustandBridge />
           <ThemeProvider defaultTheme="system" storageKey="ui-theme">
             <UploadProvider>
               <NotificationProvider>{children}</NotificationProvider>

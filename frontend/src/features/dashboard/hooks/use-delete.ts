@@ -4,7 +4,7 @@ import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 export interface UseDeleteReturn {
   deleteFile: (file: FileItem) => Promise<void>;
@@ -17,7 +17,7 @@ export const useDelete = (): UseDeleteReturn => {
   const [activeDeletes, setActiveDeletes] = useState<Set<string>>(new Set());
   const { success, error } = useNotification();
   const { refreshCurrentData } = useDriveStore();
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return {

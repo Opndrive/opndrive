@@ -14,10 +14,11 @@ import {
   AudioLines,
   Ban,
 } from 'lucide-react';
-import { useApiS3 } from '@/hooks/use-auth';
 import type { PreviewableFile } from '@/types/file-preview';
 import { getContentTypeForS3 } from '@/config/file-extensions';
 import { FaPause, FaPlay } from 'react-icons/fa6';
+import { PreviewLoading } from '../preview-loading';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface AudioViewerProps {
   file: PreviewableFile;
@@ -38,7 +39,16 @@ export function AudioViewer({ file }: AudioViewerProps) {
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const apiS3 = useApiS3();
+
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   const getFileSize = (): number => {
     const fileWithSizeProps = file as PreviewableFile & {
@@ -53,7 +63,6 @@ export function AudioViewer({ file }: AudioViewerProps) {
   useEffect(() => {
     const loadAudio = async () => {
       try {
-        if (!apiS3) return;
         setLoading(true);
         setError(null);
 

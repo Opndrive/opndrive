@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PreviewableFile } from '@/types/file-preview';
-import { useApiS3 } from '@/hooks/use-auth';
 import { getContentTypeForS3 } from '@/config/file-extensions';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { PreviewLoading } from '../preview-loading';
 
 interface VideoViewerProps {
   file: PreviewableFile;
@@ -19,7 +20,15 @@ export function VideoViewer({ file }: VideoViewerProps) {
   );
   const [isPortrait, setIsPortrait] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const apiS3 = useApiS3();
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   useEffect(() => {
     async function loadVideo() {

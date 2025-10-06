@@ -7,7 +7,7 @@ import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/d
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, Suspense, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { EnhancedFolderBreadcrumb } from '@/features/dashboard/components/layout/breadcrumb/enhanced-folder-breadcrumb';
@@ -48,12 +48,16 @@ function BrowsePageContent() {
     setApiS3,
   } = useDriveStore();
 
-  const apiS3 = useApiS3();
+  const { apiS3, uploadManager, isLoading, isAuthenticated } = useAuthGuard();
 
   const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
 
-  if (!apiS3) {
-    return 'Loading...';
+  if (isLoading) {
+    return <DashboardLoading />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null; // useAuthGuard will handle redirect
   }
 
   // Parse URL parameters using utility function
@@ -81,8 +85,6 @@ function BrowsePageContent() {
   }, [apiS3, setApiS3]);
 
   useEffect(() => {
-    if (!apiS3) return; // Wait for apiS3 to be available
-
     const rootPrefix = apiS3.getPrefix();
     if (rootPrefix === '') {
       setRootPrefix('/');
@@ -128,16 +130,22 @@ function BrowsePageContent() {
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3, uploadManager);
     },
-    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3, uploadManager]
   );
 
   const handleFilesDroppedToFolderWrapper = useCallback(
     async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(processedData, targetFolder, currentPrefix, apiS3);
+      await handleFilesDroppedToFolder(
+        processedData,
+        targetFolder,
+        currentPrefix,
+        apiS3,
+        uploadManager
+      );
     },
-    [currentPrefix, handleFilesDroppedToFolder, apiS3]
+    [currentPrefix, handleFilesDroppedToFolder, apiS3, uploadManager]
   );
 
   const handleSync = async () => {

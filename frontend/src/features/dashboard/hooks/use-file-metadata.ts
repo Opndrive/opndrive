@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileItem } from '@/features/dashboard/types/file';
 import { HeadObjectCommandOutput } from '@aws-sdk/client-s3';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 export interface FileMetadata {
   size: string;
@@ -19,7 +19,7 @@ export const useFileMetadata = (file: FileItem | null) => {
   const [metadata, setMetadata] = useState<FileMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return { metadata: null, isLoading: true, error: null };
