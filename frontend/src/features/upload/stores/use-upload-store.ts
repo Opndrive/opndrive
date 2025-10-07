@@ -252,15 +252,48 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     }));
 
-    // Simple refresh on successful upload completion
+    // Smart refresh on upload completion
     if (updates.status === 'completed') {
-      console.log(`Upload ${id} completed - triggering data refresh`);
       const { refreshDataAfterUploadBatch } = get();
+      const state = get();
+      const completedUpload = state.uploads[id];
 
-      // Refresh immediately on each successful upload
-      refreshDataAfterUploadBatch().catch((error) => {
-        console.error('Upload refresh failed:', error);
-      });
+      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
+        // Individual file completed (not part of a folder) - refresh immediately
+        console.log(`Individual file ${id} completed - triggering data refresh`);
+        refreshDataAfterUploadBatch().catch((error) => {
+          console.error('Upload refresh failed:', error);
+        });
+      } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
+        // File is part of a folder - check if entire folder is complete
+        const parentFolderId = completedUpload.parentFolderId;
+        const folderUpload = state.uploads[parentFolderId];
+
+        if (folderUpload && folderUpload.fileIds) {
+          // Check if all files in the folder are completed
+          const allFilesCompleted = folderUpload.fileIds.every((fileId) => {
+            const fileUpload = state.uploads[fileId];
+            return fileUpload && fileUpload.status === 'completed';
+          });
+
+          if (allFilesCompleted) {
+            console.log(`Folder ${parentFolderId} fully completed - triggering data refresh`);
+            refreshDataAfterUploadBatch().catch((error) => {
+              console.error('Upload refresh failed:', error);
+            });
+          } else {
+            console.log(
+              `File ${id} completed, but folder ${parentFolderId} still has pending files`
+            );
+          }
+        }
+      } else if (completedUpload.type === 'folder') {
+        // Folder upload completed - refresh immediately
+        console.log(`Folder ${id} completed - triggering data refresh`);
+        refreshDataAfterUploadBatch().catch((error) => {
+          console.error('Upload refresh failed:', error);
+        });
+      }
     }
   },
 
