@@ -3,10 +3,15 @@
 import React from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
-import { uploadManager } from '@/lib/uploadManagerInstance';
+import { useUploadManager } from '@/hooks/use-auth';
 
 export const UploadOperationsCard: React.FC = () => {
   const { uploads } = useUploadStore();
+  const uploadManager = useUploadManager();
+
+  if (!uploadManager) {
+    return 'Loading...';
+  }
 
   // Helper function to cancel folder
   const cancelFolder = (folderId: string) => {

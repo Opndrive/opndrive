@@ -2,13 +2,13 @@
 
 import React, { useState } from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
-import { uploadManager } from '@/lib/uploadManagerInstance';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { DuplicateDialog } from './duplicate-dialog';
 import type { FileExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useUploadManager } from '@/hooks/use-auth';
 
 interface OperationItem {
   id: string;
@@ -84,6 +84,11 @@ export const OperationsModal: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const uploadManager = useUploadManager();
+
+  if (!uploadManager) {
+    return 'Loading...';
+  }
 
   // Simulate speed tracking for active uploads (demo purposes) - moved to top to fix hook order
   React.useEffect(() => {

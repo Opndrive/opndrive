@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { FileItem } from '@/features/dashboard/types/file';
 import { useNotification } from '@/context/notification-context';
-import { useApiS3 } from '@/hooks/use-auth';
 import { getContentTypeForS3 } from '@/config/file-extensions';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface ShareDialogState {
   isOpen: boolean;
@@ -33,7 +33,7 @@ interface ShareProviderProps {
 }
 
 export const ShareProvider: React.FC<ShareProviderProps> = ({ children }) => {
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
 
   const [shareDialog, setShareDialog] = useState<ShareDialogState>({
     isOpen: false,

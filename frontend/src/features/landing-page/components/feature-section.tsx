@@ -126,20 +126,22 @@ export default function FeaturesSection() {
   const src = featureImages[active.id][effectiveTheme === 'dark' ? 'dark' : 'light'];
 
   return (
-    <section id="features" className="py-24 bg-background">
-      <div className="max-w-7xl mx-auto px-8">
+    <section id="features" className="py-12 sm:py-16 md:py-20 lg:py-24 bg-background">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-5xl font-bold text-foreground mb-6">Store & Secure Everything</h2>
-          <p className="text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
+        <div className="text-center mb-8 sm:mb-12 md:mb-16">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6">
+            Store & Secure Everything
+          </h2>
+          <p className="text-sm sm:text-base md:text-lg lg:text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
             Keep all your files safe, backed up, and easy to access from any device.
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Left: Feature list */}
+        <div className="grid md:grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center">
+          {/* Feature list - Full width on mobile/tablet, left column on desktop */}
           <div
-            className="space-y-6"
+            className="space-y-4 sm:space-y-6 md:space-y-8 lg:space-y-6"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             onFocus={handleFocus}
@@ -156,11 +158,13 @@ export default function FeaturesSection() {
                   role="button"
                   aria-pressed={isActive}
                   className={`cursor-pointer transition-all duration-300 ease-out ${
-                    isActive ? 'border-l-4 border-primary pl-6' : 'border-l-4 pl-6 border-muted'
+                    isActive
+                      ? 'border-l-4 border-primary pl-4 sm:pl-6'
+                      : 'border-l-4 pl-4 sm:pl-6 border-muted'
                   }`}
                 >
                   <h3
-                    className={`text-2xl font-semibold mb-3 transition-colors duration-300 ease-out ${
+                    className={`text-lg sm:text-xl md:text-2xl font-semibold mb-2 sm:mb-3 transition-colors duration-300 ease-out ${
                       isActive ? 'text-foreground' : 'text-muted-foreground'
                     }`}
                   >
@@ -168,7 +172,7 @@ export default function FeaturesSection() {
                   </h3>
 
                   {isActive && (
-                    <p className="text-lg text-muted-foreground leading-relaxed animate-in fade-in duration-500">
+                    <p className="text-sm sm:text-base md:text-lg text-muted-foreground leading-relaxed animate-in fade-in duration-500">
                       {feature.description}
                     </p>
                   )}
@@ -177,16 +181,16 @@ export default function FeaturesSection() {
             })}
           </div>
 
-          {/* Right: Image */}
-          <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-lg h-96 overflow-hidden">
+          {/* Right: Image - Hidden on mobile/tablet, visible from lg screens */}
+          <div className="hidden lg:flex justify-center lg:justify-end">
+            <div className="w-full max-w-sm lg:max-w-md xl:max-w-lg h-72 lg:h-80 xl:h-96 overflow-hidden">
               <div className="relative w-full h-full">
                 <Image
                   key={`${active.id}-${effectiveTheme}`}
                   src={src}
                   alt={active.imageAlt}
                   fill
-                  sizes="(min-width: 1024px) 512px, 100vw"
+                  sizes="(min-width: 1280px) 512px, (min-width: 1024px) 448px, 384px"
                   className="object-contain transition-opacity duration-500"
                   priority
                 />

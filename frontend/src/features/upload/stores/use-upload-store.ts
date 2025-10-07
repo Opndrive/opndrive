@@ -1,15 +1,40 @@
 'use client';
 
-import { UploadStatus, BYOS3ApiProvider } from '@opndrive/s3-api';
+import { UploadStatus, BYOS3ApiProvider, UploadManager } from '@opndrive/s3-api';
 import { create } from 'zustand';
-import { uploadManager } from '@/lib/uploadManagerInstance';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
 
-// Debounce timer for batch refresh
-let refreshDebounceTimer: NodeJS.Timeout | null = null;
+// Enhanced batch tracking types
+interface UploadBatch {
+  id: string;
+  type: 'file' | 'folder' | 'mixed';
+  uploadIds: string[];
+  completedCount: number;
+  totalCount: number;
+  createdAt: number;
+  lastActivity: number;
+  isComplete: boolean;
+  hasTriggeredRefresh: boolean; // Track if this batch already triggered a refresh
+}
+
+interface RefreshState {
+  debounceTimer: NodeJS.Timeout | null;
+  isRefreshing: boolean;
+  lastRefreshAttempt: number;
+}
+
+// Global refresh state management
+const refreshState: RefreshState = {
+  debounceTimer: null,
+  isRefreshing: false,
+  lastRefreshAttempt: 0,
+};
+
+// Constants for timing
+const MIN_REFRESH_INTERVAL_MS = 3000; // Prevent spam refreshing
 
 // Helper function to generate S3 key
 const generateS3Key = (fileName: string, currentPath: string): string => {
@@ -126,9 +151,12 @@ interface DeleteProgress {
 }
 
 interface UploadStore {
+  uploadManager: UploadManager | null;
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
+  batches: Record<string, UploadBatch>;
   duplicateDialog: DuplicateDialogState;
+  setUploadManager: (manager: UploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
@@ -138,13 +166,15 @@ interface UploadStore {
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => Promise<void>;
   handleFilesDroppedToFolder: (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => Promise<void>;
 
   // Delete operation methods
@@ -172,13 +202,26 @@ interface UploadStore {
   ) => void;
   hideDuplicateDialog: () => void;
 
-  // Data refresh methods
+  // Batch tracking methods
+  createUploadBatch: (type: UploadBatch['type'], uploadIds: string[]) => string;
+  updateBatchProgress: (batchId: string, uploadId: string, isCompleted: boolean) => void;
+  getBatch: (batchId: string) => UploadBatch | undefined;
+  isBatchComplete: (batchId: string) => boolean;
+  cleanupCompletedBatches: () => void;
+
+  // Enhanced data refresh methods
   refreshDataAfterUploadBatch: () => Promise<void>;
+  forceRefreshData: () => Promise<void>;
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
+  uploadManager: null,
+
+  setUploadManager: (manager) => set({ uploadManager: manager }),
+
   uploads: {},
   deletes: {},
+  batches: {},
   duplicateDialog: {
     isOpen: false,
     duplicateItem: null,
@@ -197,6 +240,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     })),
 
   updateUpload: (id: string, updates: Partial<UploadProgress>) => {
+    console.log(`Updating upload ${id} with status: ${updates.status}`);
+
     set((state) => ({
       uploads: {
         ...state.uploads,
@@ -207,21 +252,48 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     }));
 
-    // Trigger batch refresh check when upload completes
+    // Smart refresh on upload completion
     if (updates.status === 'completed') {
-      // Clear existing timer and set new one to debounce multiple rapid completions
-      if (refreshDebounceTimer) {
-        clearTimeout(refreshDebounceTimer);
-      }
+      const { refreshDataAfterUploadBatch } = get();
+      const state = get();
+      const completedUpload = state.uploads[id];
 
-      refreshDebounceTimer = setTimeout(() => {
-        get()
-          .refreshDataAfterUploadBatch()
-          .catch(() => {
-            // Silent failure - already handled in refreshDataAfterUploadBatch
+      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
+        // Individual file completed (not part of a folder) - refresh immediately
+        console.log(`Individual file ${id} completed - triggering data refresh`);
+        refreshDataAfterUploadBatch().catch((error) => {
+          console.error('Upload refresh failed:', error);
+        });
+      } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
+        // File is part of a folder - check if entire folder is complete
+        const parentFolderId = completedUpload.parentFolderId;
+        const folderUpload = state.uploads[parentFolderId];
+
+        if (folderUpload && folderUpload.fileIds) {
+          // Check if all files in the folder are completed
+          const allFilesCompleted = folderUpload.fileIds.every((fileId) => {
+            const fileUpload = state.uploads[fileId];
+            return fileUpload && fileUpload.status === 'completed';
           });
-        refreshDebounceTimer = null;
-      }, 1000); // Wait 1 second after last completion to ensure batch is done
+
+          if (allFilesCompleted) {
+            console.log(`Folder ${parentFolderId} fully completed - triggering data refresh`);
+            refreshDataAfterUploadBatch().catch((error) => {
+              console.error('Upload refresh failed:', error);
+            });
+          } else {
+            console.log(
+              `File ${id} completed, but folder ${parentFolderId} still has pending files`
+            );
+          }
+        }
+      } else if (completedUpload.type === 'folder') {
+        // Folder upload completed - refresh immediately
+        console.log(`Folder ${id} completed - triggering data refresh`);
+        refreshDataAfterUploadBatch().catch((error) => {
+          console.error('Upload refresh failed:', error);
+        });
+      }
     }
   },
 
@@ -244,9 +316,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   handleFilesDroppedToDirectory: async (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider | null
   ) => {
-    const { addUpload, showDuplicateDialog } = get();
+    const { uploadManager, addUpload, showDuplicateDialog } = get();
+
+    if (!uploadManager) {
+      return;
+    }
 
     if (processedData.individualFiles.length > 0) {
       // Process individual files with duplicate checking
@@ -525,9 +601,19 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider
+    apiS3?: BYOS3ApiProvider,
+    uploadManager?: UploadManager | null
   ) => {
     const { addUpload, showDuplicateDialog } = get();
+
+    if (!uploadManager) {
+      console.error('UploadManager not available');
+      return;
+    }
+
+    if (!uploadManager) {
+      return;
+    }
 
     if (processedData.individualFiles.length > 0) {
       // Process individual files with duplicate checking
@@ -942,25 +1028,126 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     }),
 
-  // Data refresh methods - mirror delete behavior exactly
-  refreshDataAfterUploadBatch: async () => {
-    const { uploads } = get();
+  // Batch tracking methods
+  createUploadBatch: (type: UploadBatch['type'], uploadIds: string[]): string => {
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = Date.now();
 
-    // Check if all uploads in the current batch are completed or cancelled/failed
-    const activeUploads = Object.values(uploads).filter((upload) =>
-      ['uploading', 'queued'].includes(upload.status)
-    );
+    const batch: UploadBatch = {
+      id: batchId,
+      type,
+      uploadIds: [...uploadIds],
+      completedCount: 0,
+      totalCount: uploadIds.length,
+      createdAt: now,
+      lastActivity: now,
+      isComplete: false,
+      hasTriggeredRefresh: false,
+    };
 
-    // Only refresh if no active uploads remaining (batch complete)
-    if (activeUploads.length === 0) {
-      try {
-        // Get refreshCurrentData function from data context
-        const { refreshCurrentData } = useDriveStore.getState();
-        await refreshCurrentData();
-      } catch (error) {
-        // Silent failure - don't break upload completion if refresh fails
-        console.warn('Failed to refresh data after upload batch completion:', error);
-      }
+    set((state) => ({
+      batches: {
+        ...state.batches,
+        [batchId]: batch,
+      },
+    }));
+
+    return batchId;
+  },
+
+  updateBatchProgress: (batchId: string, uploadId: string, isCompleted: boolean) => {
+    set((state) => {
+      const batch = state.batches[batchId];
+      if (!batch) return state;
+
+      const _wasAlreadyCompleted = batch.isComplete;
+      const newCompletedCount = isCompleted ? batch.completedCount + 1 : batch.completedCount;
+
+      const isNowComplete = newCompletedCount >= batch.totalCount;
+
+      return {
+        batches: {
+          ...state.batches,
+          [batchId]: {
+            ...batch,
+            completedCount: newCompletedCount,
+            lastActivity: Date.now(),
+            isComplete: isNowComplete,
+          },
+        },
+      };
+    });
+  },
+
+  getBatch: (batchId: string): UploadBatch | undefined => {
+    return get().batches[batchId];
+  },
+
+  isBatchComplete: (batchId: string): boolean => {
+    const batch = get().batches[batchId];
+    return batch?.isComplete ?? false;
+  },
+
+  cleanupCompletedBatches: () => {
+    const now = Date.now();
+    const maxAge = 5 * 60 * 1000; // 5 minutes
+
+    set((state) => ({
+      batches: Object.fromEntries(
+        Object.entries(state.batches).filter(([, batch]) => {
+          return !batch.isComplete || now - batch.lastActivity < maxAge;
+        })
+      ),
+    }));
+  },
+
+  // Simple immediate data refresh on upload completion
+  refreshDataAfterUploadBatch: async (): Promise<void> => {
+    const now = Date.now();
+
+    // Prevent spam refreshing
+    if (
+      refreshState.isRefreshing ||
+      now - refreshState.lastRefreshAttempt < MIN_REFRESH_INTERVAL_MS
+    ) {
+      console.log('Refresh skipped - too frequent');
+      return;
+    }
+
+    refreshState.isRefreshing = true;
+    refreshState.lastRefreshAttempt = now;
+
+    try {
+      console.log('Refreshing data after upload completion...');
+      // Get refreshCurrentData function from data context
+      const { refreshCurrentData } = useDriveStore.getState();
+      await refreshCurrentData();
+      console.log('Data refresh completed successfully');
+    } catch (error) {
+      console.error('Upload refresh failed:', error);
+    } finally {
+      refreshState.isRefreshing = false;
+    }
+  },
+
+  forceRefreshData: async (): Promise<void> => {
+    // Clear timer
+    if (refreshState.debounceTimer) {
+      clearTimeout(refreshState.debounceTimer);
+      refreshState.debounceTimer = null;
+    }
+
+    refreshState.isRefreshing = true;
+
+    try {
+      const { refreshCurrentData } = useDriveStore.getState();
+      await refreshCurrentData();
+    } catch (error) {
+      console.error('Force refresh failed:', error);
+      throw error; // Re-throw for caller to handle
+    } finally {
+      refreshState.isRefreshing = false;
+      refreshState.lastRefreshAttempt = Date.now();
     }
   },
 }));

@@ -1,19 +1,13 @@
 'use client';
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  ReactNode,
-  useEffect,
-} from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { createRenameService } from '@/features/dashboard/services/rename-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3, useAuth } from '@/hooks/use-auth';
+import { PreviewLoading } from '@/components/file-preview';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface RenameDuplicateDialogState {
   isOpen: boolean;
@@ -53,17 +47,14 @@ interface RenameContextType {
 const RenameContext = createContext<RenameContextType | undefined>(undefined);
 
 export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const apiS3 = useApiS3();
-  const { clearSession } = useAuth();
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  useEffect(() => {
-    if (!apiS3) {
-      clearSession();
-    }
-  }, [apiS3, clearSession]);
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
 
-  if (!apiS3) {
-    return 'Loading...';
+  if (!isAuthenticated || !apiS3) {
+    return null;
   }
 
   const renameService = createRenameService(apiS3);

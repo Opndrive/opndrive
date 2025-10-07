@@ -18,6 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import Link from 'next/link';
+import { getCorsConfig } from '@/config/cors';
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -27,9 +28,11 @@ export default function ConnectPage() {
     secretAccessKey: '',
     bucketName: '',
     prefix: '',
+    endpoint: '',
     region: 'us-east-1',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState('aws');
 
   // AWS Regions
   const awsRegions: DropdownOption[] = [
@@ -55,14 +58,142 @@ export default function ConnectPage() {
     { value: 'sa-east-1', label: 'South America (São Paulo) - sa-east-1' },
     { value: 'af-south-1', label: 'Africa (Cape Town) - af-south-1' },
   ];
+
+  // S3-Compatible Service Providers
+  const s3Providers: DropdownOption[] = [
+    { value: 'aws', label: 'Amazon Web Services (AWS)' },
+    { value: 'wasabi', label: 'Wasabi Cloud Storage' },
+    { value: 'backblaze', label: 'Backblaze B2' },
+    { value: 'cloudflare', label: 'Cloudflare R2' },
+    { value: 'minio', label: 'MinIO' },
+  ];
+
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Provider configurations
+  const providerConfigs = {
+    aws: {
+      name: 'Amazon Web Services (AWS)',
+      endpoint: '',
+      defaultRegion: 'us-east-1',
+      regions: awsRegions,
+      docs: {
+        title: 'Setup Your AWS S3 Bucket',
+        corsInstructions:
+          'Go to your AWS S3 Console → Select your bucket → Permissions tab → Cross-origin resource sharing (CORS)',
+        permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+        docsUrl: 'https://docs.aws.amazon.com/AmazonS3/latest/userguide/cors.html',
+        docsLabel: 'AWS S3 CORS Documentation',
+      },
+    },
+    wasabi: {
+      name: 'Wasabi Cloud Storage',
+      endpoint: 'https://s3.{{region}}.wasabisys.com',
+      defaultRegion: 'us-east-1',
+      regions: [
+        { value: 'us-east-1', label: 'US East 1 (N. Virginia) - us-east-1' },
+        { value: 'us-east-2', label: 'US East 2 (N. Virginia) - us-east-2' },
+        { value: 'us-central-1', label: 'US Central 1 (Texas) - us-central-1' },
+        { value: 'us-west-1', label: 'US West 1 (Oregon) - us-west-1' },
+        { value: 'eu-central-1', label: 'EU Central 1 (Amsterdam) - eu-central-1' },
+        { value: 'eu-central-2', label: 'EU Central 2 (Frankfurt) - eu-central-2' },
+        { value: 'eu-west-1', label: 'EU West 1 (London) - eu-west-1' },
+        { value: 'eu-west-2', label: 'EU West 2 (Paris) - eu-west-2' },
+        { value: 'ap-northeast-1', label: 'AP Northeast 1 (Tokyo) - ap-northeast-1' },
+        { value: 'ap-northeast-2', label: 'AP Northeast 2 (Osaka) - ap-northeast-2' },
+        { value: 'ap-southeast-1', label: 'AP Southeast 1 (Singapore) - ap-southeast-1' },
+        { value: 'ap-southeast-2', label: 'AP Southeast 2 (Sydney) - ap-southeast-2' },
+      ],
+      docs: {
+        title: 'Setup Your Wasabi Bucket',
+        corsInstructions:
+          'Log into Wasabi Console → Select your bucket → Policies → CORS Configuration',
+        permissions: ['GetObject', 'PutObject', 'DeleteObject', 'ListBucket'],
+        docsUrl:
+          'https://wasabi-support.zendesk.com/hc/en-us/articles/360015106031-How-do-I-enable-CORS-on-my-bucket-',
+        docsLabel: 'Wasabi CORS Documentation',
+      },
+    },
+    backblaze: {
+      name: 'Backblaze B2',
+      endpoint: 'https://s3.{{region}}.backblazeb2.com',
+      defaultRegion: 'us-west-002',
+      regions: [
+        { value: 'us-west-002', label: 'US West (California) - us-west-002' },
+        { value: 'us-west-001', label: 'US West (Arizona) - us-west-001' },
+        { value: 'eu-central-003', label: 'EU Central (Amsterdam) - eu-central-003' },
+      ],
+      docs: {
+        title: 'Setup Your Backblaze B2 Bucket',
+        corsInstructions:
+          'Install the B2 cli tool, authenticate and apply the CORS configuration using the command line. View the documentation for details.',
+        permissions: ['listFiles', 'readFiles', 'writeFiles', 'deleteFiles'],
+        docsUrl:
+          'https://www.backblaze.com/docs/cloud-storage-enable-cors-with-the-cli#add-cors-rules-with-a-json-file-(macos-and-linux)',
+        docsLabel: 'Backblaze B2 CORS Documentation',
+      },
+    },
+    cloudflare: {
+      name: 'Cloudflare R2',
+      endpoint: 'https://{{accountId}}.r2.cloudflarestorage.com',
+      defaultRegion: 'auto',
+      regions: [
+        { value: 'auto', label: 'Automatic - auto' },
+        { value: 'wnam', label: 'Western North America - wnam' },
+        { value: 'enam', label: 'Eastern North America - enam' },
+        { value: 'weur', label: 'Western Europe - weur' },
+        { value: 'eeur', label: 'Eastern Europe - eeur' },
+        { value: 'apac', label: 'Asia Pacific - apac' },
+      ],
+      docs: {
+        title: 'Setup Your Cloudflare R2 Bucket',
+        corsInstructions:
+          'Go to Cloudflare Dashboard → R2 Object Storage → Select your bucket → Settings → CORS Policy',
+        permissions: ['Read', 'Write', 'Delete', 'List'],
+        docsUrl: 'https://developers.cloudflare.com/r2/api/s3/api/',
+        docsLabel: 'Cloudflare R2 API Documentation',
+      },
+    },
+    minio: {
+      name: 'MinIO',
+      endpoint: 'https://your-minio-server.com',
+      defaultRegion: 'us-east-1',
+      regions: [{ value: 'us-east-1', label: 'US East 1 - us-east-1' }],
+      docs: {
+        title: 'Setup Your MinIO Server',
+        corsInstructions:
+          'Configure CORS using MinIO Client (mc) or MinIO Console → Buckets → Select bucket → Summary → Access Policy',
+        permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+        docsUrl: 'https://min.io/docs/minio/linux/developers/javascript/API.html',
+        docsLabel: 'MinIO JavaScript API Documentation',
+      },
+    },
+  };
+
+  const currentProvider = providerConfigs[selectedProvider as keyof typeof providerConfigs];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      await createSession(formCreds);
+      // Get the endpoint from provider config or use custom endpoint
+      let endpoint = formCreds.endpoint;
+      if (!endpoint && currentProvider.endpoint) {
+        endpoint = currentProvider.endpoint.replace('{{region}}', formCreds.region);
+      }
+
+      // Only include endpoint if it has a value
+      const credentials: Credentials = {
+        accessKeyId: formCreds.accessKeyId,
+        secretAccessKey: formCreds.secretAccessKey,
+        bucketName: formCreds.bucketName,
+        prefix: formCreds.prefix,
+        region: formCreds.region,
+        ...(endpoint && endpoint.trim() && { endpoint: endpoint.trim() }),
+      };
+
+      await createSession(credentials);
       router.push('/dashboard');
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -72,25 +203,19 @@ export default function ConnectPage() {
     }
   };
 
-  const corsConfig = `{
-  "AllowedHeaders": [
-    "*"
-  ],
-  "AllowedMethods": [
-    "GET",
-    "PUT",
-    "POST",
-    "DELETE",
-    "HEAD"
-  ],
-  "AllowedOrigins": [
-    "https://your-domain.com"
-  ],
-  "ExposeHeaders": [
-    "ETag"
-  ],
-  "MaxAgeSeconds": 3000
-}`;
+  const handleProviderChange = (providerId: string) => {
+    setSelectedProvider(providerId);
+    const provider = providerConfigs[providerId as keyof typeof providerConfigs];
+
+    // Update form with provider defaults
+    setFormCreds((prev) => ({
+      ...prev,
+      region: provider.defaultRegion,
+      endpoint: provider.endpoint || '',
+    }));
+  };
+
+  const corsConfig = getCorsConfig(selectedProvider);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(corsConfig);
@@ -111,8 +236,6 @@ export default function ConnectPage() {
               <ArrowLeft className="h-4 w-4" />
               Back to Home
             </Link>
-            <div className="h-4 w-px bg-border" />
-            <h1 className="text-lg font-semibold text-foreground">Connect to AWS S3</h1>
           </div>
         </div>
       </header>
@@ -126,11 +249,32 @@ export default function ConnectPage() {
                 <div className="p-2 bg-primary/10 rounded-lg">
                   <Cloud className="h-6 w-6 text-primary" />
                 </div>
-                <h2 className="text-2xl font-bold text-foreground">AWS S3 Configuration</h2>
+                <h2 className="text-2xl font-bold text-foreground">S3-Compatible Storage</h2>
               </div>
               <p className="text-muted-foreground">
-                Connect your AWS S3 bucket to start managing your files with Opndrive.
+                Connect to AWS S3 or any S3-compatible storage service to manage your files.
               </p>
+            </div>
+
+            {/* Service Provider Selection */}
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Cloud className="h-4 w-4" />
+                  Storage Provider
+                </label>
+                <CustomDropdown
+                  options={s3Providers}
+                  value={selectedProvider}
+                  onChange={handleProviderChange}
+                  placeholder="Select your storage provider"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Based on your selected S3 provider, we'll show you documentation to help you get
+                  started with the setup.
+                </p>
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -185,11 +329,13 @@ export default function ConnectPage() {
                   Region
                 </label>
                 <CustomDropdown
-                  options={awsRegions}
+                  options={currentProvider.regions}
                   value={formCreds.region}
                   onChange={(value) => setFormCreds({ ...formCreds, region: value })}
-                  placeholder="Select AWS Region"
+                  placeholder={`Select ${currentProvider.name} Region`}
                   disabled={isLoading}
+                  allowCustomValue={true}
+                  customValuePlaceholder="Enter custom region..."
                 />
               </div>
 
@@ -209,9 +355,31 @@ export default function ConnectPage() {
                   Optional folder path within your bucket to use as the root directory.
                 </p>
               </div>
+              {(selectedProvider !== 'aws' || formCreds.endpoint) && (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Folder className="h-4 w-4" />
+                    Endpoint
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+                    placeholder={currentProvider.endpoint || 'Endpoint URL'}
+                    value={formCreds.endpoint}
+                    onChange={(e) => setFormCreds({ ...formCreds, endpoint: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {selectedProvider === 'aws'
+                      ? 'Optional custom endpoint URL for your S3 bucket.'
+                      : currentProvider.endpoint
+                        ? `Default: ${currentProvider.endpoint.replace('{{region}}', formCreds.region)}`
+                        : 'Enter the endpoint URL for your storage service.'}
+                  </p>
+                </div>
+              )}
 
               <Button type="submit" className="w-full cursor-pointer" disabled={isLoading}>
-                {isLoading ? 'Connecting...' : 'Connect to S3'}
+                {isLoading ? 'Connecting...' : `Connect to ${currentProvider.name}`}
               </Button>
             </form>
           </div>
@@ -219,71 +387,75 @@ export default function ConnectPage() {
           {/* Documentation Section */}
           <div className="space-y-6">
             <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Setup Your S3 Bucket</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">
+                {currentProvider.docs.title}
+              </h3>
 
               <div className="space-y-4">
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium text-foreground">1. Configure CORS Policy</h4>
                   <p className="text-sm text-muted-foreground">
-                    Go to your AWS S3 Console → Select your bucket → Permissions tab → Cross-origin
-                    resource sharing (CORS)
+                    {currentProvider.docs.corsInstructions}
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-foreground">2. Paste this JSON</h4>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyToClipboard}
-                      className="flex items-center gap-2"
-                    >
-                      {copiedCode ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      {copiedCode ? 'Copied' : 'Copy'}
-                    </Button>
+                {/* Only show JSON section for providers that use JSON CORS config */}
+                {['aws', 'cloudflare', 'backblaze'].includes(selectedProvider) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-foreground">2. Paste this JSON</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copyToClipboard}
+                        className="flex items-center gap-2"
+                      >
+                        {copiedCode ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {copiedCode ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                    <div className="bg-muted p-3 rounded-md overflow-x-auto">
+                      <pre className="text-xs text-foreground whitespace-pre-wrap">
+                        {corsConfig}
+                      </pre>
+                    </div>
                   </div>
-                  <div className="bg-muted p-3 rounded-md overflow-x-auto">
-                    <pre className="text-xs text-foreground whitespace-pre-wrap">{corsConfig}</pre>
-                  </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium text-foreground">
-                    3. Required IAM Permissions
+                    {['aws', 'wasabi', 'cloudflare', 'backblaze'].includes(selectedProvider)
+                      ? '3.'
+                      : '2.'}{' '}
+                    Required Permissions
                   </h4>
                   <p className="text-sm text-muted-foreground">
-                    Your AWS credentials need these S3 permissions:
+                    Your credentials need these permissions:
                   </p>
                   <ul className="text-xs text-muted-foreground space-y-1 ml-4">
-                    <li>
-                      • <code className="bg-muted px-1 rounded">s3:GetObject</code>
-                    </li>
-                    <li>
-                      • <code className="bg-muted px-1 rounded">s3:PutObject</code>
-                    </li>
-                    <li>
-                      • <code className="bg-muted px-1 rounded">s3:DeleteObject</code>
-                    </li>
-                    <li>
-                      • <code className="bg-muted px-1 rounded">s3:ListBucket</code>
-                    </li>
+                    {currentProvider.docs.permissions.map((permission, index) => (
+                      <li key={index}>
+                        • <code className="bg-muted px-1 rounded">{permission}</code>
+                      </li>
+                    ))}
                   </ul>
                 </div>
 
-                <div className="pt-4 border-t border-border">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ExternalLink className="h-4 w-4" />
-                    <a
-                      href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/cors.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-foreground transition-colors"
-                    >
-                      AWS S3 CORS Documentation
-                    </a>
+                {currentProvider.docs.docsUrl !== '#' && (
+                  <div className="pt-4 border-t border-border">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <ExternalLink className="h-4 w-4" />
+                      <a
+                        href={currentProvider.docs.docsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-foreground transition-colors"
+                      >
+                        {currentProvider.docs.docsLabel}
+                      </a>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 

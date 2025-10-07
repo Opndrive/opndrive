@@ -3,14 +3,14 @@ import { createDownloadService, type DownloadProgress } from '../services/downlo
 import { useNotification } from '@/context/notification-context';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 export const useDownload = () => {
   const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(
     new Map()
   );
   const { error: showError, info } = useNotification();
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return {

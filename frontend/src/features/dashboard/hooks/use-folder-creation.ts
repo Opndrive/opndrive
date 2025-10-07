@@ -8,7 +8,7 @@ import {
   sanitizeFolderName,
   isValidFolderName,
 } from '@/features/upload/utils/sanitize-folder-name';
-import { useApiS3 } from '@/hooks/use-auth';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface UseFolderCreationOptions {
   currentPath: string;
@@ -31,7 +31,8 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
   });
 
   const { fetchData, refreshCurrentData } = useDriveStore();
-  const apiS3 = useApiS3();
+
+  const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return {

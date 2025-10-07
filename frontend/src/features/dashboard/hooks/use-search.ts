@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react';
 import { createSearchService } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
-import { useApiS3 } from '@/hooks/use-auth';
 import { SearchResult } from '@opndrive/s3-api';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 export const useSearch = () => {
   const [activeSearches, setActiveSearches] = useState<Set<string>>(new Set());
@@ -12,7 +12,7 @@ export const useSearch = () => {
 
   const { error } = useNotification();
   const { currentPrefix } = useDriveStore();
-  const apiS3 = useApiS3();
+  const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return {
