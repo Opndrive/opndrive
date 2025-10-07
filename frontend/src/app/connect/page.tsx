@@ -62,14 +62,10 @@ export default function ConnectPage() {
   // S3-Compatible Service Providers
   const s3Providers: DropdownOption[] = [
     { value: 'aws', label: 'Amazon Web Services (AWS)' },
-    { value: 'digitalocean', label: 'DigitalOcean Spaces' },
     { value: 'wasabi', label: 'Wasabi Cloud Storage' },
     { value: 'backblaze', label: 'Backblaze B2' },
-    { value: 'linode', label: 'Linode Object Storage' },
-    { value: 'vultr', label: 'Vultr Object Storage' },
     { value: 'cloudflare', label: 'Cloudflare R2' },
     { value: 'minio', label: 'MinIO' },
-    { value: 'custom', label: 'Custom S3-Compatible' },
   ];
 
   const [copiedCode, setCopiedCode] = useState(false);
@@ -88,28 +84,6 @@ export default function ConnectPage() {
         permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
         docsUrl: 'https://docs.aws.amazon.com/AmazonS3/latest/userguide/cors.html',
         docsLabel: 'AWS S3 CORS Documentation',
-      },
-    },
-    digitalocean: {
-      name: 'DigitalOcean Spaces',
-      endpoint: 'https://{{region}}.digitaloceanspaces.com',
-      defaultRegion: 'nyc3',
-      regions: [
-        { value: 'nyc3', label: 'New York 3 - nyc3' },
-        { value: 'ams3', label: 'Amsterdam 3 - ams3' },
-        { value: 'sfo3', label: 'San Francisco 3 - sfo3' },
-        { value: 'sgp1', label: 'Singapore 1 - sgp1' },
-        { value: 'fra1', label: 'Frankfurt 1 - fra1' },
-        { value: 'blr1', label: 'Bangalore 1 - blr1' },
-        { value: 'syd1', label: 'Sydney 1 - syd1' },
-      ],
-      docs: {
-        title: 'Setup Your DigitalOcean Space',
-        corsInstructions:
-          'Go to your DigitalOcean Control Panel → Spaces → Select your Space → Settings → CORS Configurations',
-        permissions: ['Read', 'Write', 'Delete', 'List'],
-        docsUrl: 'https://docs.digitalocean.com/products/spaces/how-to/configure-cors/',
-        docsLabel: 'DigitalOcean Spaces CORS Documentation',
       },
     },
     wasabi: {
@@ -159,42 +133,6 @@ export default function ConnectPage() {
         docsLabel: 'Backblaze B2 CORS Documentation',
       },
     },
-    linode: {
-      name: 'Linode Object Storage',
-      endpoint: 'https://{{region}}.linodeobjects.com',
-      defaultRegion: 'us-east-1',
-      regions: [
-        { value: 'us-east-1', label: 'Newark, NJ - us-east-1' },
-        { value: 'eu-central-1', label: 'Frankfurt, DE - eu-central-1' },
-        { value: 'ap-south-1', label: 'Singapore, SG - ap-south-1' },
-      ],
-      docs: {
-        title: 'Setup Your Linode Object Storage',
-        corsInstructions: 'Use Linode CLI or API to configure CORS for your bucket',
-        permissions: ['read_only', 'read_write'],
-        docsUrl: 'https://www.linode.com/docs/products/storage/object-storage/guides/cors/',
-        docsLabel: 'Linode Object Storage CORS Documentation',
-      },
-    },
-    vultr: {
-      name: 'Vultr Object Storage',
-      endpoint: 'https://{{region}}.vultrobjects.com',
-      defaultRegion: 'ewr1',
-      regions: [
-        { value: 'ewr1', label: 'New Jersey - ewr1' },
-        { value: 'sjc1', label: 'Silicon Valley - sjc1' },
-        { value: 'ams1', label: 'Amsterdam - ams1' },
-        { value: 'sgp1', label: 'Singapore - sgp1' },
-      ],
-      docs: {
-        title: 'Setup Your Vultr Object Storage',
-        corsInstructions:
-          'Access Vultr Customer Portal → Object Storage → Select your bucket → CORS Configuration',
-        permissions: ['Read', 'Write', 'Delete', 'List'],
-        docsUrl: 'https://www.vultr.com/docs/vultr-object-storage/',
-        docsLabel: 'Vultr Object Storage Documentation',
-      },
-    },
     cloudflare: {
       name: 'Cloudflare R2',
       endpoint: 'https://{{accountId}}.r2.cloudflarestorage.com',
@@ -228,19 +166,6 @@ export default function ConnectPage() {
         permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
         docsUrl: 'https://min.io/docs/minio/linux/developers/javascript/API.html',
         docsLabel: 'MinIO JavaScript API Documentation',
-      },
-    },
-    custom: {
-      name: 'Custom S3-Compatible',
-      endpoint: '',
-      defaultRegion: 'us-east-1',
-      regions: [{ value: 'us-east-1', label: 'US East 1 - us-east-1' }],
-      docs: {
-        title: 'Setup Your S3-Compatible Service',
-        corsInstructions: "Refer to your service provider's documentation for CORS configuration",
-        permissions: ['Read', 'Write', 'Delete', 'List'],
-        docsUrl: '#',
-        docsLabel: "Consult your provider's documentation",
       },
     },
   };
@@ -474,26 +399,34 @@ export default function ConnectPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-foreground">2. Paste this JSON</h4>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyToClipboard}
-                      className="flex items-center gap-2"
-                    >
-                      {copiedCode ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      {copiedCode ? 'Copied' : 'Copy'}
-                    </Button>
+                {/* Only show JSON section for providers that use JSON CORS config */}
+                {['aws', 'wasabi', 'cloudflare'].includes(selectedProvider) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-foreground">2. Paste this JSON</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copyToClipboard}
+                        className="flex items-center gap-2"
+                      >
+                        {copiedCode ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {copiedCode ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                    <div className="bg-muted p-3 rounded-md overflow-x-auto">
+                      <pre className="text-xs text-foreground whitespace-pre-wrap">
+                        {corsConfig}
+                      </pre>
+                    </div>
                   </div>
-                  <div className="bg-muted p-3 rounded-md overflow-x-auto">
-                    <pre className="text-xs text-foreground whitespace-pre-wrap">{corsConfig}</pre>
-                  </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-foreground">3. Required Permissions</h4>
+                  <h4 className="text-sm font-medium text-foreground">
+                    {['aws', 'wasabi', 'cloudflare'].includes(selectedProvider) ? '3.' : '2.'}{' '}
+                    Required Permissions
+                  </h4>
                   <p className="text-sm text-muted-foreground">
                     Your credentials need these permissions:
                   </p>
