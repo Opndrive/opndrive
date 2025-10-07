@@ -379,7 +379,7 @@ export default function ConnectPage() {
               )}
 
               <Button type="submit" className="w-full cursor-pointer" disabled={isLoading}>
-                {isLoading ? 'Connecting...' : `Connect to ${currentProvider.name}`}
+                {isLoading ? 'Connecting...' : `Connect to your S3 Storage`}
               </Button>
             </form>
           </div>
