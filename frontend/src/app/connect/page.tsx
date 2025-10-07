@@ -18,6 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import Link from 'next/link';
+import { getCorsConfig } from '@/config/cors';
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -151,9 +152,10 @@ export default function ConnectPage() {
       docs: {
         title: 'Setup Your Backblaze B2 Bucket',
         corsInstructions:
-          'Go to Backblaze B2 Console → Select your bucket → Bucket Settings → CORS Rules',
+          'Install the B2 cli tool, authenticate and apply the CORS configuration using the command line. View the documentation for details.',
         permissions: ['listFiles', 'readFiles', 'writeFiles', 'deleteFiles'],
-        docsUrl: 'https://www.backblaze.com/b2/docs/cors_rules.html',
+        docsUrl:
+          'https://www.backblaze.com/docs/cloud-storage-enable-cors-with-the-cli#add-cors-rules-with-a-json-file-(macos-and-linux)',
         docsLabel: 'Backblaze B2 CORS Documentation',
       },
     },
@@ -288,29 +290,7 @@ export default function ConnectPage() {
     }));
   };
 
-  const getCorsConfig = () => {
-    return `{
-  "AllowedHeaders": [
-    "*"
-  ],
-  "AllowedMethods": [
-    "GET",
-    "PUT",
-    "POST",
-    "DELETE",
-    "HEAD"
-  ],
-  "AllowedOrigins": [
-    "https://your-domain.com"
-  ],
-  "ExposeHeaders": [
-    "ETag"
-  ],
-  "MaxAgeSeconds": 3000
-}`;
-  };
-
-  const corsConfig = getCorsConfig();
+  const corsConfig = getCorsConfig(selectedProvider);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(corsConfig);
