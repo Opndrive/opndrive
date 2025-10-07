@@ -271,8 +271,8 @@ export default function ConnectPage() {
                   disabled={isLoading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Choose your S3-compatible storage provider. Each provider has specific
-                  configuration requirements.
+                  Based on your selected S3 provider, we'll show you documentation to help you get
+                  started with the setup.
                 </p>
               </div>
             </div>

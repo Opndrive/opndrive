@@ -54,32 +54,42 @@ export function CustomDropdown({
       const rect = triggerRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
-      const spaceBelow = viewportHeight - rect.bottom;
-      const spaceAbove = rect.top;
 
-      // Calculate dropdown height considering custom input
-      const customInputHeight = showCustomInput ? 80 : 0; // Custom input section height
-      const baseDropdownHeight = Math.min(240, options.length * 40 + 8);
-      const totalDropdownHeight = baseDropdownHeight + customInputHeight;
+      // Dynamic dropdown height calculation
+      const customInputHeight = showCustomInput ? 80 : 0; // Height of custom input section
+      const estimatedOptionsHeight = Math.min(options.length * 40, 240); // Max 6 options visible
+      const totalDropdownHeight = customInputHeight + estimatedOptionsHeight + 16; // padding
 
+      const spaceBelow = viewportHeight - rect.bottom - 8; // 8px margin
+      const spaceAbove = rect.top - 8; // 8px margin
+
+      // Decide whether to open upward
       const shouldOpenUpward = spaceBelow < totalDropdownHeight && spaceAbove > spaceBelow;
 
-      // Ensure dropdown doesn't go off-screen horizontally
+      // Calculate available height
+      const availableHeight = shouldOpenUpward ? spaceAbove : spaceBelow;
+      const maxDropdownHeight = Math.min(totalDropdownHeight, availableHeight, 400);
+
+      // Horizontal positioning
       let leftPosition = rect.left;
-      if (leftPosition + rect.width > viewportWidth - 16) {
-        leftPosition = viewportWidth - rect.width - 16;
+      const dropdownWidth = rect.width;
+
+      // Horizontal bounds checking
+      if (leftPosition + dropdownWidth > viewportWidth - 16) {
+        leftPosition = viewportWidth - dropdownWidth - 16;
       }
       if (leftPosition < 16) {
         leftPosition = 16;
       }
 
+      // Vertical positioning
+      const topPosition = shouldOpenUpward ? rect.top - maxDropdownHeight - 4 : rect.bottom + 4;
+
       setDropdownPosition({
-        top: shouldOpenUpward ? rect.top - totalDropdownHeight - 4 : rect.bottom + 4,
+        top: topPosition,
         left: leftPosition,
-        width: rect.width,
-        maxHeight: shouldOpenUpward
-          ? Math.min(240, spaceAbove - 8 - customInputHeight)
-          : Math.min(240, spaceBelow - 8 - customInputHeight),
+        width: dropdownWidth,
+        maxHeight: maxDropdownHeight,
         openUpward: shouldOpenUpward,
       });
     }
@@ -94,8 +104,15 @@ export function CustomDropdown({
       };
 
       const handleScroll = (event: Event) => {
+        const target = event.target as Node;
+
         // Don't close if scrolling inside the dropdown
-        if (dropdownRef.current && dropdownRef.current.contains(event.target as Node)) {
+        if (dropdownRef.current && dropdownRef.current.contains(target)) {
+          return;
+        }
+
+        // Don't close if the scroll event is from the dropdown itself
+        if (target && (target as Element).closest('[role="listbox"]')) {
           return;
         }
 
@@ -230,67 +247,67 @@ export function CustomDropdown({
   const dropdownContent =
     isOpen && typeof window !== 'undefined'
       ? createPortal(
-          <div
-            ref={dropdownRef}
-            className="fixed z-[9999] bg-card border border-border rounded-md shadow-xl overflow-hidden backdrop-blur-sm"
-            style={{
-              top: dropdownPosition.top,
-              left: dropdownPosition.left,
-              width: dropdownPosition.width,
-              maxHeight: dropdownPosition.maxHeight + (showCustomInput ? 80 : 0),
-            }}
-          >
+          <div className="fixed inset-0 z-[999999] pointer-events-none">
             <div
-              className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground"
+              ref={dropdownRef}
+              className="absolute bg-card border border-border rounded-md shadow-2xl pointer-events-auto"
               style={{
-                maxHeight: showCustomInput
-                  ? dropdownPosition.maxHeight + 78 // Full height when custom input is shown
-                  : dropdownPosition.maxHeight - 2,
+                top: dropdownPosition.top,
+                left: dropdownPosition.left,
+                width: dropdownPosition.width,
+                height: dropdownPosition.maxHeight,
+                transform: 'translateZ(0)', // Force hardware acceleration and new stacking context
               }}
             >
-              {showCustomInput ? (
-                // Custom input field
-                <div className="px-3 py-3 bg-muted/30 border-b border-border">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Enter custom value:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={customInputRef}
-                        type="text"
-                        value={customValue}
-                        onChange={(e) => setCustomValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleCustomValueSubmit();
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            handleCustomValueCancel();
-                          }
-                        }}
-                        placeholder={customValuePlaceholder}
-                        className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors"
-                      />
-                      <button
-                        onClick={handleCustomValueSubmit}
-                        disabled={!customValue.trim()}
-                        className="px-3 py-2 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={handleCustomValueCancel}
-                        className="px-3 py-2 text-xs font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
-                      >
-                        Cancel
-                      </button>
+              <div className="flex flex-col h-full">
+                {showCustomInput && (
+                  // Custom input field - always at the top
+                  <div className="flex-shrink-0 px-3 py-2 bg-card border-b border-border">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Enter custom value:
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={customInputRef}
+                          type="text"
+                          value={customValue}
+                          onChange={(e) => setCustomValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleCustomValueSubmit();
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              handleCustomValueCancel();
+                            }
+                          }}
+                          placeholder={customValuePlaceholder}
+                          className="flex-1 px-2 py-1.5 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring focus:border-transparent transition-colors"
+                        />
+                        <button
+                          onClick={handleCustomValueSubmit}
+                          disabled={!customValue.trim()}
+                          className="px-2 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                        >
+                          Add
+                        </button>
+                        <button
+                          onClick={handleCustomValueCancel}
+                          className="px-2 py-1.5 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors shrink-0"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <>
+                )}
+
+                {/* Scrollable options section */}
+                <div
+                  role="listbox"
+                  className="flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground"
+                >
                   {options.map((option, index) => (
                     <button
                       key={option.value}
@@ -332,8 +349,8 @@ export function CustomDropdown({
                       </button>
                     </>
                   )}
-                </>
-              )}
+                </div>
+              </div>
             </div>
           </div>,
           document.body

@@ -35,6 +35,7 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
                   width={32}
                   height={32}
                   className="object-contain"
+                  priority
                 />
               </div>
               <span className="text-xl font-bold text-foreground">Opndrive</span>
