@@ -258,8 +258,8 @@ export const OperationsModal: React.FC = () => {
     return 0;
   });
 
-  // If no operations, don't show modal
-  if (sortedOperations.length === 0) {
+  // If no operations and no duplicate dialog, don't show modal
+  if (sortedOperations.length === 0 && !duplicateDialog.isOpen) {
     return null;
   }
 
@@ -285,6 +285,11 @@ export const OperationsModal: React.FC = () => {
 
   // Get title based on operations
   const getTitle = () => {
+    // If only duplicate dialog is open, show appropriate title
+    if (sortedOperations.length === 0 && duplicateDialog.isOpen) {
+      return 'File Upload';
+    }
+
     const hasActiveOperations = activeUploads > 0 || activeDeletes > 0;
 
     if (hasActiveOperations) {
@@ -561,7 +566,7 @@ export const OperationsModal: React.FC = () => {
           )}
 
           {/* Operations List */}
-          {isExpanded && (
+          {isExpanded && sortedOperations.length > 0 && (
             <div className="max-h-60 sm:max-h-96 overflow-y-auto custom-scrollbar">
               {sortedOperations.map((operation) => {
                 const canCancel = ['uploading', 'queued', 'deleting', 'paused'].includes(
@@ -705,11 +710,6 @@ export const OperationsModal: React.FC = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    console.log(
-                                      'Resume clicked for:',
-                                      operation.id,
-                                      operation.name
-                                    );
                                     uploadManager.resumeUpload(operation.id);
                                   }}
                                   className="w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center"

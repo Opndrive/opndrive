@@ -240,8 +240,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     })),
 
   updateUpload: (id: string, updates: Partial<UploadProgress>) => {
-    console.log(`Updating upload ${id} with status: ${updates.status}`);
-
     set((state) => ({
       uploads: {
         ...state.uploads,
@@ -260,9 +258,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
       if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
         // Individual file completed (not part of a folder) - refresh immediately
-        console.log(`Individual file ${id} completed - triggering data refresh`);
-        refreshDataAfterUploadBatch().catch((error) => {
-          console.error('Upload refresh failed:', error);
+        refreshDataAfterUploadBatch().catch(() => {
+          // Silently handle refresh errors
         });
       } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
         // File is part of a folder - check if entire folder is complete
@@ -277,21 +274,15 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           });
 
           if (allFilesCompleted) {
-            console.log(`Folder ${parentFolderId} fully completed - triggering data refresh`);
-            refreshDataAfterUploadBatch().catch((error) => {
-              console.error('Upload refresh failed:', error);
+            refreshDataAfterUploadBatch().catch(() => {
+              // Silently handle refresh errors
             });
-          } else {
-            console.log(
-              `File ${id} completed, but folder ${parentFolderId} still has pending files`
-            );
           }
         }
       } else if (completedUpload.type === 'folder') {
         // Folder upload completed - refresh immediately
-        console.log(`Folder ${id} completed - triggering data refresh`);
-        refreshDataAfterUploadBatch().catch((error) => {
-          console.error('Upload refresh failed:', error);
+        refreshDataAfterUploadBatch().catch(() => {
+          // Silently handle refresh errors
         });
       }
     }
@@ -332,8 +323,8 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           const isDuplicate = await checkForDuplicates(apiS3, file.name, currentPrefix || '');
 
           if (isDuplicate) {
-            // Show duplicate dialog
-            return new Promise<void>((resolve) => {
+            // Show duplicate dialog and handle the decision
+            await new Promise<void>((resolve) => {
               showDuplicateDialog(
                 {
                   name: file.name,
@@ -363,6 +354,9 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                     progress: 0,
                     type: 'file',
                   });
+
+                  // Hide the dialog after handling
+                  get().hideDuplicateDialog();
                   resolve();
                 },
                 // onKeepBoth - generate unique name
@@ -398,14 +392,19 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                       progress: 0,
                       type: 'file',
                     });
+
+                    // Hide the dialog after handling
+                    get().hideDuplicateDialog();
                     resolve();
                   } catch (error) {
-                    console.error('Failed to generate unique filename:', error);
+                    get().hideDuplicateDialog();
                     resolve();
+                    console.error('Failed to generate unique file name:', error);
                   }
                 }
               );
             });
+            continue; // Skip to next file after handling duplicate
           }
         }
 
@@ -607,7 +606,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     const { addUpload, showDuplicateDialog } = get();
 
     if (!uploadManager) {
-      console.error('UploadManager not available');
       return;
     }
 
@@ -1110,7 +1108,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       refreshState.isRefreshing ||
       now - refreshState.lastRefreshAttempt < MIN_REFRESH_INTERVAL_MS
     ) {
-      console.log('Refresh skipped - too frequent');
       return;
     }
 
@@ -1118,13 +1115,9 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     refreshState.lastRefreshAttempt = now;
 
     try {
-      console.log('Refreshing data after upload completion...');
       // Get refreshCurrentData function from data context
       const { refreshCurrentData } = useDriveStore.getState();
       await refreshCurrentData();
-      console.log('Data refresh completed successfully');
-    } catch (error) {
-      console.error('Upload refresh failed:', error);
     } finally {
       refreshState.isRefreshing = false;
     }
@@ -1142,9 +1135,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     try {
       const { refreshCurrentData } = useDriveStore.getState();
       await refreshCurrentData();
-    } catch (error) {
-      console.error('Force refresh failed:', error);
-      throw error; // Re-throw for caller to handle
     } finally {
       refreshState.isRefreshing = false;
       refreshState.lastRefreshAttempt = Date.now();
