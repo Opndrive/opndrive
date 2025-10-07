@@ -127,7 +127,7 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
                     element.scrollIntoView({ behavior: 'smooth' });
                   }
                 }}
-                className="text-xs lg:text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 whitespace-nowrap"
+                className="text-md lg:text-md font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 whitespace-nowrap"
               >
                 {item.label}
               </button>

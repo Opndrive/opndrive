@@ -66,7 +66,7 @@ export default function Navbar() {
                     element.scrollIntoView({ behavior: 'smooth' });
                   }
                 }}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 whitespace-nowrap"
+                className="text-md font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 whitespace-nowrap"
               >
                 {item.label}
               </button>

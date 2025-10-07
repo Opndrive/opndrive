@@ -117,7 +117,7 @@ export default function LandingPage() {
                   <button
                     key={index}
                     onClick={() => handleNavClick(item.href)}
-                    className="block w-full text-left px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                    className="block w-full text-left px-3 py-2 text-md font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
                   >
                     {item.label}
                   </button>
