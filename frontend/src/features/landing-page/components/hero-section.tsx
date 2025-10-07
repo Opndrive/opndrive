@@ -62,10 +62,16 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
             </div>
 
             <div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 sm:mb-6 text-balance leading-tight">
-                Your S3 storage, beautifully organized
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-2 text-balance leading-tight">
+                <span className="block">Buckets made beautiful</span>
+                <span
+                  className="block text-2xl sm:text-3xl md:text-4xl lg:text-5xl mt-2"
+                  style={{ color: 'var(--primary)' }}
+                >
+                  Across every provider
+                </span>
               </h1>
-              <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-lg text-pretty leading-relaxed">
+              <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-lg text-pretty leading-relaxed mt-6">
                 Open-source web interface for S3 compatible storage. Connect your own bucket and
                 manage files with complete control over your data.
               </p>
