@@ -400,7 +400,7 @@ export default function ConnectPage() {
                 </div>
 
                 {/* Only show JSON section for providers that use JSON CORS config */}
-                {['aws', 'wasabi', 'cloudflare'].includes(selectedProvider) && (
+                {['aws', 'cloudflare', 'backblaze'].includes(selectedProvider) && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-medium text-foreground">2. Paste this JSON</h4>
@@ -424,7 +424,9 @@ export default function ConnectPage() {
 
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium text-foreground">
-                    {['aws', 'wasabi', 'cloudflare'].includes(selectedProvider) ? '3.' : '2.'}{' '}
+                    {['aws', 'wasabi', 'cloudflare', 'backblaze'].includes(selectedProvider)
+                      ? '3.'
+                      : '2.'}{' '}
                     Required Permissions
                   </h4>
                   <p className="text-sm text-muted-foreground">
