@@ -6,7 +6,7 @@ import Image from 'next/image';
 import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
-import { useState, useEffect } from 'react';
+import { useOpndriveStars } from '@/hooks/use-github-stars';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -23,24 +23,9 @@ interface HeroSectionProps {
 
 export default function HeroSection({ handleGetStarted, isLoading }: HeroSectionProps) {
   const effectiveTheme = useEffectiveTheme();
-  const [stars, setStars] = useState<number | null>(null);
 
-  // Fetch GitHub stars
-  useEffect(() => {
-    const fetchGitHubStars = async () => {
-      try {
-        const response = await fetch('https://api.github.com/repos/opndrive/opndrive');
-        if (response.ok) {
-          const data = await response.json();
-          setStars(data.stargazers_count);
-        }
-      } catch (error) {
-        console.error('Failed to fetch GitHub stars:', error);
-      }
-    };
-
-    fetchGitHubStars();
-  }, []);
+  // Use custom hook for GitHub stars
+  const { stars } = useOpndriveStars();
 
   return (
     <section

@@ -11,6 +11,7 @@ import WorkSmarterSection from '@/features/landing-page/components/work-smarter-
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
+import { useOpndriveStars } from '@/hooks/use-github-stars';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -25,24 +26,9 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
-  const [stars, setStars] = useState<number | null>(null);
 
-  // Fetch GitHub stars
-  useEffect(() => {
-    const fetchGitHubStars = async () => {
-      try {
-        const response = await fetch('https://api.github.com/repos/opndrive/opndrive');
-        if (response.ok) {
-          const data = await response.json();
-          setStars(data.stargazers_count);
-        }
-      } catch (error) {
-        console.error('Failed to fetch GitHub stars:', error);
-      }
-    };
-
-    fetchGitHubStars();
-  }, []);
+  // Use custom hook for GitHub stars
+  const { stars } = useOpndriveStars();
 
   // Simple scroll detection to show navbar after hero section
   useEffect(() => {

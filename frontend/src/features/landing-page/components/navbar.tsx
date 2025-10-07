@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
+import { useOpndriveStars } from '@/hooks/use-github-stars';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -15,24 +16,9 @@ const navItems = [
 export default function Navbar() {
   const [isSticky, setIsSticky] = useState(false);
   const [showSticky, setShowSticky] = useState(false);
-  const [stars, setStars] = useState<number | null>(null);
 
-  // Fetch GitHub stars
-  useEffect(() => {
-    const fetchGitHubStars = async () => {
-      try {
-        const response = await fetch('https://api.github.com/repos/opndrive/opndrive');
-        if (response.ok) {
-          const data = await response.json();
-          setStars(data.stargazers_count);
-        }
-      } catch (error) {
-        console.error('Failed to fetch GitHub stars:', error);
-      }
-    };
-
-    fetchGitHubStars();
-  }, []);
+  // Use custom hook for GitHub stars
+  const { stars } = useOpndriveStars();
 
   useEffect(() => {
     const handleScroll = () => {
