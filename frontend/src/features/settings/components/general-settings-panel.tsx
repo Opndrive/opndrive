@@ -1,7 +1,7 @@
 'use client';
 
 import { GeneralSettings } from '../types';
-import { UPLOAD_METHODS, START_PAGE_OPTIONS } from '../constants';
+import { START_PAGE_OPTIONS } from '../constants';
 import { RadioGroup } from './radio-group';
 
 interface GeneralSettingsPanelProps {
@@ -10,15 +10,15 @@ interface GeneralSettingsPanelProps {
 }
 
 export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPanelProps) {
-  const uploadOptions = UPLOAD_METHODS.map((method) => ({
-    value: method.id,
-    label: method.label,
-    description: method.description,
-    badge:
-      method.performance && method.computeUsage
-        ? `${method.performance} • ${method.computeUsage} compute`
-        : undefined,
-  }));
+  // const uploadOptions = UPLOAD_METHODS.map((method) => ({
+  //   value: method.id,
+  //   label: method.label,
+  //   description: method.description,
+  //   badge:
+  //     method.performance && method.computeUsage
+  //       ? `${method.performance} • ${method.computeUsage} compute`
+  //       : undefined,
+  // }));
 
   const startPageOptions = START_PAGE_OPTIONS.map((option) => ({
     value: option.value,
@@ -45,7 +45,7 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
         </div>
       </div>
 
-      <div className="space-y-6">
+      {/* <div className="space-y-6">
         <div className="border-b border-border pb-4">
           <h3 className="text-lg font-medium text-foreground">Upload method</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -61,7 +61,7 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
             name="uploadMethod"
           />
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }
