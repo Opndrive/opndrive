@@ -5,6 +5,8 @@ import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
 import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
+import { FaGithub } from 'react-icons/fa';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -21,6 +23,24 @@ interface HeroSectionProps {
 
 export default function HeroSection({ handleGetStarted, isLoading }: HeroSectionProps) {
   const effectiveTheme = useEffectiveTheme();
+  const [stars, setStars] = useState<number | null>(null);
+
+  // Fetch GitHub stars
+  useEffect(() => {
+    const fetchGitHubStars = async () => {
+      try {
+        const response = await fetch('https://api.github.com/repos/opndrive/opndrive');
+        if (response.ok) {
+          const data = await response.json();
+          setStars(data.stargazers_count);
+        }
+      } catch (error) {
+        console.error('Failed to fetch GitHub stars:', error);
+      }
+    };
+
+    fetchGitHubStars();
+  }, []);
 
   return (
     <section id="hero" className="min-h-screen flex flex-col justify-center bg-background relative">
@@ -117,7 +137,43 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
                 {item.label}
               </button>
             ))}
-            <div className="ml-2">
+
+            <div className="flex items-center gap-3 ml-2">
+              {/* GitHub Star Button */}
+              <a
+                href="https://github.com/opndrive/opndrive"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-2 py-1 transition-colors duration-200 group"
+                style={{
+                  color: 'var(--muted-foreground)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--foreground)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--muted-foreground)';
+                }}
+              >
+                <FaGithub className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                {stars !== null && (
+                  <span
+                    className="text-sm font-medium tabular-nums"
+                    style={{
+                      color: 'inherit',
+                    }}
+                  >
+                    {stars.toLocaleString()}
+                  </span>
+                )}
+                {stars === null && (
+                  <div
+                    className="w-6 h-4 rounded animate-pulse"
+                    style={{ backgroundColor: 'var(--muted)' }}
+                  />
+                )}
+              </a>
+
               <ThemeToggleCustom />
             </div>
           </div>
