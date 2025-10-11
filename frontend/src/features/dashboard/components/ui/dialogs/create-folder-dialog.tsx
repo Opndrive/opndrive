@@ -106,6 +106,7 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
           <button
             onClick={handleCancel}
             className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Cancel create folder"
           >
             <X className="h-4 w-4" />
           </button>

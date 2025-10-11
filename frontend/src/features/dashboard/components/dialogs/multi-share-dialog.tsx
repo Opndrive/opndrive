@@ -153,6 +153,7 @@ export const MultiShareDialog: React.FC<MultiShareDialogProps> = ({
             onClick={handleClose}
             className="p-1 rounded-full cursor-pointer hover:bg-accent transition-colors"
             style={{ color: 'var(--muted-foreground)' }}
+            aria-label="Close dialog"
           >
             <X className="h-5 w-5" />
           </button>

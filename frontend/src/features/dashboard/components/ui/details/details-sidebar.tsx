@@ -85,7 +85,7 @@ export const DetailsSidebar = () => {
     <aside className="flex w-full h-full flex-col">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border/20 rounded-t-2xl lg:rounded-t-3xl">
         <h4 className="text-lg font-medium text-foreground">Details</h4>
-        <Button variant="sheet" size="icon" onClick={close}>
+        <Button variant="sheet" size="icon" onClick={close} aria-label="Close details sidebar">
           <X className="h-5 w-5 text-foreground" />
         </Button>
       </header>

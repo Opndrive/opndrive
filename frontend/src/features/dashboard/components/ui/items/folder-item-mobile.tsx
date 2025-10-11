@@ -60,6 +60,7 @@ export function FolderItemMobile({ folder, onFolderClick, _onAction }: FolderIte
       <button
         className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
         onClick={handleMenuClick}
+        aria-label="More actions"
       >
         <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
       </button>

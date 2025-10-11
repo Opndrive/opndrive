@@ -146,6 +146,7 @@ export function CreditWarningDialog({
               onClick={handleClose}
               className="p-1 rounded-lg transition-colors cursor-pointer hover:opacity-80"
               style={{ backgroundColor: 'var(--secondary)' }}
+              aria-label="Close warning"
             >
               <X className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
             </button>
