@@ -6,14 +6,30 @@ import {
   HiOutlineShare,
   HiOutlineDownload,
   HiOutlineTrash,
-  HiOutlineDotsVertical,
+  HiOutlineEye,
 } from 'react-icons/hi';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useMultiSelectActions } from '../../hooks/use-multi-select-actions';
 
 export function MultiSelectToolbar() {
-  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+  const { selectedItems, selectedType, clearSelection, getSelectionCount } = useMultiSelectStore();
+  const { handleOpenFiles, handleDownloadFiles, handleShareFiles, handleDeleteItems } =
+    useMultiSelectActions();
 
   const count = getSelectionCount();
+
+  // Determine what actions are available based on selection
+  const hasFiles = selectedItems.some(
+    (item) => 'Key' in item && item.Key && !item.Key.endsWith('/')
+  );
+
+  const isFilesOnly = selectedType === 'file';
+
+  // Action availability
+  const canOpen = isFilesOnly && hasFiles; // Only files can be opened
+  const canDownload = isFilesOnly && hasFiles; // Only files can be downloaded (no folders)
+  const canShare = isFilesOnly && hasFiles; // Only files can be shared
+  const canDelete = count > 0; // Both files and folders can be deleted
 
   if (count === 0) {
     return null;
@@ -47,39 +63,59 @@ export function MultiSelectToolbar() {
 
       {/* Right side: Action buttons */}
       <div className="flex items-center gap-1">
-        <AriaLabel label="Share">
+        {/* Open button - only for files */}
+        <AriaLabel label={canOpen ? 'Open' : 'Open (files only)'}>
           <button
-            className="p-2 rounded-full transition-colors hover:bg-accent"
+            onClick={() => canOpen && handleOpenFiles(selectedItems)}
+            disabled={!canOpen}
+            className={`p-2 rounded-full transition-colors ${
+              canOpen ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed'
+            }`}
             style={{ color: 'var(--muted-foreground)' }}
           >
-            <HiOutlineShare size={18} />
+            <HiOutlineEye size={18} />
           </button>
         </AriaLabel>
 
-        <AriaLabel label="Download">
+        {/* Download button - only for files */}
+        <AriaLabel label={canDownload ? 'Download' : 'Download (files only)'}>
           <button
-            className="p-2 rounded-full transition-colors hover:bg-accent"
+            onClick={() => canDownload && handleDownloadFiles(selectedItems)}
+            disabled={!canDownload}
+            className={`p-2 rounded-full transition-colors ${
+              canDownload ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed'
+            }`}
             style={{ color: 'var(--muted-foreground)' }}
           >
             <HiOutlineDownload size={18} />
           </button>
         </AriaLabel>
 
-        <AriaLabel label="Delete">
+        {/* Share button - only for files */}
+        <AriaLabel label={canShare ? 'Share' : 'Share (files only)'}>
           <button
-            className="p-2 rounded-full transition-colors hover:bg-accent"
+            onClick={() => canShare && handleShareFiles(selectedItems)}
+            disabled={!canShare}
+            className={`p-2 rounded-full transition-colors ${
+              canShare ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed'
+            }`}
             style={{ color: 'var(--muted-foreground)' }}
           >
-            <HiOutlineTrash size={18} />
+            <HiOutlineShare size={18} />
           </button>
         </AriaLabel>
 
-        <AriaLabel label="More actions">
+        {/* Delete button - works for both files and folders */}
+        <AriaLabel label="Delete">
           <button
-            className="p-2 rounded-full transition-colors hover:bg-accent"
+            onClick={() => canDelete && handleDeleteItems(selectedItems)}
+            disabled={!canDelete}
+            className={`p-2 rounded-full transition-colors ${
+              canDelete ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed'
+            }`}
             style={{ color: 'var(--muted-foreground)' }}
           >
-            <HiOutlineDotsVertical size={18} />
+            <HiOutlineTrash size={18} />
           </button>
         </AriaLabel>
       </div>

@@ -22,6 +22,8 @@ import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
+import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
 
 function BrowsePageContent() {
   const { setSearchHidden } = useScroll();
@@ -51,6 +53,28 @@ function BrowsePageContent() {
   const { apiS3, uploadManager, isLoading, isAuthenticated } = useAuthGuard();
 
   const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
+
+  // Clear selection when clicking outside - only for single item selection
+  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+
+      // Only clear if exactly one item is selected
+      if (
+        getSelectionCount() === 1 &&
+        !target.closest('[data-file-item]') &&
+        !target.closest('[data-folder-item]') &&
+        !target.closest('[data-multi-select-toolbar]')
+      ) {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [clearSelection, getSelectionCount]);
 
   if (isLoading) {
     return <DashboardLoading />;
@@ -110,6 +134,11 @@ function BrowsePageContent() {
     setVisibleFileChunks(1);
     setVisibleFolderChunks(1);
   }, [currentPrefix]);
+
+  // Clear selection when navigating to different folder
+  useEffect(() => {
+    clearSelection();
+  }, [currentPrefix, clearSelection]);
 
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix) {
@@ -284,38 +313,48 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div className="sticky top-[-12px] sm:top-[-26px] z-10 flex items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 px-1 sm:px-0 bg-background border-b border-border/30 sm:border-b-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 min-w-0 flex-1">
-            <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-foreground break-words leading-tight sm:leading-normal">
-              {currentFolderName}
-            </h2>
-            {totalVisibleItems > 0 && (
-              <span className="item-count-badge flex-shrink-0 self-start sm:self-auto">
-                {hasMoreItems || canLoadMoreChunks
-                  ? `Showing ${totalVisibleItems.toLocaleString()}+ items`
-                  : `${totalVisibleItems.toLocaleString()} item${totalVisibleItems === 1 ? '' : 's'}`}
-              </span>
-            )}
+        <div className="sticky top-[-12px] sm:top-[-26px] z-10 bg-background">
+          {/* Header with folder name and sync button */}
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 px-1 sm:px-0 border-b border-border/30 sm:border-b-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 min-w-0 flex-1">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-foreground break-words leading-tight sm:leading-normal">
+                {currentFolderName}
+              </h2>
+              {totalVisibleItems > 0 && (
+                <span className="item-count-badge flex-shrink-0 self-start sm:self-auto">
+                  {hasMoreItems || canLoadMoreChunks
+                    ? `Showing ${totalVisibleItems.toLocaleString()}+ items`
+                    : `${totalVisibleItems.toLocaleString()} item${totalVisibleItems === 1 ? '' : 's'}`}
+                </span>
+              )}
+            </div>
+
+            <AriaLabel label="Refresh files and folders" position="bottom">
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
+                  isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
+                }`}
+              >
+                <HiOutlineRefresh
+                  className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
+                    isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
+                  }`}
+                />
+              </button>
+            </AriaLabel>
           </div>
 
-          <AriaLabel label="Refresh files and folders" position="bottom">
-            <button
-              onClick={handleSync}
-              disabled={isSyncing}
-              className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg border border-border/50 bg-background hover:bg-secondary/50 transition-all duration-200 ${
-                isSyncing ? 'cursor-not-allowed' : 'cursor-pointer hover:border-border'
-              }`}
-            >
-              <HiOutlineRefresh
-                className={`w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-transform duration-300 ${
-                  isSyncing ? 'animate-spin text-foreground' : 'hover:text-foreground'
-                }`}
-              />
-            </button>
-          </AriaLabel>
+          {/* Multi-select toolbar - positioned in the space above content */}
+          <div className="relative h-0">
+            <div className="absolute top-4 left-0 right-0 z-20">
+              <MultiSelectToolbar />
+            </div>
+          </div>
         </div>
 
-        <div className="relative z-0">
+        <div className="relative z-0 pt-2">
           {/* Show loading state or actual content */}
           {currentPrefix && isReady ? (
             <>

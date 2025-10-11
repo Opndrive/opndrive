@@ -161,7 +161,7 @@ export default function HomePage() {
     <>
       <DriveHero />
       <div className="relative">
-        {/* Sticky header container - Contains both Welcome text and Toolbar */}
+        {/* Sticky header container - Welcome text and toolbar move together */}
         <div className="sticky top-[-20px] md:top-[-24px] z-10 bg-background">
           {/* Welcome text and Sync button - Only visible when scrolling */}
           <div
@@ -192,9 +192,15 @@ export default function HomePage() {
             </AriaLabel>
           </div>
 
-          {/* Multi-select toolbar - Always visible */}
-          <div className="pb-4">
-            <MultiSelectToolbar />
+          {/* Multi-select toolbar - inside same sticky container to move together */}
+          <div className="relative h-0">
+            <div
+              className={`absolute left-0 right-0 bg-background transition-all duration-300 ${
+                isSearchHidden ? 'top-0' : 'top-2'
+              }`}
+            >
+              <MultiSelectToolbar />
+            </div>
           </div>
         </div>
 
