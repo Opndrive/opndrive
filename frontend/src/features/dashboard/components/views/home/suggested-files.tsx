@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Fragment, useRef } from 'react';
+import { useState, Fragment, useRef, useEffect } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
@@ -8,6 +8,8 @@ import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -36,6 +38,19 @@ export function SuggestedFiles({
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragActive, setIsDragActive] = useState(false);
   const dragCounter = useRef(0);
+  const { clearSelection } = useMultiSelectStore();
+
+  // Handle ESC key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clearSelection]);
 
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
@@ -148,27 +163,34 @@ export function SuggestedFiles({
       )}
       {!hideTitle ? (
         <div className="flex items-center justify-between mb-3">
-          <button
-            className="
-              flex items-center cursor-pointer gap-2 p-2
-              text-sm font-medium text-foreground
-              hover:bg-secondary/80 rounded-lg
-              transition-colors duration-200
-            "
-            onClick={toggleExpanded}
-            aria-expanded={isExpanded}
-            aria-controls="suggested-files-content"
-          >
-            <svg
-              className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <AriaLabel label="Suggested files - Click to expand/collapse" position="top">
+            <button
+              className="
+                flex items-center cursor-pointer gap-2 p-2
+                text-sm font-medium text-foreground
+                hover:bg-secondary/80 rounded-lg
+                transition-colors duration-200
+              "
+              onClick={toggleExpanded}
+              aria-expanded={isExpanded}
+              aria-controls="suggested-files-content"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            Suggested files
-          </button>
+              <svg
+                className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+              Suggested files
+            </button>
+          </AriaLabel>
 
           {isExpanded && <LayoutToggle />}
         </div>
@@ -182,14 +204,14 @@ export function SuggestedFiles({
         <div id="suggested-files-content">
           {layout === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {files.map((file) => (
-                <div
+              {files.map((file, index) => (
+                <FileItemGrid
                   key={file.Key}
-                  onClick={() => handleFileClick(file)}
-                  className="cursor-pointer"
-                >
-                  <FileItemGrid file={file} _onAction={handleFileAction} />
-                </div>
+                  file={file}
+                  allFiles={files}
+                  _onAction={handleFileAction}
+                  index={index}
+                />
               ))}
             </div>
           ) : (
@@ -209,9 +231,12 @@ export function SuggestedFiles({
 
                 {files.map((file, index) => (
                   <Fragment key={file.Key}>
-                    <div onClick={() => handleFileClick(file)} className="cursor-pointer">
-                      <FileItemList file={file} allFiles={files} _onAction={handleFileAction} />
-                    </div>
+                    <FileItemList
+                      file={file}
+                      allFiles={files}
+                      _onAction={handleFileAction}
+                      index={index}
+                    />
                     {index < files.length - 1 && (
                       <div className="mx-4" aria-hidden="true">
                         <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />

@@ -1,4 +1,5 @@
 export { LayoutToggle } from './layout-toggle';
+export { MultiSelectToolbar } from './multi-select-toolbar';
 
 export { FileItemGrid } from './items/file-item-grid';
 export { FileItemList } from './items/file-item-list';

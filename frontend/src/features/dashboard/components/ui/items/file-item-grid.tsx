@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
-import { HiOutlineDotsVertical } from 'react-icons/hi';
+import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaUserAlt } from 'react-icons/fa';
 import { FileThumbnailWithImage } from './file-thumbnail-with-image';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
@@ -9,17 +9,22 @@ import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 
 interface FileItemGridProps {
   file: FileItem;
   allFiles?: FileItem[]; // For navigation between files
   _onAction?: (action: string, file: FileItem) => void;
+  index?: number; // For shift-select range
 }
 
-export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridProps) {
+export function FileItemGrid({ file, allFiles = [], _onAction, index = 0 }: FileItemGridProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
+  const { selectItem, isSelected } = useMultiSelectStore();
+
+  const selected = isSelected(file);
 
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -32,8 +37,13 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
     setMenuAnchor(null);
   };
 
-  const handleFileClick = () => {
-    // Only open preview for non-folder items
+  const handleFileClick = (event: React.MouseEvent) => {
+    // Handle selection on single click
+    selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+  };
+
+  const handleDoubleClick = () => {
+    // Only open preview for non-folder items on double click
     if (!file.Key?.endsWith('/')) {
       openFilePreview(file, allFiles);
     }
@@ -43,9 +53,27 @@ export function FileItemGrid({ file, allFiles = [], _onAction }: FileItemGridPro
 
   return (
     <div
-      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors cursor-pointer"
-      onDoubleClick={handleFileClick}
+      data-file-item
+      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-all cursor-pointer select-none"
+      style={{
+        outline: selected ? '2px solid var(--primary)' : 'none',
+        background: selected ? 'var(--accent)' : undefined,
+      }}
+      onClick={handleFileClick}
+      onDoubleClick={handleDoubleClick}
     >
+      {/* Selection indicator */}
+      {selected && (
+        <div
+          className="absolute top-2 left-2 z-10 w-6 h-6 rounded-full flex items-center justify-center"
+          style={{
+            background: 'var(--primary)',
+            color: 'var(--primary-foreground)',
+          }}
+        >
+          <HiOutlineCheck size={16} />
+        </div>
+      )}
       <FileThumbnailWithImage
         extension={getEffectiveExtension(file.name, file.extension).extension as FileExtension}
         filename={getEffectiveExtension(file.name, file.extension).filename}

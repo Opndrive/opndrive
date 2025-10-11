@@ -6,7 +6,6 @@ import { SuggestedFolders } from '@/features/dashboard/components/views/home/sug
 import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
-import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore } from '@/context/data-context';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, useState, useCallback } from 'react';
@@ -18,6 +17,8 @@ import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { EmptyStateDropzone } from '@/features/dashboard/components/views/home/empty-state-dropzone';
+import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
+import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -69,6 +70,28 @@ export default function HomePage() {
     if (currentPrefix) fetchRecentItems({ sync: false, itemsPerType: 10 });
   }, [currentPrefix]);
 
+  // Clear selection when clicking outside - only for single item selection
+  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+
+      // Only clear if exactly one item is selected
+      if (
+        getSelectionCount() === 1 &&
+        !target.closest('[data-file-item]') &&
+        !target.closest('[data-folder-item]') &&
+        !target.closest('[data-multi-select-toolbar]')
+      ) {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [clearSelection, getSelectionCount]);
+
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix && folder.name) {
       // Navigate to the folder using the enhanced browse route
@@ -79,12 +102,6 @@ export default function HomePage() {
       router.push(url);
     }
   };
-
-  const handleFolderMenuClick = (_folder: Folder, _event: React.MouseEvent) => {};
-
-  const handleFileClick = (_file: FileItem) => {};
-
-  const handleFileAction = (_action: string, _file: FileItem) => {};
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
@@ -144,32 +161,41 @@ export default function HomePage() {
     <>
       <DriveHero />
       <div className="relative">
-        <div
-          className={`sticky top-[-20px] md:top-[-24px] z-10 flex items-center justify-between gap-4 py-4 bg-background transition-all duration-300 ${
-            isSearchHidden
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 -translate-y-2 pointer-events-none'
-          }`}
-        >
-          <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
-
-          {/* Sync Button */}
-          <AriaLabel
-            label={isSyncing ? 'Refreshing data...' : 'Refresh data to sync latest changes'}
-            position="bottom"
+        {/* Sticky header container - Contains both Welcome text and Toolbar */}
+        <div className="sticky top-[-20px] md:top-[-24px] z-10 bg-background">
+          {/* Welcome text and Sync button - Only visible when scrolling */}
+          <div
+            className={`flex items-center justify-between gap-4 py-4 transition-all duration-300 ${
+              isSearchHidden
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 -translate-y-2 pointer-events-none'
+            }`}
           >
-            <button
-              onClick={handleSync}
-              disabled={isSyncing || !currentPrefix}
-              className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+            <h2 className="text-2xl font-normal text-foreground">Welcome to Opndrive</h2>
+
+            {/* Sync Button */}
+            <AriaLabel
+              label={isSyncing ? 'Refreshing data...' : 'Refresh data to sync latest changes'}
+              position="bottom"
             >
-              <HiOutlineRefresh
-                className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
-                  isSyncing ? 'animate-spin' : ''
-                }`}
-              />
-            </button>
-          </AriaLabel>
+              <button
+                onClick={handleSync}
+                disabled={isSyncing || !currentPrefix}
+                className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+              >
+                <HiOutlineRefresh
+                  className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                    isSyncing ? 'animate-spin' : ''
+                  }`}
+                />
+              </button>
+            </AriaLabel>
+          </div>
+
+          {/* Multi-select toolbar - Always visible */}
+          <div className="pb-4">
+            <MultiSelectToolbar />
+          </div>
         </div>
 
         <div className="relative z-0">
@@ -181,7 +207,6 @@ export default function HomePage() {
                 <SuggestedFolders
                   folders={recentData.folders}
                   onFolderClick={handleFolderClick}
-                  onFolderMenuClick={handleFolderMenuClick}
                   onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                   onViewMore={handleLoadMoreFolders}
                   hasMore={recentData.hasMoreFolders}
@@ -194,8 +219,6 @@ export default function HomePage() {
               {recentData.files && recentData.files.length > 0 && (
                 <SuggestedFiles
                   files={recentData.files}
-                  onFileClick={handleFileClick}
-                  onFileAction={handleFileAction}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   onViewMore={handleLoadMoreFiles}
                   hasMore={recentData.hasMoreFiles}
