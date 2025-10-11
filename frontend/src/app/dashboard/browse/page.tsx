@@ -140,6 +140,11 @@ function BrowsePageContent() {
     clearSelection();
   }, [currentPrefix, clearSelection]);
 
+  // Also clear selection when component mounts (navigating to browse page)
+  useEffect(() => {
+    clearSelection();
+  }, []); // Empty dependency array - runs once on mount
+
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix) {
       const folderName = folder.name;
@@ -313,7 +318,7 @@ function BrowsePageContent() {
       )}
 
       <div className="relative">
-        <div className="sticky top-[-12px] sm:top-[-26px] z-10 bg-background">
+        <div className="sticky top-[-12px] sm:top-[-26px] z-10 bg-background mb-6">
           {/* Header with folder name and sync button */}
           <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 px-1 sm:px-0 border-b border-border/30 sm:border-b-0">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 min-w-0 flex-1">
@@ -346,9 +351,9 @@ function BrowsePageContent() {
             </AriaLabel>
           </div>
 
-          {/* Multi-select toolbar - positioned in the space above content */}
+          {/* Multi-select toolbar - inside same sticky container, floats below header */}
           <div className="relative h-0">
-            <div className="absolute top-4 left-0 right-0 z-20">
+            <div className="absolute top-0 left-0 right-0 z-20 bg-background">
               <MultiSelectToolbar />
             </div>
           </div>

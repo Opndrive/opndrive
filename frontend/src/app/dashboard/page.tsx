@@ -70,6 +70,11 @@ export default function HomePage() {
     if (currentPrefix) fetchRecentItems({ sync: false, itemsPerType: 10 });
   }, [currentPrefix]);
 
+  // Clear selection when returning to home page
+  useEffect(() => {
+    clearSelection();
+  }, []); // Empty dependency array - runs once on mount
+
   // Clear selection when clicking outside - only for single item selection
   const { clearSelection, getSelectionCount } = useMultiSelectStore();
 
