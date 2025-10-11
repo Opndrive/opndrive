@@ -24,6 +24,8 @@ import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
 import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
+import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
+import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 
 function BrowsePageContent() {
   const { setSearchHidden } = useScroll();
@@ -54,8 +56,18 @@ function BrowsePageContent() {
 
   const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
 
+  const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
+    useMultiShareDialog();
+
   // Clear selection when clicking outside - only for single item selection
   const { clearSelection, getSelectionCount } = useMultiSelectStore();
+
+  // Clear selection when multi-share dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      clearSelection();
+    }
+  }, [isOpen, clearSelection]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -354,7 +366,7 @@ function BrowsePageContent() {
           {/* Multi-select toolbar - inside same sticky container, floats below header */}
           <div className="relative h-0">
             <div className="absolute top-0 left-0 right-0 z-20 bg-background">
-              <MultiSelectToolbar />
+              <MultiSelectToolbar openMultiShareDialog={openMultiShareDialog} />
             </div>
           </div>
         </div>
@@ -472,6 +484,14 @@ function BrowsePageContent() {
           )}
         </div>
       </div>
+
+      {/* Multi-share dialog */}
+      <MultiShareDialog
+        files={currentFiles}
+        isOpen={isOpen}
+        onClose={closeMultiShareDialog}
+        generateShareLinks={generateShareLinks}
+      />
     </>
   );
 }

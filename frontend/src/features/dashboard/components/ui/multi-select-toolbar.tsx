@@ -10,11 +10,16 @@ import {
 } from 'react-icons/hi';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectActions } from '../../hooks/use-multi-select-actions';
+import { FileItem } from '../../types/file';
 
-export function MultiSelectToolbar() {
+interface MultiSelectToolbarProps {
+  openMultiShareDialog: (files: FileItem[]) => void;
+}
+
+export function MultiSelectToolbar({ openMultiShareDialog }: MultiSelectToolbarProps) {
   const { selectedItems, selectedType, clearSelection, getSelectionCount } = useMultiSelectStore();
   const { handleOpenFiles, handleDownloadFiles, handleShareFiles, handleDeleteItems } =
-    useMultiSelectActions();
+    useMultiSelectActions({ openMultiShareDialog });
 
   const count = getSelectionCount();
 

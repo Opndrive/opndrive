@@ -5,14 +5,16 @@ import { useDownload } from './use-download';
 import { useDeleteWithProgress } from './use-delete-with-progress';
 import { useFilePreview } from '@/context/file-preview-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
-import { useMultiShareDialog } from './use-multi-share-dialog';
 import { useMultiSelectStore } from '../stores/use-multi-select-store';
 
-export function useMultiSelectActions() {
+interface UseMultiSelectActionsProps {
+  openMultiShareDialog: (files: FileItem[]) => void;
+}
+
+export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectActionsProps) {
   const { downloadFile } = useDownload();
   const { deleteFile, deleteFolder } = useDeleteWithProgress();
   const { openPreview } = useFilePreview();
-  const { openMultiShareDialog } = useMultiShareDialog();
   const { clearSelection } = useMultiSelectStore();
 
   // Open multiple files in preview
@@ -77,10 +79,9 @@ export function useMultiSelectActions() {
 
       openMultiShareDialog(files);
 
-      // Clear selection after opening share dialog
-      clearSelection();
+      // Don't clear selection immediately - let dialog handle it when closed
     },
-    [openMultiShareDialog, clearSelection]
+    [openMultiShareDialog]
   );
 
   // Delete multiple items (files and/or folders)

@@ -19,6 +19,8 @@ import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { EmptyStateDropzone } from '@/features/dashboard/components/views/home/empty-state-dropzone';
 import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
 import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
+import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
+import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
@@ -40,6 +42,17 @@ export default function HomePage() {
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const { apiS3, uploadManager, isLoading, isAuthenticated } = useAuthGuard();
+
+  const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
+    useMultiShareDialog();
+  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+
+  // Clear selection when multi-share dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      clearSelection();
+    }
+  }, [isOpen, clearSelection]);
 
   if (isLoading) {
     return <DashboardLoading />;
@@ -76,8 +89,6 @@ export default function HomePage() {
   }, []); // Empty dependency array - runs once on mount
 
   // Clear selection when clicking outside - only for single item selection
-  const { clearSelection, getSelectionCount } = useMultiSelectStore();
-
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -204,7 +215,7 @@ export default function HomePage() {
                 isSearchHidden ? 'top-0' : 'top-2'
               }`}
             >
-              <MultiSelectToolbar />
+              <MultiSelectToolbar openMultiShareDialog={openMultiShareDialog} />
             </div>
           </div>
         </div>
@@ -254,6 +265,14 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {/* Multi-share dialog */}
+      <MultiShareDialog
+        files={currentFiles}
+        isOpen={isOpen}
+        onClose={closeMultiShareDialog}
+        generateShareLinks={generateShareLinks}
+      />
     </>
   );
 }
