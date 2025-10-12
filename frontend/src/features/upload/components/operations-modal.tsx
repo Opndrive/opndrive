@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useDownload } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
@@ -14,7 +15,7 @@ interface OperationItem {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  operationType: 'upload' | 'delete';
+  operationType: 'upload' | 'delete' | 'download';
   status: string;
   progress: number;
   size?: number;
@@ -25,6 +26,7 @@ interface OperationItem {
   isCalculatingSize?: boolean;
   error?: string;
   extension?: FileExtension;
+  queuePosition?: number;
 }
 
 // Upload speed tracking for better time estimation
@@ -81,6 +83,8 @@ export const OperationsModal: React.FC = () => {
     duplicateDialog,
     hideDuplicateDialog,
   } = useUploadStore();
+  const { getAllDownloads, cancelDownload } = useDownload();
+  const downloads = getAllDownloads();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -108,10 +112,10 @@ export const OperationsModal: React.FC = () => {
     return () => clearInterval(interval);
   }, [uploads]); // Depend on uploads object
 
-  // Helper function to cancel operations (both upload and delete)
+  // Helper function to cancel operations (upload, delete, and download)
   const cancelOperation = (
     itemId: string,
-    operationType: 'upload' | 'delete',
+    operationType: 'upload' | 'delete' | 'download',
     isFolder = false
   ) => {
     if (operationType === 'upload') {
@@ -134,6 +138,9 @@ export const OperationsModal: React.FC = () => {
       // This depends on your delete implementation - you might need to add a cancel method
       // For now, we'll remove it from the store (assuming it can be cancelled)
       removeDeleteOperation(itemId);
+    } else if (operationType === 'download') {
+      // Cancel download operation
+      cancelDownload(itemId);
     }
   };
 
@@ -223,15 +230,30 @@ export const OperationsModal: React.FC = () => {
       error: deleteOp.error,
       extension: deleteOp.type === 'file' ? getFileExtension(deleteOp.name) : undefined,
     })),
+    // Download operations
+    ...downloads.map((download) => ({
+      id: download.fileId,
+      name: download.fileName,
+      type: 'file' as const,
+      operationType: 'download' as const,
+      status: download.status,
+      progress: download.progress,
+      error: download.error,
+      queuePosition: download.queuePosition,
+      extension: getFileExtension(download.fileName),
+    })),
   ];
 
-  // Sort operations to prioritize active ones (uploading, deleting, queued) at the top
+  // Sort operations to prioritize active ones (uploading, deleting, downloading, queued) at the top
   const sortedOperations = allOperations.sort((a, b) => {
     const getStatusPriority = (status: string) => {
       switch (status) {
         case 'uploading':
         case 'deleting':
+        case 'downloading':
           return 1; // Highest priority (actively processing)
+        case 'pending':
+          return 1.5; // Just started
         case 'queued':
           return 2; // Second priority (waiting to be processed)
         case 'completed':
@@ -239,6 +261,7 @@ export const OperationsModal: React.FC = () => {
         case 'cancelled':
           return 4; // Fourth priority (user cancelled)
         case 'failed':
+        case 'error':
           return 5; // Lowest priority (failed operations)
         default:
           return 6; // Unknown status
@@ -251,6 +274,13 @@ export const OperationsModal: React.FC = () => {
     // If priorities are different, sort by priority
     if (aPriority !== bPriority) {
       return aPriority - bPriority;
+    }
+
+    // If both are queued downloads, sort by queue position
+    if (a.status === 'queued' && b.status === 'queued') {
+      if (a.queuePosition && b.queuePosition) {
+        return a.queuePosition - b.queuePosition;
+      }
     }
 
     // If priorities are the same, maintain original order (stable sort)
@@ -272,6 +302,11 @@ export const OperationsModal: React.FC = () => {
     (op) => op.operationType === 'delete' && ['deleting', 'queued'].includes(op.status)
   ).length;
 
+  const activeDownloads = sortedOperations.filter(
+    (op) =>
+      op.operationType === 'download' && ['downloading', 'pending', 'queued'].includes(op.status)
+  ).length;
+
   const completedOps = sortedOperations.filter((op) => op.status === 'completed').length;
   const cancelledOps = sortedOperations.filter((op) => op.status === 'cancelled').length;
 
@@ -283,6 +318,10 @@ export const OperationsModal: React.FC = () => {
     (op) => op.operationType === 'delete' && op.status === 'completed'
   ).length;
 
+  const completedDownloads = sortedOperations.filter(
+    (op) => op.operationType === 'download' && op.status === 'completed'
+  ).length;
+
   // Get title based on operations
   const getTitle = () => {
     // If only duplicate dialog is open, show appropriate title
@@ -290,16 +329,19 @@ export const OperationsModal: React.FC = () => {
       return 'File Upload';
     }
 
-    const hasActiveOperations = activeUploads > 0 || activeDeletes > 0;
+    const hasActiveOperations = activeUploads > 0 || activeDeletes > 0 || activeDownloads > 0;
+    const totalActive = activeUploads + activeDeletes + activeDownloads;
 
     if (hasActiveOperations) {
       // Show active operations
-      if (activeUploads > 0 && activeDeletes > 0) {
-        return `${activeUploads + activeDeletes} operations in progress`;
+      if (totalActive > 1) {
+        return `${totalActive} operations in progress`;
       } else if (activeUploads > 0) {
         return `Uploading ${activeUploads} item${activeUploads > 1 ? 's' : ''}`;
       } else if (activeDeletes > 0) {
         return `Deleting ${activeDeletes} item${activeDeletes > 1 ? 's' : ''}`;
+      } else if (activeDownloads > 0) {
+        return `Downloading ${activeDownloads} file${activeDownloads > 1 ? 's' : ''}`;
       }
     }
 
@@ -309,12 +351,19 @@ export const OperationsModal: React.FC = () => {
     }
 
     if (completedOps > 0 && cancelledOps === 0) {
-      if (completedUploads > 0 && completedDeletes > 0) {
+      const completedCount =
+        (completedUploads > 0 ? 1 : 0) +
+        (completedDeletes > 0 ? 1 : 0) +
+        (completedDownloads > 0 ? 1 : 0);
+
+      if (completedCount > 1) {
         return `Operations complete`;
       } else if (completedUploads > 0) {
         return `Upload complete`;
       } else if (completedDeletes > 0) {
         return `Delete complete`;
+      } else if (completedDownloads > 0) {
+        return `Download complete`;
       }
     }
 
@@ -398,12 +447,12 @@ export const OperationsModal: React.FC = () => {
 
   // Get subtitle based on active operations
   const getSubtitle = () => {
-    const totalActiveOps = activeUploads + activeDeletes;
+    const totalActiveOps = activeUploads + activeDeletes + activeDownloads;
 
     if (totalActiveOps > 0) {
       // Separate actively processing and queued items
       const processingItems = sortedOperations.filter((op) =>
-        ['uploading', 'deleting'].includes(op.status)
+        ['uploading', 'deleting', 'downloading', 'pending'].includes(op.status)
       );
       const queuedItems = sortedOperations.filter((op) => op.status === 'queued');
 
@@ -439,22 +488,33 @@ export const OperationsModal: React.FC = () => {
         queuedItems.length === totalActiveOps ||
         processingItems.every((item) => item.progress === 0)
       ) {
-        if (activeUploads > 0 && activeDeletes > 0) {
+        if (
+          (activeUploads > 0 ? 1 : 0) +
+            (activeDeletes > 0 ? 1 : 0) +
+            (activeDownloads > 0 ? 1 : 0) >
+          1
+        ) {
           return 'Starting operations...';
         } else if (activeUploads > 0) {
           return 'Starting uploads...';
         } else if (activeDeletes > 0) {
           return 'Starting deletes...';
+        } else if (activeDownloads > 0) {
+          return `${queuedItems.length > 0 ? `${queuedItems.length} in queue` : 'Starting downloads...'}`;
         }
       }
 
       // Fallback for mixed states
-      if (activeUploads > 0 && activeDeletes > 0) {
+      const activeTypesCount =
+        (activeUploads > 0 ? 1 : 0) + (activeDeletes > 0 ? 1 : 0) + (activeDownloads > 0 ? 1 : 0);
+      if (activeTypesCount > 1) {
         return 'Processing...';
       } else if (activeUploads > 0) {
         return 'Uploading...';
       } else if (activeDeletes > 0) {
         return 'Deleting...';
+      } else if (activeDownloads > 0) {
+        return `Downloading${queuedItems.length > 0 ? ` (${queuedItems.length} queued)` : '...'}`;
       }
     }
     return null;
@@ -569,10 +629,21 @@ export const OperationsModal: React.FC = () => {
           {isExpanded && sortedOperations.length > 0 && (
             <div className="max-h-60 sm:max-h-96 overflow-y-auto custom-scrollbar">
               {sortedOperations.map((operation) => {
-                const canCancel = ['uploading', 'queued', 'deleting', 'paused'].includes(
-                  operation.status
-                );
-                const isActive = ['uploading', 'queued', 'deleting'].includes(operation.status);
+                const canCancel = [
+                  'uploading',
+                  'queued',
+                  'deleting',
+                  'paused',
+                  'downloading',
+                  'pending',
+                ].includes(operation.status);
+                const isActive = [
+                  'uploading',
+                  'queued',
+                  'deleting',
+                  'downloading',
+                  'pending',
+                ].includes(operation.status);
 
                 return (
                   <div
@@ -622,19 +693,25 @@ export const OperationsModal: React.FC = () => {
                             color:
                               operation.operationType === 'upload'
                                 ? 'var(--muted-foreground)'
-                                : '#ef4444',
+                                : operation.operationType === 'download'
+                                  ? 'var(--muted-foreground)'
+                                  : '#ef4444',
                           }}
                         >
                           {operation.operationType === 'upload'
                             ? 'Upload complete'
-                            : 'Delete complete'}
+                            : operation.operationType === 'delete'
+                              ? 'Delete complete'
+                              : 'Download complete'}
                         </p>
                       )}
                       {operation.status === 'cancelled' && (
                         <p className="text-xs" style={{ color: '#ef4444' }}>
                           {operation.operationType === 'upload'
                             ? 'Upload cancelled'
-                            : 'Delete cancelled'}
+                            : operation.operationType === 'delete'
+                              ? 'Delete cancelled'
+                              : 'Download cancelled'}
                         </p>
                       )}
                       {operation.status === 'uploading' && (
@@ -642,14 +719,31 @@ export const OperationsModal: React.FC = () => {
                           Uploading...
                         </p>
                       )}
+                      {operation.status === 'downloading' && (
+                        <p className="text-xs" style={{ color: 'var(--primary)' }}>
+                          Downloading...
+                        </p>
+                      )}
+                      {operation.status === 'pending' && (
+                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          Starting...
+                        </p>
+                      )}
                       {operation.status === 'queued' && (
                         <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                          Queued
+                          {operation.queuePosition
+                            ? `In queue (${operation.queuePosition})`
+                            : 'Queued'}
                         </p>
                       )}
                       {operation.status === 'paused' && (
                         <p className="text-xs" style={{ color: '#f59e0b' }}>
                           Paused
+                        </p>
+                      )}
+                      {operation.status === 'error' && (
+                        <p className="text-xs" style={{ color: '#ef4444' }}>
+                          {operation.error || 'Failed'}
                         </p>
                       )}
                       {operation.totalFiles && operation.completedFiles !== undefined && (
@@ -760,7 +854,9 @@ export const OperationsModal: React.FC = () => {
                                 stroke={
                                   operation.operationType === 'delete'
                                     ? '#ef4444'
-                                    : 'var(--primary)'
+                                    : operation.operationType === 'download'
+                                      ? '#3b82f6'
+                                      : 'var(--primary)'
                                 }
                                 strokeWidth="2"
                                 strokeDasharray={`${2 * Math.PI * 10}`}

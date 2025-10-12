@@ -12,7 +12,7 @@ interface UseMultiSelectActionsProps {
 }
 
 export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectActionsProps) {
-  const { downloadFile } = useDownload();
+  const { downloadMultipleFiles } = useDownload();
   const { deleteFile, deleteFolder } = useDeleteWithProgress();
   const { openPreview } = useFilePreview();
   const { clearSelection } = useMultiSelectStore();
@@ -54,17 +54,13 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
 
       if (files.length === 0) return;
 
-      // Download files one by one with small delays
-      files.forEach((file, index) => {
-        setTimeout(() => {
-          downloadFile(file);
-        }, index * 100); // 100ms delay between each download
-      });
+      // Download all files
+      downloadMultipleFiles(files);
 
-      // Clear selection after initiating downloads
+      // Clear selection after queuing downloads
       clearSelection();
     },
-    [downloadFile, clearSelection]
+    [downloadMultipleFiles, clearSelection]
   );
 
   // Share multiple files
