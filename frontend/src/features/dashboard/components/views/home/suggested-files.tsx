@@ -251,11 +251,12 @@ export function SuggestedFiles({
                   Files
                 </div>
                 <div className="divide-y divide-border/30">
-                  {files.map((file) => (
+                  {files.map((file, index) => (
                     <FileItemMobile
                       key={file.Key}
                       file={file}
                       allFiles={files}
+                      index={index}
                       onFileClick={handleFileClick}
                       _onAction={handleFileAction}
                     />

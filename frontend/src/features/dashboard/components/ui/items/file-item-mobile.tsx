@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
-import { HiOutlineDotsVertical } from 'react-icons/hi';
+import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
+import { FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 
 interface FileItemMobileProps {
   file: FileItem;
   allFiles?: FileItem[]; // For navigation between files
   onFileClick?: (file: FileItem) => void;
   _onAction?: (action: string, file: FileItem) => void;
+  index?: number; // For shift-select range
 }
 
 export function FileItemMobile({
@@ -20,10 +23,20 @@ export function FileItemMobile({
   allFiles = [],
   onFileClick,
   _onAction,
+  index = 0,
 }: FileItemMobileProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
+  const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
+
+  const selected = isSelected(file);
+  const hasSelection = getSelectionCount() > 0;
+
+  // Long press detection
+  const [pressTimer, setPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isLongPress, setIsLongPress] = useState(false);
+  const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -36,7 +49,76 @@ export function FileItemMobile({
     setMenuAnchor(null);
   };
 
-  const handleFileClick = () => {
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    setTouchStartPos({ x: touch.clientX, y: touch.clientY });
+    setIsLongPress(false);
+
+    const timer = setTimeout(() => {
+      setIsLongPress(true);
+      // Trigger selection on long press
+      selectItem(file, 'file', index, true, false, allFiles);
+      // Haptic feedback if available (wrapped in try-catch to avoid console errors)
+      try {
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      } catch (e) {
+        // Silently ignore vibration errors
+        console.error('Vibration error:', e);
+      }
+    }, 500); // 500ms for long press
+    setPressTimer(timer);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Cancel long press if finger moves too much
+    if (touchStartPos && pressTimer) {
+      const touch = e.touches[0];
+      const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+      const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+
+      // If moved more than 10px, cancel long press
+      if (deltaX > 10 || deltaY > 10) {
+        clearTimeout(pressTimer);
+        setPressTimer(null);
+        setIsLongPress(false);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      setPressTimer(null);
+    }
+    setTouchStartPos(null);
+  };
+
+  const handleItemClick = () => {
+    // Get fresh selection count at click time, not from render-time closure
+    const currentSelectionCount = getSelectionCount();
+    const hasCurrentSelection = currentSelectionCount > 0;
+
+    // If there's already a selection, add to it (like Ctrl+Click for multi-select)
+    if (hasCurrentSelection) {
+      // Use ctrlKey=true to add to selection (or toggle if already selected)
+      selectItem(file, 'file', index, true, false, allFiles);
+      setIsLongPress(false);
+      return;
+    }
+
+    // If this was a long press, don't open file
+    if (isLongPress) {
+      setIsLongPress(false);
+      return;
+    }
+
+    // Normal tap - open the file
+    handleFileOpen();
+  };
+
+  const handleFileOpen = () => {
     // Try custom click handler first, then preview
     if (onFileClick) {
       onFileClick(file);
@@ -50,9 +132,36 @@ export function FileItemMobile({
 
   return (
     <div
-      className="flex items-center p-4 hover:bg-secondary/50 transition-colors active:bg-secondary/70 cursor-pointer"
-      onDoubleClick={handleFileClick}
+      data-file-item
+      className={`flex items-center p-4 transition-colors cursor-pointer select-none touch-manipulation ${
+        selected
+          ? 'bg-primary/10 hover:bg-primary/15 active:bg-primary/20'
+          : 'hover:bg-secondary/50 active:bg-secondary/70'
+      }`}
+      style={{
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+      }}
+      onClick={handleItemClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
+      {/* Selection Indicator - Show circle when selection mode is active */}
+      {hasSelection && (
+        <div className="flex-shrink-0 mr-2">
+          {selected ? (
+            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+              <HiOutlineCheck className="w-3 h-3 text-primary-foreground" />
+            </div>
+          ) : (
+            <FaRegCircle className="w-5 h-5 text-muted-foreground" />
+          )}
+        </div>
+      )}
+
       {/* File Icon */}
       <div className="flex-shrink-0 mr-3">
         {(() => {

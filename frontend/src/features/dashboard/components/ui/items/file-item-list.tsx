@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
-import { FaUserAlt } from 'react-icons/fa';
+import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
@@ -21,9 +21,14 @@ export function FileItemList({ file, allFiles = [], _onAction, index = 0 }: File
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
-  const { selectItem, isSelected } = useMultiSelectStore();
+  const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
   const selected = isSelected(file);
+  const hasSelection = getSelectionCount() > 0;
+
+  // Long press detection for mobile
+  const [pressTimer, setPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isLongPress, setIsLongPress] = useState(false);
 
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -36,14 +41,69 @@ export function FileItemList({ file, allFiles = [], _onAction, index = 0 }: File
     setMenuAnchor(null);
   };
 
+  const handleTouchStart = () => {
+    setIsLongPress(false);
+    const timer = setTimeout(() => {
+      setIsLongPress(true);
+      // Trigger selection on long press - start selection mode with ctrlKey=true to toggle/add
+      selectItem(file, 'file', index, true, false, allFiles); // true = toggle/add to selection
+      // Haptic feedback if available (wrapped in try-catch to avoid console errors)
+      try {
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      } catch (e) {
+        // Silently ignore vibration errors
+        console.error('Vibration error:', e);
+      }
+    }, 500); // 500ms for long press
+    setPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      setPressTimer(null);
+    }
+  };
+
   const handleFileClick = (event: React.MouseEvent) => {
-    // Handle selection on single click
-    selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+    // On mobile (touch devices), use different logic
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    if (isTouchDevice) {
+      // Mobile: If there's a selection, add to it (toggle like Ctrl+Click)
+      if (hasSelection) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectItem(file, 'file', index, true, false, allFiles); // true = toggle/add to selection
+        setIsLongPress(false);
+        return; // Stop here, don't open file
+      }
+
+      // If this was a long press, don't open file
+      if (isLongPress) {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsLongPress(false);
+        return;
+      }
+
+      // No selection and not a long press - open file
+      if (!file.Key?.endsWith('/')) {
+        openFilePreview(file, allFiles);
+      }
+      setIsLongPress(false);
+    } else {
+      // Desktop: Single click to select
+      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+    }
   };
 
   const handleDoubleClick = () => {
-    // Only open preview for non-folder items on double click
-    if (!file.Key?.endsWith('/')) {
+    // Only open preview for non-folder items on double click (desktop only)
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice && !file.Key?.endsWith('/')) {
       openFilePreview(file, allFiles);
     }
   };
@@ -66,21 +126,27 @@ export function FileItemList({ file, allFiles = [], _onAction, index = 0 }: File
         }}
         onClick={handleFileClick}
         onDoubleClick={handleDoubleClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
       >
         {/* Selection indicator + File icon and name */}
         <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4 flex items-center gap-2 sm:gap-3 min-w-0">
-          {/* Selection checkbox */}
-          {selected && (
-            <div
-              className="w-5 h-5 rounded-sm flex items-center justify-center flex-shrink-0"
-              style={{
-                background: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-              }}
-            >
-              <HiOutlineCheck size={14} />
-            </div>
-          )}
+          {/* Selection checkbox - show circle when selection mode is active */}
+          {hasSelection &&
+            (selected ? (
+              <div
+                className="w-5 h-5 rounded-sm flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                }}
+              >
+                <HiOutlineCheck size={14} />
+              </div>
+            ) : (
+              <FaRegCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            ))}
 
           {(() => {
             const { extension, filename } = getEffectiveExtension(file.name, file.extension);
