@@ -4,7 +4,7 @@
  * Features:
  * - Single click to select items
  * - Ctrl+Click to toggle selection
- * - Shift+Click to select range
+ * - Shift+Click to select range from last clicked item (keeps only items in the range)
  * - Files and folders can't be selected together
  * - ESC key or clicking outside (single item only) clears selection
  */
@@ -63,7 +63,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       return;
     }
 
-    // Shift+Click: Range selection
+    // Shift+Click: Select range from last clicked item to current item
     if (shiftKey && state.lastSelectedIndex !== null && state.selectedType === type) {
       const start = Math.min(state.lastSelectedIndex, index);
       const end = Math.max(state.lastSelectedIndex, index);
@@ -72,7 +72,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       set({
         selectedItems: rangeItems,
         selectedType: type,
-        lastSelectedIndex: index,
+        // Don't update lastSelectedIndex - keep the anchor point fixed
       });
       return;
     }
