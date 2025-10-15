@@ -5,10 +5,10 @@ import { FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
-import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
-import { getEffectiveExtension } from '@/config/file-extensions';
+import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { useFilePreview } from '@/context/file-preview-context';
 
 interface FileItemMobileProps {
   file: FileItem;
@@ -21,13 +21,13 @@ interface FileItemMobileProps {
 export function FileItemMobile({
   file,
   allFiles = [],
-  onFileClick,
+  onFileClick: _onFileClick,
   _onAction,
   index = 0,
 }: FileItemMobileProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { openFilePreview } = useFilePreviewActions();
+  const { openPreview } = useFilePreview();
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
   const selected = isSelected(file);
@@ -114,18 +114,34 @@ export function FileItemMobile({
       return;
     }
 
-    // Normal tap - open the file
+    // Normal tap - open the file using the same logic as overflow menu "Open"
     handleFileOpen();
   };
 
   const handleFileOpen = () => {
-    // Try custom click handler first, then preview
-    if (onFileClick) {
-      onFileClick(file);
-    } else if (!file.Key?.endsWith('/')) {
-      // Only open preview for non-folder items
-      openFilePreview(file, allFiles);
-    }
+    // Use the same preview logic as the overflow menu's "Open" action
+    const previewableFile = {
+      id: file.id,
+      name: file.name,
+      key: file.Key,
+      size: file.size?.value || 0,
+      lastModified: file.lastModified,
+      type: file.extension || getFileExtensionWithoutDot(file.name),
+    };
+
+    const previewableFiles = allFiles.map((f) => ({
+      id: f.id,
+      name: f.name,
+      key: f.Key,
+      size: f.size?.value || 0,
+      lastModified: f.lastModified,
+      type: f.extension || getFileExtensionWithoutDot(f.name),
+    }));
+
+    openPreview(
+      previewableFile,
+      previewableFiles.length > 0 ? previewableFiles : [previewableFile]
+    );
   };
 
   const timeInfo = formatTimeWithTooltip(file.lastModified);
