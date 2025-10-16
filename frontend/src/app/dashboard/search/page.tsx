@@ -10,6 +10,8 @@ import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
+import { FileSkeletonGridList } from '@/features/dashboard/components/ui/skeletons/file-skeleton';
+import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons/folder-skeleton';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
@@ -269,13 +271,22 @@ export default function SearchPage() {
         {/* Results */}
         <div className="flex-1 overflow-auto">
           {isLoading && processedResults.length === 0 ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent mx-auto mb-4" />
-                <p className="text-muted-foreground">Searching...</p>
+            // Show skeleton loaders during initial load or cache miss
+            <div className="mt-4 px-2">
+              {/* Skeleton for folders */}
+              <div className="mb-8">
+                <div className="h-4 w-32 bg-muted/40 rounded mb-4 animate-pulse" />
+                <FolderSkeletonList count={3} />
+              </div>
+
+              {/* Skeleton for files */}
+              <div>
+                <div className="h-4 w-24 bg-muted/40 rounded mb-4 animate-pulse" />
+                <FileSkeletonGridList count={8} layout={viewMode} />
               </div>
             </div>
           ) : processedResults.length === 0 ? (
+            // Empty state - no results found
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
                 <Search className="h-16 w-16 text-muted-foreground mx-auto mb-4" />

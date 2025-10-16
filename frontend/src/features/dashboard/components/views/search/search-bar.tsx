@@ -58,8 +58,18 @@ export function SearchBar({
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { searchFiles, isLoading, searchResults } = useSearch();
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Format bytes utility function
   const formatBytes = (bytes: number | undefined): { value: number; unit: string } => {
@@ -272,12 +282,23 @@ export function SearchBar({
 
   const navigateToSearchResults = (searchQuery: string) => {
     const searchParams = new URLSearchParams({ q: searchQuery });
+
+    // Clear any existing timeout
+    if (navigationTimeoutRef.current) {
+      clearTimeout(navigationTimeoutRef.current);
+    }
+
     // Navigation to search page will use cached results automatically
     // No duplicate API call will be made - the search page checks cache first
     router.push(`/dashboard/search?${searchParams.toString()}`);
-    setIsDropdownOpen(false);
-    setQuery('');
-    inputRef.current?.blur();
+
+    // Keep dropdown visible during navigation for smooth UX
+    // Close after a delay to allow search page to mount and render
+    navigationTimeoutRef.current = setTimeout(() => {
+      setIsDropdownOpen(false);
+      setQuery('');
+      inputRef.current?.blur();
+    }, 350); // 350ms provides smooth visual continuity
   };
 
   // Clear search
