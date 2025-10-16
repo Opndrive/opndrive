@@ -13,6 +13,7 @@ import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { FileSkeletonGridList } from '@/features/dashboard/components/ui/skeletons/file-skeleton';
 import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons/folder-skeleton';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
+import { useChunkedItems, formatItemCount } from '@/hooks/use-chunked-items';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -156,6 +157,29 @@ export default function SearchPage() {
     .filter((item: ProcessedSearchResult) => item.type === 'folder')
     .map((item: ProcessedSearchResult) => item.data as Folder);
 
+  // Use chunked display for performance with large result sets
+  const {
+    displayedItems: displayedFolders,
+    canLoadMoreChunks: canLoadMoreFolderChunks,
+    isLoadingChunks: isLoadingFolderChunks,
+    sentinelRef: folderSentinelRef,
+    loadMoreChunks: loadMoreFolderChunks,
+    remainingItems: remainingFolders,
+  } = useChunkedItems(folders, { chunkSize: 100 }, query);
+
+  const {
+    displayedItems: displayedFiles,
+    canLoadMoreChunks: canLoadMoreFileChunks,
+    isLoadingChunks: isLoadingFileChunks,
+    sentinelRef: fileSentinelRef,
+    loadMoreChunks: loadMoreFileChunks,
+    remainingItems: remainingFiles,
+  } = useChunkedItems(files, { chunkSize: 100 }, query);
+
+  // Combined loading and chunking state
+  const canLoadMoreChunks = canLoadMoreFolderChunks || canLoadMoreFileChunks;
+  const totalDisplayed = displayedFolders.length + displayedFiles.length;
+
   const handleBackClick = () => {
     router.back();
   };
@@ -236,13 +260,19 @@ export default function SearchPage() {
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-muted-foreground">
-              {isLoading ? (
+              {isLoading && totalDisplayed === 0 ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   Searching...
                 </span>
+              ) : totalDisplayed > 0 ? (
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-foreground">{query}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span>{formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}</span>
+                </span>
               ) : (
-                `${processedResults.length} results for "${query}"`
+                `No results for "${query}"`
               )}
             </div>
 
@@ -270,7 +300,7 @@ export default function SearchPage() {
 
         {/* Results */}
         <div className="flex-1 overflow-auto">
-          {isLoading && processedResults.length === 0 ? (
+          {isLoading && totalDisplayed === 0 ? (
             // Show skeleton loaders during initial load or cache miss
             <div className="mt-4 px-2">
               {/* Skeleton for folders */}
@@ -285,7 +315,7 @@ export default function SearchPage() {
                 <FileSkeletonGridList count={8} layout={viewMode} />
               </div>
             </div>
-          ) : processedResults.length === 0 ? (
+          ) : totalDisplayed === 0 ? (
             // Empty state - no results found
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
@@ -297,7 +327,7 @@ export default function SearchPage() {
           ) : (
             <div className="mt-2">
               {/* Folders Section */}
-              {folders.length > 0 && (
+              {displayedFolders.length > 0 && (
                 <div className="mb-8">
                   <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
                     Folders ({folders.length})
@@ -309,10 +339,15 @@ export default function SearchPage() {
                         : 'space-y-1'
                     }
                   >
-                    {folders.map((folder: Folder) => (
+                    {displayedFolders.map((folder: Folder) => (
                       <FolderItem key={folder.Prefix} folder={folder} onClick={handleFolderClick} />
                     ))}
                   </div>
+
+                  {/* Sentinel for folder chunking */}
+                  {canLoadMoreFolderChunks && (
+                    <div ref={folderSentinelRef} className="h-4 w-full mt-2" aria-hidden="true" />
+                  )}
                 </div>
               )}
 
@@ -324,7 +359,7 @@ export default function SearchPage() {
                   </h3>
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {files.map((file: FileItem) => (
+                      {displayedFiles.map((file: FileItem) => (
                         <div
                           key={file.Key}
                           onClick={() => handleFileClick(file)}
@@ -360,13 +395,13 @@ export default function SearchPage() {
                           <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                         </div>
 
-                        {files.map((file: FileItem, index: number) => (
+                        {displayedFiles.map((file: FileItem, index: number) => (
                           <Fragment key={file.Key}>
                             <div onClick={() => handleFileClick(file)} className="cursor-pointer">
                               <FileItemList file={file} allFiles={files} _onAction={() => {}} />
                             </div>
                             {/* Professional separator */}
-                            {index < files.length - 1 && (
+                            {index < displayedFiles.length - 1 && (
                               <div className="mx-4" aria-hidden="true">
                                 <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
                               </div>
@@ -381,7 +416,7 @@ export default function SearchPage() {
                           Files
                         </div>
                         <div className="divide-y divide-border/30">
-                          {files.map((file: FileItem) => (
+                          {displayedFiles.map((file: FileItem) => (
                             <FileItemMobile
                               key={file.Key}
                               file={file}
@@ -394,10 +429,53 @@ export default function SearchPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Sentinel for file chunking - placed outside view mode conditionals */}
+                  {canLoadMoreFileChunks && (
+                    <div ref={fileSentinelRef} className="h-4 w-full mt-2" aria-hidden="true" />
+                  )}
                 </div>
               )}
 
-              {/* Load More Button */}
+              {/* Chunk Loading Indicator */}
+              {(isLoadingFolderChunks || isLoadingFileChunks) && (
+                <div className="mt-6 flex items-center justify-center gap-3 text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <span className="text-sm">Loading more items...</span>
+                </div>
+              )}
+
+              {/* Manual Load More Buttons */}
+              {(canLoadMoreFolderChunks || canLoadMoreFileChunks) && (
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                  {canLoadMoreFolderChunks && remainingFolders > 0 && (
+                    <Button
+                      onClick={loadMoreFolderChunks}
+                      disabled={isLoadingFolderChunks}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      {isLoadingFolderChunks
+                        ? 'Loading...'
+                        : `Load ${Math.min(remainingFolders, 100)} More Folder${remainingFolders > 1 ? 's' : ''}`}
+                    </Button>
+                  )}
+                  {canLoadMoreFileChunks && remainingFiles > 0 && (
+                    <Button
+                      onClick={loadMoreFileChunks}
+                      disabled={isLoadingFileChunks}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      {isLoadingFileChunks
+                        ? 'Loading...'
+                        : `Load ${Math.min(remainingFiles, 100)} More File${remainingFiles > 1 ? 's' : ''}`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* API Pagination Load More Button */}
               {canLoadMore && (
                 <div className="mt-8 text-center">
                   <Button onClick={loadMore} disabled={isLoading} variant="outline">
