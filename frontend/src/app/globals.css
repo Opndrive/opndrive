@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 
 :root {
   --background: #ffffff;
@@ -710,4 +711,177 @@ body {
   .custom-aria-label.multiline {
     max-width: 150px;
   }
+}
+
+/* Blog Typography Customization */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-quotes: var(--muted-foreground);
+}
+
+.prose p {
+  margin-bottom: 1.75rem;
+  line-height: 1.8;
+  font-size: 1.125rem;
+}
+
+.prose h1 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  margin-top: 3rem;
+  margin-bottom: 1.5rem;
+}
+
+.prose h2 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-top: 3rem;
+  margin-bottom: 1.5rem;
+}
+
+.prose h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 2.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.prose h4 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.prose li {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.8;
+  font-size: 1.125rem;
+}
+
+.prose a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose code {
+  background-color: var(--muted);
+  color: var(--foreground);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.prose code::before,
+.prose code::after {
+  content: '';
+}
+
+.prose pre {
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.prose pre code {
+  background-color: transparent;
+  color: var(--foreground);
+  padding: 0;
+  font-weight: 400;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Light mode specific code styles */
+:root .prose code {
+  background-color: hsl(240 4.8% 95.9%);
+  color: hsl(222.2 84% 4.9%);
+}
+
+:root .prose pre {
+  background-color: hsl(240 4.8% 95.9%);
+  border-color: hsl(240 5.9% 90%);
+}
+
+:root .prose pre code {
+  color: hsl(222.2 84% 4.9%);
+}
+
+/* Dark mode specific code styles */
+[data-theme='dark'] .prose code {
+  background-color: hsl(240 3.7% 15.9%);
+  color: hsl(210 40% 98%);
+}
+
+[data-theme='dark'] .prose pre {
+  background-color: hsl(240 3.7% 15.9%);
+  border-color: hsl(240 3.7% 25%);
+}
+
+[data-theme='dark'] .prose pre code {
+  color: hsl(210 40% 98%);
+}
+
+.prose blockquote {
+  border-left: 4px solid var(--primary);
+  padding-left: 1.5rem;
+  font-style: italic;
+  color: var(--muted-foreground);
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.prose img {
+  border-radius: 0.5rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.prose hr {
+  border-color: var(--border);
+  margin-top: 2.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.prose table {
+  width: 100%;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.prose th {
+  border: 1px solid var(--border);
+  background-color: var(--muted);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.prose td {
+  border: 1px solid var(--border);
+  padding: 0.75rem 1rem;
 }
