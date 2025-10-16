@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides. Expert tutorials and insights for managing your data effectively.',
   keywords:
     'cloud storage blog, s3 tutorials, file management tips, cloud storage guides, opndrive blog, storage optimization, data management',
-  authors: [{ name: 'Opndrive Team', url: 'https://opndrive.com' }],
+  authors: [{ name: 'Opndrive Team', url: 'https://opndrive.app' }],
   creator: 'Opndrive',
   publisher: 'Opndrive',
 
