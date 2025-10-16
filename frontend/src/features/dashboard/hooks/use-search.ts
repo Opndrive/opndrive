@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { createSearchService } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
@@ -9,6 +9,9 @@ export const useSearch = () => {
   const { error } = useNotification();
   const { currentPrefix } = useDriveStore();
   const { apiS3 } = useAuthGuard();
+
+  // AbortController for cancelling searches
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Use Zustand store instead of local state
   const {
@@ -36,6 +39,7 @@ export const useSearch = () => {
       searchWithPagination: async () => {},
       clearResults: () => {},
       invalidateCurrentQuery: () => {},
+      cancelSearch: () => {},
       isLoading: false,
       searchResults: null,
       hasResults: false,
@@ -44,6 +48,18 @@ export const useSearch = () => {
   }
 
   const searchService = createSearchService(apiS3);
+
+  /**
+   * Cancel the current search operation
+   */
+  const cancelSearch = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setLoading(false);
+      console.log('[useSearch] Search cancelled by user');
+    }
+  }, [setLoading]);
 
   /**
    * Search files with automatic caching
@@ -71,12 +87,22 @@ export const useSearch = () => {
         }
       }
 
+      // Cancel any existing search
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      // Create new AbortController for this search
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+
       // Cache miss or force refresh - fetch from API
       setLoading(true);
       setCurrentQuery(query, normalizedPrefix);
 
       try {
         const results = await searchService.searchFiles(query, normalizedPrefix, {
+          signal,
           onProgress: (progress) => {
             if (progress.status === 'error') {
               error('Search failed');
@@ -94,10 +120,17 @@ export const useSearch = () => {
           `[useSearch] Fetched and cached ${results.matches.length} results for query: "${query}"`
         );
       } catch (err) {
+        // Don't show error if search was cancelled
+        if (err instanceof Error && err.message === 'Search cancelled') {
+          console.log('[useSearch] Search was cancelled');
+          return;
+        }
+
         error(`Failed to search for "${query}": ${err}`);
         setCurrentQuery(null, null);
       } finally {
         setLoading(false);
+        abortControllerRef.current = null;
       }
     },
     [currentPrefix, error, getCachedOrNull, setCachedSearchResults, setLoading, setCurrentQuery]
@@ -185,6 +218,7 @@ export const useSearch = () => {
     searchWithPagination,
     clearResults,
     invalidateCurrentQuery,
+    cancelSearch,
     isLoading,
     searchResults,
     hasResults: searchResults !== null && searchResults.matches.length > 0,

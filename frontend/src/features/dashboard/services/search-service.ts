@@ -7,6 +7,7 @@ export interface SearchOptions {
   onProgress?: (progress: { status: 'searching' | 'success' | 'error'; error?: string }) => void;
   onComplete?: () => void;
   onError?: (error: string) => void;
+  signal?: AbortSignal; // Add AbortSignal support
 }
 
 class SearchService {
@@ -21,15 +22,26 @@ class SearchService {
     prefix: string = '',
     options: SearchOptions = {}
   ): Promise<SearchResult> {
-    const { onProgress, onError } = options;
+    const { onProgress, onError, signal } = options;
 
     try {
+      // Check if already aborted
+      if (signal?.aborted) {
+        throw new Error('Search cancelled');
+      }
+
       onProgress?.({ status: 'searching' });
 
       // Always use fallback search to ensure we get both files and folders
       // The S3 search method only returns Contents, not CommonPrefixes (folders)
       return this.fallbackSearch(query, prefix, options);
     } catch (error) {
+      // Handle abortion gracefully
+      if (error instanceof Error && error.message === 'Search cancelled') {
+        console.log('Search was cancelled by user');
+        throw error;
+      }
+
       console.error('Search error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to search files';
 
@@ -44,11 +56,20 @@ class SearchService {
     prefix: string = '',
     options: SearchOptions = {}
   ): Promise<SearchResult> {
-    const { onProgress, onComplete, onError } = options;
+    const { onProgress, onComplete, onError, signal } = options;
 
     try {
       // Use recursive search to find all matching files and folders
-      const allItems = await this.recursivelySearchDirectories(query, prefix === '/' ? '' : prefix);
+      const allItems = await this.recursivelySearchDirectories(
+        query,
+        prefix === '/' ? '' : prefix,
+        signal
+      );
+
+      // Check if cancelled after search completes
+      if (signal?.aborted) {
+        throw new Error('Search cancelled');
+      }
 
       const result: SearchResult = {
         matches: allItems,
@@ -58,6 +79,11 @@ class SearchService {
       onComplete?.();
       return result;
     } catch (error) {
+      // Handle abortion gracefully
+      if (error instanceof Error && error.message === 'Search cancelled') {
+        throw error;
+      }
+
       console.error('Fallback search error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to search files';
 
@@ -69,12 +95,18 @@ class SearchService {
 
   private async recursivelySearchDirectories(
     query: string,
-    prefix: string = ''
+    prefix: string = '',
+    signal?: AbortSignal
   ): Promise<_Object[]> {
     const matches: _Object[] = [];
     const visitedPrefixes = new Set<string>();
 
     const searchInDirectory = async (currentPrefix: string): Promise<void> => {
+      // Check if search was cancelled
+      if (signal?.aborted) {
+        throw new Error('Search cancelled');
+      }
+
       // Avoid infinite loops
       if (visitedPrefixes.has(currentPrefix)) {
         return;
@@ -180,6 +212,11 @@ class SearchService {
           }
         }
       } catch (error) {
+        // Don't log errors for cancelled searches
+        if (error instanceof Error && error.message === 'Search cancelled') {
+          throw error; // Re-throw to stop the search
+        }
+
         console.error(`Error searching in directory ${currentPrefix}:`, error);
         // Continue searching other directories even if one fails
       }
@@ -271,6 +308,11 @@ class SearchService {
       onComplete?.();
       return result;
     } catch (error) {
+      // Don't log errors for cancelled searches
+      if (error instanceof Error && error.message === 'Search cancelled') {
+        throw error;
+      }
+
       console.error('Paginated search error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to search files';
 

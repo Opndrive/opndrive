@@ -60,7 +60,7 @@ export function SearchBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { searchFiles, isLoading, searchResults } = useSearch();
+  const { searchFiles, isLoading, searchResults, cancelSearch } = useSearch();
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -303,6 +303,11 @@ export function SearchBar({
 
   // Clear search
   const clearSearch = () => {
+    // If currently loading, cancel the search
+    if (isLoading) {
+      cancelSearch();
+    }
+
     setQuery('');
     setIsDropdownOpen(false);
     setHighlightedIndex(-1);
@@ -488,10 +493,14 @@ export function SearchBar({
             `}
           />
           {query && (
-            <AriaLabel label="Clear search query" position="top">
+            <AriaLabel label={isLoading ? 'Cancel search' : 'Clear search query'} position="top">
               <button
                 onClick={clearSearch}
-                className="absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className={`absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 transition-colors ${
+                  isLoading
+                    ? 'text-destructive hover:text-destructive-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 <X className="h-4 w-4" />
               </button>

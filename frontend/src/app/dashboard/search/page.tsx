@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Fragment } from 'react';
-import { Search, ArrowLeft } from 'lucide-react';
+import { Search, ArrowLeft, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { SearchBar } from '@/features/dashboard/components/views/search/search-bar';
@@ -65,6 +65,7 @@ export default function SearchPage() {
     isLoading,
     canLoadMore,
     invalidateCurrentQuery,
+    cancelSearch,
   } = useSearch();
 
   const handleCreditWarningConfirm = () => {
@@ -278,10 +279,24 @@ export default function SearchPage() {
 
             {/* Controls */}
             <div className="flex items-center gap-2">
+              {/* Cancel Button - only show when actively searching */}
+              {isLoading && (
+                <button
+                  onClick={cancelSearch}
+                  className="flex items-center justify-center px-3 py-2 rounded-lg bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 hover:border-destructive/30 transition-all duration-200 group"
+                  title="Cancel search"
+                >
+                  <X className="w-4 h-4 text-destructive group-hover:text-destructive" />
+                  <span className="ml-2 text-sm font-medium text-destructive hidden sm:inline">
+                    Cancel
+                  </span>
+                </button>
+              )}
+
               {/* Sync Button */}
               <button
                 onClick={handleSync}
-                disabled={isSyncing || !query.trim()}
+                disabled={isSyncing || !query.trim() || isLoading}
                 className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
                 title="Refresh search results"
               >
