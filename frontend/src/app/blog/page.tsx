@@ -1,24 +1,74 @@
 import { Metadata } from 'next';
 import { getRecentPosts } from '@/lib/wordpress/service';
 import { BlogCard } from '@/components/blog/blog-card';
-
 import BlogNavbar from '@/components/blog/blog-navbar';
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { BlogPagination, FeaturedBlogPost } from '@/components/blog';
+import { StructuredData } from '@/components/seo';
+import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
 
 // Revalidate every 60 seconds
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: 'Blog | Opndrive',
+  title: 'Blog - Cloud Storage Insights & Tutorials | Opndrive',
   description:
-    'Read the latest articles, tutorials, and insights about cloud storage, file management, and productivity.',
+    'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides. Expert tutorials and insights for managing your data effectively.',
+  keywords:
+    'cloud storage blog, s3 tutorials, file management tips, cloud storage guides, opndrive blog, storage optimization, data management',
+  authors: [{ name: 'Opndrive Team', url: 'https://opndrive.com' }],
+  creator: 'Opndrive',
+  publisher: 'Opndrive',
+
   openGraph: {
-    title: 'Blog | Opndrive',
+    title: 'Opndrive Blog - Cloud Storage Insights & Tutorials',
     description:
-      'Read the latest articles, tutorials, and insights about cloud storage, file management, and productivity.',
+      'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides for managing your data effectively.',
     type: 'website',
+    url: getAbsoluteUrl('/blog'),
+    siteName: 'Opndrive',
+    locale: 'en_US',
+    images: [
+      {
+        url: getAbsoluteUrl('/og-blog.png'),
+        width: 1200,
+        height: 630,
+        alt: 'Opndrive Blog',
+        type: 'image/png',
+      },
+    ],
+  },
+
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Opndrive Blog - Cloud Storage Insights & Tutorials',
+    description:
+      'Learn about cloud storage management, S3 best practices, and file organization tips.',
+    images: [getAbsoluteUrl('/og-blog.png')],
+    creator: '@opndrive',
+    site: '@opndrive',
+  },
+
+  alternates: {
+    canonical: getAbsoluteUrl('/blog'),
+    types: {
+      'application/rss+xml': [
+        { url: getAbsoluteUrl('/blog/rss.xml'), title: 'Opndrive Blog RSS Feed' },
+      ],
+    },
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
   },
 };
 
@@ -52,8 +102,15 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
     // This is a placeholder for the CTA action
   };
 
+  // Generate structured data
+  const blogSchema = generateBlogSchema();
+  const websiteSchema = generateWebSiteSchema();
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Structured Data for SEO */}
+      <StructuredData data={[websiteSchema, blogSchema]} />
+
       {/* Navbar */}
       <BlogNavbar />
 
