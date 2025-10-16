@@ -55,7 +55,14 @@ export default function SearchPage() {
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const { searchFiles, searchWithPagination, searchResults, isLoading, canLoadMore } = useSearch();
+  const {
+    searchFiles,
+    searchWithPagination,
+    searchResults,
+    isLoading,
+    canLoadMore,
+    invalidateCurrentQuery,
+  } = useSearch();
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
@@ -75,8 +82,8 @@ export default function SearchPage() {
 
     setIsSyncing(true);
     try {
-      // Re-run the search with fresh data
-      await searchFiles(query);
+      // Use the new invalidateCurrentQuery to clear cache and refetch
+      invalidateCurrentQuery();
     } catch (error) {
       console.error('Failed to sync search results:', error);
     } finally {
@@ -84,13 +91,14 @@ export default function SearchPage() {
     }
   };
 
-  // Search when query changes
+  // Search when query changes - now with automatic caching
   useEffect(() => {
     if (query.trim()) {
       if (shouldShowCreditWarning('search-operation')) {
         setPendingSearchQuery(query);
         setShowCreditWarning(true);
       } else {
+        // searchFiles now checks cache automatically
         searchFiles(query);
       }
     }

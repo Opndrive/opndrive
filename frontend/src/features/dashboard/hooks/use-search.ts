@@ -1,25 +1,41 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { createSearchService } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
-import { SearchResult } from '@opndrive/s3-api';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 export const useSearch = () => {
-  const [activeSearches, setActiveSearches] = useState<Set<string>>(new Set());
-  const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
   const { error } = useNotification();
   const { currentPrefix } = useDriveStore();
   const { apiS3 } = useAuthGuard();
+
+  // Use Zustand store instead of local state
+  const {
+    isLoading,
+    setSearchResults: setCachedSearchResults,
+    getCachedOrNull,
+    setLoading,
+    setCurrentQuery,
+    invalidateQuery,
+  } = useSearchStore();
+
+  // Get current search results from store
+  const currentQuery = useSearchStore((state) => state.currentQuery);
+  const currentCachedPrefix = useSearchStore((state) => state.currentPrefix);
+
+  // Compute searchResults from cache based on current query
+  const searchResults =
+    currentQuery && currentCachedPrefix !== null
+      ? getCachedOrNull(currentQuery, currentCachedPrefix)
+      : null;
 
   if (!apiS3) {
     return {
       searchFiles: async () => {},
       searchWithPagination: async () => {},
       clearResults: () => {},
-      isSearching: () => false,
+      invalidateCurrentQuery: () => {},
       isLoading: false,
       searchResults: null,
       hasResults: false,
@@ -29,22 +45,38 @@ export const useSearch = () => {
 
   const searchService = createSearchService(apiS3);
 
+  /**
+   * Search files with automatic caching
+   * Checks cache first, only makes API call if needed
+   */
   const searchFiles = useCallback(
-    async (query: string) => {
+    async (query: string, forceRefresh = false) => {
       if (!query.trim()) {
-        setSearchResults(null);
+        setCurrentQuery(null, null);
         return;
       }
 
-      const searchId = `search-${query}-${currentPrefix}`;
+      const normalizedPrefix = currentPrefix === '/' ? '' : currentPrefix || '';
 
-      setActiveSearches((prev) => new Set(prev).add(searchId));
-      setIsLoading(true);
+      // Check cache first (unless force refresh)
+      if (!forceRefresh) {
+        const cachedResults = getCachedOrNull(query, normalizedPrefix);
+        if (cachedResults) {
+          // Cache hit - use cached results
+          setCurrentQuery(query, normalizedPrefix);
+          console.log(
+            `[useSearch] Cache hit for query: "${query}" in prefix: "${normalizedPrefix}"`
+          );
+          return;
+        }
+      }
 
-      const prefix = currentPrefix === '/' ? '' : currentPrefix;
+      // Cache miss or force refresh - fetch from API
+      setLoading(true);
+      setCurrentQuery(query, normalizedPrefix);
 
       try {
-        const results = await searchService.searchFiles(query, prefix ?? '', {
+        const results = await searchService.searchFiles(query, normalizedPrefix, {
           onProgress: (progress) => {
             if (progress.status === 'error') {
               error('Search failed');
@@ -55,37 +87,38 @@ export const useSearch = () => {
           },
         });
 
-        setSearchResults(results);
+        // Store results in cache
+        setCachedSearchResults(query, normalizedPrefix, results);
 
-        // Results are set without showing success notifications
+        console.log(
+          `[useSearch] Fetched and cached ${results.matches.length} results for query: "${query}"`
+        );
       } catch (err) {
-        error(`Failed to search for "${query}","${err}"`);
-        setSearchResults(null);
+        error(`Failed to search for "${query}": ${err}`);
+        setCurrentQuery(null, null);
       } finally {
-        setIsLoading(false);
-        setActiveSearches((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(searchId);
-          return newSet;
-        });
+        setLoading(false);
       }
     },
-    [currentPrefix, error]
+    [currentPrefix, error, getCachedOrNull, setCachedSearchResults, setLoading, setCurrentQuery]
   );
 
+  /**
+   * Search with pagination for loading more results
+   * Appends to existing results in cache
+   */
   const searchWithPagination = useCallback(
     async (query: string, nextToken?: string) => {
       if (!query.trim()) return;
 
-      const searchId = `search-paginated-${query}-${currentPrefix}`;
+      const normalizedPrefix = currentPrefix === '/' ? '' : currentPrefix || '';
 
-      setActiveSearches((prev) => new Set(prev).add(searchId));
-      setIsLoading(true);
+      setLoading(true);
 
       try {
         const results = await searchService.searchWithPagination(
           query,
-          currentPrefix || '',
+          normalizedPrefix,
           nextToken,
           {
             onProgress: (progress) => {
@@ -100,51 +133,61 @@ export const useSearch = () => {
         );
 
         if (nextToken && searchResults) {
-          setSearchResults((prev) =>
-            prev
-              ? {
-                  matches: [...prev.matches, ...results.matches],
-                  nextToken: results.nextToken,
-                }
-              : results
-          );
+          // Append new results to existing ones
+          const updatedResults = {
+            matches: [...searchResults.matches, ...results.matches],
+            nextToken: results.nextToken,
+          };
+          setCachedSearchResults(query, normalizedPrefix, updatedResults);
         } else {
-          setSearchResults(results);
+          // First page or no existing results
+          setCachedSearchResults(query, normalizedPrefix, results);
         }
+
+        setCurrentQuery(query, normalizedPrefix);
       } catch (err) {
-        error(`Failed to load more results for "${query},"${err}"`);
+        error(`Failed to load more results for "${query}": ${err}`);
       } finally {
-        setIsLoading(false);
-        setActiveSearches((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(searchId);
-          return newSet;
-        });
+        setLoading(false);
       }
     },
-    [currentPrefix, searchResults, error]
+    [
+      currentPrefix,
+      searchResults,
+      error,
+      setCachedSearchResults,
+      setLoading,
+      setCurrentQuery,
+      searchService,
+    ]
   );
 
+  /**
+   * Clear current query and results
+   */
   const clearResults = useCallback(() => {
-    setSearchResults(null);
-  }, []);
+    setCurrentQuery(null, null);
+  }, [setCurrentQuery]);
 
-  const isSearching = useCallback(
-    (searchTerm: string) => {
-      const searchId = `search-${searchTerm}-${currentPrefix}`;
-      return activeSearches.has(searchId);
-    },
-    [activeSearches, currentPrefix]
-  );
+  /**
+   * Invalidate current query cache and refetch
+   */
+  const invalidateCurrentQuery = useCallback(() => {
+    if (currentQuery && currentCachedPrefix !== null) {
+      invalidateQuery(currentQuery, currentCachedPrefix);
+      // Refetch with force refresh
+      searchFiles(currentQuery, true);
+    }
+  }, [currentQuery, currentCachedPrefix, invalidateQuery, searchFiles]);
 
   return {
     searchFiles,
     searchWithPagination,
     clearResults,
-    isSearching,
+    invalidateCurrentQuery,
     isLoading,
     searchResults,
-    hasResults: searchResults && searchResults.matches.length > 0,
+    hasResults: searchResults !== null && searchResults.matches.length > 0,
     canLoadMore: searchResults?.nextToken !== undefined,
   };
 };

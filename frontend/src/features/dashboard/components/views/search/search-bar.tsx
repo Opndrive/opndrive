@@ -181,6 +181,7 @@ export function SearchBar({
   };
 
   const executeSearch = (searchQuery: string) => {
+    // searchFiles automatically checks cache and only makes API call if needed
     searchFiles(searchQuery);
     setIsDropdownOpen(true);
   };
@@ -271,6 +272,8 @@ export function SearchBar({
 
   const navigateToSearchResults = (searchQuery: string) => {
     const searchParams = new URLSearchParams({ q: searchQuery });
+    // Navigation to search page will use cached results automatically
+    // No duplicate API call will be made - the search page checks cache first
     router.push(`/dashboard/search?${searchParams.toString()}`);
     setIsDropdownOpen(false);
     setQuery('');
