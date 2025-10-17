@@ -95,8 +95,6 @@ class SearchService {
     let scanned = 0; // total keys scanned
     let totalResultsCount = 0; // Track total files + folders
 
-    console.log(rootPrefix);
-
     while (scanned < GLOBAL_SCAN_THRESHOLD && (current || queue.length)) {
       if (signal?.aborted) throw new Error('Search cancelled');
 
