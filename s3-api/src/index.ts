@@ -394,10 +394,32 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
     const contents = response.Contents ?? [];
 
-    const matches = contents.filter((obj) => obj.Key?.includes(params.searchTerm));
+    const files = contents.filter((obj) => !obj.Key?.endsWith('/'));
+    const folders = contents.filter((obj) => obj.Key?.endsWith('/'));
+
+    const filesMatching = files.filter((obj) => {
+      const key = obj.Key ?? '';
+      const name = key.substring(key.lastIndexOf('/') + 1);
+      return name.toLowerCase().includes(params.searchTerm.toLowerCase());
+    });
+
+    const foldersMatching = folders.filter((obj) => {
+      let key = obj.Key ?? '';
+      key = key.endsWith('/') ? key.slice(0, -1) : key; // remove trailing slash
+      const name = key.substring(key.lastIndexOf('/') + 1);
+      return name.toLowerCase().includes(params.searchTerm.toLowerCase());
+    });
+
+    const totalFiles = filesMatching.length;
+    const totalFolders = foldersMatching.length;
+    const allKeysMatched = totalFiles + totalFolders;
 
     return {
-      matches,
+      files: filesMatching,
+      totalFiles,
+      folders: foldersMatching,
+      totalFolders,
+      totalKeys: allKeysMatched,
       nextToken: response.NextContinuationToken,
     };
   }

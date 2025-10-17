@@ -82,7 +82,11 @@ export interface SearchParams {
 }
 
 export interface SearchResult {
-  matches: _Object[];
+  files: _Object[];
+  totalFiles: number;
+  folders: _Object[];
+  totalFolders: number;
+  totalKeys: number;
   nextToken?: string;
 }
 
