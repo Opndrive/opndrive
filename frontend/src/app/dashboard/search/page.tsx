@@ -5,7 +5,7 @@ import { useEffect, useState, Fragment } from 'react';
 import { Search, ArrowLeft, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
-import { SearchBar } from '@/features/dashboard/components/views/search/search-bar';
+import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
 import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
@@ -25,9 +25,6 @@ import {
 import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
-
-// Type for processed search results
-type ProcessedSearchResult = { type: 'file'; data: FileItem } | { type: 'folder'; data: Folder };
 
 // Import formatBytes function from data-context
 function formatBytes(bytes: number | undefined): { value: number; unit: string } {
@@ -58,19 +55,12 @@ export default function SearchPage() {
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const {
-    searchFiles,
-    searchWithPagination,
-    searchResults,
-    isLoading,
-    canLoadMore,
-    invalidateCurrentQuery,
-    cancelSearch,
-  } = useSearch();
+  const { search, searchResults, isLoading, canLoadMore, invalidateCurrentQuery, cancelSearch } =
+    useSearch();
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
-      searchFiles(pendingSearchQuery);
+      search(pendingSearchQuery);
       setPendingSearchQuery('');
     }
     setShowCreditWarning(false);
@@ -102,61 +92,45 @@ export default function SearchPage() {
         setPendingSearchQuery(query);
         setShowCreditWarning(true);
       } else {
-        // searchFiles now checks cache automatically
-        searchFiles(query);
+        // search now checks cache automatically
+        search(query);
       }
     }
-  }, [query, searchFiles]);
+  }, [query]); // Only depend on query, not search function
 
   // Convert search results to FileItem and Folder objects
-  const processedResults =
-    searchResults?.matches.map((match: _Object, index: number) => {
-      const isFolder = match.Key?.endsWith('/');
-      const pathParts = match.Key?.split('/') || [];
+  const folders: Folder[] =
+    searchResults?.folders.map((folder: _Object, index: number) => {
+      const folderPath = folder.Key?.slice(0, -1) || ''; // Remove trailing /
+      const folderParts = folderPath.split('/');
+      const folderName = folderParts[folderParts.length - 1] || folderPath;
 
-      if (isFolder) {
-        // Create folder object
-        const folderPath = match.Key?.slice(0, -1) || '';
-        const folderParts = folderPath.split('/');
-        const folderName = folderParts[folderParts.length - 1] || folderPath;
-
-        return {
-          type: 'folder' as const,
-          data: {
-            id: `folder-${index}`,
-            name: folderName,
-            Prefix: match.Key,
-            lastModified: match.LastModified || new Date(),
-            itemCount: 0,
-          } as Folder,
-        };
-      } else {
-        // Create file object
-        const fileName = pathParts[pathParts.length - 1] || match.Key || '';
-        const extension = getFileExtensionWithoutDot(fileName);
-
-        return {
-          type: 'file' as const,
-          data: {
-            id: `file-${index}`,
-            name: fileName,
-            Key: match.Key,
-            extension: extension as FileExtension,
-            lastModified: match.LastModified || new Date(),
-            size: formatBytes(match.Size),
-            ETag: match.ETag || '',
-            StorageClass: match.StorageClass || 'STANDARD',
-          } as FileItem,
-        };
-      }
+      return {
+        id: `folder-${index}`,
+        name: folderName,
+        Prefix: folder.Key,
+        lastModified: folder.LastModified || new Date(),
+        itemCount: 0,
+      } as Folder;
     }) || [];
 
-  const files = processedResults
-    .filter((item: ProcessedSearchResult) => item.type === 'file')
-    .map((item: ProcessedSearchResult) => item.data as FileItem);
-  const folders = processedResults
-    .filter((item: ProcessedSearchResult) => item.type === 'folder')
-    .map((item: ProcessedSearchResult) => item.data as Folder);
+  const files: FileItem[] =
+    searchResults?.files.map((file: _Object, index: number) => {
+      const pathParts = file.Key?.split('/') || [];
+      const fileName = pathParts[pathParts.length - 1] || file.Key || '';
+      const extension = getFileExtensionWithoutDot(fileName);
+
+      return {
+        id: `file-${index}`,
+        name: fileName,
+        Key: file.Key,
+        extension: extension as FileExtension,
+        lastModified: file.LastModified || new Date(),
+        size: formatBytes(file.Size),
+        ETag: file.ETag || '',
+        StorageClass: file.StorageClass || 'STANDARD',
+      } as FileItem;
+    }) || [];
 
   // Use chunked display for performance with large result sets
   const {
@@ -203,8 +177,9 @@ export default function SearchPage() {
   };
 
   const loadMore = () => {
-    if (canLoadMore && query.trim()) {
-      searchWithPagination(query, searchResults?.nextToken);
+    if (canLoadMore && query.trim() && searchResults?.nextToken) {
+      // API-level pagination: Fetch more results from backend
+      search(query, searchResults.nextToken);
     }
   };
 
@@ -223,7 +198,7 @@ export default function SearchPage() {
               Back
             </Button>
           </div>
-          <SearchBar placeholder="Search files and folders..." />
+          <SearchInput placeholder="Search files and folders..." autoFocus />
         </div>
 
         <div className="flex-1 flex items-center justify-center">
@@ -256,7 +231,7 @@ export default function SearchPage() {
             </Button>
           </div>
 
-          <SearchBar placeholder="Search files and folders..." />
+          <SearchInput initialQuery={query} placeholder="Search files and folders..." />
 
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
