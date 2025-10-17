@@ -88,6 +88,7 @@ export interface SearchResult {
   totalFolders: number;
   totalKeys: number;
   nextToken?: string;
+  isTruncated?: boolean;
 }
 
 // Uploader
