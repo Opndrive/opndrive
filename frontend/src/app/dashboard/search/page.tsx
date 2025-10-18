@@ -2,15 +2,18 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Fragment } from 'react';
-import { Search, ArrowLeft } from 'lucide-react';
+import { Search, ArrowLeft, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
-import { SearchBar } from '@/features/dashboard/components/views/search/search-bar';
+import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
 import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
+import { FileSkeletonGridList } from '@/features/dashboard/components/ui/skeletons/file-skeleton';
+import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons/folder-skeleton';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
+import { useChunkedItems, formatItemCount } from '@/hooks/use-chunked-items';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -19,12 +22,11 @@ import {
   CreditWarningDialog,
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
+import { useDriveStore } from '@/context/data-context';
+import { SearchBreadcrumb } from '@/features/dashboard/components/views/search/search-breadcrumb';
 import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
-
-// Type for processed search results
-type ProcessedSearchResult = { type: 'file'; data: FileItem } | { type: 'folder'; data: Folder };
 
 // Import formatBytes function from data-context
 function formatBytes(bytes: number | undefined): { value: number; unit: string } {
@@ -51,15 +53,24 @@ export default function SearchPage() {
   const query = searchParams.get('q') || '';
   const { openPreview } = useFilePreview();
   const { layout: viewMode } = useCurrentLayout();
+  const { currentPrefix } = useDriveStore();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const { searchFiles, searchWithPagination, searchResults, isLoading, canLoadMore } = useSearch();
+  const {
+    search,
+    searchResults,
+    isLoading,
+    canLoadMore,
+    invalidateCurrentQuery,
+    cancelSearch,
+    requestCount,
+  } = useSearch();
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
-      searchFiles(pendingSearchQuery);
+      search(pendingSearchQuery);
       setPendingSearchQuery('');
     }
     setShowCreditWarning(false);
@@ -75,8 +86,8 @@ export default function SearchPage() {
 
     setIsSyncing(true);
     try {
-      // Re-run the search with fresh data
-      await searchFiles(query);
+      // Use the new invalidateCurrentQuery to clear cache and refetch
+      invalidateCurrentQuery();
     } catch (error) {
       console.error('Failed to sync search results:', error);
     } finally {
@@ -84,67 +95,75 @@ export default function SearchPage() {
     }
   };
 
-  // Search when query changes
+  // Search when query changes - now with automatic caching
   useEffect(() => {
     if (query.trim()) {
       if (shouldShowCreditWarning('search-operation')) {
         setPendingSearchQuery(query);
         setShowCreditWarning(true);
       } else {
-        searchFiles(query);
+        // search now checks cache automatically
+        search(query);
       }
     }
-  }, [query, searchFiles]);
+  }, [query]); // Only depend on query, not search function
 
   // Convert search results to FileItem and Folder objects
-  const processedResults =
-    searchResults?.matches.map((match: _Object, index: number) => {
-      const isFolder = match.Key?.endsWith('/');
-      const pathParts = match.Key?.split('/') || [];
+  const folders: Folder[] =
+    searchResults?.folders.map((folder: _Object, index: number) => {
+      const folderPath = folder.Key?.slice(0, -1) || ''; // Remove trailing /
+      const folderParts = folderPath.split('/');
+      const folderName = folderParts[folderParts.length - 1] || folderPath;
 
-      if (isFolder) {
-        // Create folder object
-        const folderPath = match.Key?.slice(0, -1) || '';
-        const folderParts = folderPath.split('/');
-        const folderName = folderParts[folderParts.length - 1] || folderPath;
-
-        return {
-          type: 'folder' as const,
-          data: {
-            id: `folder-${index}`,
-            name: folderName,
-            Prefix: match.Key,
-            lastModified: match.LastModified || new Date(),
-            itemCount: 0,
-          } as Folder,
-        };
-      } else {
-        // Create file object
-        const fileName = pathParts[pathParts.length - 1] || match.Key || '';
-        const extension = getFileExtensionWithoutDot(fileName);
-
-        return {
-          type: 'file' as const,
-          data: {
-            id: `file-${index}`,
-            name: fileName,
-            Key: match.Key,
-            extension: extension as FileExtension,
-            lastModified: match.LastModified || new Date(),
-            size: formatBytes(match.Size),
-            ETag: match.ETag || '',
-            StorageClass: match.StorageClass || 'STANDARD',
-          } as FileItem,
-        };
-      }
+      return {
+        id: `folder-${index}`,
+        name: folderName,
+        Prefix: folder.Key,
+        lastModified: folder.LastModified || new Date(),
+        itemCount: 0,
+      } as Folder;
     }) || [];
 
-  const files = processedResults
-    .filter((item: ProcessedSearchResult) => item.type === 'file')
-    .map((item: ProcessedSearchResult) => item.data as FileItem);
-  const folders = processedResults
-    .filter((item: ProcessedSearchResult) => item.type === 'folder')
-    .map((item: ProcessedSearchResult) => item.data as Folder);
+  const files: FileItem[] =
+    searchResults?.files.map((file: _Object, index: number) => {
+      const pathParts = file.Key?.split('/') || [];
+      const fileName = pathParts[pathParts.length - 1] || file.Key || '';
+      const extension = getFileExtensionWithoutDot(fileName);
+
+      return {
+        id: `file-${index}`,
+        name: fileName,
+        Key: file.Key,
+        extension: extension as FileExtension,
+        lastModified: file.LastModified || new Date(),
+        size: formatBytes(file.Size),
+        ETag: file.ETag || '',
+        StorageClass: file.StorageClass || 'STANDARD',
+      } as FileItem;
+    }) || [];
+
+  // Use chunked display for performance with large result sets
+  const {
+    displayedItems: displayedFolders,
+    canLoadMoreChunks: canLoadMoreFolderChunks,
+    isLoadingChunks: isLoadingFolderChunks,
+    sentinelRef: folderSentinelRef,
+    loadMoreChunks: loadMoreFolderChunks,
+    remainingItems: remainingFolders,
+  } = useChunkedItems(folders, { chunkSize: 100 }, query);
+
+  const {
+    displayedItems: displayedFiles,
+    canLoadMoreChunks: canLoadMoreFileChunks,
+    isLoadingChunks: isLoadingFileChunks,
+    sentinelRef: fileSentinelRef,
+    loadMoreChunks: loadMoreFileChunks,
+    remainingItems: remainingFiles,
+  } = useChunkedItems(files, { chunkSize: 100 }, query);
+
+  // Combined loading and chunking state
+  const canLoadMoreChunks = canLoadMoreFolderChunks || canLoadMoreFileChunks;
+  const totalDisplayed = displayedFolders.length + displayedFiles.length;
 
   const handleBackClick = () => {
     router.back();
@@ -168,8 +187,9 @@ export default function SearchPage() {
   };
 
   const loadMore = () => {
-    if (canLoadMore && query.trim()) {
-      searchWithPagination(query, searchResults?.nextToken);
+    if (canLoadMore && query.trim() && searchResults?.nextToken) {
+      // API-level pagination: Fetch more results from backend
+      search(query, searchResults.nextToken);
     }
   };
 
@@ -188,7 +208,7 @@ export default function SearchPage() {
               Back
             </Button>
           </div>
-          <SearchBar placeholder="Search files and folders..." />
+          <SearchInput placeholder="Search files and folders..." autoFocus />
         </div>
 
         <div className="flex-1 flex items-center justify-center">
@@ -221,27 +241,69 @@ export default function SearchPage() {
             </Button>
           </div>
 
-          <SearchBar placeholder="Search files and folders..." />
+          <SearchInput initialQuery={query} placeholder="Search files and folders..." />
+
+          {/* Breadcrumb Navigation - Show current location */}
+          <div className="mt-3 pb-3 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">Current Location:</span>
+              <SearchBreadcrumb prefix={currentPrefix} />
+            </div>
+          </div>
+
+          {/* API Request Count - Show only when we have results or are loading */}
+          {(totalDisplayed > 0 || isLoading) && (requestCount ?? 0) > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+                <span>
+                  {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
+                </span>
+              </div>
+              <span>·</span>
+              <span>{searchResults?.totalKeys || 0} results loaded</span>
+            </div>
+          )}
 
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-muted-foreground">
-              {isLoading ? (
+              {isLoading && totalDisplayed === 0 ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   Searching...
                 </span>
+              ) : totalDisplayed > 0 ? (
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-foreground">{query}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span>{formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}</span>
+                </span>
               ) : (
-                `${processedResults.length} results for "${query}"`
+                `No results for "${query}"`
               )}
             </div>
 
             {/* Controls */}
             <div className="flex items-center gap-2">
+              {/* Cancel Button - only show when actively searching */}
+              {isLoading && (
+                <button
+                  onClick={cancelSearch}
+                  className="flex items-center justify-center px-3 py-2 rounded-lg bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 hover:border-destructive/30 transition-all duration-200 group"
+                  title="Cancel search"
+                >
+                  <X className="w-4 h-4 text-destructive group-hover:text-destructive" />
+                  <span className="ml-2 text-sm font-medium text-destructive hidden sm:inline">
+                    Cancel
+                  </span>
+                </button>
+              )}
+
               {/* Sync Button */}
               <button
                 onClick={handleSync}
-                disabled={isSyncing || !query.trim()}
+                disabled={isSyncing || !query.trim() || isLoading}
                 className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
                 title="Refresh search results"
               >
@@ -260,14 +322,23 @@ export default function SearchPage() {
 
         {/* Results */}
         <div className="flex-1 overflow-auto">
-          {isLoading && processedResults.length === 0 ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent mx-auto mb-4" />
-                <p className="text-muted-foreground">Searching...</p>
+          {isLoading && totalDisplayed === 0 ? (
+            // Show skeleton loaders during initial load or cache miss
+            <div className="mt-4 px-2">
+              {/* Skeleton for folders */}
+              <div className="mb-8">
+                <div className="h-4 w-32 bg-muted/40 rounded mb-4 animate-pulse" />
+                <FolderSkeletonList count={3} />
+              </div>
+
+              {/* Skeleton for files */}
+              <div>
+                <div className="h-4 w-24 bg-muted/40 rounded mb-4 animate-pulse" />
+                <FileSkeletonGridList count={8} layout={viewMode} />
               </div>
             </div>
-          ) : processedResults.length === 0 ? (
+          ) : totalDisplayed === 0 ? (
+            // Empty state - no results found
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
                 <Search className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -278,7 +349,7 @@ export default function SearchPage() {
           ) : (
             <div className="mt-2">
               {/* Folders Section */}
-              {folders.length > 0 && (
+              {displayedFolders.length > 0 && (
                 <div className="mb-8">
                   <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
                     Folders ({folders.length})
@@ -290,10 +361,15 @@ export default function SearchPage() {
                         : 'space-y-1'
                     }
                   >
-                    {folders.map((folder: Folder) => (
+                    {displayedFolders.map((folder: Folder) => (
                       <FolderItem key={folder.Prefix} folder={folder} onClick={handleFolderClick} />
                     ))}
                   </div>
+
+                  {/* Sentinel for folder chunking */}
+                  {canLoadMoreFolderChunks && (
+                    <div ref={folderSentinelRef} className="h-4 w-full mt-2" aria-hidden="true" />
+                  )}
                 </div>
               )}
 
@@ -305,7 +381,7 @@ export default function SearchPage() {
                   </h3>
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {files.map((file: FileItem) => (
+                      {displayedFiles.map((file: FileItem) => (
                         <div
                           key={file.Key}
                           onClick={() => handleFileClick(file)}
@@ -341,13 +417,13 @@ export default function SearchPage() {
                           <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                         </div>
 
-                        {files.map((file: FileItem, index: number) => (
+                        {displayedFiles.map((file: FileItem, index: number) => (
                           <Fragment key={file.Key}>
                             <div onClick={() => handleFileClick(file)} className="cursor-pointer">
                               <FileItemList file={file} allFiles={files} _onAction={() => {}} />
                             </div>
                             {/* Professional separator */}
-                            {index < files.length - 1 && (
+                            {index < displayedFiles.length - 1 && (
                               <div className="mx-4" aria-hidden="true">
                                 <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
                               </div>
@@ -362,7 +438,7 @@ export default function SearchPage() {
                           Files
                         </div>
                         <div className="divide-y divide-border/30">
-                          {files.map((file: FileItem, index: number) => (
+                          {displayedFiles.map((file: FileItem, index: number) => (
                             <FileItemMobile
                               key={file.Key}
                               file={file}
@@ -376,14 +452,62 @@ export default function SearchPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Sentinel for file chunking - placed outside view mode conditionals */}
+                  {canLoadMoreFileChunks && (
+                    <div ref={fileSentinelRef} className="h-4 w-full mt-2" aria-hidden="true" />
+                  )}
                 </div>
               )}
 
-              {/* Load More Button */}
-              {canLoadMore && (
+              {/* Chunk Loading Indicator */}
+              {(isLoadingFolderChunks || isLoadingFileChunks) && (
+                <div className="mt-6 flex items-center justify-center gap-3 text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <span className="text-sm">Loading more items...</span>
+                </div>
+              )}
+
+              {/* Manual Load More Buttons */}
+              {(canLoadMoreFolderChunks || canLoadMoreFileChunks) && (
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                  {canLoadMoreFolderChunks && remainingFolders > 0 && (
+                    <Button
+                      onClick={loadMoreFolderChunks}
+                      disabled={isLoadingFolderChunks}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      {isLoadingFolderChunks
+                        ? 'Loading...'
+                        : `Load ${Math.min(remainingFolders, 100)} More Folder${remainingFolders > 1 ? 's' : ''}`}
+                    </Button>
+                  )}
+                  {canLoadMoreFileChunks && remainingFiles > 0 && (
+                    <Button
+                      onClick={loadMoreFileChunks}
+                      disabled={isLoadingFileChunks}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      {isLoadingFileChunks
+                        ? 'Loading...'
+                        : `Load ${Math.min(remainingFiles, 100)} More File${remainingFiles > 1 ? 's' : ''}`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* API Pagination Load More Button - Only show when all UI chunks are displayed */}
+              {canLoadMore && !canLoadMoreChunks && (
                 <div className="mt-8 text-center">
-                  <Button onClick={loadMore} disabled={isLoading} variant="outline">
-                    {isLoading ? 'Loading...' : 'Load More Results'}
+                  <Button
+                    onClick={loadMore}
+                    disabled={isLoading}
+                    variant="outline"
+                    className="min-w-[200px]"
+                  >
+                    {isLoading ? 'Loading...' : 'Load More Results (50)'}
                   </Button>
                 </div>
               )}

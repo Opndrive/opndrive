@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { SearchBar } from '@/features/dashboard/components/views/search/search-bar';
+import { SearchBar } from '../search/search-bar';
 import { useScroll } from '@/context/scroll-context';
 
 interface DriveHeroProps {

@@ -3,6 +3,7 @@ import { _Object, CommonPrefix } from '@aws-sdk/client-s3';
 import { DataUnits, FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
+import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 type PrefixData = {
   files: FileItem[];
@@ -233,6 +234,9 @@ export const useDriveStore = create<Store>((set, get) => ({
 
     // Only refresh if we have valid prefixes set
     if (currentPrefix !== null && rootPrefix !== null) {
+      // Invalidate search cache for current prefix since data is being refreshed
+      useSearchStore.getState().invalidatePrefix(currentPrefix);
+
       // Refresh both regular cache and recent cache in parallel
       await Promise.all([
         fetchData({ sync: true }),
@@ -246,6 +250,9 @@ export const useDriveStore = create<Store>((set, get) => ({
 
     // Only refresh if we have valid prefixes set
     if (currentPrefix !== null && rootPrefix !== null) {
+      // Clear entire search cache since we're refreshing all data
+      useSearchStore.getState().clearCache();
+
       // Refresh both regular cache and recent cache in parallel
       await Promise.all([
         fetchData({ sync: true }),

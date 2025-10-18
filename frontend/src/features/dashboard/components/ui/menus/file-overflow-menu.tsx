@@ -248,7 +248,9 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
               }
               ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 if (!action.disabled) {
                   action.onClick?.(file);
                 }
