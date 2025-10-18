@@ -58,8 +58,22 @@ export function SearchBar({
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { searchFiles, isLoading, searchResults } = useSearch();
+  const { search, isLoading, searchResults, cancelSearch } = useSearch();
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Format bytes utility function
   const formatBytes = (bytes: number | undefined): { value: number; unit: string } => {
@@ -97,10 +111,18 @@ export function SearchBar({
   };
 
   // Convert search results to suggestions and debounced search - only show up to 8 suggestions
-  const suggestions: SearchSuggestion[] =
-    searchResults?.matches.slice(0, 8).map((match: _Object, index: number) => {
-      const isFolder = match.Key?.endsWith('/');
-      const pathParts = match.Key?.split('/') || [];
+  const suggestions: SearchSuggestion[] = (() => {
+    if (!searchResults) return [];
+
+    // Combine files and folders, limiting to 8 total suggestions
+    const allItems: Array<{ item: _Object; type: 'file' | 'folder' }> = [
+      ...searchResults.folders.slice(0, 4).map((f) => ({ item: f, type: 'folder' as const })),
+      ...searchResults.files.slice(0, 4).map((f) => ({ item: f, type: 'file' as const })),
+    ].slice(0, 8);
+
+    return allItems.map(({ item, type }, index) => {
+      const isFolder = type === 'folder';
+      const pathParts = item.Key?.split('/') || [];
 
       let displayName: string;
       let displayPath: string;
@@ -108,14 +130,14 @@ export function SearchBar({
 
       if (isFolder) {
         // For folders, remove the trailing slash and get the folder name
-        const folderPath = match.Key?.slice(0, -1) || ''; // Remove trailing /
+        const folderPath = item.Key?.slice(0, -1) || ''; // Remove trailing /
         const folderParts = folderPath.split('/');
         displayName = folderParts[folderParts.length - 1] || folderPath; // Get last part as folder name
         displayPath = folderParts.length > 1 ? folderParts.slice(0, -1).join('/') : '/';
         location = folderParts.length > 1 ? folderParts[folderParts.length - 2] || 'Root' : 'Root';
       } else {
         // For files
-        displayName = pathParts[pathParts.length - 1] || match.Key || '';
+        displayName = pathParts[pathParts.length - 1] || item.Key || '';
         displayPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '/';
         location = pathParts.length > 1 ? pathParts[pathParts.length - 2] || 'Root' : 'Root';
       }
@@ -124,17 +146,18 @@ export function SearchBar({
       const extension = !isFolder ? getFileExtensionWithoutDot(displayName) : undefined;
 
       return {
-        id: `${match.Key}-${index}`,
+        id: `${item.Key}-${index}`,
         name: displayName,
-        type: isFolder ? ('folder' as const) : ('file' as const),
+        type,
         path: displayPath,
-        key: match.Key || '',
+        key: item.Key || '',
         extension,
         location,
-        size: !isFolder ? formatBytes(match.Size) : undefined,
-        lastModified: match.LastModified,
+        size: !isFolder ? formatBytes(item.Size) : undefined,
+        lastModified: item.LastModified,
       };
-    }) || [];
+    });
+  })();
 
   // Update dropdown position when search container moves or resizes
   const updateDropdownPosition = useCallback(() => {
@@ -167,33 +190,37 @@ export function SearchBar({
     setQuery(value);
     setHighlightedIndex(-1);
 
+    // Clear existing debounce timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
     if (value.trim().length >= 2) {
-      if (shouldShowCreditWarning('search-operation')) {
-        setPendingSearchQuery(value);
-        setShowCreditWarning(true);
-        setIsDropdownOpen(false);
-      } else {
-        executeSearch(value);
-      }
+      // Debounce the search for 500ms
+      debounceTimeoutRef.current = setTimeout(() => {
+        if (shouldShowCreditWarning('search-operation')) {
+          setPendingSearchQuery(value);
+          setShowCreditWarning(true);
+          setIsDropdownOpen(false);
+        } else {
+          executeSearch(value);
+        }
+      }, 500);
     } else {
       setIsDropdownOpen(false);
     }
   };
 
   const executeSearch = (searchQuery: string) => {
-    searchFiles(searchQuery);
+    // search automatically checks cache and only makes API call if needed
+    search(searchQuery);
     setIsDropdownOpen(true);
   };
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
       // Check if this was triggered from "View All Results" by checking current context
-      if (isDropdownOpen || suggestions.length > 0) {
-        executeSearch(pendingSearchQuery);
-      } else {
-        navigateToSearchResults(pendingSearchQuery);
-      }
-      setPendingSearchQuery('');
+      executeSearch(pendingSearchQuery);
     }
     setShowCreditWarning(false);
   };
@@ -271,14 +298,37 @@ export function SearchBar({
 
   const navigateToSearchResults = (searchQuery: string) => {
     const searchParams = new URLSearchParams({ q: searchQuery });
+
+    // Clear any existing timeout
+    if (navigationTimeoutRef.current) {
+      clearTimeout(navigationTimeoutRef.current);
+    }
+
+    // Navigation to search page will use cached results automatically
+    // No duplicate API call will be made - the search page checks cache first
     router.push(`/dashboard/search?${searchParams.toString()}`);
-    setIsDropdownOpen(false);
-    setQuery('');
-    inputRef.current?.blur();
+
+    // Keep dropdown visible during navigation for smooth UX
+    // Close after a delay to allow search page to mount and render
+    navigationTimeoutRef.current = setTimeout(() => {
+      setIsDropdownOpen(false);
+      setQuery('');
+      inputRef.current?.blur();
+    }, 350); // 350ms provides smooth visual continuity
   };
 
   // Clear search
   const clearSearch = () => {
+    // Clear debounce timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // If currently loading, cancel the search
+    if (isLoading) {
+      cancelSearch();
+    }
+
     setQuery('');
     setIsDropdownOpen(false);
     setHighlightedIndex(-1);
@@ -351,14 +401,7 @@ export function SearchBar({
         backdropFilter: 'blur(20px)',
       }}
     >
-      {isLoading ? (
-        <div className="p-4 sm:p-6 text-center">
-          <div className="flex items-center justify-center gap-3 text-muted-foreground">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span className="text-sm font-medium">Searching...</span>
-          </div>
-        </div>
-      ) : suggestions.length > 0 ? (
+      {suggestions.length > 0 ? (
         <div className="overflow-y-auto max-h-[340px] sm:max-h-[340px] custom-scrollbar">
           {suggestions.map((suggestion, index) => (
             <button
@@ -399,6 +442,16 @@ export function SearchBar({
             </button>
           ))}
 
+          {/* Loading indicator at bottom when search is in progress */}
+          {isLoading && (
+            <div className="p-3 text-center border-t border-border/30">
+              <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span className="text-xs font-medium">Loading more...</span>
+              </div>
+            </div>
+          )}
+
           {/* View All Results Footer */}
           <div className="border-t border-border/30 bg-muted/10">
             <button
@@ -408,9 +461,16 @@ export function SearchBar({
               <Search className="h-4 w-4 group-hover:scale-110 transition-transform flex-shrink-0" />
               <span className="text-sm flex-1 min-w-0">View all results for "{query}"</span>
               <div className="text-xs text-muted-foreground bg-primary/10 px-2 py-1 rounded-full flex-shrink-0">
-                {searchResults?.matches.length || 0}+
+                {searchResults?.totalKeys || 0}+
               </div>
             </button>
+          </div>
+        </div>
+      ) : isLoading ? (
+        <div className="p-4 sm:p-6 text-center">
+          <div className="flex items-center justify-center gap-3 text-muted-foreground">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium">Searching...</span>
           </div>
         </div>
       ) : query.trim().length >= 2 ? (
@@ -464,10 +524,14 @@ export function SearchBar({
             `}
           />
           {query && (
-            <AriaLabel label="Clear search query" position="top">
+            <AriaLabel label={isLoading ? 'Cancel search' : 'Clear search query'} position="top">
               <button
                 onClick={clearSearch}
-                className="absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className={`absolute cursor-pointer right-3 top-1/2 transform -translate-y-1/2 transition-colors ${
+                  isLoading
+                    ? 'text-destructive hover:text-destructive-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 <X className="h-4 w-4" />
               </button>
