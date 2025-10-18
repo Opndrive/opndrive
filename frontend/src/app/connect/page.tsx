@@ -172,6 +172,22 @@ export default function ConnectPage() {
 
   const currentProvider = providerConfigs[selectedProvider as keyof typeof providerConfigs];
 
+  const formatPrefix = (value: string): string => {
+    if (!value || value.trim() === '') return '';
+
+    // Remove all slashes for reformatting
+    const formatted = value.replace(/\//g, '');
+
+    // Split by spaces or commas and filter empty strings
+    const parts = formatted.split(/[\s,]+/).filter((part) => part.trim() !== '');
+
+    if (parts.length > 0) {
+      return parts.join('/') + '/';
+    }
+
+    return '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -183,12 +199,15 @@ export default function ConnectPage() {
         endpoint = currentProvider.endpoint.replace('{{region}}', formCreds.region);
       }
 
+      // Format and validate prefix
+      const formattedPrefix = formatPrefix(formCreds.prefix);
+
       // Only include endpoint if it has a value
       const credentials: Credentials = {
         accessKeyId: formCreds.accessKeyId,
         secretAccessKey: formCreds.secretAccessKey,
         bucketName: formCreds.bucketName,
-        prefix: formCreds.prefix,
+        prefix: formattedPrefix,
         region: formCreds.region,
         ...(endpoint && endpoint.trim() && { endpoint: endpoint.trim() }),
       };
@@ -347,13 +366,23 @@ export default function ConnectPage() {
                 <input
                   type="text"
                   className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
-                  placeholder="folder-path/ (optional)"
+                  placeholder="e.g., projects documents"
                   value={formCreds.prefix}
                   onChange={(e) => setFormCreds({ ...formCreds, prefix: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional folder path within your bucket to use as the root directory.
+                  Specify a folder path within your bucket to use as the root directory. Enter
+                  folder names separated by spaces. The system will automatically format it with
+                  proper delimiters.
                 </p>
+                {formCreds.prefix && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Formatted path:</span>
+                    <code className="bg-muted px-2 py-1 rounded text-foreground">
+                      {formatPrefix(formCreds.prefix) || 'Invalid format'}
+                    </code>
+                  </div>
+                )}
               </div>
               {(selectedProvider !== 'aws' || formCreds.endpoint) && (
                 <div className="space-y-2">
