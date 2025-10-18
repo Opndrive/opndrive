@@ -336,11 +336,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                   const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
                   let key = '';
 
-                  if (uploadManager['prefix'] && currPrefix) {
-                    key = `${uploadManager['prefix']}${currPrefix}${file.name}`;
-                  } else if (uploadManager['prefix'] && !currPrefix) {
-                    key = `${uploadManager['prefix']}${file.name}`;
-                  } else if (!uploadManager['prefix'] && currPrefix) {
+                  if (currPrefix) {
                     key = `${currPrefix}${file.name}`;
                   } else {
                     key = file.name;
@@ -374,11 +370,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                     const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
                     let key = '';
 
-                    if (uploadManager['prefix'] && currPrefix) {
-                      key = `${uploadManager['prefix']}${currPrefix}${uniqueName}`;
-                    } else if (uploadManager['prefix'] && !currPrefix) {
-                      key = `${uploadManager['prefix']}${uniqueName}`;
-                    } else if (!uploadManager['prefix'] && currPrefix) {
+                    if (currPrefix) {
                       key = `${currPrefix}${uniqueName}`;
                     } else {
                       key = uniqueName;
@@ -412,11 +404,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
-        if (uploadManager['prefix'] && currPrefix) {
-          key = `${uploadManager['prefix']}${currPrefix}${file.name}`;
-        } else if (uploadManager['prefix'] && !currPrefix) {
-          key = `${uploadManager['prefix']}${file.name}`;
-        } else if (!uploadManager['prefix'] && currPrefix) {
+        if (currPrefix) {
           key = `${currPrefix}${file.name}`;
         } else {
           key = file.name;
@@ -452,11 +440,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                   const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
                   let key = '';
 
-                  if (uploadManager['prefix'] && currPrefix) {
-                    key = `${uploadManager['prefix']}${currPrefix}`;
-                  } else if (uploadManager['prefix'] && !currPrefix) {
-                    key = `${uploadManager['prefix']}`;
-                  } else if (!uploadManager['prefix'] && currPrefix) {
+                  if (currPrefix) {
                     key = `${currPrefix}`;
                   }
 
@@ -500,14 +484,23 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                       currentPrefix || ''
                     );
 
+                    // replace all files first folder to unique name
+                    folder.files = folder.files.map((file) => {
+                      const newPath = file.webkitRelativePath.replace(folder.name, uniqueName);
+                      const newFile = new File([file], file.name, { type: file.type });
+                      Object.defineProperty(newFile, 'webkitRelativePath', {
+                        value: newPath,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true,
+                      });
+                      return newFile;
+                    });
+
                     const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
                     let key = '';
 
-                    if (uploadManager['prefix'] && currPrefix) {
-                      key = `${uploadManager['prefix']}${currPrefix}`;
-                    } else if (uploadManager['prefix'] && !currPrefix) {
-                      key = `${uploadManager['prefix']}`;
-                    } else if (!uploadManager['prefix'] && currPrefix) {
+                    if (currPrefix) {
                       key = `${currPrefix}`;
                     }
 
@@ -555,11 +548,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
         let key = '';
 
-        if (uploadManager['prefix'] && currPrefix) {
-          key = `${uploadManager['prefix']}${currPrefix}`;
-        } else if (uploadManager['prefix'] && !currPrefix) {
-          key = `${uploadManager['prefix']}`;
-        } else if (!uploadManager['prefix'] && currPrefix) {
+        if (currPrefix) {
           key = `${currPrefix}`;
         }
 
@@ -616,12 +605,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     if (processedData.individualFiles.length > 0) {
       // Process individual files with duplicate checking
       for (const file of processedData.individualFiles) {
-        const targetPath =
-          currentPrefix === '/'
-            ? targetFolder.name
-            : currentPrefix
-              ? `${currentPrefix}${targetFolder.name}`
-              : targetFolder.name;
+        const targetPath = targetFolder.path;
 
         // Check for duplicates if API is available
         if (apiS3) {
@@ -638,18 +622,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                 },
                 // onReplace - overwrite the existing file
                 async () => {
-                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-                  let key = '';
-
-                  if (uploadManager['prefix'] && currPrefix) {
-                    key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/${file.name}`;
-                  } else if (uploadManager['prefix'] && !currPrefix) {
-                    key = `${uploadManager['prefix']}${targetFolder.name}/${file.name}`;
-                  } else if (!uploadManager['prefix'] && currPrefix) {
-                    key = `${currPrefix}${targetFolder.name}/${file.name}`;
-                  } else {
-                    key = `${targetFolder.name}/${file.name}`;
-                  }
+                  const key = `${targetFolder.path}${file.name}`;
 
                   const id = uploadManager.addUpload(file, { key });
                   addUpload(id, {
@@ -669,18 +642,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                     // Create new file with unique name
                     const renamedFile = new File([file], uniqueName, { type: file.type });
 
-                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-                    let key = '';
-
-                    if (uploadManager['prefix'] && currPrefix) {
-                      key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/${uniqueName}`;
-                    } else if (uploadManager['prefix'] && !currPrefix) {
-                      key = `${uploadManager['prefix']}${targetFolder.name}/${uniqueName}`;
-                    } else if (!uploadManager['prefix'] && currPrefix) {
-                      key = `${currPrefix}${targetFolder.name}/${uniqueName}`;
-                    } else {
-                      key = `${targetFolder.name}/${uniqueName}`;
-                    }
+                    const key = `${targetFolder.path}${file.name}`;
 
                     const id = uploadManager.addUpload(renamedFile, { key });
                     addUpload(id, {
@@ -702,18 +664,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         }
 
         // No duplicate or no API - proceed normally
-        const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-        let key = '';
-
-        if (uploadManager['prefix'] && currPrefix) {
-          key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/${file.name}`;
-        } else if (uploadManager['prefix'] && !currPrefix) {
-          key = `${uploadManager['prefix']}${targetFolder.name}/${file.name}`;
-        } else if (!uploadManager['prefix'] && currPrefix) {
-          key = `${currPrefix}${targetFolder.name}/${file.name}`;
-        } else {
-          key = `${targetFolder.name}/${file.name}`;
-        }
+        const key = `${targetFolder.path}${file.name}`;
 
         const id = uploadManager.addUpload(file, { key });
         addUpload(id, { id, name: file.name, status: 'queued', progress: 0, type: 'file' });
@@ -723,12 +674,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     // 2. Upload Folders
     if (processedData.folderStructures.length > 0) {
       for (const folder of processedData.folderStructures) {
-        const targetPath =
-          currentPrefix === '/'
-            ? targetFolder.name
-            : currentPrefix
-              ? `${currentPrefix}${targetFolder.name}`
-              : targetFolder.name;
+        const targetPath = targetFolder.path;
 
         // Check for folder duplicates if API is available
         if (apiS3) {
@@ -745,23 +691,10 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                 },
                 // onReplace - overwrite the existing folder
                 async () => {
-                  const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-                  let key = '';
-
-                  if (uploadManager['prefix'] && currPrefix) {
-                    key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/`;
-                  } else if (uploadManager['prefix'] && !currPrefix) {
-                    key = `${uploadManager['prefix']}${targetFolder.name}/`;
-                  } else if (!uploadManager['prefix'] && currPrefix) {
-                    key = `${currPrefix}${targetFolder.name}/`;
-                  } else {
-                    key = `${targetFolder.name}/`;
-                  }
-
                   const { folderId, fileIds } = uploadManager.addFolderUpload(
                     folder.files as unknown as FileList,
                     {
-                      basePrefix: key,
+                      basePrefix: targetPath,
                     }
                   );
 
@@ -798,23 +731,23 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
                       targetPath
                     );
 
-                    const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-                    let key = '';
-
-                    if (uploadManager['prefix'] && currPrefix) {
-                      key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/`;
-                    } else if (uploadManager['prefix'] && !currPrefix) {
-                      key = `${uploadManager['prefix']}${targetFolder.name}/`;
-                    } else if (!uploadManager['prefix'] && currPrefix) {
-                      key = `${currPrefix}${targetFolder.name}/`;
-                    } else {
-                      key = `${targetFolder.name}/`;
-                    }
+                    // replace all files first folder to unique name
+                    folder.files = folder.files.map((file) => {
+                      const newPath = file.webkitRelativePath.replace(folder.name, uniqueName);
+                      const newFile = new File([file], file.name, { type: file.type });
+                      Object.defineProperty(newFile, 'webkitRelativePath', {
+                        value: newPath,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true,
+                      });
+                      return newFile;
+                    });
 
                     const { folderId, fileIds } = uploadManager.addFolderUpload(
                       folder.files as unknown as FileList,
                       {
-                        basePrefix: key,
+                        basePrefix: targetPath,
                       }
                     );
 
@@ -851,24 +784,10 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           }
         }
 
-        // No duplicate or no API - proceed normally
-        const currPrefix = currentPrefix === '/' ? '' : currentPrefix;
-        let key = '';
-
-        if (uploadManager['prefix'] && currPrefix) {
-          key = `${uploadManager['prefix']}${currPrefix}${targetFolder.name}/`;
-        } else if (uploadManager['prefix'] && !currPrefix) {
-          key = `${uploadManager['prefix']}${targetFolder.name}/`;
-        } else if (!uploadManager['prefix'] && currPrefix) {
-          key = `${currPrefix}${targetFolder.name}/`;
-        } else {
-          key = `${targetFolder.name}/`;
-        }
-
         const { folderId, fileIds } = uploadManager.addFolderUpload(
           folder.files as unknown as FileList,
           {
-            basePrefix: key,
+            basePrefix: targetPath,
           }
         );
 
