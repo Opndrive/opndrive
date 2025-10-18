@@ -38,7 +38,7 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
             <div className="flex items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6 lg:mb-8">
               <div className="flex items-center justify-center">
                 <Image
-                  src="/logo-nobg.png"
+                  src="/logo.png"
                   alt="Opndrive Logo"
                   width={28}
                   height={28}

@@ -60,6 +60,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/lodash": "^4.17.20",
     "@types/node": "^20",

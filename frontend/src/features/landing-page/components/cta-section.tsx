@@ -13,7 +13,7 @@ export default function CTASection({ handleGetStarted, isLoading }: CTASectionPr
         <div className="bg-card/30 rounded-lg sm:rounded-xl shadow-md p-6 sm:p-8 md:p-12 lg:p-16 text-center">
           <div className="mx-auto mb-4 sm:mb-6 w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 flex items-center justify-center">
             <Image
-              src="/logo-nobg.png"
+              src="/logo.png"
               alt="Opndrive"
               width={48}
               height={48}
