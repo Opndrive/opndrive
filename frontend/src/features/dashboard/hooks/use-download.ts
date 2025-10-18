@@ -2,22 +2,21 @@ import { useState, useCallback } from 'react';
 import { createDownloadService, type DownloadProgress } from '../services/download-service';
 import { useNotification } from '@/context/notification-context';
 import type { FileItem } from '@/features/dashboard/types/file';
-import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 export const useDownload = () => {
   const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(
     new Map()
   );
+
   const { error: showError, info } = useNotification();
   const { apiS3 } = useAuthGuard();
 
   if (!apiS3) {
     return {
       downloadFile: async () => {},
-      downloadFolder: async () => {},
+      downloadMultipleFiles: async () => {},
       cancelDownload: () => {},
-      getDownloadProgress: () => undefined,
       isDownloading: () => false,
       getAllDownloads: () => [],
       downloadProgress: [],
@@ -30,7 +29,7 @@ export const useDownload = () => {
     setDownloadProgress((prev) => new Map(prev.set(progress.fileId, progress)));
   }, []);
 
-  const handleDownloadComplete = useCallback((fileId: string) => {
+  const handleComplete = useCallback((fileId: string) => {
     setDownloadProgress((prev) => {
       const newMap = new Map(prev);
       const progress = newMap.get(fileId);
@@ -41,22 +40,24 @@ export const useDownload = () => {
     });
 
     setTimeout(() => {
-      setDownloadProgress((current) => {
-        const updatedMap = new Map(current);
-        updatedMap.delete(fileId);
-        return updatedMap;
+      setDownloadProgress((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(fileId);
+        return newMap;
       });
     }, 3000);
   }, []);
 
-  const handleDownloadError = useCallback(
+  const handleError = useCallback(
     (fileId: string, error: string) => {
       setDownloadProgress((prev) => {
-        const progress = prev.get(fileId);
+        const newMap = new Map(prev);
+        const progress = newMap.get(fileId);
         if (progress) {
-          showError(`Failed to download ${progress.fileName}: ${error}`);
+          newMap.set(fileId, { ...progress, status: 'error', error });
+          showError(`Failed to download ${progress.fileName}`);
         }
-        return prev;
+        return newMap;
       });
     },
     [showError]
@@ -67,31 +68,28 @@ export const useDownload = () => {
       try {
         await downloadService.downloadFile(file, {
           onProgress: updateProgress,
-          onComplete: handleDownloadComplete,
-          onError: handleDownloadError,
+          onComplete: handleComplete,
+          onError: handleError,
         });
       } catch (error) {
-        console.error('Download failed:', error);
-        showError(`Failed to start download for ${file.name}`);
+        showError(`Failed to download ${file.name}, ${error}`);
       }
     },
-    [updateProgress, handleDownloadComplete, handleDownloadError, showError]
+    [updateProgress, handleComplete, handleError, showError]
   );
 
-  const downloadFolder = useCallback(
-    async (folder: Folder) => {
-      try {
-        await downloadService.downloadFolder(folder, {
-          onProgress: updateProgress,
-          onComplete: handleDownloadComplete,
-          onError: handleDownloadError,
-        });
-      } catch (error) {
-        console.error('Folder download failed:', error);
-        showError(`Failed to start download for ${folder.name}`);
-      }
+  const downloadMultipleFiles = useCallback(
+    async (files: FileItem[]) => {
+      if (files.length === 0) return;
+
+      info(`Downloading ${files.length} file${files.length > 1 ? 's' : ''}...`);
+
+      // Start all downloads immediately
+      files.forEach((file) => {
+        downloadFile(file);
+      });
     },
-    [updateProgress, handleDownloadComplete, handleDownloadError, showError]
+    [downloadFile, info]
   );
 
   const cancelDownload = useCallback(
@@ -99,19 +97,22 @@ export const useDownload = () => {
       downloadService.cancelDownload(fileId);
       setDownloadProgress((prev) => {
         const newMap = new Map(prev);
-        newMap.delete(fileId);
+        const progress = newMap.get(fileId);
+        if (progress) {
+          newMap.set(fileId, { ...progress, status: 'cancelled' });
+          setTimeout(() => {
+            setDownloadProgress((current) => {
+              const updated = new Map(current);
+              updated.delete(fileId);
+              return updated;
+            });
+          }, 2000);
+        }
         return newMap;
       });
-      info('Download has been cancelled');
+      info('Download cancelled');
     },
     [info]
-  );
-
-  const getDownloadProgress = useCallback(
-    (fileId: string): DownloadProgress | undefined => {
-      return downloadProgress.get(fileId);
-    },
-    [downloadProgress]
   );
 
   const isDownloading = useCallback(
@@ -128,9 +129,8 @@ export const useDownload = () => {
 
   return {
     downloadFile,
-    downloadFolder,
+    downloadMultipleFiles,
     cancelDownload,
-    getDownloadProgress,
     isDownloading,
     getAllDownloads,
     downloadProgress: Array.from(downloadProgress.values()),

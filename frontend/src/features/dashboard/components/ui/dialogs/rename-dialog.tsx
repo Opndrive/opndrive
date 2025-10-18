@@ -131,6 +131,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
           <button
             onClick={handleCancel}
             className="rounded-md p-1 text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Cancel rename"
           >
             <X className="h-4 w-4" />
           </button>

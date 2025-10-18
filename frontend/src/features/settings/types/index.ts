@@ -2,9 +2,15 @@ export type StartPage = 'home' | 'my-drive';
 
 export type UploadMethod = 'auto' | 'signed-url' | 'multipart' | 'multipart-concurrent';
 
+export type BulkShareDuration = '1-hour' | '6-hours' | '1-day' | '3-days' | '7-days';
+
+// Allow custom duration strings (e.g., "2-hours", "4-days", etc.)
+export type BulkShareDurationValue = BulkShareDuration | string;
+
 export interface GeneralSettings {
   startPage: StartPage;
   uploadMethod: UploadMethod;
+  bulkShareDuration: BulkShareDurationValue;
 }
 
 export interface PrivacySettings {

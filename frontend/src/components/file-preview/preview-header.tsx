@@ -130,6 +130,7 @@ export function PreviewHeader({
               opacity: canNavigatePrevious ? 1 : 0.5,
             }}
             title="Previous file (←)"
+            aria-label="Previous file"
           >
             <ChevronLeft size={16} className="sm:w-[18px] sm:h-[18px]" />
           </Button>
@@ -145,6 +146,7 @@ export function PreviewHeader({
               opacity: canNavigateNext ? 1 : 0.5,
             }}
             title="Next file (→)"
+            aria-label="Next file"
           >
             <ChevronRight size={16} className="sm:w-[18px] sm:h-[18px]" />
           </Button>
@@ -167,6 +169,7 @@ export function PreviewHeader({
           className="hover:bg-accent h-8 w-8 sm:h-10 sm:w-10 rounded-full"
           style={{ color: 'var(--foreground)' }}
           title="Download file"
+          aria-label="Download file"
         >
           <Download size={16} className="sm:w-5 sm:h-5" />
         </Button>
@@ -178,6 +181,7 @@ export function PreviewHeader({
           className="hover:bg-accent h-8 w-8 sm:h-10 sm:w-10 rounded-full"
           style={{ color: 'var(--foreground)' }}
           title="Close preview (Esc)"
+          aria-label="Close preview"
         >
           <X size={16} className="sm:w-5 sm:h-5" />
         </Button>

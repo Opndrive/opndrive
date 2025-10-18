@@ -2,12 +2,13 @@
 
 import { Folder } from '@/features/dashboard/types/folder';
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FolderItem } from '../../ui';
 import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 
 interface SuggestedFoldersProps {
   folders: Folder[];
@@ -33,6 +34,19 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   onFilesDroppedToFolder,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const { clearSelection } = useMultiSelectStore();
+
+  // Handle ESC key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clearSelection]);
 
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
@@ -90,7 +104,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
           id="suggested-folders-content"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
         >
-          {folders.map((folder) => (
+          {folders.map((folder, index) => (
             <FolderDropTarget
               key={folder.Prefix}
               folder={{
@@ -101,7 +115,13 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
               onFilesDropped={onFilesDroppedToFolder || (() => {})}
               className="rounded-lg"
             >
-              <FolderItem folder={folder} onClick={onFolderClick} onMenuClick={onFolderMenuClick} />
+              <FolderItem
+                folder={folder}
+                onClick={onFolderClick}
+                onMenuClick={onFolderMenuClick}
+                index={index}
+                allFolders={folders}
+              />
             </FolderDropTarget>
           ))}
         </div>

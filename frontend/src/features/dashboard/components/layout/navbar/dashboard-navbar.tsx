@@ -52,7 +52,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
             href="/dashboard"
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
-            <Image src="/logo-nobg.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
+            <Image src="/logo.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
             <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
           </Link>
           <AriaLabel label="Toggle sidebar navigation" position="bottom">
@@ -114,7 +114,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <Image
-                src="/logo-nobg.png"
+                src="/logo.png"
                 width={28}
                 height={28}
                 className={`transition-all duration-300 ${

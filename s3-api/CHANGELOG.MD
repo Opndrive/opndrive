@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2025-10-17
+### Added
+- Add isTruncated in the search results
+
+## [2.3.0] - 2025-10-17
+### Added
+- Fixed search, now it returns files, folders and also updated search mechanism to match only the last term in files and folder keys
+
 ## [2.2.1] - 2025-10-5
 ### Added
 - Fixed basePrefix logic in addFolderUpload (UploadManager)

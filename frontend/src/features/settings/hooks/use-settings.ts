@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   general: {
     startPage: 'home',
     uploadMethod: 'auto',
+    bulkShareDuration: '7-days',
   },
   privacy: {
     makeAccountPrivate: false,

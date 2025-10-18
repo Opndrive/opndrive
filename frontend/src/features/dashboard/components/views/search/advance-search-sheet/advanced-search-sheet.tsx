@@ -129,6 +129,7 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
               type="button"
               onClick={onClose}
               className="rounded-full p-2 cursor-pointer transition-colors hover:bg-border"
+              aria-label="Close advanced search"
             >
               <X className="h-5 w-5" />
             </button>

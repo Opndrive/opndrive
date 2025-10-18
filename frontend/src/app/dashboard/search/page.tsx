@@ -438,11 +438,12 @@ export default function SearchPage() {
                           Files
                         </div>
                         <div className="divide-y divide-border/30">
-                          {displayedFiles.map((file: FileItem) => (
+                          {displayedFiles.map((file: FileItem, index: number) => (
                             <FileItemMobile
                               key={file.Key}
                               file={file}
                               allFiles={files}
+                              index={index}
                               onFileClick={handleFileClick}
                               _onAction={() => {}}
                             />

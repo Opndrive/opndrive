@@ -6,8 +6,9 @@ export interface DownloadProgress {
   fileId: string;
   fileName: string;
   progress: number;
-  status: 'pending' | 'downloading' | 'completed' | 'error';
+  status: 'queued' | 'pending' | 'downloading' | 'completed' | 'error' | 'cancelled';
   error?: string;
+  queuePosition?: number;
 }
 
 export interface DownloadOptions {

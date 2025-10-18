@@ -88,7 +88,7 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <img src="/logo-nobg.png" alt="Opndrive Logo" className="w-6 h-6 sm:w-7 sm:h-7" />
+              <img src="/logo.png" alt="Opndrive Logo" className="w-6 h-6 sm:w-7 sm:h-7" />
               <span className="text-base sm:text-lg font-bold text-foreground">Opndrive</span>
             </div>
 
