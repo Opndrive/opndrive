@@ -11,6 +11,7 @@ interface SearchCacheEntry {
   prefix: string;
   results: SearchResult;
   timestamp: number;
+  requestCount: number; // Track number of API requests made for this query
 }
 
 /**
@@ -37,6 +38,8 @@ interface SearchStore {
 
   // Actions
   setSearchResults: (query: string, prefix: string, results: SearchResult) => void;
+  setRequestCount: (query: string, prefix: string, count: number) => void;
+  getRequestCount: (query: string, prefix: string) => number;
   getSearchResults: (query: string, prefix: string) => SearchCacheEntry | null;
   getCachedOrNull: (query: string, prefix: string) => SearchResult | null;
   setLoading: (loading: boolean) => void;
@@ -81,12 +84,17 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
       const newCache = new Map(state.searchCache);
       const cacheKey = generateCacheKey(query, prefix);
 
-      // Add new entry
+      // Get existing entry to preserve request count
+      const existingEntry = newCache.get(cacheKey);
+
+      // Add new entry, preserving the request count if it exists
+      // If no existing entry, keep count at 0 (will be set by incrementRequestCount)
       newCache.set(cacheKey, {
         query: query.trim(),
         prefix,
         results,
         timestamp: Date.now(),
+        requestCount: existingEntry?.requestCount ?? 0,
       });
 
       // Cleanup if cache size exceeds limit
@@ -138,6 +146,52 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
   getCachedOrNull: (query: string, prefix: string): SearchResult | null => {
     const entry = get().getSearchResults(query, prefix);
     return entry ? entry.results : null;
+  },
+
+  /**
+   * Set request count for a query (replaces incrementRequestCount)
+   */
+  setRequestCount: (query: string, prefix: string, count: number) => {
+    set((state) => {
+      const newCache = new Map(state.searchCache);
+      const cacheKey = generateCacheKey(query, prefix);
+      const entry = newCache.get(cacheKey);
+
+      if (entry) {
+        // Entry exists - update count
+        newCache.set(cacheKey, {
+          ...entry,
+          requestCount: count,
+        });
+      } else {
+        // Entry doesn't exist yet - create it with the count
+        newCache.set(cacheKey, {
+          query: query.trim(),
+          prefix,
+          results: {
+            files: [],
+            folders: [],
+            totalFiles: 0,
+            totalFolders: 0,
+            totalKeys: 0,
+            isTruncated: false,
+          },
+          timestamp: Date.now(),
+          requestCount: count,
+        });
+      }
+
+      return { searchCache: newCache };
+    });
+  },
+
+  /**
+   * Get request count for a query
+   */
+  getRequestCount: (query: string, prefix: string): number => {
+    const cacheKey = generateCacheKey(query, prefix);
+    const entry = get().searchCache.get(cacheKey);
+    return entry?.requestCount || 0;
   },
 
   /**

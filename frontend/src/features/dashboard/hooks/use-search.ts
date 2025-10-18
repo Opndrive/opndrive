@@ -20,6 +20,7 @@ export const useSearch = () => {
     setLoading,
     setCurrentQuery,
     invalidateQuery,
+    setRequestCount,
   } = useSearchStore();
 
   // Subscribe to store state changes using Zustand selectors
@@ -44,6 +45,16 @@ export const useSearch = () => {
     if (isStale) return null;
 
     return entry.results;
+  });
+
+  // Get request count for current query
+  const requestCount = useSearchStore((state) => {
+    if (!state.currentQuery || state.currentPrefix === null) return 0;
+
+    const cacheKey = `${state.currentQuery.trim().toLowerCase()}::${state.currentPrefix === '/' ? '' : state.currentPrefix}`;
+    const entry = state.searchCache.get(cacheKey);
+
+    return entry?.requestCount || 0;
   });
 
   // Ref to access latest search results without causing re-renders in callbacks
@@ -122,6 +133,12 @@ export const useSearch = () => {
       setLoading(true);
       setCurrentQuery(query, normalizedPrefix);
 
+      // Capture the starting count BEFORE the search begins
+      const startingCount = useSearchStore.getState().getRequestCount(query, normalizedPrefix);
+      console.log(
+        `[useSearch] Starting search with base count: ${startingCount}, nextToken: ${nextToken ? 'yes' : 'no'}`
+      );
+
       try {
         const results = await searchService.search(query, normalizedPrefix, nextToken, {
           signal,
@@ -132,6 +149,15 @@ export const useSearch = () => {
           },
           onError: (errorMessage) => {
             error(errorMessage);
+          },
+          onRequestCountUpdate: (sessionCount) => {
+            // Session count is the number of API calls in THIS search session
+            // Add it to the starting count to get the cumulative total
+            const totalCount = startingCount + sessionCount;
+            console.log(
+              `[useSearch] Request count update: session=${sessionCount}, starting=${startingCount}, total=${totalCount}`
+            );
+            setRequestCount(query, normalizedPrefix, totalCount);
           },
           onResultsUpdate: (partialResults) => {
             // Stream results as they come in
@@ -248,6 +274,7 @@ export const useSearch = () => {
       setCachedSearchResults,
       setLoading,
       setCurrentQuery,
+      setRequestCount,
       searchService,
     ]
   );
@@ -277,6 +304,7 @@ export const useSearch = () => {
     cancelSearch,
     isLoading,
     searchResults,
+    requestCount,
     hasResults: searchResults !== null && searchResults.totalKeys > 0,
     canLoadMore: searchResults?.nextToken !== undefined,
   };

@@ -22,6 +22,8 @@ import {
   CreditWarningDialog,
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
+import { useDriveStore } from '@/context/data-context';
+import { SearchBreadcrumb } from '@/features/dashboard/components/views/search/search-breadcrumb';
 import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
@@ -51,12 +53,20 @@ export default function SearchPage() {
   const query = searchParams.get('q') || '';
   const { openPreview } = useFilePreview();
   const { layout: viewMode } = useCurrentLayout();
+  const { currentPrefix } = useDriveStore();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const { search, searchResults, isLoading, canLoadMore, invalidateCurrentQuery, cancelSearch } =
-    useSearch();
+  const {
+    search,
+    searchResults,
+    isLoading,
+    canLoadMore,
+    invalidateCurrentQuery,
+    cancelSearch,
+    requestCount,
+  } = useSearch();
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
@@ -232,6 +242,28 @@ export default function SearchPage() {
           </div>
 
           <SearchInput initialQuery={query} placeholder="Search files and folders..." />
+
+          {/* Breadcrumb Navigation - Show current location */}
+          <div className="mt-3 pb-3 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">Current Location:</span>
+              <SearchBreadcrumb prefix={currentPrefix} />
+            </div>
+          </div>
+
+          {/* API Request Count - Show only when we have results or are loading */}
+          {(totalDisplayed > 0 || isLoading) && (requestCount ?? 0) > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+                <span>
+                  {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
+                </span>
+              </div>
+              <span>·</span>
+              <span>{searchResults?.totalKeys || 0} results loaded</span>
+            </div>
+          )}
 
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
@@ -465,11 +497,16 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {/* API Pagination Load More Button */}
-              {canLoadMore && (
+              {/* API Pagination Load More Button - Only show when all UI chunks are displayed */}
+              {canLoadMore && !canLoadMoreChunks && (
                 <div className="mt-8 text-center">
-                  <Button onClick={loadMore} disabled={isLoading} variant="outline">
-                    {isLoading ? 'Loading...' : 'Load More Results'}
+                  <Button
+                    onClick={loadMore}
+                    disabled={isLoading}
+                    variant="outline"
+                    className="min-w-[200px]"
+                  >
+                    {isLoading ? 'Loading...' : 'Load More Results (50)'}
                   </Button>
                 </div>
               )}

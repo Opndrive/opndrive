@@ -7,6 +7,7 @@ export interface SearchOptions {
   onError?: (error: string) => void;
   signal?: AbortSignal;
   onResultsUpdate?: (partialResults: SearchResult) => void; // Stream results as they come
+  onRequestCountUpdate?: (count: number) => void; // Track number of API requests made
 }
 
 const GLOBAL_SCAN_THRESHOLD = 100_000; // stop after scanning 100k items per request
@@ -87,13 +88,15 @@ class SearchService {
     state: ResumeState | undefined,
     options: SearchOptions
   ): Promise<SearchResult> {
-    const { signal, onResultsUpdate } = options;
+    const { signal, onResultsUpdate, onRequestCountUpdate } = options;
     const allFiles: _Object[] = [];
     const allFolders: _Object[] = [];
     const queue: string[] = state?.queue?.slice() ?? [rootPrefix];
     let current = state?.current ? { ...state.current } : undefined;
     let scanned = 0; // total keys scanned
     let totalResultsCount = 0; // Track total files + folders
+    let initialBatchCount = 0; // Track items loaded in THIS batch (not total)
+    let apiRequestCount = 0; // Track number of API requests made in this search call
 
     while (scanned < GLOBAL_SCAN_THRESHOLD && (current || queue.length)) {
       if (signal?.aborted) throw new Error('Search cancelled');
@@ -103,6 +106,15 @@ class SearchService {
         if (nextPrefix === undefined && queue.length === 0) break;
         if (nextPrefix === undefined) continue;
         current = { prefix: nextPrefix };
+      }
+
+      // Increment API request count before making the call
+      apiRequestCount++;
+
+      // Notify about the request count update
+      if (onRequestCountUpdate) {
+        console.log(`[SearchService] API request #${apiRequestCount} about to be made`);
+        onRequestCountUpdate(apiRequestCount);
       }
 
       // Use the API's search method which returns segregated files/folders
@@ -128,6 +140,8 @@ class SearchService {
       }
 
       scanned += page.totalKeys;
+      const newItemsCount = (page.files?.length || 0) + (page.folders?.length || 0);
+      initialBatchCount += newItemsCount;
       totalResultsCount = allFiles.length + allFolders.length;
 
       // Stream results to UI as they come in
@@ -143,8 +157,9 @@ class SearchService {
         });
       }
 
-      // Check if we've reached the initial results limit (50 items)
-      if (!state && totalResultsCount >= INITIAL_RESULTS_LIMIT) {
+      // Check if we've reached the initial results limit (50 items) for THIS batch
+      // Apply limit to both initial search and "Load More" operations
+      if (initialBatchCount >= INITIAL_RESULTS_LIMIT) {
         // Save state for continuation
         const resume: ResumeState = {
           queue,
