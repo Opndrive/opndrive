@@ -86,6 +86,7 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
           'hover:bg-accent hover:text-foreground',
           className
         )}
+        aria-label="Create new file or folder"
       >
         <Plus className="w-6 h-6 mr-3 flex-shrink-0" />
         <span>New</span>

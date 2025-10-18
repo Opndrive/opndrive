@@ -30,8 +30,9 @@ interface DownloadProgressItemProps {
     fileId: string;
     fileName: string;
     progress: number;
-    status: 'pending' | 'downloading' | 'completed' | 'error';
+    status: 'queued' | 'pending' | 'downloading' | 'completed' | 'error' | 'cancelled';
     error?: string;
+    queuePosition?: number;
   };
   onCancel: () => void;
 }
@@ -50,12 +51,18 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
 
   const getStatusText = () => {
     switch (download.status) {
+      case 'queued':
+        return download.queuePosition
+          ? `Queued (position ${download.queuePosition})`
+          : 'Queued for download';
       case 'pending':
         return 'Starting download...';
       case 'downloading':
         return `${download.progress.toFixed(0)}% downloaded`;
       case 'completed':
         return 'Download completed';
+      case 'cancelled':
+        return 'Download cancelled';
       case 'error':
         return `Error: ${download.error || 'Download failed'}`;
       default:
@@ -63,7 +70,10 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
     }
   };
 
-  const shouldShowProgress = download.status === 'downloading' || download.status === 'pending';
+  const shouldShowProgress =
+    download.status === 'downloading' ||
+    download.status === 'pending' ||
+    download.status === 'queued';
 
   return (
     <div
@@ -87,7 +97,9 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
             </div>
           )}
         </div>
-        {download.status === 'downloading' && (
+        {(download.status === 'downloading' ||
+          download.status === 'pending' ||
+          download.status === 'queued') && (
           <AriaLabel label={`Cancel download of ${download.fileName}`} position="left">
             <button
               onClick={onCancel}
