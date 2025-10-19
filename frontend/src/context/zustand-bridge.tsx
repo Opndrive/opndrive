@@ -12,13 +12,10 @@ export function ZustandBridge() {
   const setUploadManager = useUploadStore((state) => state.setUploadManager);
 
   useEffect(() => {
-    console.log('Here i am changing the upload manager type');
     if (uploadMode === 'signed-url') {
-      console.log('inside signed url');
       setUploadManager(signedUrlUploadManager);
       return;
     }
-    console.log('inside multipart url');
     setUploadManager(uploadManager);
   }, [uploadMode, uploadManager, signedUrlUploadManager, setUploadManager]);
 
