@@ -444,4 +444,6 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
 export { MultipartUploader } from './utils/multipartUploader.js';
 export { UploadManager } from './utils/uploadManager.js';
+export { SignedUrlUploader } from './utils/signedUrlUploader.js';
+export { SignedUrlUploadManager } from './utils/signedUrlUploadManager.js';
 export * from './core/types.js';

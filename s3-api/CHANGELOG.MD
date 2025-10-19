@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2025-10-19
+### Added
+- Add singed url upload manager
+- Supports file and folder uploads
+- Uploads can be cancelled
+
 ## [2.3.1] - 2025-10-17
 ### Added
 - Add isTruncated in the search results
