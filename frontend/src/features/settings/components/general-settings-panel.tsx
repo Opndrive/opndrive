@@ -4,6 +4,7 @@ import { GeneralSettings } from '../types';
 import { START_PAGE_OPTIONS, BULK_SHARE_DURATION_OPTIONS, isValidDuration } from '../constants';
 import { RadioGroup } from './radio-group';
 import { CustomDropdown } from '@/shared/components/ui/custom-dropdown';
+import { UploadModeSettings } from '@/features/upload';
 
 interface GeneralSettingsPanelProps {
   settings: GeneralSettings;
@@ -44,6 +45,18 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
             options={startPageOptions}
             name="startPage"
           />
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-b border-border pb-4">
+          <h3 className="text-lg font-medium text-foreground">Upload method</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Choose how files are uploaded to your S3 bucket. Changes apply to new uploads.
+          </p>
+        </div>
+        <div className="pl-0">
+          <UploadModeSettings />
         </div>
       </div>
 

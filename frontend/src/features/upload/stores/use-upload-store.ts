@@ -1,6 +1,11 @@
 'use client';
 
-import { UploadStatus, BYOS3ApiProvider, UploadManager } from '@opndrive/s3-api';
+import {
+  UploadStatus,
+  BYOS3ApiProvider,
+  UploadManager,
+  SignedUrlUploadManager,
+} from '@opndrive/s3-api';
 import { create } from 'zustand';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
@@ -151,12 +156,12 @@ interface DeleteProgress {
 }
 
 interface UploadStore {
-  uploadManager: UploadManager | null;
+  uploadManager: UploadManager | SignedUrlUploadManager | null;
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
   batches: Record<string, UploadBatch>;
   duplicateDialog: DuplicateDialogState;
-  setUploadManager: (manager: UploadManager | null) => void;
+  setUploadManager: (manager: UploadManager | SignedUrlUploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
@@ -166,15 +171,12 @@ interface UploadStore {
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider,
-    uploadManager?: UploadManager | null
+    apiS3?: BYOS3ApiProvider
   ) => Promise<void>;
   handleFilesDroppedToFolder: (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
-    currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider,
-    uploadManager?: UploadManager | null
+    apiS3?: BYOS3ApiProvider
   ) => Promise<void>;
 
   // Delete operation methods
@@ -588,11 +590,9 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   handleFilesDroppedToFolder: async (
     processedData: ProcessedDragData,
     targetFolder: DragDropTarget,
-    currentPrefix: string | null,
-    apiS3?: BYOS3ApiProvider,
-    uploadManager?: UploadManager | null
+    apiS3?: BYOS3ApiProvider
   ) => {
-    const { addUpload, showDuplicateDialog } = get();
+    const { uploadManager, addUpload, showDuplicateDialog } = get();
 
     if (!uploadManager) {
       return;

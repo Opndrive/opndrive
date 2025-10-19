@@ -3,11 +3,11 @@
 import React from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
-import { useUploadManager } from '@/hooks/use-auth';
+import { useActiveUploadManager } from '@/hooks/use-auth';
 
 export const UploadOperationsCard: React.FC = () => {
   const { uploads } = useUploadStore();
-  const uploadManager = useUploadManager();
+  const uploadManager = useActiveUploadManager();
 
   if (!uploadManager) {
     return 'Loading...';

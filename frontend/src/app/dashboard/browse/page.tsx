@@ -52,7 +52,7 @@ function BrowsePageContent() {
     setApiS3,
   } = useDriveStore();
 
-  const { apiS3, uploadManager, isLoading, isAuthenticated } = useAuthGuard();
+  const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
   const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
 
@@ -176,22 +176,16 @@ function BrowsePageContent() {
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3, uploadManager);
+      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
     },
-    [currentPrefix, handleFilesDroppedToDirectory, apiS3, uploadManager]
+    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
   );
 
   const handleFilesDroppedToFolderWrapper = useCallback(
     async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(
-        processedData,
-        targetFolder,
-        currentPrefix,
-        apiS3,
-        uploadManager
-      );
+      await handleFilesDroppedToFolder(processedData, targetFolder, apiS3);
     },
-    [currentPrefix, handleFilesDroppedToFolder, apiS3, uploadManager]
+    [handleFilesDroppedToFolder, apiS3]
   );
 
   const handleSync = async () => {
