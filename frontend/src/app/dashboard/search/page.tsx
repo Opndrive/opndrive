@@ -298,9 +298,13 @@ export default function SearchPage() {
 
           {/* Breadcrumb Navigation - Show current location */}
           <div className="mt-3 pb-3 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">Current Location:</span>
-              <SearchBreadcrumb prefix={currentPrefix} />
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium flex-shrink-0">
+                Current Location:
+              </span>
+              <div className="min-w-0">
+                <SearchBreadcrumb prefix={currentPrefix} />
+              </div>
             </div>
           </div>
 
