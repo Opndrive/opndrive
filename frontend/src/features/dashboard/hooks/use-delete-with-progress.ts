@@ -9,12 +9,13 @@ import type { Folder } from '@/features/dashboard/types/folder';
 export interface UseDeleteWithProgressReturn {
   deleteFile: (file: FileItem) => Promise<void>;
   deleteFolder: (folder: Folder) => Promise<void>;
+  batchDeleteFiles: (files: FileItem[]) => Promise<void>;
   isDeleting: (itemId: string) => boolean;
   getActiveDeletes: () => string[];
 }
 
 export const useDeleteWithProgress = (): UseDeleteWithProgressReturn => {
-  const { deleteFileWithProgress, deleteFolderWithProgress } = useDeleteOperations();
+  const { deleteFileWithProgress, deleteFolderWithProgress, batchDelete } = useDeleteOperations();
   const { deletes } = useUploadStore();
 
   const deleteFile = useCallback(
@@ -41,6 +42,18 @@ export const useDeleteWithProgress = (): UseDeleteWithProgressReturn => {
     [deleteFolderWithProgress]
   );
 
+  const batchDeleteFiles = useCallback(
+    async (files: FileItem[]) => {
+      try {
+        await batchDelete(files);
+      } catch (error) {
+        console.error('Batch delete error:', error);
+        throw error;
+      }
+    },
+    [batchDelete]
+  );
+
   const isDeleting = useCallback(
     (itemId: string) => {
       return Object.values(deletes).some(
@@ -61,6 +74,7 @@ export const useDeleteWithProgress = (): UseDeleteWithProgressReturn => {
   return {
     deleteFile,
     deleteFolder,
+    batchDeleteFiles,
     isDeleting,
     getActiveDeletes,
   };
