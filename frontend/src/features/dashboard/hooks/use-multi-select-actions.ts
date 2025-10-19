@@ -13,7 +13,7 @@ interface UseMultiSelectActionsProps {
 
 export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectActionsProps) {
   const { downloadMultipleFiles } = useDownload();
-  const { deleteFile, deleteFolder } = useDeleteWithProgress();
+  const { deleteFile, deleteFolder, batchDeleteFiles } = useDeleteWithProgress();
   const { openPreview } = useFilePreview();
   const { clearSelection } = useMultiSelectStore();
 
@@ -85,6 +85,12 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
     async (items: (FileItem | Folder)[]) => {
       if (items.length === 0) return;
 
+      // Separate files and folders
+      const files = items.filter(
+        (item) => 'Key' in item && item.Key && !item.Key.endsWith('/')
+      ) as FileItem[];
+      const folders = items.filter((item) => 'Prefix' in item && item.Prefix) as Folder[];
+
       // Show confirmation dialog
       const itemNames = items.map((item) => `"${item.name}"`).join(', ');
       const confirmMessage =
@@ -99,22 +105,31 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
       // Clear selection immediately after confirmation
       clearSelection();
 
-      // Delete items one by one
-      for (const item of items) {
+      // If only files are selected, use batch delete for better performance
+      if (files.length > 0 && folders.length === 0) {
         try {
-          if ('Key' in item && item.Key) {
-            // It's a file
-            await deleteFile(item as FileItem);
-          } else if ('Prefix' in item && item.Prefix) {
-            // It's a folder
-            await deleteFolder(item as Folder);
-          }
+          await batchDeleteFiles(files);
         } catch (error) {
-          console.error(`Failed to delete ${item.name}:`, error);
+          console.error('Failed to batch delete files:', error);
+        }
+      } else {
+        // Delete items one by one (mixed files and folders, or only folders)
+        for (const item of items) {
+          try {
+            if ('Key' in item && item.Key) {
+              // It's a file
+              await deleteFile(item as FileItem);
+            } else if ('Prefix' in item && item.Prefix) {
+              // It's a folder
+              await deleteFolder(item as Folder);
+            }
+          } catch (error) {
+            console.error(`Failed to delete ${item.name}:`, error);
+          }
         }
       }
     },
-    [deleteFile, deleteFolder, clearSelection]
+    [deleteFile, deleteFolder, batchDeleteFiles, clearSelection]
   );
 
   return {

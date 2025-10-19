@@ -218,6 +218,208 @@ export function useDeleteOperations() {
     ]
   );
 
+  const batchDelete = useCallback(
+    async (items: FileItem[]): Promise<void> => {
+      if (!apiS3) {
+        throw new Error('API not ready');
+      }
+
+      if (items.length === 0) {
+        return;
+      }
+
+      const itemId = `delete-batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const abortController = new AbortController();
+
+      // Determine batch operation details
+      const fileCount = items.filter((item) => 'Key' in item).length;
+      const folderCount = items.length - fileCount;
+      const operationLabel =
+        folderCount > 0 && fileCount > 0
+          ? `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''} and ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
+          : folderCount > 0
+            ? `Deleting ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
+            : `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+
+      addDeleteOperation(itemId, {
+        id: itemId,
+        name: `${items.length} item${items.length !== 1 ? 's' : ''}`,
+        type: 'folder', // Use folder icon for batch operations
+        size: 0,
+        status: 'deleting',
+        progress: 0,
+        operationLabel,
+        abortController,
+      });
+
+      try {
+        // Show calculating state
+        setCalculatingSize(itemId, true);
+        updateDeleteProgress(itemId, 0);
+
+        if (abortController.signal.aborted) {
+          throw new Error('Operation cancelled');
+        }
+
+        // Collect all keys to delete (including folder contents)
+        const allKeysToDelete: string[] = [];
+
+        for (const item of items) {
+          if (abortController.signal.aborted) {
+            throw new Error('Operation cancelled');
+          }
+
+          if ('Key' in item) {
+            // It's a file
+            allKeysToDelete.push(item.Key || item.name);
+          }
+        }
+
+        // Remove duplicates
+        const uniqueKeys = Array.from(new Set(allKeysToDelete));
+        const totalItems = uniqueKeys.length;
+
+        // Update with actual count
+        setCalculatingSize(itemId, false);
+        updateSize(itemId, 0, totalItems);
+        updateDeleteProgress(itemId, 5);
+
+        if (abortController.signal.aborted) {
+          throw new Error('Operation cancelled');
+        }
+
+        if (uniqueKeys.length === 0) {
+          updateDeleteProgress(itemId, 100);
+          completeDeleteOperation(itemId);
+          await refreshCurrentData();
+          return;
+        }
+
+        // Batch delete in chunks of 1000 (S3 limit)
+        const batchSize = 1000;
+        let deletedCount = 0;
+
+        for (let i = 0; i < uniqueKeys.length; i += batchSize) {
+          if (abortController.signal.aborted) {
+            throw new Error('Operation cancelled');
+          }
+
+          const batch = uniqueKeys.slice(i, i + batchSize);
+
+          // Delete batch
+          await apiS3.deleteBatch(batch.map((key) => ({ Key: key })));
+
+          deletedCount += batch.length;
+          // Progress from 5% to 95%
+          const progress = 5 + (deletedCount / uniqueKeys.length) * 90;
+          updateDeleteProgress(itemId, progress, deletedCount, uniqueKeys.length);
+        }
+
+        // Small delay to show final progress
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        updateDeleteProgress(itemId, 100);
+        completeDeleteOperation(itemId);
+
+        await refreshCurrentData();
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        const errorMessage = error instanceof Error ? error.message : 'Batch delete failed';
+        failDeleteOperation(itemId, errorMessage);
+        errorFunction(`Failed to delete items: ${errorMessage}`);
+        throw error;
+      }
+    },
+    [
+      apiS3,
+      refreshCurrentData,
+      errorFunction,
+      getAllS3ObjectsWithPrefix,
+      addDeleteOperation,
+      setCalculatingSize,
+      updateDeleteProgress,
+      updateSize,
+      completeDeleteOperation,
+      failDeleteOperation,
+    ]
+  );
+
+  const batchDeleteByKeys = useCallback(
+    async (keys: string[]): Promise<void> => {
+      if (!apiS3) {
+        throw new Error('API not ready');
+      }
+
+      if (keys.length === 0) {
+        return;
+      }
+
+      const itemId = `delete-keys-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const abortController = new AbortController();
+
+      addDeleteOperation(itemId, {
+        id: itemId,
+        name: `${keys.length} item${keys.length !== 1 ? 's' : ''}`,
+        type: 'folder',
+        size: 0,
+        status: 'deleting',
+        progress: 0,
+        totalFiles: keys.length,
+        operationLabel: `Deleting ${keys.length} item${keys.length !== 1 ? 's' : ''}`,
+        abortController,
+      });
+
+      try {
+        updateDeleteProgress(itemId, 0, 0, keys.length);
+
+        if (abortController.signal.aborted) {
+          throw new Error('Operation cancelled');
+        }
+
+        // Batch delete in chunks of 1000 (S3 limit)
+        const batchSize = 1000;
+        let deletedCount = 0;
+
+        for (let i = 0; i < keys.length; i += batchSize) {
+          if (abortController.signal.aborted) {
+            throw new Error('Operation cancelled');
+          }
+
+          const batch = keys.slice(i, i + batchSize);
+
+          // Delete batch
+          await apiS3.deleteBatch(batch.map((key) => ({ Key: key })));
+
+          deletedCount += batch.length;
+          const progress = (deletedCount / keys.length) * 100;
+          updateDeleteProgress(itemId, progress, deletedCount, keys.length);
+        }
+
+        completeDeleteOperation(itemId);
+        await refreshCurrentData();
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        const errorMessage = error instanceof Error ? error.message : 'Batch delete failed';
+        failDeleteOperation(itemId, errorMessage);
+        errorFunction(`Failed to delete items: ${errorMessage}`);
+        throw error;
+      }
+    },
+    [
+      apiS3,
+      refreshCurrentData,
+      errorFunction,
+      addDeleteOperation,
+      updateDeleteProgress,
+      completeDeleteOperation,
+      failDeleteOperation,
+    ]
+  );
+
   const cancelDelete = useCallback(
     (itemId: string) => {
       cancelDeleteOperation(itemId);
@@ -228,6 +430,8 @@ export function useDeleteOperations() {
   return {
     deleteFileWithProgress,
     deleteFolderWithProgress,
+    batchDelete,
+    batchDeleteByKeys,
     cancelDelete,
   };
 }
