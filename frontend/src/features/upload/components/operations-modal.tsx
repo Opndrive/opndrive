@@ -9,7 +9,8 @@ import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { DuplicateDialog } from './duplicate-dialog';
 import type { FileExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
-import { useUploadManager } from '@/hooks/use-auth';
+import { useActiveUploadManager } from '@/hooks/use-auth';
+import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
 
 interface OperationItem {
   id: string;
@@ -88,7 +89,11 @@ export const OperationsModal: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const uploadManager = useUploadManager();
+  const uploadManager = useActiveUploadManager();
+  const { uploadMode } = useUploadSettingsStore();
+
+  // Check if pause/resume is supported in current mode
+  const supportsPauseResume = uploadMode === 'multipart';
 
   if (!uploadManager) {
     return 'Loading...';
@@ -755,8 +760,9 @@ export const OperationsModal: React.FC = () => {
 
                     {/* Pause/Resume Buttons and Progress Circle */}
                     <div className="flex-shrink-0 flex items-center gap-2">
-                      {/* Pause/Resume Buttons for file uploads only */}
-                      {operation.operationType === 'upload' &&
+                      {/* Pause/Resume Buttons for file uploads only - only in multipart mode */}
+                      {supportsPauseResume &&
+                        operation.operationType === 'upload' &&
                         operation.type === 'file' &&
                         (isActive || operation.status === 'paused') && (
                           <div className="flex items-center">

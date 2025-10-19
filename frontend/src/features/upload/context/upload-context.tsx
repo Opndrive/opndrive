@@ -3,13 +3,13 @@
 import React, { createContext, useContext, useEffect, ReactNode } from 'react';
 import { UploadStatus } from '@opndrive/s3-api';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
-import { useUploadManager } from '@/hooks/use-auth';
+import { useActiveUploadManager } from '@/hooks/use-auth';
 
 const UploadContext = createContext<null>(null);
 
 export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { updateUpload } = useUploadStore();
-  const uploadManager = useUploadManager();
+  const uploadManager = useActiveUploadManager();
 
   useEffect(() => {
     if (!uploadManager) return;

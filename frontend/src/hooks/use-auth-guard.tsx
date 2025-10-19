@@ -10,7 +10,7 @@ import { useEffect } from 'react';
  * Redirects to home page if not authenticated
  */
 export function useAuthGuard() {
-  const { apiS3, uploadManager, userCreds, isLoading } = useAuth();
+  const { apiS3, uploadManager, signedUrlUploadManager, userCreds, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -24,6 +24,7 @@ export function useAuthGuard() {
   return {
     apiS3: !isLoading && userCreds ? apiS3 : null,
     uploadManager: !isLoading && userCreds ? uploadManager : null,
+    signedUrlUploadManager: !isLoading && userCreds ? signedUrlUploadManager : null,
     userCreds: !isLoading ? userCreds : null,
     isAuthenticated: !isLoading && !!userCreds && !!apiS3,
     isLoading,
