@@ -10,7 +10,6 @@ import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import { FileSkeletonGridList } from '@/features/dashboard/components/ui/skeletons/file-skeleton';
 import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons/folder-skeleton';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { useChunkedItems, formatItemCount } from '@/hooks/use-chunked-items';
@@ -397,7 +396,7 @@ export default function SearchPage() {
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto pt-2">
           {isLoading && totalDisplayed === 0 ? (
             // Show skeleton loaders during initial load or cache miss
             <div className="mt-4 px-2">
@@ -405,12 +404,6 @@ export default function SearchPage() {
               <div className="mb-8">
                 <div className="h-4 w-32 bg-muted/40 rounded mb-4 animate-pulse" />
                 <FolderSkeletonList count={3} />
-              </div>
-
-              {/* Skeleton for files */}
-              <div>
-                <div className="h-4 w-24 bg-muted/40 rounded mb-4 animate-pulse" />
-                <FileSkeletonGridList count={8} layout={viewMode} />
               </div>
             </div>
           ) : totalDisplayed === 0 ? (
