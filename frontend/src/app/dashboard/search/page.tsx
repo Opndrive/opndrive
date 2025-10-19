@@ -15,7 +15,6 @@ import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { useChunkedItems, formatItemCount } from '@/hooks/use-chunked-items';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
-import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
 import {
@@ -24,6 +23,11 @@ import {
 } from '@/shared/components/ui/credit-warning-dialog';
 import { useDriveStore } from '@/context/data-context';
 import { SearchBreadcrumb } from '@/features/dashboard/components/views/search/search-breadcrumb';
+import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
+import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
+import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
+import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
@@ -51,7 +55,6 @@ export default function SearchPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const query = searchParams.get('q') || '';
-  const { openPreview } = useFilePreview();
   const { layout: viewMode } = useCurrentLayout();
   const { currentPrefix } = useDriveStore();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
@@ -67,6 +70,10 @@ export default function SearchPage() {
     cancelSearch,
     requestCount,
   } = useSearch();
+
+  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+  const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
+    useMultiShareDialog();
 
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
@@ -107,6 +114,55 @@ export default function SearchPage() {
       }
     }
   }, [query]); // Only depend on query, not search function
+
+  // Clear selection when returning to search page
+  useEffect(() => {
+    clearSelection();
+  }, []); // Empty dependency array - runs once on mount
+
+  // Clear selection when query changes
+  useEffect(() => {
+    clearSelection();
+  }, [query, clearSelection]);
+
+  // Clear selection when multi-share dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      clearSelection();
+    }
+  }, [isOpen, clearSelection]);
+
+  // Clear selection when clicking outside - only for single item selection
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+
+      // Only clear if exactly one item is selected
+      if (
+        getSelectionCount() === 1 &&
+        !target.closest('[data-file-item]') &&
+        !target.closest('[data-folder-item]') &&
+        !target.closest('[data-multi-select-toolbar]')
+      ) {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [clearSelection, getSelectionCount]);
+
+  // Handle ESC key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clearSelection]);
 
   // Convert search results to FileItem and Folder objects
   const folders: Folder[] =
@@ -169,16 +225,13 @@ export default function SearchPage() {
     router.back();
   };
 
-  const handleFileClick = (file: FileItem) => {
-    const previewableFile = {
-      id: file.id,
-      name: file.name,
-      key: file.Key,
-      size: file.size?.value || 0,
-      lastModified: file.lastModified,
-      type: file.extension || getFileExtensionWithoutDot(file.name),
-    };
-    openPreview(previewableFile, [previewableFile]);
+  const handleFileClick = (_file: FileItem) => {
+    // Only used by FileItemMobile - component handles its own preview
+    // This is just a passthrough, the actual opening is done internally
+  };
+
+  const handleFileAction = (_action: string, _file: FileItem) => {
+    // Placeholder for file actions from mobile menu
   };
 
   const handleFolderClick = (folder: Folder) => {
@@ -301,21 +354,32 @@ export default function SearchPage() {
               )}
 
               {/* Sync Button */}
-              <button
-                onClick={handleSync}
-                disabled={isSyncing || !query.trim() || isLoading}
-                className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
-                title="Refresh search results"
+              <AriaLabel
+                label={isSyncing ? 'Refreshing search results...' : 'Refresh search results'}
+                position="bottom"
               >
-                <HiOutlineRefresh
-                  className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
-                    isSyncing ? 'animate-spin' : ''
-                  }`}
-                />
-              </button>
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing || !query.trim() || isLoading}
+                  className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <HiOutlineRefresh
+                    className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                      isSyncing ? 'animate-spin' : ''
+                    }`}
+                  />
+                </button>
+              </AriaLabel>
 
               {/* Layout Toggle */}
               <LayoutToggle />
+            </div>
+          </div>
+
+          {/* Multi-select toolbar */}
+          <div className="relative h-0 mt-2">
+            <div className="absolute top-0 left-0 right-0 z-20 bg-background">
+              <MultiSelectToolbar openMultiShareDialog={openMultiShareDialog} />
             </div>
           </div>
         </div>
@@ -361,8 +425,14 @@ export default function SearchPage() {
                         : 'space-y-1'
                     }
                   >
-                    {displayedFolders.map((folder: Folder) => (
-                      <FolderItem key={folder.Prefix} folder={folder} onClick={handleFolderClick} />
+                    {displayedFolders.map((folder: Folder, index: number) => (
+                      <FolderItem
+                        key={folder.Prefix}
+                        folder={folder}
+                        allFolders={displayedFolders}
+                        index={index}
+                        onClick={handleFolderClick}
+                      />
                     ))}
                   </div>
 
@@ -381,14 +451,14 @@ export default function SearchPage() {
                   </h3>
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {displayedFiles.map((file: FileItem) => (
-                        <div
+                      {displayedFiles.map((file: FileItem, index: number) => (
+                        <FileItemGrid
                           key={file.Key}
-                          onClick={() => handleFileClick(file)}
-                          className="cursor-pointer"
-                        >
-                          <FileItemGrid file={file} _onAction={() => {}} />
-                        </div>
+                          file={file}
+                          allFiles={displayedFiles}
+                          index={index}
+                          _onAction={() => {}}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -419,9 +489,12 @@ export default function SearchPage() {
 
                         {displayedFiles.map((file: FileItem, index: number) => (
                           <Fragment key={file.Key}>
-                            <div onClick={() => handleFileClick(file)} className="cursor-pointer">
-                              <FileItemList file={file} allFiles={files} _onAction={() => {}} />
-                            </div>
+                            <FileItemList
+                              file={file}
+                              allFiles={displayedFiles}
+                              index={index}
+                              _onAction={() => {}}
+                            />
                             {/* Professional separator */}
                             {index < displayedFiles.length - 1 && (
                               <div className="mx-4" aria-hidden="true">
@@ -442,10 +515,10 @@ export default function SearchPage() {
                             <FileItemMobile
                               key={file.Key}
                               file={file}
-                              allFiles={files}
+                              allFiles={displayedFiles}
                               index={index}
                               onFileClick={handleFileClick}
-                              _onAction={() => {}}
+                              _onAction={handleFileAction}
                             />
                           ))}
                         </div>
@@ -515,6 +588,14 @@ export default function SearchPage() {
           )}
         </div>
       </div>
+
+      {/* Multi-share dialog */}
+      <MultiShareDialog
+        files={currentFiles}
+        isOpen={isOpen}
+        onClose={closeMultiShareDialog}
+        generateShareLinks={generateShareLinks}
+      />
 
       {/* Credit Warning Dialog */}
       <CreditWarningDialog
