@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Fragment } from 'react';
-import { Search, ArrowLeft, X } from 'lucide-react';
+import { Search, ArrowLeft, X, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
@@ -308,18 +308,26 @@ export default function SearchPage() {
             </div>
           </div>
 
-          {/* API Request Count - Show only when we have results or are loading */}
+          {/* Search Details - Collapsible for transparency */}
           {(totalDisplayed > 0 || isLoading) && (requestCount ?? 0) > 0 && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-primary/60" />
-                <span>
-                  {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
-                </span>
+            <details className="mt-3 group">
+              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 select-none">
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                <span>Search Details</span>
+              </summary>
+              <div className="mt-2 pl-5 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary/60 flex-shrink-0" />
+                  <span>
+                    {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <div className="h-1.5 w-1.5 rounded-full bg-green-500/60 flex-shrink-0" />
+                  <span>{searchResults?.totalKeys || 0} results loaded</span>
+                </div>
               </div>
-              <span>·</span>
-              <span>{searchResults?.totalKeys || 0} results loaded</span>
-            </div>
+            </details>
           )}
 
           {/* Search Info and Controls */}
