@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, ReactNode } from 'react';
+import { useEffect, useRef, useState, ReactNode, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 export interface CustomAriaLabelProps {
@@ -11,6 +11,8 @@ export interface CustomAriaLabelProps {
   multiline?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Make the wrapper focusable if child isn’t naturally focusable */
+  focusableWrapper?: boolean;
 }
 
 export function CustomAriaLabel({
@@ -21,27 +23,174 @@ export function CustomAriaLabel({
   multiline = false,
   disabled = false,
   className = '',
+  focusableWrapper = false,
 }: CustomAriaLabelProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const longPressTimeoutRef = useRef<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const isMouseOverRef = useRef(false);
+  const tooltipId = useId();
 
+  const isSmallDevice = typeof window !== 'undefined' && window.innerWidth < 768;
+
+  const clearTimeoutRef = (ref: React.MutableRefObject<number | null>) => {
+    if (ref.current) {
+      window.clearTimeout(ref.current);
+      ref.current = null;
+    }
+  };
+
+  const showTooltip = () => {
+    if (disabled || !label.trim()) return;
+
+    clearTimeoutRef(timeoutRef);
+
+    if (triggerRef.current) {
+      const temp = document.createElement('div');
+      temp.className = `custom-aria-label ${position} ${multiline ? 'multiline' : ''}`;
+      Object.assign(temp.style, {
+        visibility: 'hidden',
+        position: 'fixed',
+        top: '-9999px',
+      } as CSSStyleDeclaration);
+      temp.textContent = label;
+      document.body.appendChild(temp);
+
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const tooltipRect = temp.getBoundingClientRect();
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
+      document.body.removeChild(temp);
+      setTooltipPosition({ x, y });
+    }
+
+    setIsVisible(true);
+  };
+
+  const hideTooltip = () => {
+    clearTimeoutRef(timeoutRef);
+    clearTimeoutRef(longPressTimeoutRef);
+    setIsVisible(false);
+  };
+
+  // Touch/long-press
+  const handleTouchStart = () => {
+    if (!isSmallDevice || disabled || !label.trim()) return;
+    clearTimeoutRef(longPressTimeoutRef);
+    longPressTimeoutRef.current = window.setTimeout(showTooltip, 800);
+  };
+  const handleTouchEndOrMove = () => hideTooltip();
+
+  const handleMouseEnter = () => {
+    if (isSmallDevice || disabled || !label.trim()) return;
+    isMouseOverRef.current = true;
+    clearTimeoutRef(timeoutRef);
+    timeoutRef.current = window.setTimeout(() => {
+      if (isMouseOverRef.current) showTooltip();
+    }, delay);
+  };
+  const handleMouseLeave = () => {
+    isMouseOverRef.current = false;
+    hideTooltip();
+  };
+
+  // Keyboard focus support
+  const handleFocus = () => {
+    if (disabled || !label.trim()) return;
+    showTooltip();
+  };
+  const handleBlur = () => hideTooltip();
+
+  // Click should not keep it around
+  const handleMouseDown = () => hideTooltip();
+
+  // Position updates
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
+  useEffect(() => {
+    if (!isVisible) return;
+    const update = () => {
+      if (!triggerRef.current || !tooltipRef.current) return;
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const tooltipRect = tooltipRef.current.getBoundingClientRect();
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
+      setTooltipPosition({ x, y });
+    };
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [isVisible, position]);
 
-  const calculateOptimalPosition = (
+  useEffect(
+    () => () => {
+      clearTimeoutRef(timeoutRef);
+      clearTimeoutRef(longPressTimeoutRef);
+    },
+    []
+  );
+
+  const tooltip =
+    mounted && isVisible ? (
+      <div
+        ref={tooltipRef}
+        id={tooltipId}
+        role="tooltip"
+        aria-hidden={false}
+        className={`custom-aria-label show ${position} ${multiline ? 'multiline' : ''} ${className}`}
+        style={{
+          position: 'fixed',
+          left: `${tooltipPosition.x}px`,
+          top: `${tooltipPosition.y}px`,
+          zIndex: 9999,
+          pointerEvents: 'none',
+        }}
+      >
+        {label}
+      </div>
+    ) : null;
+
+  const triggerProps = {
+    ref: triggerRef,
+    onMouseEnter: handleMouseEnter,
+    onMouseLeave: handleMouseLeave,
+    onMouseDown: handleMouseDown,
+    onTouchStart: handleTouchStart,
+    onTouchEnd: handleTouchEndOrMove,
+    onTouchCancel: handleTouchEndOrMove,
+    onTouchMove: handleTouchEndOrMove,
+    onFocus: handleFocus,
+    onBlur: handleBlur,
+    // Link to the tooltip only when it's actually shown
+    ...(isVisible && !disabled && label.trim() ? { 'aria-describedby': tooltipId } : {}),
+    className: 'inline-block',
+    ...(focusableWrapper ? { tabIndex: 0 } : {}),
+  } as const;
+
+  return (
+    <>
+      <div {...triggerProps}>{children}</div>
+      {mounted && createPortal(tooltip, document.body)}
+    </>
+  );
+
+  // ---- positioning helper (unchanged from your approach) ----
+  function calculateOptimalPosition(
     triggerRect: DOMRect,
     tooltipRect: DOMRect,
     viewport: { width: number; height: number }
-  ) => {
+  ) {
     const spacing = 8;
     const positions = [
-      // Prefer top and bottom first
       {
         name: 'top' as const,
         x: triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2,
@@ -54,7 +203,6 @@ export function CustomAriaLabel({
         y: triggerRect.bottom + spacing,
         fits: triggerRect.bottom + tooltipRect.height + spacing <= viewport.height - spacing,
       },
-      // Then left and right as fallbacks
       {
         name: 'left' as const,
         x: triggerRect.left - tooltipRect.width - spacing,
@@ -69,209 +217,19 @@ export function CustomAriaLabel({
       },
     ];
 
-    // Find the best position that fits, prioritizing the requested position if it fits
-    const requestedPosition = positions.find((p) => p.name === position && p.fits);
-    if (requestedPosition) {
-      return requestedPosition;
-    }
+    const requested = positions.find((p) => p.name === position && p.fits);
+    if (requested) return requested;
 
-    // Otherwise, find the first position that fits
-    const fittingPosition = positions.find((p) => p.fits);
-    if (fittingPosition) {
-      return fittingPosition;
-    }
-
-    // If nothing fits perfectly, use the requested position and clamp to viewport
-    const fallbackPosition = positions.find((p) => p.name === position) || positions[0];
+    const fallback = positions.find((p) => p.fits) ?? positions[0];
     return {
-      ...fallbackPosition,
-      x: Math.max(
-        spacing,
-        Math.min(fallbackPosition.x, viewport.width - tooltipRect.width - spacing)
-      ),
-      y: Math.max(
-        spacing,
-        Math.min(fallbackPosition.y, viewport.height - tooltipRect.height - spacing)
-      ),
+      ...fallback,
+      x: Math.max(spacing, Math.min(fallback.x, viewport.width - tooltipRect.width - spacing)),
+      y: Math.max(spacing, Math.min(fallback.y, viewport.height - tooltipRect.height - spacing)),
     };
-  };
-
-  const calculatePosition = () => {
-    // This function is now mainly for window resize adjustments
-    if (!triggerRef.current || !tooltipRef.current || !isVisible) return;
-
-    const triggerRect = triggerRef.current.getBoundingClientRect();
-    const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    const viewport = {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    };
-
-    const optimalPosition = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
-    setTooltipPosition({ x: optimalPosition.x, y: optimalPosition.y });
-  };
-
-  const showTooltip = () => {
-    if (disabled || !label.trim()) return;
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => {
-      // Pre-calculate position before showing tooltip
-      if (triggerRef.current) {
-        // Create a temporary invisible tooltip to measure dimensions
-        const tempTooltip = document.createElement('div');
-        tempTooltip.className = `custom-aria-label ${position} ${multiline ? 'multiline' : ''}`;
-        tempTooltip.style.visibility = 'hidden';
-        tempTooltip.style.position = 'fixed';
-        tempTooltip.style.top = '-9999px';
-        tempTooltip.textContent = label;
-        document.body.appendChild(tempTooltip);
-
-        const triggerRect = triggerRef.current.getBoundingClientRect();
-        const tooltipRect = tempTooltip.getBoundingClientRect();
-        const viewport = {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        };
-
-        // Use optimal positioning logic
-        const optimalPosition = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
-
-        // Clean up temp element
-        document.body.removeChild(tempTooltip);
-
-        // Set position before showing
-        setTooltipPosition({ x: optimalPosition.x, y: optimalPosition.y });
-      }
-
-      // Show tooltip with correct position
-      setIsVisible(true);
-    }, delay);
-  };
-
-  const hideTooltip = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    setIsVisible(false);
-  };
-
-  const handleMouseEnter = () => {
-    showTooltip();
-  };
-
-  const handleMouseLeave = () => {
-    hideTooltip();
-  };
-
-  const handleFocus = () => {
-    showTooltip();
-  };
-
-  const handleBlur = () => {
-    hideTooltip();
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Show tooltip on Tab focus or Arrow navigation
-    if (e.key === 'Tab' || e.key.startsWith('Arrow')) {
-      showTooltip();
-    }
-    // Hide on Escape
-    if (e.key === 'Escape') {
-      hideTooltip();
-    }
-  };
-
-  // Update position on scroll/resize
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const updatePosition = () => calculatePosition();
-
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [isVisible, position]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  const tooltip =
-    mounted && isVisible ? (
-      <div
-        ref={tooltipRef}
-        className={`custom-aria-label ${isVisible ? 'show' : ''} ${position} ${
-          multiline ? 'multiline' : ''
-        } ${className}`}
-        style={{
-          left: tooltipPosition.x,
-          top: tooltipPosition.y,
-        }}
-        role="tooltip"
-        aria-hidden={!isVisible}
-      >
-        {label}
-      </div>
-    ) : null;
-
-  return (
-    <>
-      <div
-        ref={triggerRef}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        aria-label={label}
-        className="inline-block"
-      >
-        {children}
-      </div>
-      {mounted && createPortal(tooltip, document.body)}
-    </>
-  );
+  }
 }
 
-// Convenience wrapper for common use cases
+// Convenience wrapper
 export function AriaLabel(props: CustomAriaLabelProps) {
   return <CustomAriaLabel {...props} />;
-}
-
-// Hook for programmatic tooltip control
-export function useCustomAriaLabel() {
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [content, setContent] = useState('');
-
-  const show = (text: string, x: number, y: number) => {
-    setContent(text);
-    setPosition({ x, y });
-    setIsVisible(true);
-  };
-
-  const hide = () => {
-    setIsVisible(false);
-  };
-
-  return {
-    isVisible,
-    position,
-    content,
-    show,
-    hide,
-  };
 }
