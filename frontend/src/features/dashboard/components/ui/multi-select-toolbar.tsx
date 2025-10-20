@@ -11,15 +11,29 @@ import {
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectActions } from '../../hooks/use-multi-select-actions';
 import { FileItem } from '../../types/file';
+import { Folder } from '../../types/folder';
 
 interface MultiSelectToolbarProps {
   openMultiShareDialog: (files: FileItem[]) => void;
+  onDeleteSuccess?: () => void;
 }
 
-export function MultiSelectToolbar({ openMultiShareDialog }: MultiSelectToolbarProps) {
+export function MultiSelectToolbar({
+  openMultiShareDialog,
+  onDeleteSuccess,
+}: MultiSelectToolbarProps) {
   const { selectedItems, selectedType, clearSelection, getSelectionCount } = useMultiSelectStore();
-  const { handleOpenFiles, handleDownloadFiles, handleShareFiles, handleDeleteItems } =
-    useMultiSelectActions({ openMultiShareDialog });
+  const {
+    handleOpenFiles,
+    handleDownloadFiles,
+    handleShareFiles,
+    handleDeleteItems: baseHandleDeleteItems,
+  } = useMultiSelectActions({ openMultiShareDialog });
+
+  const handleDeleteItems = async (items: (FileItem | Folder)[]) => {
+    await baseHandleDeleteItems(items);
+    onDeleteSuccess?.();
+  };
 
   const count = getSelectionCount();
 

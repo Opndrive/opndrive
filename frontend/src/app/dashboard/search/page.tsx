@@ -27,6 +27,7 @@ import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-sel
 import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
 import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { useCallback } from 'react';
 import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
@@ -87,13 +88,23 @@ export default function SearchPage() {
     setPendingSearchQuery('');
   };
 
+  // Handler for refreshing search results
+  const refreshSearchResults = useCallback(async () => {
+    if (!query.trim()) return;
+    try {
+      await invalidateCurrentQuery();
+      await search(query);
+    } catch (error) {
+      console.error('Failed to refresh search results:', error);
+    }
+  }, [query, invalidateCurrentQuery, search]);
+
   const handleSync = async () => {
     if (isSyncing || !query.trim()) return;
 
     setIsSyncing(true);
     try {
-      // Use the new invalidateCurrentQuery to clear cache and refetch
-      invalidateCurrentQuery();
+      await refreshSearchResults();
     } catch (error) {
       console.error('Failed to sync search results:', error);
     } finally {
@@ -390,7 +401,10 @@ export default function SearchPage() {
           {/* Multi-select toolbar */}
           <div className="relative h-0 mt-2">
             <div className="absolute top-0 left-0 right-0 z-20 bg-background">
-              <MultiSelectToolbar openMultiShareDialog={openMultiShareDialog} />
+              <MultiSelectToolbar
+                openMultiShareDialog={openMultiShareDialog}
+                onDeleteSuccess={refreshSearchResults}
+              />
             </div>
           </div>
         </div>
