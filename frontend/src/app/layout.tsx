@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   title: 'Opndrive - Open-source S3 Compatible Storage Interface',
   description:
     'Open-source web interface for S3 compatible storage. Connect your own bucket and manage files with complete control over your data.',
+  icons: {
+    icon: [{ url: '/favicon.ico' }],
+    shortcut: [{ url: '/favicon.ico' }],
+    apple: [{ url: '/favicon.ico' }],
+  },
   keywords: [
     'Opndrive',
     'S3 storage management',
@@ -54,10 +59,6 @@ export const metadata: Metadata = {
     description:
       'Open-source web interface for S3 compatible storage. Connect your own bucket and manage files with complete control over your data.',
     images: ['/og-image.png'],
-  },
-  icons: {
-    icon: [{ url: '/favicon.ico' }, { url: '/logo.png', type: 'image/png' }],
-    apple: [{ url: '/apple-touch-icon.png' }],
   },
   manifest: '/manifest.json',
   robots: {
