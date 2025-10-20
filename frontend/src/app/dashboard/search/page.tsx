@@ -396,10 +396,10 @@ export default function SearchPage() {
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-auto pt-2">
+        <div className="flex-1 overflow-auto pt-2 px-2">
           {isLoading && totalDisplayed === 0 ? (
             // Show skeleton loaders during initial load or cache miss
-            <div className="mt-4 px-2">
+            <div className="mt-4">
               {/* Skeleton for folders */}
               <div className="mb-8">
                 <div className="h-4 w-32 bg-muted/40 rounded mb-4 animate-pulse" />
@@ -419,14 +419,14 @@ export default function SearchPage() {
             <div className="mt-2">
               {/* Folders Section */}
               {displayedFolders.length > 0 && (
-                <div className="mb-8">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
+                <div className="mb-8 px-2">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4">
                     Folders ({folders.length})
                   </h3>
                   <div
                     className={
                       viewMode === 'grid'
-                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'
+                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-1'
                         : 'space-y-1'
                     }
                   >
@@ -450,12 +450,12 @@ export default function SearchPage() {
 
               {/* Files Section */}
               {files.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
+                <div className="px-2">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4">
                     Files ({files.length})
                   </h3>
                   {viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-1">
                       {displayedFiles.map((file: FileItem, index: number) => (
                         <FileItemGrid
                           key={file.Key}
@@ -500,7 +500,7 @@ export default function SearchPage() {
                               index={index}
                               _onAction={() => {}}
                             />
-                            {/* Professional separator */}
+                            {/* separator */}
                             {index < displayedFiles.length - 1 && (
                               <div className="mx-4" aria-hidden="true">
                                 <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
