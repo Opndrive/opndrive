@@ -1,8 +1,8 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState, Fragment } from 'react';
-import { Search, ArrowLeft, X, ChevronRight } from 'lucide-react';
+import { useEffect, useState, Fragment, useMemo } from 'react';
+import { Search, ArrowLeft, X, ChevronRight, FolderOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
@@ -28,8 +28,8 @@ import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-
 import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useCallback } from 'react';
-import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
-import type { Folder } from '@/features/dashboard/types/folder';
+import type { FileItem, FileExtension, FileMenuAction } from '@/features/dashboard/types/file';
+import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
 
 // Import formatBytes function from data-context
@@ -257,6 +257,66 @@ export default function SearchPage() {
     }
   };
 
+  // Helper function to get parent folder path from file Key
+  const getParentFolderPath = useCallback((fileKey: string): string => {
+    if (!fileKey) return '';
+    const pathParts = fileKey.split('/').filter(Boolean);
+    pathParts.pop(); // Remove filename or folder name
+    return pathParts.join('/');
+  }, []);
+
+  // Create "Show in folder" action for files in search results
+  const createShowInFolderAction = useCallback(
+    (file: FileItem): FileMenuAction => ({
+      id: 'show-in-folder',
+      label: 'Show in folder',
+      icon: FolderOpen,
+      onClick: () => {
+        const folderPath = getParentFolderPath(file.Key || '');
+        if (folderPath) {
+          const folderUrl = generateFolderUrl({ prefix: folderPath });
+          router.push(folderUrl);
+        }
+      },
+    }),
+    [getParentFolderPath, router]
+  );
+
+  // Create "Show in folder" action for folders in search results
+  const createFolderShowInParentAction = useCallback(
+    (folder: Folder): FolderMenuAction => ({
+      id: 'show-in-folder',
+      label: 'Show in folder',
+      icon: <FolderOpen size={16} className="flex-shrink-0" />,
+      onClick: () => {
+        const folderPath = getParentFolderPath(folder.Prefix || '');
+        if (folderPath) {
+          const folderUrl = generateFolderUrl({ prefix: folderPath });
+          router.push(folderUrl);
+        }
+      },
+    }),
+    [getParentFolderPath, router]
+  );
+
+  // Create additional actions array for file items in search
+  const searchFileActions = useMemo(
+    () =>
+      (file: FileItem): FileMenuAction[] => {
+        return [createShowInFolderAction(file)];
+      },
+    [createShowInFolderAction]
+  );
+
+  // Create additional actions array for folder items in search
+  const searchFolderActions = useMemo(
+    () =>
+      (folder: Folder): FolderMenuAction[] => {
+        return [createFolderShowInParentAction(folder)];
+      },
+    [createFolderShowInParentAction]
+  );
+
   if (!query) {
     return (
       <div className="flex flex-col h-full">
@@ -405,6 +465,7 @@ export default function SearchPage() {
               <MultiSelectToolbar
                 openMultiShareDialog={openMultiShareDialog}
                 onDeleteSuccess={refreshSearchResults}
+                showLocationActions={true}
               />
             </div>
           </div>
@@ -452,6 +513,8 @@ export default function SearchPage() {
                         allFolders={displayedFolders}
                         index={index}
                         onClick={handleFolderClick}
+                        additionalActions={searchFolderActions(folder)}
+                        insertAdditionalActionsAfter="view"
                       />
                     ))}
                   </div>
@@ -478,6 +541,8 @@ export default function SearchPage() {
                           allFiles={displayedFiles}
                           index={index}
                           _onAction={() => {}}
+                          additionalActions={searchFileActions(file)}
+                          insertAdditionalActionsAfter="open"
                         />
                       ))}
                     </div>
@@ -514,6 +579,8 @@ export default function SearchPage() {
                               allFiles={displayedFiles}
                               index={index}
                               _onAction={() => {}}
+                              additionalActions={searchFileActions(file)}
+                              insertAdditionalActionsAfter="open"
                             />
                             {/* separator */}
                             {index < displayedFiles.length - 1 && (
@@ -539,6 +606,8 @@ export default function SearchPage() {
                               index={index}
                               onFileClick={handleFileClick}
                               _onAction={handleFileAction}
+                              additionalActions={searchFileActions(file)}
+                              insertAdditionalActionsAfter="open"
                             />
                           ))}
                         </div>

@@ -3,7 +3,7 @@ import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
-import { FileExtension, FileItem } from '@/features/dashboard/types/file';
+import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
@@ -16,6 +16,8 @@ interface FileItemMobileProps {
   onFileClick?: (file: FileItem) => void;
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
+  additionalActions?: FileMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions
 }
 
 export function FileItemMobile({
@@ -24,6 +26,8 @@ export function FileItemMobile({
   onFileClick: _onFileClick,
   _onAction,
   index = 0,
+  additionalActions,
+  insertAdditionalActionsAfter,
 }: FileItemMobileProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -220,6 +224,8 @@ export function FileItemMobile({
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
+        additionalActions={additionalActions}
+        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
       />
     </div>
   );

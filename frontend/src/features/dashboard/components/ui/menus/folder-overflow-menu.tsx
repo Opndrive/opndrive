@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { Eye, Edit3, Trash2 } from 'lucide-react';
@@ -21,6 +21,8 @@ interface OverflowMenuProps {
   onClose: () => void;
   anchorElement: HTMLElement | null;
   className?: string;
+  additionalActions?: FolderMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions (default: 'view')
 }
 
 export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
@@ -29,6 +31,8 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   onClose,
   anchorElement,
   className = '',
+  additionalActions = [],
+  insertAdditionalActionsAfter = 'view',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -158,7 +162,31 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     },
   ];
 
-  const actions = getDefaultMenuActions(folder);
+  // Merge additional actions with default actions
+  const actions = useMemo(() => {
+    if (additionalActions.length === 0) {
+      return getDefaultMenuActions(folder);
+    }
+
+    const defaultActions = getDefaultMenuActions(folder);
+    const insertIndex = defaultActions.findIndex(
+      (action) => action.id === insertAdditionalActionsAfter
+    );
+
+    if (insertIndex === -1) {
+      // If insertion point not found, append at the beginning
+      return [...additionalActions, ...defaultActions];
+    }
+
+    // Insert after the specified action
+    const result = [
+      ...defaultActions.slice(0, insertIndex + 1),
+      ...additionalActions,
+      ...defaultActions.slice(insertIndex + 1),
+    ];
+
+    return result;
+  }, [folder, additionalActions, insertAdditionalActionsAfter]);
 
   // Prevent body scroll when menu is open
   useEffect(() => {

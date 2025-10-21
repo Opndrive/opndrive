@@ -3,7 +3,7 @@ import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileThumbnailWithImage } from './file-thumbnail-with-image';
-import { FileExtension, FileItem } from '@/features/dashboard/types/file';
+import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
@@ -16,9 +16,18 @@ interface FileItemGridProps {
   allFiles?: FileItem[]; // For navigation between files
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
+  additionalActions?: FileMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions
 }
 
-export function FileItemGrid({ file, allFiles = [], _onAction, index = 0 }: FileItemGridProps) {
+export function FileItemGrid({
+  file,
+  allFiles = [],
+  _onAction,
+  index = 0,
+  additionalActions,
+  insertAdditionalActionsAfter,
+}: FileItemGridProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
@@ -205,6 +214,8 @@ export function FileItemGrid({ file, allFiles = [], _onAction, index = 0 }: File
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
+        additionalActions={additionalActions}
+        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
       />
     </div>
   );

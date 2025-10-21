@@ -3,7 +3,7 @@ import { FileIcon } from '@/shared/components/icons/file-icons';
 import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
-import { FileExtension, FileItem } from '@/features/dashboard/types/file';
+import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
@@ -15,9 +15,18 @@ interface FileItemListProps {
   allFiles?: FileItem[]; // For navigation between files
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
+  additionalActions?: FileMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions
 }
 
-export function FileItemList({ file, allFiles = [], _onAction, index = 0 }: FileItemListProps) {
+export function FileItemList({
+  file,
+  allFiles = [],
+  _onAction,
+  index = 0,
+  additionalActions,
+  insertAdditionalActionsAfter,
+}: FileItemListProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
@@ -207,6 +216,8 @@ export function FileItemList({ file, allFiles = [], _onAction, index = 0 }: File
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
+        additionalActions={additionalActions}
+        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
       />
     </div>
   );
