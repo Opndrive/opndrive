@@ -22,7 +22,7 @@ interface OverflowMenuProps {
   anchorElement: HTMLElement | null;
   className?: string;
   additionalActions?: FolderMenuAction[]; // Additional menu actions
-  insertAdditionalActionsAfter?: string; // Where to insert additional actions (default: 'view')
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions (default: 'open')
 }
 
 export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
@@ -32,7 +32,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   anchorElement,
   className = '',
   additionalActions = [],
-  insertAdditionalActionsAfter = 'view',
+  insertAdditionalActionsAfter = 'open',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -134,8 +134,8 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
-      id: 'view',
-      label: 'View',
+      id: 'open',
+      label: 'Open',
       icon: <Eye className="flex-shrink-0 h-4 w-4" />,
       onClick: (_folder) => {
         const folderUrl = generateFolderUrl({ prefix: folder.Prefix });

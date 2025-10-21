@@ -18,6 +18,7 @@ import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-wit
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
 import { useFilePreview } from '@/context/file-preview-context';
+import { openPreviewInNewTab } from '@/lib/preview-url';
 import { useDriveStore } from '@/context/data-context';
 import { useShare } from '@/context/share-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
@@ -91,10 +92,15 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
 
   // Handle open in new tab
   const handleOpenInNewTab = () => {
-    // For now, use preview in new tab - you can customize this later
+    const etag = file.ETag || '';
+    const key = file.Key || '';
 
-    // Open preview in a new window/tab (simplified implementation)
-    window.open(window.location.href, '_blank');
+    if (!etag || !key) {
+      console.error('Missing ETag or Key for file preview');
+      return;
+    }
+
+    openPreviewInNewTab({ etag, key });
     onClose();
   };
 
