@@ -110,7 +110,7 @@ export function FilePreviewModal() {
 
         {/* Content */}
         <div className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--background)' }}>
-          <PreviewContent file={currentFile} />
+          <PreviewContent key={currentFile.id} file={currentFile} />
         </div>
       </div>
     </div>
