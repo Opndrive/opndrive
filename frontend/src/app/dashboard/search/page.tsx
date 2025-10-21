@@ -27,6 +27,7 @@ import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-sel
 import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
 import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { ClickTooltip } from '@/shared/components/click-tooltip';
 import { useCallback } from 'react';
 import type { FileItem, FileExtension, FileMenuAction } from '@/features/dashboard/types/file';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
@@ -389,17 +390,22 @@ export default function SearchPage() {
                 </span>
               ) : totalDisplayed > 0 ? (
                 <span className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">{query}</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span>{formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}</span>
+                  <span className="font-medium text-foreground hidden sm:inline">{query}</span>
+                  <span className="text-muted-foreground hidden sm:inline">·</span>
+                  <span className="text-xs sm:text-sm">
+                    {formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}
+                  </span>
                   {/* Info icon with API request count tooltip */}
                   {(requestCount ?? 0) > 0 && (
-                    <AriaLabel
+                    <ClickTooltip
                       label={`${requestCount} API ${requestCount === 1 ? 'request' : 'requests'} made`}
                       position="top"
+                      displayDuration={1500}
                     >
-                      <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help transition-colors" />
-                    </AriaLabel>
+                      <div className="inline-flex items-center justify-center p-0.5 rounded hover:bg-secondary/50 transition-colors">
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-pointer transition-colors" />
+                      </div>
+                    </ClickTooltip>
                   )}
                 </span>
               ) : (
@@ -459,7 +465,7 @@ export default function SearchPage() {
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-auto pt-2 px-2">
+        <div className="flex-1 overflow-auto pt-2 ">
           {isLoading && totalDisplayed === 0 ? (
             // Show skeleton loaders during initial load or cache miss
             <div className="mt-4">
@@ -581,7 +587,7 @@ export default function SearchPage() {
 
                       {/* Mobile List View */}
                       <div className="sm:hidden">
-                        <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                        <div className=" py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
                           Files
                         </div>
                         <div className="divide-y divide-border/30">

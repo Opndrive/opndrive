@@ -34,12 +34,14 @@ interface SearchBarProps {
   className?: string;
   placeholder?: string;
   variant?: 'default' | 'navbar';
+  autoFocus?: boolean;
 }
 
 export function SearchBar({
   className,
   placeholder = 'Search files and folders...',
   variant = 'default',
+  autoFocus = false,
 }: SearchBarProps) {
   const router = useRouter();
   const { openPreview } = useFilePreview();
@@ -74,6 +76,17 @@ export function SearchBar({
       }
     };
   }, []);
+
+  // Auto-focus input if requested
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
 
   // Format bytes utility function
   const formatBytes = (bytes: number | undefined): { value: number; unit: string } => {
@@ -530,7 +543,7 @@ export function SearchBar({
               }
               ${
                 variant === 'navbar'
-                  ? 'py-2.5 pl-12 text-sm w-full min-w-[500px] max-w-[650px] shadow-sm'
+                  ? 'py-2.5 pl-12 text-sm w-full min-w-0 md:min-w-[500px] max-w-[650px] shadow-sm'
                   : 'py-3.5 pl-12 text-base shadow-sm'
               }
               ${query ? 'pr-10' : 'pr-4'}
