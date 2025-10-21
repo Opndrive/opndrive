@@ -16,6 +16,7 @@ export function GeneralSettingsPanel({ settings, onUpdate }: GeneralSettingsPane
     value: option.value,
     label: option.label,
     description: option.description,
+    icon: option.icon,
   }));
 
   const bulkShareDurationDropdownOptions = BULK_SHARE_DURATION_OPTIONS.map((option) => ({

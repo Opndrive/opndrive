@@ -43,16 +43,27 @@ export const UPLOAD_METHODS: UploadMethodInfo[] = [
   },
 ];
 
-export const START_PAGE_OPTIONS: Array<{ value: StartPage; label: string; description: string }> = [
+import { MdHomeFilled } from 'react-icons/md';
+import { PiHardDrivesFill } from 'react-icons/pi';
+import React from 'react';
+
+export const START_PAGE_OPTIONS: Array<{
+  value: StartPage;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
   {
     value: 'home',
     label: 'Home',
     description: 'Start with the main dashboard overview',
+    icon: MdHomeFilled,
   },
   {
     value: 'my-drive',
     label: 'My Drive',
     description: 'Start directly in your file browser',
+    icon: PiHardDrivesFill,
   },
 ];
 
