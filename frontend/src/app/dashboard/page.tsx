@@ -231,26 +231,24 @@ export default function HomePage() {
                 />
               )}
 
-              {/* Files Section */}
-              {recentData.files && recentData.files.length > 0 && (
+              {/* Files Section - Always show to provide drop zone */}
+              {(recentData.folders && recentData.folders.length > 0) ||
+              (recentData.files && recentData.files.length > 0) ? (
                 <SuggestedFiles
-                  files={recentData.files}
+                  files={recentData.files || []}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   onViewMore={handleLoadMoreFiles}
                   hasMore={recentData.hasMoreFiles}
                   isLoadingMore={isLoadingMoreFiles}
                   className="mt-8"
                 />
+              ) : (
+                /* Empty state only when both folders and files are empty */
+                <EmptyStateDropzone
+                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                  className="mt-8"
+                />
               )}
-
-              {/* Empty state when no folders or files */}
-              {(!recentData.folders || recentData.folders.length === 0) &&
-                (!recentData.files || recentData.files.length === 0) && (
-                  <EmptyStateDropzone
-                    onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                    className="mt-8"
-                  />
-                )}
             </>
           ) : (
             <div className="mt-8">
