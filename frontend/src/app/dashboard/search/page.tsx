@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Fragment, useMemo } from 'react';
-import { Search, ArrowLeft, X, ChevronRight, FolderOpen } from 'lucide-react';
+import { Search, ArrowLeft, X, FolderOpen, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
@@ -379,28 +379,6 @@ export default function SearchPage() {
             </div>
           </div>
 
-          {/* Search Details - Collapsible for transparency */}
-          {(totalDisplayed > 0 || isLoading) && (requestCount ?? 0) > 0 && (
-            <details className="mt-3 group">
-              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 select-none">
-                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                <span>Search Details</span>
-              </summary>
-              <div className="mt-2 pl-5 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary/60 flex-shrink-0" />
-                  <span>
-                    {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <div className="h-1.5 w-1.5 rounded-full bg-green-500/60 flex-shrink-0" />
-                  <span>{searchResults?.totalKeys || 0} results loaded</span>
-                </div>
-              </div>
-            </details>
-          )}
-
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-muted-foreground">
@@ -414,6 +392,15 @@ export default function SearchPage() {
                   <span className="font-medium text-foreground">{query}</span>
                   <span className="text-muted-foreground">·</span>
                   <span>{formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}</span>
+                  {/* Info icon with API request count tooltip */}
+                  {(requestCount ?? 0) > 0 && (
+                    <AriaLabel
+                      label={`${requestCount} API ${requestCount === 1 ? 'request' : 'requests'} made`}
+                      position="top"
+                    >
+                      <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help transition-colors" />
+                    </AriaLabel>
+                  )}
                 </span>
               ) : (
                 `No results for "${query}"`
