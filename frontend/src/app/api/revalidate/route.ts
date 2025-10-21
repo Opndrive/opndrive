@@ -51,8 +51,6 @@ export async function POST(request: NextRequest) {
     const body: RevalidateRequest = await request.json();
     const { type, slug, tags } = body;
 
-    console.log('[Revalidate] Received request:', { type, slug, tags });
-
     // Revalidate based on type
     switch (type) {
       case 'post':
@@ -79,8 +77,6 @@ export async function POST(request: NextRequest) {
           revalidateTag(`post-${slug}`);
           revalidateTag('posts');
         }
-
-        console.log('[Revalidate] Successfully revalidated post:', slug);
         break;
 
       case 'page':
@@ -92,7 +88,6 @@ export async function POST(request: NextRequest) {
         }
 
         await revalidatePath(`/${slug}`);
-        console.log('[Revalidate] Successfully revalidated page:', slug);
         break;
 
       case 'all':
@@ -100,7 +95,6 @@ export async function POST(request: NextRequest) {
         await revalidatePath('/blog', 'layout'); // Revalidates all blog routes
         revalidateTag('posts');
 
-        console.log('[Revalidate] Successfully revalidated all content');
         break;
 
       default:

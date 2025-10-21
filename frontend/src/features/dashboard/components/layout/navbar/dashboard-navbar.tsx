@@ -212,7 +212,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
         </div>
       </div>
 
-      {/* Mobile Search Overlay - Full Screen (Google Drive Pattern) */}
+      {/* Mobile Search Overlay - Full Screen*/}
       {showMobileSearchOverlay && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm md:hidden">
           {/* Overlay Header */}

@@ -161,7 +161,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
           // Cancel any ongoing uploads before clearing
           // Note: Implement proper cleanup based on UploadManager API
-          console.log('Cleaning up upload manager during logout');
         } catch (error) {
           console.warn('Error cleaning up uploads during logout:', error);
         }

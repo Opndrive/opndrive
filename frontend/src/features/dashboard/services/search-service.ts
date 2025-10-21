@@ -113,7 +113,6 @@ class SearchService {
 
       // Notify about the request count update
       if (onRequestCountUpdate) {
-        console.log(`[SearchService] API request #${apiRequestCount} about to be made`);
         onRequestCountUpdate(apiRequestCount);
       }
 
