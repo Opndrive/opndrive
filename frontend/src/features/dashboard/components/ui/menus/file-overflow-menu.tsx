@@ -53,7 +53,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
           id: file.id,
           name: file.name,
           key: file.Key,
-          size: file.size?.value || 0,
+          size: typeof file.Size === 'number' ? file.Size : 0,
           lastModified: file.lastModified,
           type: file.extension || getFileExtensionWithoutDot(file.name),
         };
@@ -62,7 +62,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
           id: f.id,
           name: f.name,
           key: f.Key,
-          size: f.size?.value || 0,
+          size: typeof f.Size === 'number' ? f.Size : 0,
           lastModified: f.lastModified,
           type: f.extension || getFileExtensionWithoutDot(f.name),
         }));

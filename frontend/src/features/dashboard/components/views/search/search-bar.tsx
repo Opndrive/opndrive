@@ -262,13 +262,27 @@ export function SearchBar({
   // Handle suggestion click
   const handleSuggestionClick = (suggestion: SearchSuggestion) => {
     if (suggestion.type === 'file') {
+      // Convert size back to bytes for preview size check
+      let sizeInBytes = 0;
+      if (suggestion.size) {
+        const { value, unit } = suggestion.size;
+        const multipliers: Record<string, number> = {
+          B: 1,
+          KB: 1024,
+          MB: 1024 * 1024,
+          GB: 1024 * 1024 * 1024,
+          TB: 1024 * 1024 * 1024 * 1024,
+        };
+        sizeInBytes = value * (multipliers[unit] || 1);
+      }
+
       // Open file preview
       const previewableFile = {
         id: suggestion.id,
         name: suggestion.name,
         key: suggestion.key,
-        size: 0, // Size not available in search results
-        lastModified: new Date(), // Not available in search results
+        size: sizeInBytes,
+        lastModified: suggestion.lastModified || new Date(),
         type: suggestion.extension || getFileExtensionWithoutDot(suggestion.name),
       };
       openPreview(previewableFile, [previewableFile]);

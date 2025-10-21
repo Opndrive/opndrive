@@ -200,6 +200,7 @@ export default function SearchPage() {
         id: `file-${index}`,
         name: fileName,
         Key: file.Key,
+        Size: file.Size, // Preserve original Size in bytes for preview checks
         extension: extension as FileExtension,
         lastModified: file.LastModified || new Date(),
         size: formatBytes(file.Size),
