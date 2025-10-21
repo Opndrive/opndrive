@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
-import { Eye, Edit3, Trash2 } from 'lucide-react';
+import { Edit3, Trash2 } from 'lucide-react';
 import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDriveStore } from '@/context/data-context';
@@ -14,6 +14,7 @@ import {
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { FaFolderOpen } from 'react-icons/fa';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -136,7 +137,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     {
       id: 'open',
       label: 'Open',
-      icon: <Eye className="flex-shrink-0 h-4 w-4" />,
+      icon: <FaFolderOpen className="flex-shrink-0 h-4 w-4" />,
       onClick: (_folder) => {
         const folderUrl = generateFolderUrl({ prefix: folder.Prefix });
         router.push(folderUrl);

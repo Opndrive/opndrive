@@ -23,6 +23,7 @@ import { useDriveStore } from '@/context/data-context';
 import { useShare } from '@/context/share-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { MdOpenWith } from 'react-icons/md';
 
 interface FileOverflowMenuProps {
   file: FileItem;
@@ -108,7 +109,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
     {
       id: 'open',
       label: 'Open with',
-      icon: Eye,
+      icon: MdOpenWith,
       // This will be handled specially to show submenu
       onClick: () => {
         // Submenu handles the actual actions
