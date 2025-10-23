@@ -40,10 +40,6 @@ export const useSearch = () => {
 
     if (!entry) return null;
 
-    // Check if entry is stale (5 minutes)
-    const isStale = Date.now() - entry.timestamp > 5 * 60 * 1000;
-    if (isStale) return null;
-
     return entry.results;
   });
 
