@@ -84,7 +84,6 @@ export const useSearch = () => {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setLoading(false);
-      console.log('[useSearch] Search cancelled by user');
     }
   }, [setLoading]);
 
@@ -109,9 +108,6 @@ export const useSearch = () => {
         if (cachedResults) {
           // Cache hit - use cached results
           setCurrentQuery(query, normalizedPrefix);
-          console.log(
-            `[useSearch] Cache hit for query: "${query}" in prefix: "${normalizedPrefix}"`
-          );
           return;
         }
       }
@@ -131,9 +127,6 @@ export const useSearch = () => {
 
       // Capture the starting count BEFORE the search begins
       const startingCount = useSearchStore.getState().getRequestCount(query, normalizedPrefix);
-      console.log(
-        `[useSearch] Starting search with base count: ${startingCount}, nextToken: ${nextToken ? 'yes' : 'no'}`
-      );
 
       try {
         const results = await searchService.search(query, normalizedPrefix, nextToken, {
@@ -150,9 +143,7 @@ export const useSearch = () => {
             // Session count is the number of API calls in THIS search session
             // Add it to the starting count to get the cumulative total
             const totalCount = startingCount + sessionCount;
-            console.log(
-              `[useSearch] Request count update: session=${sessionCount}, starting=${startingCount}, total=${totalCount}`
-            );
+
             setRequestCount(query, normalizedPrefix, totalCount);
           },
           onResultsUpdate: (partialResults) => {
@@ -196,9 +187,6 @@ export const useSearch = () => {
               // Initial search - replace results
               setCachedSearchResults(query, normalizedPrefix, partialResults);
             }
-            console.log(
-              `[useSearch] Streamed ${partialResults.totalKeys} results (${partialResults.totalFiles} files, ${partialResults.totalFolders} folders)`
-            );
           },
         });
 
@@ -242,14 +230,9 @@ export const useSearch = () => {
           // Initial search or force refresh
           setCachedSearchResults(query, normalizedPrefix, results);
         }
-
-        console.log(
-          `[useSearch] ${nextToken ? 'Fetched more' : 'Completed search with'} ${results.totalKeys} results (${results.totalFiles} files, ${results.totalFolders} folders) for query: "${query}"`
-        );
       } catch (err) {
         // Don't show error if search was cancelled
         if (err instanceof Error && err.message === 'Search cancelled') {
-          console.log('[useSearch] Search was cancelled');
           return;
         }
 

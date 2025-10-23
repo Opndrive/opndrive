@@ -105,8 +105,6 @@ export function DashboardSidebar({
     }
   };
 
-  const handleCreateClick = () => {};
-
   return (
     <>
       {isOpen && isSmallScreen && (
@@ -136,7 +134,7 @@ export function DashboardSidebar({
           {isOpen && (
             <>
               {/* Create Button */}
-              <SidebarCreateButton onClick={handleCreateClick} />
+              <SidebarCreateButton />
 
               {/* Navigation Sections */}
               {sidebarSections.map((section, sectionIndex) => (

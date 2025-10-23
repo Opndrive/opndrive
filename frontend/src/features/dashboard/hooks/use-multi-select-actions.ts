@@ -31,7 +31,7 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
         id: file.id,
         name: file.name,
         key: file.Key,
-        size: file.size?.value || 0,
+        size: typeof file.Size === 'number' ? file.Size : 0,
         lastModified: file.lastModified,
         type: file.extension || getFileExtensionWithoutDot(file.name),
       }));

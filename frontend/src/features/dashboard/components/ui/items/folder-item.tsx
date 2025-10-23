@@ -6,7 +6,7 @@ import { FolderIcon, MoreVerticalIcon } from '@/shared/components/icons/folder-i
 import { HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
-import { Folder } from '@/features/dashboard/types/folder';
+import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
@@ -18,6 +18,8 @@ interface FolderItemProps {
   className?: string;
   index?: number; // For shift-select range
   allFolders?: Folder[]; // For range selection
+  additionalActions?: FolderMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions
 }
 
 const getFolderIcon = (_folder: Folder) => {
@@ -34,6 +36,8 @@ export const FolderItem: React.FC<FolderItemProps> = ({
   className = '',
   index = 0,
   allFolders = [],
+  additionalActions,
+  insertAdditionalActionsAfter,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -199,6 +203,8 @@ export const FolderItem: React.FC<FolderItemProps> = ({
         isOpen={isMenuOpen}
         onClose={handleMenuClose}
         anchorElement={menuAnchor}
+        additionalActions={additionalActions}
+        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
       />
     </>
   );

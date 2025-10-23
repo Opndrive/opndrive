@@ -114,6 +114,17 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
 
   const actions = getCreateMenuActions();
 
+  // Prevent body scroll when menu is open
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen && anchorElement) {
       const rect = anchorElement.getBoundingClientRect();
@@ -125,27 +136,41 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       let top = rect.bottom + padding;
       let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
-      // Check if menu would go off screen horizontally
+      // Horizontal positioning with boundary check
       if (left + menuWidth > window.innerWidth - padding) {
         left = rect.right - menuWidth;
         origin = 'top-right';
-      }
-
-      // Check if menu would go off screen vertically
-      if (top + menuHeight > window.innerHeight - padding) {
-        top = rect.top - menuHeight - padding;
-        origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
-      }
-
-      // Ensure menu doesn't go above viewport
-      if (top < padding) {
-        top = padding;
       }
 
       // Ensure menu doesn't go off left edge
       if (left < padding) {
         left = padding;
       }
+
+      // Ensure menu doesn't go off right edge
+      if (left + menuWidth > window.innerWidth - padding) {
+        left = window.innerWidth - menuWidth - padding;
+      }
+
+      // Vertical positioning with boundary check
+      if (top + menuHeight > window.innerHeight - padding) {
+        top = rect.top - menuHeight - padding;
+        origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
+      }
+
+      // Ensure menu doesn't go off top edge
+      if (top < padding) {
+        top = padding;
+      }
+
+      // Final check: ensure menu fits within viewport height
+      if (top + menuHeight > window.innerHeight - padding) {
+        top = window.innerHeight - menuHeight - padding;
+      }
+
+      // Clamp to ensure menu is always visible
+      top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
+      left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
 
       setPosition({ top, left });
       setOriginPosition(origin);
@@ -200,7 +225,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       <div
         ref={menuRef}
         className={`
-          fixed z-50 min-w-[200px] p-2
+          fixed z-50 min-w-[200px] max-h-[calc(100vh-16px)] overflow-y-auto p-2
           bg-secondary border border-border rounded-lg shadow-xl
           transition-all duration-200 ease-out
           ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}

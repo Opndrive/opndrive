@@ -270,17 +270,11 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
   cleanupStaleEntries: () => {
     set((state) => {
       const newCache = new Map(state.searchCache);
-      let removedCount = 0;
 
       for (const [key, entry] of newCache.entries()) {
         if (isEntryStale(entry)) {
           newCache.delete(key);
-          removedCount++;
         }
-      }
-
-      if (removedCount > 0) {
-        console.log(`[SearchStore] Cleaned up ${removedCount} stale cache entries`);
       }
 
       return { searchCache: newCache };

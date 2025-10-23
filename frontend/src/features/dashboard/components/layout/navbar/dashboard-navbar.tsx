@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu } from 'lucide-react';
+import { Menu, Search, ArrowLeft } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -9,6 +9,8 @@ import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
 import { useEffect, useState } from 'react';
 import { AriaLabel } from '@/shared/components';
+import { SearchBar } from '../../views/search/search-bar';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 interface DashboardNavbarProps {
   toggleSidebar: () => void;
@@ -17,6 +19,9 @@ interface DashboardNavbarProps {
 export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
   const { isSearchHidden } = useScroll();
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showMobileSearchOverlay, setShowMobileSearchOverlay] = useState(false);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     let ticking = false;
@@ -36,6 +41,31 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Prevent body scroll when mobile search overlay is open
+  useEffect(() => {
+    if (showMobileSearchOverlay) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showMobileSearchOverlay]);
+
+  // Close mobile search overlay when route changes (e.g., clicking "View all results")
+  useEffect(() => {
+    setShowMobileSearchOverlay(false);
+  }, [pathname, searchParams]);
+
+  const openMobileSearchOverlay = () => {
+    setShowMobileSearchOverlay(true);
+  };
+
+  const closeMobileSearchOverlay = () => {
+    setShowMobileSearchOverlay(false);
+  };
 
   return (
     <header
@@ -131,10 +161,25 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               </h1>
             </Link>
           </div>
-          <div
-            className={`transition-all duration-300 ${showMobileSearch ? 'scale-100' : 'scale-90'}`}
-          >
-            <NavbarUserProfile />
+          <div className="flex items-center gap-2">
+            {/* Search Icon Button - Always accessible */}
+            <AriaLabel label="Search files and folders" position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={openMobileSearchOverlay}
+                className={`text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-300 ${
+                  showMobileSearch ? 'h-10 w-10' : 'h-9 w-9'
+                }`}
+              >
+                <Search size={18} />
+              </Button>
+            </AriaLabel>
+            <div
+              className={`transition-all duration-300 ${showMobileSearch ? 'scale-100' : 'scale-90'}`}
+            >
+              <NavbarUserProfile />
+            </div>
           </div>
         </div>
 
@@ -166,6 +211,38 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           </div>
         </div>
       </div>
+
+      {/* Mobile Search Overlay - Full Screen*/}
+      {showMobileSearchOverlay && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm md:hidden">
+          {/* Overlay Header */}
+          <div className="flex items-center gap-3 p-4 border-b border-border bg-secondary">
+            <AriaLabel label="Close search" position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={closeMobileSearchOverlay}
+                className="flex-shrink-0 h-10 w-10 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <ArrowLeft size={20} />
+              </Button>
+            </AriaLabel>
+            <div className="flex-1">
+              <SearchBar variant="navbar" className="w-full" autoFocus />
+            </div>
+          </div>
+
+          {/* Overlay Content - Search results will appear via SearchBar's dropdown */}
+          <div className="h-full overflow-y-auto">
+            {/* Empty state or instructions */}
+            <div className="p-6 text-center text-muted-foreground">
+              <Search className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">Search your files and folders</p>
+              <p className="text-xs opacity-60 mt-1">Start typing to see results</p>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

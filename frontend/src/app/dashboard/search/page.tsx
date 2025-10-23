@@ -1,8 +1,8 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState, Fragment } from 'react';
-import { Search, ArrowLeft, X } from 'lucide-react';
+import { useEffect, useState, Fragment, useMemo } from 'react';
+import { Search, ArrowLeft, X, FolderOpen, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
 import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
@@ -10,12 +10,10 @@ import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
 import { FolderItem } from '@/features/dashboard/components/ui';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
-import { FileSkeletonGridList } from '@/features/dashboard/components/ui/skeletons/file-skeleton';
 import { FolderSkeletonList } from '@/features/dashboard/components/ui/skeletons/folder-skeleton';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import { useChunkedItems, formatItemCount } from '@/hooks/use-chunked-items';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
-import { useFilePreview } from '@/context/file-preview-context';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
 import {
@@ -24,8 +22,15 @@ import {
 } from '@/shared/components/ui/credit-warning-dialog';
 import { useDriveStore } from '@/context/data-context';
 import { SearchBreadcrumb } from '@/features/dashboard/components/views/search/search-breadcrumb';
-import type { FileItem, FileExtension } from '@/features/dashboard/types/file';
-import type { Folder } from '@/features/dashboard/types/folder';
+import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
+import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
+import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
+import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { ClickTooltip } from '@/shared/components/click-tooltip';
+import { useCallback } from 'react';
+import type { FileItem, FileExtension, FileMenuAction } from '@/features/dashboard/types/file';
+import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import type { _Object } from '@aws-sdk/client-s3';
 
 // Import formatBytes function from data-context
@@ -51,7 +56,6 @@ export default function SearchPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const query = searchParams.get('q') || '';
-  const { openPreview } = useFilePreview();
   const { layout: viewMode } = useCurrentLayout();
   const { currentPrefix } = useDriveStore();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
@@ -68,6 +72,10 @@ export default function SearchPage() {
     requestCount,
   } = useSearch();
 
+  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+  const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
+    useMultiShareDialog();
+
   const handleCreditWarningConfirm = () => {
     if (pendingSearchQuery) {
       search(pendingSearchQuery);
@@ -81,13 +89,23 @@ export default function SearchPage() {
     setPendingSearchQuery('');
   };
 
+  // Handler for refreshing search results
+  const refreshSearchResults = useCallback(async () => {
+    if (!query.trim()) return;
+    try {
+      await invalidateCurrentQuery();
+      await search(query);
+    } catch (error) {
+      console.error('Failed to refresh search results:', error);
+    }
+  }, [query, invalidateCurrentQuery, search]);
+
   const handleSync = async () => {
     if (isSyncing || !query.trim()) return;
 
     setIsSyncing(true);
     try {
-      // Use the new invalidateCurrentQuery to clear cache and refetch
-      invalidateCurrentQuery();
+      await refreshSearchResults();
     } catch (error) {
       console.error('Failed to sync search results:', error);
     } finally {
@@ -107,6 +125,55 @@ export default function SearchPage() {
       }
     }
   }, [query]); // Only depend on query, not search function
+
+  // Clear selection when returning to search page
+  useEffect(() => {
+    clearSelection();
+  }, []); // Empty dependency array - runs once on mount
+
+  // Clear selection when query changes
+  useEffect(() => {
+    clearSelection();
+  }, [query, clearSelection]);
+
+  // Clear selection when multi-share dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      clearSelection();
+    }
+  }, [isOpen, clearSelection]);
+
+  // Clear selection when clicking outside - only for single item selection
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+
+      // Only clear if exactly one item is selected
+      if (
+        getSelectionCount() === 1 &&
+        !target.closest('[data-file-item]') &&
+        !target.closest('[data-folder-item]') &&
+        !target.closest('[data-multi-select-toolbar]')
+      ) {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [clearSelection, getSelectionCount]);
+
+  // Handle ESC key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clearSelection]);
 
   // Convert search results to FileItem and Folder objects
   const folders: Folder[] =
@@ -134,6 +201,7 @@ export default function SearchPage() {
         id: `file-${index}`,
         name: fileName,
         Key: file.Key,
+        Size: file.Size, // Preserve original Size in bytes for preview checks
         extension: extension as FileExtension,
         lastModified: file.LastModified || new Date(),
         size: formatBytes(file.Size),
@@ -169,16 +237,13 @@ export default function SearchPage() {
     router.back();
   };
 
-  const handleFileClick = (file: FileItem) => {
-    const previewableFile = {
-      id: file.id,
-      name: file.name,
-      key: file.Key,
-      size: file.size?.value || 0,
-      lastModified: file.lastModified,
-      type: file.extension || getFileExtensionWithoutDot(file.name),
-    };
-    openPreview(previewableFile, [previewableFile]);
+  const handleFileClick = (_file: FileItem) => {
+    // Only used by FileItemMobile - component handles its own preview
+    // This is just a passthrough, the actual opening is done internally
+  };
+
+  const handleFileAction = (_action: string, _file: FileItem) => {
+    // Placeholder for file actions from mobile menu
   };
 
   const handleFolderClick = (folder: Folder) => {
@@ -192,6 +257,66 @@ export default function SearchPage() {
       search(query, searchResults.nextToken);
     }
   };
+
+  // Helper function to get parent folder path from file Key
+  const getParentFolderPath = useCallback((fileKey: string): string => {
+    if (!fileKey) return '';
+    const pathParts = fileKey.split('/').filter(Boolean);
+    pathParts.pop(); // Remove filename or folder name
+    return pathParts.join('/');
+  }, []);
+
+  // Create "Show in folder" action for files in search results
+  const createShowInFolderAction = useCallback(
+    (file: FileItem): FileMenuAction => ({
+      id: 'show-in-folder',
+      label: 'Show in folder',
+      icon: FolderOpen,
+      onClick: () => {
+        const folderPath = getParentFolderPath(file.Key || '');
+        if (folderPath) {
+          const folderUrl = generateFolderUrl({ prefix: folderPath });
+          router.push(folderUrl);
+        }
+      },
+    }),
+    [getParentFolderPath, router]
+  );
+
+  // Create "Show in folder" action for folders in search results
+  const createFolderShowInParentAction = useCallback(
+    (folder: Folder): FolderMenuAction => ({
+      id: 'show-in-folder',
+      label: 'Show in folder',
+      icon: <FolderOpen size={16} className="flex-shrink-0" />,
+      onClick: () => {
+        const folderPath = getParentFolderPath(folder.Prefix || '');
+        if (folderPath) {
+          const folderUrl = generateFolderUrl({ prefix: folderPath });
+          router.push(folderUrl);
+        }
+      },
+    }),
+    [getParentFolderPath, router]
+  );
+
+  // Create additional actions array for file items in search
+  const searchFileActions = useMemo(
+    () =>
+      (file: FileItem): FileMenuAction[] => {
+        return [createShowInFolderAction(file)];
+      },
+    [createShowInFolderAction]
+  );
+
+  // Create additional actions array for folder items in search
+  const searchFolderActions = useMemo(
+    () =>
+      (folder: Folder): FolderMenuAction[] => {
+        return [createFolderShowInParentAction(folder)];
+      },
+    [createFolderShowInParentAction]
+  );
 
   if (!query) {
     return (
@@ -245,25 +370,15 @@ export default function SearchPage() {
 
           {/* Breadcrumb Navigation - Show current location */}
           <div className="mt-3 pb-3 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">Current Location:</span>
-              <SearchBreadcrumb prefix={currentPrefix} />
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium flex-shrink-0">
+                Current Location:
+              </span>
+              <div className="min-w-0">
+                <SearchBreadcrumb prefix={currentPrefix} />
+              </div>
             </div>
           </div>
-
-          {/* API Request Count - Show only when we have results or are loading */}
-          {(totalDisplayed > 0 || isLoading) && (requestCount ?? 0) > 0 && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-primary/60" />
-                <span>
-                  {requestCount} API {requestCount === 1 ? 'request' : 'requests'} made
-                </span>
-              </div>
-              <span>·</span>
-              <span>{searchResults?.totalKeys || 0} results loaded</span>
-            </div>
-          )}
 
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
@@ -275,9 +390,23 @@ export default function SearchPage() {
                 </span>
               ) : totalDisplayed > 0 ? (
                 <span className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">{query}</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span>{formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}</span>
+                  <span className="font-medium text-foreground hidden sm:inline">{query}</span>
+                  <span className="text-muted-foreground hidden sm:inline">·</span>
+                  <span className="text-xs sm:text-sm">
+                    {formatItemCount(totalDisplayed, canLoadMore || canLoadMoreChunks)}
+                  </span>
+                  {/* Info icon with API request count tooltip */}
+                  {(requestCount ?? 0) > 0 && (
+                    <ClickTooltip
+                      label={`${requestCount} API ${requestCount === 1 ? 'request' : 'requests'} made`}
+                      position="top"
+                      displayDuration={1500}
+                    >
+                      <div className="inline-flex items-center justify-center p-0.5 rounded hover:bg-secondary/50 transition-colors">
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-pointer transition-colors" />
+                      </div>
+                    </ClickTooltip>
+                  )}
                 </span>
               ) : (
                 `No results for "${query}"`
@@ -301,40 +430,49 @@ export default function SearchPage() {
               )}
 
               {/* Sync Button */}
-              <button
-                onClick={handleSync}
-                disabled={isSyncing || !query.trim() || isLoading}
-                className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
-                title="Refresh search results"
+              <AriaLabel
+                label={isSyncing ? 'Refreshing search results...' : 'Refresh search results'}
+                position="bottom"
               >
-                <HiOutlineRefresh
-                  className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
-                    isSyncing ? 'animate-spin' : ''
-                  }`}
-                />
-              </button>
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing || !query.trim() || isLoading}
+                  className="flex items-center justify-center p-2 rounded-lg bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <HiOutlineRefresh
+                    className={`w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${
+                      isSyncing ? 'animate-spin' : ''
+                    }`}
+                  />
+                </button>
+              </AriaLabel>
 
               {/* Layout Toggle */}
               <LayoutToggle />
             </div>
           </div>
+
+          {/* Multi-select toolbar */}
+          <div className="relative h-0 mt-2">
+            <div className="absolute top-0 left-0 right-0 z-20 bg-background">
+              <MultiSelectToolbar
+                openMultiShareDialog={openMultiShareDialog}
+                onDeleteSuccess={refreshSearchResults}
+                showLocationActions={true}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto pt-2 ">
           {isLoading && totalDisplayed === 0 ? (
             // Show skeleton loaders during initial load or cache miss
-            <div className="mt-4 px-2">
+            <div className="mt-4">
               {/* Skeleton for folders */}
               <div className="mb-8">
                 <div className="h-4 w-32 bg-muted/40 rounded mb-4 animate-pulse" />
                 <FolderSkeletonList count={3} />
-              </div>
-
-              {/* Skeleton for files */}
-              <div>
-                <div className="h-4 w-24 bg-muted/40 rounded mb-4 animate-pulse" />
-                <FileSkeletonGridList count={8} layout={viewMode} />
               </div>
             </div>
           ) : totalDisplayed === 0 ? (
@@ -350,19 +488,27 @@ export default function SearchPage() {
             <div className="mt-2">
               {/* Folders Section */}
               {displayedFolders.length > 0 && (
-                <div className="mb-8">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
+                <div className="mb-8 px-2">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4">
                     Folders ({folders.length})
                   </h3>
                   <div
                     className={
                       viewMode === 'grid'
-                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'
+                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-1'
                         : 'space-y-1'
                     }
                   >
-                    {displayedFolders.map((folder: Folder) => (
-                      <FolderItem key={folder.Prefix} folder={folder} onClick={handleFolderClick} />
+                    {displayedFolders.map((folder: Folder, index: number) => (
+                      <FolderItem
+                        key={folder.Prefix}
+                        folder={folder}
+                        allFolders={displayedFolders}
+                        index={index}
+                        onClick={handleFolderClick}
+                        additionalActions={searchFolderActions(folder)}
+                        insertAdditionalActionsAfter="view"
+                      />
                     ))}
                   </div>
 
@@ -375,20 +521,22 @@ export default function SearchPage() {
 
               {/* Files Section */}
               {files.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-4 px-2">
+                <div className="px-2">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4">
                     Files ({files.length})
                   </h3>
                   {viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {displayedFiles.map((file: FileItem) => (
-                        <div
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-1">
+                      {displayedFiles.map((file: FileItem, index: number) => (
+                        <FileItemGrid
                           key={file.Key}
-                          onClick={() => handleFileClick(file)}
-                          className="cursor-pointer"
-                        >
-                          <FileItemGrid file={file} _onAction={() => {}} />
-                        </div>
+                          file={file}
+                          allFiles={displayedFiles}
+                          index={index}
+                          _onAction={() => {}}
+                          additionalActions={searchFileActions(file)}
+                          insertAdditionalActionsAfter="open"
+                        />
                       ))}
                     </div>
                   ) : (
@@ -419,10 +567,15 @@ export default function SearchPage() {
 
                         {displayedFiles.map((file: FileItem, index: number) => (
                           <Fragment key={file.Key}>
-                            <div onClick={() => handleFileClick(file)} className="cursor-pointer">
-                              <FileItemList file={file} allFiles={files} _onAction={() => {}} />
-                            </div>
-                            {/* Professional separator */}
+                            <FileItemList
+                              file={file}
+                              allFiles={displayedFiles}
+                              index={index}
+                              _onAction={() => {}}
+                              additionalActions={searchFileActions(file)}
+                              insertAdditionalActionsAfter="open"
+                            />
+                            {/* separator */}
                             {index < displayedFiles.length - 1 && (
                               <div className="mx-4" aria-hidden="true">
                                 <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
@@ -434,7 +587,7 @@ export default function SearchPage() {
 
                       {/* Mobile List View */}
                       <div className="sm:hidden">
-                        <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                        <div className=" py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
                           Files
                         </div>
                         <div className="divide-y divide-border/30">
@@ -442,10 +595,12 @@ export default function SearchPage() {
                             <FileItemMobile
                               key={file.Key}
                               file={file}
-                              allFiles={files}
+                              allFiles={displayedFiles}
                               index={index}
                               onFileClick={handleFileClick}
-                              _onAction={() => {}}
+                              _onAction={handleFileAction}
+                              additionalActions={searchFileActions(file)}
+                              insertAdditionalActionsAfter="open"
                             />
                           ))}
                         </div>
@@ -515,6 +670,14 @@ export default function SearchPage() {
           )}
         </div>
       </div>
+
+      {/* Multi-share dialog */}
+      <MultiShareDialog
+        files={currentFiles}
+        isOpen={isOpen}
+        onClose={closeMultiShareDialog}
+        generateShareLinks={generateShareLinks}
+      />
 
       {/* Credit Warning Dialog */}
       <CreditWarningDialog

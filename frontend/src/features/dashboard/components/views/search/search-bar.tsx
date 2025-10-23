@@ -34,12 +34,14 @@ interface SearchBarProps {
   className?: string;
   placeholder?: string;
   variant?: 'default' | 'navbar';
+  autoFocus?: boolean;
 }
 
 export function SearchBar({
   className,
   placeholder = 'Search files and folders...',
   variant = 'default',
+  autoFocus = false,
 }: SearchBarProps) {
   const router = useRouter();
   const { openPreview } = useFilePreview();
@@ -74,6 +76,17 @@ export function SearchBar({
       }
     };
   }, []);
+
+  // Auto-focus input if requested
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
 
   // Format bytes utility function
   const formatBytes = (bytes: number | undefined): { value: number; unit: string } => {
@@ -262,13 +275,27 @@ export function SearchBar({
   // Handle suggestion click
   const handleSuggestionClick = (suggestion: SearchSuggestion) => {
     if (suggestion.type === 'file') {
+      // Convert size back to bytes for preview size check
+      let sizeInBytes = 0;
+      if (suggestion.size) {
+        const { value, unit } = suggestion.size;
+        const multipliers: Record<string, number> = {
+          B: 1,
+          KB: 1024,
+          MB: 1024 * 1024,
+          GB: 1024 * 1024 * 1024,
+          TB: 1024 * 1024 * 1024 * 1024,
+        };
+        sizeInBytes = value * (multipliers[unit] || 1);
+      }
+
       // Open file preview
       const previewableFile = {
         id: suggestion.id,
         name: suggestion.name,
         key: suggestion.key,
-        size: 0, // Size not available in search results
-        lastModified: new Date(), // Not available in search results
+        size: sizeInBytes,
+        lastModified: suggestion.lastModified || new Date(),
         type: suggestion.extension || getFileExtensionWithoutDot(suggestion.name),
       };
       openPreview(previewableFile, [previewableFile]);
@@ -516,7 +543,7 @@ export function SearchBar({
               }
               ${
                 variant === 'navbar'
-                  ? 'py-2.5 pl-12 text-sm w-full min-w-[500px] max-w-[650px] shadow-sm'
+                  ? 'py-2.5 pl-12 text-sm w-full min-w-0 md:min-w-[500px] max-w-[650px] shadow-sm'
                   : 'py-3.5 pl-12 text-base shadow-sm'
               }
               ${query ? 'pr-10' : 'pr-4'}

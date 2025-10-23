@@ -42,6 +42,9 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   // Check if we're on the settings page
   const isSettingsPage = pathname?.startsWith('/dashboard/settings');
 
+  // Check if we're on the preview page - should bypass all dashboard UI
+  const isPreviewPage = pathname?.startsWith('/dashboard/preview');
+
   // Sidebar localStorage key without role
   const lsKey = useMemo(() => `sidebarOpen_global`, []);
 
@@ -79,6 +82,16 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-pulse text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // If we're on preview page, render minimal layout (no navbar, no sidebar, no padding)
+  if (isPreviewPage) {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-background">
+        <LoadingBar />
+        {children}
       </div>
     );
   }

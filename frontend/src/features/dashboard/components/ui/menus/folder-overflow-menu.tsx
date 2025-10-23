@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
-import { Eye, Edit3, Trash2 } from 'lucide-react';
+import { Edit3, Trash2 } from 'lucide-react';
 import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDriveStore } from '@/context/data-context';
@@ -14,6 +14,7 @@ import {
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { FaFolderOpen } from 'react-icons/fa';
 
 interface OverflowMenuProps {
   folder: Folder;
@@ -21,6 +22,8 @@ interface OverflowMenuProps {
   onClose: () => void;
   anchorElement: HTMLElement | null;
   className?: string;
+  additionalActions?: FolderMenuAction[]; // Additional menu actions
+  insertAdditionalActionsAfter?: string; // Where to insert additional actions (default: 'open')
 }
 
 export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
@@ -29,6 +32,8 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   onClose,
   anchorElement,
   className = '',
+  additionalActions = [],
+  insertAdditionalActionsAfter = 'open',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -130,9 +135,9 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
 
   const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
     {
-      id: 'view',
-      label: 'View',
-      icon: <Eye className="flex-shrink-0 h-4 w-4" />,
+      id: 'open',
+      label: 'Open',
+      icon: <FaFolderOpen className="flex-shrink-0 h-4 w-4" />,
       onClick: (_folder) => {
         const folderUrl = generateFolderUrl({ prefix: folder.Prefix });
         router.push(folderUrl);
@@ -158,7 +163,42 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     },
   ];
 
-  const actions = getDefaultMenuActions(folder);
+  // Merge additional actions with default actions
+  const actions = useMemo(() => {
+    if (additionalActions.length === 0) {
+      return getDefaultMenuActions(folder);
+    }
+
+    const defaultActions = getDefaultMenuActions(folder);
+    const insertIndex = defaultActions.findIndex(
+      (action) => action.id === insertAdditionalActionsAfter
+    );
+
+    if (insertIndex === -1) {
+      // If insertion point not found, append at the beginning
+      return [...additionalActions, ...defaultActions];
+    }
+
+    // Insert after the specified action
+    const result = [
+      ...defaultActions.slice(0, insertIndex + 1),
+      ...additionalActions,
+      ...defaultActions.slice(insertIndex + 1),
+    ];
+
+    return result;
+  }, [folder, additionalActions, insertAdditionalActionsAfter]);
+
+  // Prevent body scroll when menu is open
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && anchorElement) {
@@ -171,27 +211,41 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       let top = rect.top;
       let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
 
+      // Horizontal positioning with boundary check
       if (left + menuWidth > window.innerWidth - padding) {
         left = rect.left - menuWidth - padding;
         origin = 'top-right';
       }
 
+      // Ensure menu doesn't go off left edge
+      if (left < padding) {
+        left = padding;
+      }
+
+      // Ensure menu doesn't go off right edge
+      if (left + menuWidth > window.innerWidth - padding) {
+        left = window.innerWidth - menuWidth - padding;
+      }
+
+      // Vertical positioning with boundary check
       if (top + menuHeight > window.innerHeight - padding) {
         top = rect.bottom - menuHeight;
         origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
-
-        if (top < padding) {
-          top = window.innerHeight - menuHeight - padding;
-        }
       }
 
+      // Ensure menu doesn't go off top edge
       if (top < padding) {
         top = padding;
       }
 
-      if (left < padding) {
-        left = padding;
+      // Final check: ensure menu fits within viewport height
+      if (top + menuHeight > window.innerHeight - padding) {
+        top = window.innerHeight - menuHeight - padding;
       }
+
+      // Clamp to ensure menu is always visible
+      top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
+      left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
 
       setPosition({ top, left });
       setOriginPosition(origin);
@@ -244,7 +298,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       <div
         ref={menuRef}
         className={`
-          fixed z-50 min-w-[200px] p-2
+          fixed z-50 min-w-[200px] max-h-[calc(100vh-16px)] overflow-y-auto p-2
           bg-secondary border border-border rounded-lg shadow-xl
           transition-all duration-200 ease-out
           ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
