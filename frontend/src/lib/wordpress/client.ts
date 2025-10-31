@@ -4,13 +4,28 @@
  * Ensures WordPress endpoint is never exposed to the client
  */
 
+import { isBlogEnabled, requiresWordPressCredentials } from '@/config/features';
+
 // Lazy evaluation - only check when actually used
 const getWordPressConfig = () => {
+  // Check if blog feature is enabled
+  if (!isBlogEnabled()) {
+    throw new Error('Blog feature is disabled. Set NEXT_PUBLIC_ENABLE_BLOG=true to enable it.');
+  }
+
+  // Only require credentials if using self-hosted WordPress
+  if (!requiresWordPressCredentials()) {
+    throw new Error('WordPress is not configured for this deployment.');
+  }
+
   const WORDPRESS_API_URL = process.env.WORDPRESS_GRAPHQL_URL || '';
   const WP_AUTH_TOKEN = process.env.WORDPRESS_AUTH_TOKEN;
 
   if (!WORDPRESS_API_URL) {
-    throw new Error('WORDPRESS_GRAPHQL_URL environment variable is not defined');
+    throw new Error(
+      'WORDPRESS_GRAPHQL_URL environment variable is not defined. ' +
+        'Either set it or disable the blog feature with NEXT_PUBLIC_ENABLE_BLOG=false'
+    );
   }
 
   return { WORDPRESS_API_URL, WP_AUTH_TOKEN };
@@ -50,6 +65,11 @@ export async function fetchGraphQL<T>(
   // Ensure this only runs on the server
   if (typeof window !== 'undefined') {
     throw new Error('WordPress GraphQL client can only be used server-side');
+  }
+
+  // Silent fail if blog is disabled - callers should check isBlogEnabled() first
+  if (!isBlogEnabled()) {
+    throw new Error('Blog feature is disabled');
   }
 
   const { WORDPRESS_API_URL, WP_AUTH_TOKEN } = getWordPressConfig();

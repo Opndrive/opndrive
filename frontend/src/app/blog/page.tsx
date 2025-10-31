@@ -7,6 +7,7 @@ import CTASection from '@/features/landing-page/components/cta-section';
 import { BlogPagination, FeaturedBlogPost } from '@/components/blog';
 import { StructuredData } from '@/components/seo';
 import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
+import { isBlogEnabled } from '@/config/features';
 
 // Revalidate every 60 seconds
 export const revalidate = 60;
@@ -79,9 +80,22 @@ interface BlogPageProps {
 }
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
+  // Early return if blog is disabled - let layout handle 404
+  if (!isBlogEnabled()) {
+    return null;
+  }
+
   const params = await searchParams;
   const currentPage = parseInt(params.page || '1', 10);
-  const allPosts = await getRecentPosts(50); // Fetch more posts for pagination
+
+  // Fetch posts with error handling
+  let allPosts: Awaited<ReturnType<typeof getRecentPosts>> = [];
+  try {
+    allPosts = await getRecentPosts(50); // Fetch more posts for pagination
+  } catch (error) {
+    console.error('Error fetching blog posts:', error);
+    allPosts = [];
+  }
 
   // Separate featured post (latest)
   const featuredPost = allPosts[0];

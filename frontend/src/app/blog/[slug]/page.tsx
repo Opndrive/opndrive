@@ -17,14 +17,24 @@ import {
   optimizeDescription,
   generateKeywords,
 } from '@/lib/seo';
+import { isBlogEnabled } from '@/config/features';
 
 // Revalidate every 60 seconds
 export const revalidate = 60;
 
 // Generate static params for all blog posts
 export async function generateStaticParams() {
-  const slugs = await getAllPostSlugs();
-  return slugs.map((slug) => ({ slug }));
+  if (!isBlogEnabled()) {
+    return [];
+  }
+
+  try {
+    const slugs = await getAllPostSlugs();
+    return slugs.map((slug) => ({ slug }));
+  } catch (error) {
+    console.error('Error generating static params for blog posts:', error);
+    return [];
+  }
 }
 
 // Generate metadata for each post
@@ -33,8 +43,24 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
+  // Early return if blog is disabled
+  if (!isBlogEnabled()) {
+    return {
+      title: 'Blog Not Available',
+    };
+  }
+
   const { slug } = await params;
-  const post = await getPostBySlug(slug);
+
+  let post;
+  try {
+    post = await getPostBySlug(slug);
+  } catch (error) {
+    console.error('Error fetching blog post metadata:', error);
+    return {
+      title: 'Post Not Found',
+    };
+  }
 
   if (!post) {
     return {
@@ -138,15 +164,33 @@ export async function generateMetadata({
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
+  // Early return if blog is disabled - let layout handle 404
+  if (!isBlogEnabled()) {
+    return null;
+  }
+
   const { slug } = await params;
-  const post = await getPostBySlug(slug);
+
+  let post;
+  try {
+    post = await getPostBySlug(slug);
+  } catch (error) {
+    console.error('Error fetching blog post:', error);
+    notFound();
+  }
 
   if (!post) {
     notFound();
   }
 
   // Fetch related posts
-  const relatedPosts = await getRelatedPosts(slug, 3);
+  let relatedPosts: Awaited<ReturnType<typeof getRelatedPosts>> = [];
+  try {
+    relatedPosts = await getRelatedPosts(slug, 3);
+  } catch (error) {
+    console.error('Error fetching related posts:', error);
+    relatedPosts = [];
+  }
 
   // Generate structured data for SEO
   const articleSchema = generateArticleSchema(post);
