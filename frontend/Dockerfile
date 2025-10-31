@@ -1,5 +1,9 @@
 FROM node:22-alpine AS builder
 
+ARG BLOG_STATUS="false"
+
+ENV NEXT_PUBLIC_ENABLE_BLOG=$BLOG_STATUS
+
 RUN npm install -g pnpm
 
 WORKDIR /app
