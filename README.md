@@ -184,14 +184,6 @@ pnpm test
 pnpm lint
 ```
 
-## Deployment
-
-### Docker (Coming Soon)
-
-```bash
-docker compose up
-```
-
 ### Vercel/Netlify
 
 Opndrive frontend can be deployed to any platform that supports Next.js
