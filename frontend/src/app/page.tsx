@@ -57,7 +57,8 @@ export default function LandingPage() {
       if (stored) {
         router.push('/dashboard');
       } else {
-        router.push('/connect');
+        const loginSession = localStorage.getItem('opndrive_login_session');
+        router.push(loginSession ? '/connect' : '/login');
       }
     } catch (error) {
       console.error('Error during navigation:', error);
