@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button, CustomDropdown, type DropdownOption } from '@/shared/components/ui';
@@ -69,6 +69,13 @@ export default function ConnectPage() {
   ];
 
   const [copiedCode, setCopiedCode] = useState(false);
+
+  useEffect(() => {
+    const isLoggedIn = localStorage.getItem('opndrive_login_session');
+    if (!isLoggedIn) {
+      router.push('/login');
+    }
+  }, [router]);
 
   // Provider configurations
   const providerConfigs = {
