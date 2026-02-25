@@ -10,6 +10,7 @@ import {
   createCodeChallenge,
   generateRandomString,
   normalizeCognitoDomain,
+  resolveCognitoRedirectUri,
   saveOauthState,
   savePkceVerifier,
 } from '@/lib/cognito-auth';
@@ -21,7 +22,9 @@ export default function LoginPage() {
 
   const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? '';
   const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
-  const cognitoRedirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? '';
+  const cognitoRedirectUri = resolveCognitoRedirectUri(
+    process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? ''
+  );
   const cognitoLoginUrl = process.env.NEXT_PUBLIC_COGNITO_LOGIN_URL ?? '';
   // Use authorization code flow by default because many Cognito app clients disable
   // the implicit flow (`token`) in production.
