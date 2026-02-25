@@ -253,6 +253,13 @@ NEXT_PUBLIC_COGNITO_SCOPE=openid email profile
 `/auth/callback` supports both implicit token callbacks and authorization-code +
 PKCE exchanges.
 
+Create `frontend/.env.local` from `frontend/.env.example` and set real values:
+
+```bash
+cd frontend
+cp .env.example .env.local
+```
+
 ## Debugging
 
 ### Common Issues and Solutions
