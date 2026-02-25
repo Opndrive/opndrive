@@ -90,9 +90,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserCreds(creds);
             setApiS3(api);
 
-            // Only redirect to dashboard if user is on home page/connect page
-            // Otherwise, stay on current route (preserve the URL after refresh)
-            if (pathname === '/' || pathname === '/connect') {
+            // Only redirect to dashboard if user is on home page.
+            // Keep users on /connect so they can (re)configure credentials after login.
+            if (pathname === '/') {
               router.push('/dashboard');
             }
           } else {
