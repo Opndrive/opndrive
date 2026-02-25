@@ -22,7 +22,9 @@ export default function LoginPage() {
   const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? '';
   const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
   const cognitoRedirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? '';
-  const cognitoResponseType = process.env.NEXT_PUBLIC_COGNITO_RESPONSE_TYPE ?? 'token';
+  // Use authorization code flow by default because many Cognito app clients disable
+  // the implicit flow (`token`) in production.
+  const cognitoResponseType = process.env.NEXT_PUBLIC_COGNITO_RESPONSE_TYPE ?? 'code';
   const cognitoScope = process.env.NEXT_PUBLIC_COGNITO_SCOPE ?? 'openid email profile';
 
   const isConfigured = Boolean(cognitoDomain && cognitoClientId && cognitoRedirectUri);
@@ -33,7 +35,7 @@ export default function LoginPage() {
       return null;
     }
 
-    const url = new URL('/login', normalizeCognitoDomain(cognitoDomain));
+    const url = new URL('/oauth2/authorize', normalizeCognitoDomain(cognitoDomain));
     url.searchParams.set('client_id', cognitoClientId);
     url.searchParams.set('response_type', cognitoResponseType);
     url.searchParams.set('scope', cognitoScope);
