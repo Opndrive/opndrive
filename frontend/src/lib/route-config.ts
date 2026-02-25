@@ -1,7 +1,13 @@
 //  Central place for route visibility rules.
 
 //  EXACT public routes – always accessible, no auth guard needed
-export const PUBLIC_ROUTES = ['/', '/login', '/signup', '/forgot-password'] as const;
+export const PUBLIC_ROUTES = [
+  '/',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/auth/callback',
+] as const;
 
 export type PublicRoute = (typeof PUBLIC_ROUTES)[number];
 
