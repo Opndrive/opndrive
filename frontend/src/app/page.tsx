@@ -1,11 +1,20 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { hasValidLoginSession } from '@/lib/auth-session';
 
 export default function LandingPage() {
-  const cognitoLoginUrl = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI;
+  const router = useRouter();
 
-  if (cognitoLoginUrl) {
-    redirect(cognitoLoginUrl);
-  }
+  useEffect(() => {
+    if (hasValidLoginSession()) {
+      router.replace('/connect');
+      return;
+    }
 
-  redirect('/login');
+    router.replace('/login');
+  }, [router]);
+
+  return null;
 }
