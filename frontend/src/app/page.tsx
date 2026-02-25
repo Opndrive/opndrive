@@ -12,6 +12,7 @@ import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
+import { hasValidLoginSession } from '@/lib/auth-session';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -57,8 +58,7 @@ export default function LandingPage() {
       if (stored) {
         router.push('/dashboard');
       } else {
-        const loginSession = localStorage.getItem('opndrive_login_session');
-        router.push(loginSession ? '/connect' : '/login');
+        router.push(hasValidLoginSession() ? '/connect' : '/login');
       }
     } catch (error) {
       console.error('Error during navigation:', error);
