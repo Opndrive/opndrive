@@ -6,7 +6,12 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/shared/components/ui';
 import { saveLoginSession } from '@/lib/auth-session';
-import { consumeOauthState, consumePkceVerifier, exchangeCodeForTokens } from '@/lib/cognito-auth';
+import {
+  consumeOauthState,
+  consumePkceVerifier,
+  exchangeCodeForTokens,
+  resolveCognitoRedirectUri,
+} from '@/lib/cognito-auth';
 
 type CallbackStatus = 'processing' | 'error';
 
@@ -63,7 +68,9 @@ export default function AuthCallbackPage() {
       if (authorizationCode && (!idToken || !accessToken)) {
         const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? '';
         const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
-        const cognitoRedirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? '';
+        const cognitoRedirectUri = resolveCognitoRedirectUri(
+          process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? ''
+        );
 
         if (!cognitoDomain || !cognitoClientId || !cognitoRedirectUri) {
           setStatus('error');

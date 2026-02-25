@@ -36,6 +36,24 @@ export function normalizeCognitoDomain(domain: string): string {
   return `https://${domain.replace(/\/$/, '')}`;
 }
 
+/**
+ * Supports both a plain callback URL and a full Cognito Hosted UI URL.
+ * If a full Hosted UI URL is provided, extract its `redirect_uri` query value.
+ */
+export function resolveCognitoRedirectUri(value: string): string {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(value);
+    const nestedRedirectUri = parsed.searchParams.get('redirect_uri');
+    return nestedRedirectUri || value;
+  } catch {
+    return value;
+  }
+}
+
 export function generateRandomString(length = 64): string {
   const values = new Uint8Array(length);
   crypto.getRandomValues(values);
