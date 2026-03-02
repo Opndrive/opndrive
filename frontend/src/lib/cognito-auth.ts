@@ -54,6 +54,14 @@ export function resolveCognitoRedirectUri(value: string): string {
   }
 }
 
+export function getDefaultCognitoRedirectUri(): string {
+  if (typeof window === 'undefined' || !window.location.origin) {
+    return '';
+  }
+
+  return `${window.location.origin}/auth/callback`;
+}
+
 export function generateRandomString(length = 64): string {
   const values = new Uint8Array(length);
   crypto.getRandomValues(values);
