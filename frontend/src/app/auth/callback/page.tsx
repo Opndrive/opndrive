@@ -10,6 +10,7 @@ import {
   consumeOauthState,
   consumePkceVerifier,
   exchangeCodeForTokens,
+  getDefaultCognitoRedirectUri,
   resolveCognitoRedirectUri,
 } from '@/lib/cognito-auth';
 
@@ -68,8 +69,9 @@ export default function AuthCallbackPage() {
       if (authorizationCode && (!idToken || !accessToken)) {
         const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? '';
         const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
+        const configuredRedirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? '';
         const cognitoRedirectUri = resolveCognitoRedirectUri(
-          process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? ''
+          configuredRedirectUri || getDefaultCognitoRedirectUri()
         );
 
         if (!cognitoDomain || !cognitoClientId || !cognitoRedirectUri) {

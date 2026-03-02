@@ -10,6 +10,7 @@ import {
   createCodeChallenge,
   generateRandomString,
   normalizeCognitoDomain,
+  getDefaultCognitoRedirectUri,
   resolveCognitoRedirectUri,
   saveOauthState,
   savePkceVerifier,
@@ -22,8 +23,9 @@ export default function LoginPage() {
 
   const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? '';
   const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
+  const configuredRedirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? '';
   const cognitoRedirectUri = resolveCognitoRedirectUri(
-    process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ?? ''
+    configuredRedirectUri || getDefaultCognitoRedirectUri()
   );
   const cognitoLoginUrl = process.env.NEXT_PUBLIC_COGNITO_LOGIN_URL ?? '';
   // Use authorization code flow by default because many Cognito app clients disable
@@ -124,10 +126,11 @@ export default function LoginPage() {
 
           {!isConfigured && (
             <div className="mt-6 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-              Configure <code>NEXT_PUBLIC_COGNITO_DOMAIN</code>,{' '}
-              <code>NEXT_PUBLIC_COGNITO_CLIENT_ID</code>, and{' '}
-              <code>NEXT_PUBLIC_COGNITO_REDIRECT_URI</code> to enable login, or set{' '}
-              <code>NEXT_PUBLIC_COGNITO_LOGIN_URL</code> to use a full Hosted UI login URL.
+              Configure <code>NEXT_PUBLIC_COGNITO_DOMAIN</code> and{' '}
+              <code>NEXT_PUBLIC_COGNITO_CLIENT_ID</code> to enable generated Hosted UI login, or set{' '}
+              <code>NEXT_PUBLIC_COGNITO_LOGIN_URL</code> to use a full Hosted UI login URL. If{' '}
+              <code>NEXT_PUBLIC_COGNITO_REDIRECT_URI</code> is omitted, Opndrive defaults to{' '}
+              <code>{'{origin}'}/auth/callback</code>.
             </div>
           )}
 
