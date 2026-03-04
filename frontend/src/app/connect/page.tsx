@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button, CustomDropdown, type DropdownOption } from '@/shared/components/ui';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getCorsConfig } from '@/config/cors';
+import { hasValidLoginSession } from '@/lib/auth-session';
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -69,6 +70,12 @@ export default function ConnectPage() {
   ];
 
   const [copiedCode, setCopiedCode] = useState(false);
+
+  useEffect(() => {
+    if (!hasValidLoginSession()) {
+      router.push('/login');
+    }
+  }, [router]);
 
   // Provider configurations
   const providerConfigs = {

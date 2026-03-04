@@ -238,6 +238,33 @@ NEXT_PUBLIC_AWS_REGION=us-east-1
 NEXT_PUBLIC_S3_BUCKET=your-bucket-name
 ```
 
+If you want to use your own AWS Cognito Hosted UI for app login, add:
+
+```env
+NEXT_PUBLIC_COGNITO_DOMAIN=your-domain.auth.us-east-1.amazoncognito.com
+NEXT_PUBLIC_COGNITO_CLIENT_ID=your_app_client_id
+# Optional: defaults to http://localhost:3000/auth/callback in local dev
+NEXT_PUBLIC_COGNITO_REDIRECT_URI=http://localhost:3000/auth/callback
+# Optional: provide the full Hosted UI login URL directly
+# (if set, this is used as-is instead of generating /oauth2/authorize URL)
+NEXT_PUBLIC_COGNITO_LOGIN_URL=https://your-domain.auth.us-east-1.amazoncognito.com/login?client_id=...&redirect_uri=...&response_type=code&scope=email+openid+phone
+# Optional overrides
+# Use `code` for PKCE (recommended) or `token` for implicit flow
+NEXT_PUBLIC_COGNITO_RESPONSE_TYPE=code
+NEXT_PUBLIC_COGNITO_SCOPE=openid email profile
+```
+
+`/auth/callback` supports both implicit token callbacks and authorization-code +
+PKCE exchanges. If `NEXT_PUBLIC_COGNITO_REDIRECT_URI` is not set, the frontend
+uses `{current_origin}/auth/callback` automatically.
+
+Create `frontend/.env.local` from `frontend/.env.example` and set real values:
+
+```bash
+cd frontend
+cp .env.example .env.local
+```
+
 ## Debugging
 
 ### Common Issues and Solutions
