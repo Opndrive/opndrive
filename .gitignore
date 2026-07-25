@@ -46,3 +46,7 @@ dev.tsx
 local-only
 
 copilot-instructions.md
+
+# Local maintainer tooling for bulk-creating GitHub issues
+.github/issues.json
+.github/push-issues.cjs
