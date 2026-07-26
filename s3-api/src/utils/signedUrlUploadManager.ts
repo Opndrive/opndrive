@@ -24,7 +24,7 @@ export interface SignedUrlUploadManagerConfig {
 }
 
 export class SignedUrlUploadManager {
-  private static instance: SignedUrlUploadManager;
+  private static instance: SignedUrlUploadManager | undefined;
   private apiProvider: BYOS3ApiProvider;
   private uploads = new Map<string, SignedUrlUploadItem>();
   private queue: string[] = [];
@@ -32,6 +32,8 @@ export class SignedUrlUploadManager {
   private maxConcurrency: number;
   private expiresInSeconds: number;
   private listeners = new Map<UploadEvent, Set<EventListener>>();
+  // See UploadManager.isDisposed for why this exists.
+  private isDisposed = false;
 
   private constructor(config: SignedUrlUploadManagerConfig) {
     this.apiProvider = config.apiProvider;
@@ -44,6 +46,38 @@ export class SignedUrlUploadManager {
       SignedUrlUploadManager.instance = new SignedUrlUploadManager(config);
     }
     return SignedUrlUploadManager.instance;
+  }
+
+  /** See UploadManager.disposeInstance - identical contract. */
+  public static async disposeInstance(): Promise<void> {
+    const existing = SignedUrlUploadManager.instance;
+    SignedUrlUploadManager.instance = undefined;
+    if (!existing) return;
+
+    existing.isDisposed = true;
+    try {
+      await existing.cancelAllUploads();
+    } catch (err) {
+      console.error('Failed to cleanly cancel in-flight signed-url uploads during dispose:', err);
+    }
+  }
+
+  /** See UploadManager.cancelAllUploads for why this uses allSettled. */
+  private async cancelAllUploads(): Promise<void> {
+    const ids = Array.from(this.uploads.entries())
+      .filter(([, item]) => ['queued', 'uploading'].includes(item.status))
+      .map(([id]) => id);
+
+    const results = await Promise.allSettled(ids.map((id) => this.cancelUpload(id)));
+
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `Failed to cancel signed-url upload ${ids[i]} during dispose:`,
+          result.reason
+        );
+      }
+    });
   }
 
   // Event emitter methods
@@ -62,6 +96,12 @@ export class SignedUrlUploadManager {
    * Add a file to the upload queue
    */
   public addUpload(file: File, config: { key: string }): string {
+    if (this.isDisposed) {
+      throw new Error(
+        'This SignedUrlUploadManager instance has been disposed. Obtain a new one via getInstance().'
+      );
+    }
+
     const id = uuidv4();
     const uploader = new SignedUrlUploader({
       apiProvider: this.apiProvider,
@@ -122,6 +162,11 @@ export class SignedUrlUploadManager {
     const item = this.uploads.get(id);
     if (!item) return;
 
+    // Already terminal - re-running the bookkeeping would emit a duplicate
+    // 'cancelled' event. (uploader.cancel() here is synchronous, so unlike
+    // UploadManager there is no await window for the worker to race us.)
+    if (['completed', 'failed', 'cancelled'].includes(item.status)) return;
+
     const queueIndex = this.queue.indexOf(id);
     if (queueIndex > -1) {
       this.queue.splice(queueIndex, 1);
@@ -180,6 +225,10 @@ export class SignedUrlUploadManager {
    * Process the upload queue
    */
   private async processQueue(): Promise<void> {
+    // See UploadManager.processQueue - without this, cancelling a queued item
+    // during dispose would start the next queued item against the old session.
+    if (this.isDisposed) return;
+
     if (this.activeUploads >= this.maxConcurrency || this.queue.length === 0) {
       return;
     }
@@ -250,8 +299,15 @@ export class SignedUrlUploadManager {
   /**
    * Emit events to listeners
    */
+  /** See UploadManager.emit - listeners must be isolated from each other. */
   private emit(event: UploadEvent, payload: EventPayload): void {
-    this.listeners.get(event)?.forEach((listener) => listener(payload));
+    this.listeners.get(event)?.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (err) {
+        console.error(`Signed-url upload event listener for "${event}" threw:`, err);
+      }
+    });
   }
 
   /**

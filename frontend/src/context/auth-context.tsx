@@ -10,6 +10,7 @@ import {
   SignedUrlUploadManager,
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
@@ -27,6 +28,72 @@ function isValidCreds(c: Credentials): c is Credentials {
     typeof c?.secretAccessKey === 'string' &&
     typeof c?.region === 'string'
   );
+}
+
+/**
+ * UploadManager.getInstance()/SignedUrlUploadManager.getInstance() return the
+ * first instance ever built and silently discard the config passed to every
+ * later call. Left unchecked, switching accounts or buckets keeps uploading
+ * to whichever bucket was connected first.
+ *
+ * @opndrive/s3-api 2.6.0 adds a disposeInstance() static that cancels
+ * in-flight uploads and clears the singleton so the next getInstance() call
+ * builds fresh. The installed 2.5.0 does not have it yet, so this is called
+ * through a feature-detecting cast rather than a direct reference - once
+ * frontend/package.json depends on ^2.6.0, delete the cast and call
+ * `UploadManager.disposeInstance()` / `SignedUrlUploadManager.disposeInstance()`
+ * directly.
+ */
+type Disposable = { disposeInstance?: () => Promise<void> };
+
+let warnedAboutLegacyUploadManager = false;
+
+async function disposeUploadManagers(): Promise<void> {
+  const managerCtor = UploadManager as unknown as Disposable;
+  const signedCtor = SignedUrlUploadManager as unknown as Disposable;
+
+  if (!managerCtor.disposeInstance || !signedCtor.disposeInstance) {
+    if (!warnedAboutLegacyUploadManager) {
+      warnedAboutLegacyUploadManager = true;
+      console.warn(
+        '[opndrive] The installed @opndrive/s3-api predates 2.6.0, so upload ' +
+          'managers cannot be disposed on session change. Switching buckets ' +
+          'without a full page reload may keep uploading to the previous ' +
+          'bucket. Upgrade to ^2.6.0.'
+      );
+    }
+    return;
+  }
+
+  await Promise.all([managerCtor.disposeInstance(), signedCtor.disposeInstance()]);
+}
+
+/**
+ * Disposes any existing singletons, then builds fresh managers bound to
+ * `api`. Shared by both session-restore and interactive login so every path
+ * that establishes a session gets the same guarantee.
+ */
+async function initializeUploadManagers(
+  api: BYOS3ApiProvider,
+  creds: Credentials
+): Promise<{ manager: UploadManager; signedUrlManager: SignedUrlUploadManager }> {
+  await disposeUploadManagers();
+
+  const manager = UploadManager.getInstance({
+    s3: api.getS3Client(),
+    bucket: api.getBucketName(),
+    prefix: creds.prefix || '',
+    maxConcurrency: 2,
+    partSizeMB: 5,
+  });
+
+  const signedUrlManager = SignedUrlUploadManager.getInstance({
+    apiProvider: api,
+    maxConcurrency: 2,
+    expiresInSeconds: 3600,
+  });
+
+  return { manager, signedUrlManager };
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -70,20 +137,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (isValidCreds(creds)) {
             const api = new BYOS3ApiProvider(creds, 'BYO');
 
-            // Initialize both upload managers
-            const manager = UploadManager.getInstance({
-              s3: api.getS3Client(),
-              bucket: api.getBucketName(),
-              prefix: creds.prefix || '',
-              maxConcurrency: 2,
-              partSizeMB: 5,
-            });
-
-            const signedUrlManager = SignedUrlUploadManager.getInstance({
-              apiProvider: api,
-              maxConcurrency: 2,
-              expiresInSeconds: 3600,
-            });
+            const { manager, signedUrlManager } = await initializeUploadManagers(api, creds);
 
             setUploadManager(manager);
             setSignedUrlUploadManager(signedUrlManager);
@@ -116,20 +170,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(true);
       const api = new BYOS3ApiProvider(creds, 'BYO');
 
-      // Initialize both upload managers
-      const manager = UploadManager.getInstance({
-        s3: api.getS3Client(),
-        bucket: api.getBucketName(),
-        prefix: creds.prefix || '',
-        maxConcurrency: 2,
-        partSizeMB: 5,
-      });
-
-      const signedUrlManager = SignedUrlUploadManager.getInstance({
-        apiProvider: api,
-        maxConcurrency: 2,
-        expiresInSeconds: 3600,
-      });
+      const { manager, signedUrlManager } = await initializeUploadManagers(api, creds);
 
       // Persist to state and localStorage
       setUserCreds(creds);
@@ -156,18 +197,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Set loading state to prevent components from using context values
       setIsLoading(true);
 
-      // Clean up upload manager if it exists
-      if (uploadManager) {
-        try {
-          // Cancel any ongoing uploads before clearing
-          // Note: Implement proper cleanup based on UploadManager API
-        } catch (error) {
-          console.warn('Error cleaning up uploads during logout:', error);
-        }
-      }
+      // Dispose the upload manager singletons so a new session cannot resume
+      // uploading to this bucket. disposeUploadManagers() never throws, and
+      // it clears the static singleton reference synchronously before doing
+      // any awaiting, so it is safe to fire-and-forget here rather than
+      // block logout on in-flight cancellation network calls.
+      void disposeUploadManagers().catch((error) => {
+        console.warn('Error cleaning up uploads during logout:', error);
+      });
 
       // Clear all drive store data to prevent data leakage between sessions
       clearAllData();
+
+      // Same for upload/delete history. Disposal above emits a 'cancelled'
+      // event per in-flight item, and those land in the upload store before
+      // UploadProvider unmounts - without this, records from this bucket would
+      // still be on screen after connecting to a different one.
+      useUploadStore.getState().clearSessionData();
 
       // Clear localStorage
       localStorage.removeItem(STORAGE_KEY);

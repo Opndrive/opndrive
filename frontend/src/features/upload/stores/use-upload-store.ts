@@ -168,6 +168,14 @@ interface UploadStore {
   removeUpload: (id: string) => void;
   clearCompleted: () => void;
   clearAll: () => void;
+  /**
+   * Wipes everything tied to the current session: upload history, delete
+   * history, batch tracking, and any open duplicate prompt. Called on logout
+   * so records from one bucket cannot surface in the next session - disposing
+   * the upload managers emits a 'cancelled' event per in-flight item, and
+   * those land here before the provider unmounts.
+   */
+  clearSessionData: () => void;
   handleFilesDroppedToDirectory: (
     processedData: ProcessedDragData,
     currentPrefix: string | null,
@@ -242,6 +250,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     })),
 
   updateUpload: (id: string, updates: Partial<UploadProgress>) => {
+    // Ignore events for uploads we are no longer tracking. Disposing the upload
+    // managers on logout emits a trailing 'cancelled' per in-flight item, which
+    // can arrive after clearSessionData() has already run - spreading onto an
+    // absent entry would resurrect it as a malformed card with no name or type.
+    if (!get().uploads[id]) return;
+
     set((state) => ({
       uploads: {
         ...state.uploads,
@@ -305,6 +319,19 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     })),
 
   clearAll: () => set({ uploads: {} }),
+
+  clearSessionData: () =>
+    set({
+      uploads: {},
+      deletes: {},
+      batches: {},
+      duplicateDialog: {
+        isOpen: false,
+        duplicateItem: null,
+        onReplace: null,
+        onKeepBoth: null,
+      },
+    }),
 
   handleFilesDroppedToDirectory: async (
     processedData: ProcessedDragData,
