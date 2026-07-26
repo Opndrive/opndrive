@@ -67,12 +67,36 @@ export interface RenameFileParams {
 export interface RenameFolderParams {
   oldPrefix: string;
   newPrefix: string;
-  onProgress?: (progress: {
-    total: number;
-    processed: number;
-    currentKey?: string;
-    newKey?: string;
-  }) => void;
+  onProgress?: (progress: RenameFolderProgress) => void;
+}
+
+export interface RenameFolderProgress {
+  phase: 'copying' | 'verifying' | 'deleting';
+  total: number;
+  processed: number;
+  currentKey?: string;
+  newKey?: string;
+}
+
+/** A single object that could not be copied or deleted while renaming a folder. */
+export interface RenameFolderError {
+  key: string;
+  code?: string;
+  message?: string;
+}
+
+export interface RenameFolderResult {
+  totalKeys: number;
+  copiedKeys: number;
+  deletedKeys: number;
+  errors: RenameFolderError[];
+  /**
+   * True only when every key was copied, the copy was verified, and every old
+   * key was deleted. False on any failure - the source prefix is guaranteed
+   * intact in that case (see BaseS3ApiProvider.renameFolder for why), so the
+   * caller can safely retry the same rename rather than treat it as corrupted.
+   */
+  completed: boolean;
 }
 
 /**

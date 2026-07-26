@@ -9,6 +9,83 @@ export interface RenameOptions {
   onError?: (error: string) => void;
 }
 
+/**
+ * @opndrive/s3-api 2.7.0 rewrites renameFolder to copy-all -> verify ->
+ * delete-all with retry (see #74) and changes its return shape from
+ * `{ total, processed }` to a rich result carrying per-object errors. The
+ * installed 2.6.0 still runs the old copy-then-delete-per-key algorithm and
+ * resolves the legacy shape - detected here rather than assumed, so this file
+ * degrades gracefully instead of crashing against whatever is actually
+ * installed. Once frontend/package.json depends on ^2.7.0, delete everything
+ * below down to the class and read `result.errors` / `result.completed`
+ * directly.
+ */
+interface RenameFolderErrorLike {
+  key: string;
+  code?: string;
+  message?: string;
+}
+
+interface NormalizedRenameResult {
+  completed: boolean;
+  totalKeys: number;
+  errors: RenameFolderErrorLike[];
+  /** False when running against the pre-2.7.0 algorithm, which has no per-object error detail and is not safe to blindly retry. */
+  reliable: boolean;
+}
+
+function isRenameFolderError(v: unknown): v is RenameFolderErrorLike {
+  return !!v && typeof v === 'object' && typeof (v as Record<string, unknown>).key === 'string';
+}
+
+function normalizeRenameResult(raw: unknown): NormalizedRenameResult {
+  const candidate = (raw ?? {}) as Record<string, unknown>;
+
+  if (Array.isArray(candidate.errors)) {
+    return {
+      completed: candidate.completed === true,
+      totalKeys: typeof candidate.totalKeys === 'number' ? candidate.totalKeys : 0,
+      errors: candidate.errors.filter(isRenameFolderError),
+      reliable: true,
+    };
+  }
+
+  // Legacy { total, processed } shape.
+  const total = typeof candidate.total === 'number' ? candidate.total : 0;
+  const processed = typeof candidate.processed === 'number' ? candidate.processed : 0;
+  return {
+    completed: processed === total,
+    totalKeys: total,
+    errors: [],
+    reliable: false,
+  };
+}
+
+let warnedAboutLegacyRenameFolder = false;
+
+function warnLegacyRenameFolderOnce(): void {
+  if (warnedAboutLegacyRenameFolder) return;
+  warnedAboutLegacyRenameFolder = true;
+  console.warn(
+    '[opndrive] The installed @opndrive/s3-api predates 2.7.0, so folder renames ' +
+      'still use the old copy-then-delete-per-key algorithm, which can leave a ' +
+      'folder split across both prefixes if interrupted partway through. ' +
+      'Upgrade to ^2.7.0.'
+  );
+}
+
+function describeRenameFailures(errors: RenameFolderErrorLike[], total: number): string {
+  const first = errors[0];
+  if (!first) return 'Rename did not fully complete.';
+  const parts = [first.key];
+  if (first.code) parts.push(first.code);
+  if (first.message) parts.push(first.message);
+  return (
+    `${errors.length} of ${total} object(s) failed during rename. ` +
+    `First failure: ${parts.join(' - ')}`
+  );
+}
+
 class RenameService {
   private api: BYOS3ApiProvider;
 
@@ -77,21 +154,20 @@ class RenameService {
         ? `${normalizedCurrentPath}${newName}/`
         : `${newName}/`;
 
-      const result = await this.api.renameFolder({
-        oldPrefix,
-        newPrefix,
-        onProgress: (progress) => {
-          // Convert S3 progress to our format
-          if (progress.processed === progress.total) {
-            onProgress?.({ status: 'success' });
-          }
-        },
-      });
+      // Success is decided only from the final settled result, not from a
+      // mid-flight progress signal - the new algorithm runs in phases
+      // (copying, verifying, deleting), and "processed === total" can be true
+      // at the end of the copy phase while deletion of the old keys hasn't
+      // started yet.
+      const rawResult = await this.api.renameFolder({ oldPrefix, newPrefix });
+      const result = normalizeRenameResult(rawResult);
+      if (!result.reliable) warnLegacyRenameFolderOnce();
 
-      if (result.processed === result.total) {
+      if (result.completed) {
+        onProgress?.({ status: 'success' });
         onComplete?.();
       } else {
-        throw new Error('Rename operation failed');
+        throw new Error(describeRenameFailures(result.errors, result.totalKeys));
       }
     } catch (error) {
       console.error('renameService.renameFolder error:', error);

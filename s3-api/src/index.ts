@@ -11,11 +11,15 @@ import {
   PresignedUploadParams,
   RenameFileParams,
   RenameFolderParams,
+  RenameFolderError,
+  RenameFolderResult,
   SearchParams,
   SearchResult,
   SignedUrlParams,
   userTypes,
 } from './core/types.js';
+import { mapWithConcurrency } from './utils/concurrency.js';
+import { withRetry } from './utils/retry.js';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
@@ -35,6 +39,24 @@ import {
 import { BaseS3ApiProvider } from './core/index.js';
 import { MultipartUploader } from './utils/multipartUploader.js';
 import { Readable } from 'stream';
+
+const RENAME_COPY_CONCURRENCY = 8;
+
+/**
+ * Retryable: S3-reported throttling/transient errors, any 5xx (some
+ * S3-compatible providers - Wasabi, R2, MinIO - don't always use the same
+ * error names AWS does, so the status-code check is the broader net), and
+ * plain network failures, which surface as TypeError rather than
+ * S3ServiceException.
+ */
+function isRetryableS3Error(err: unknown): boolean {
+  if (err instanceof S3ServiceException) {
+    const status = err.$metadata?.httpStatusCode;
+    if (status !== undefined && status >= 500) return true;
+    return ['SlowDown', 'RequestTimeout', 'ServiceUnavailable'].includes(err.name);
+  }
+  return err instanceof TypeError;
+}
 
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
@@ -334,12 +356,26 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     }
   }
 
-  async renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }> {
+  /**
+   * Renames a folder by copying every object to the new prefix and only then
+   * deleting the old ones - never the reverse. This ordering is what makes the
+   * operation safe: if anything goes wrong mid-copy (a thrown error, a closed
+   * tab, a dropped connection), the old prefix is still completely untouched.
+   * The worst case is a harmless, incomplete duplicate under the new prefix,
+   * cleaned up by simply calling this again with the same arguments - copying
+   * is naturally idempotent, so re-copying already-copied keys is a no-op.
+   *
+   * The old implementation copied-then-deleted one key at a time and threw on
+   * the first failure, which could leave a folder split across both prefixes
+   * with no record of where the split happened. See opndrive#74.
+   */
+  async renameFolder(params: RenameFolderParams): Promise<RenameFolderResult> {
     const bucket = this.credentials.bucketName;
 
     const oldPrefix = params.oldPrefix.endsWith('/') ? params.oldPrefix : params.oldPrefix + '/';
     const newPrefix = params.newPrefix.endsWith('/') ? params.newPrefix : params.newPrefix + '/';
 
+    // 1. List every key under the old prefix.
     let continuationToken: string | undefined;
     const allKeys: string[] = [];
 
@@ -357,37 +393,111 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       continuationToken = list.NextContinuationToken;
     } while (continuationToken);
 
-    const total = allKeys.length;
-    let processed = 0;
+    const totalKeys = allKeys.length;
 
-    for (const key of allKeys) {
+    // 2. Copy phase - bounded concurrency, retrying transient failures. The
+    // source is never modified here, so any failure leaves oldPrefix intact.
+    let copiedCount = 0;
+    const copyResults = await mapWithConcurrency(allKeys, RENAME_COPY_CONCURRENCY, async (key) => {
       const newKey = key.replace(oldPrefix, newPrefix);
+      await withRetry(
+        () =>
+          this.s3.send(
+            new CopyObjectCommand({
+              Bucket: bucket,
+              CopySource: `${bucket}/${encodeURIComponent(key)}`,
+              Key: newKey,
+            })
+          ),
+        { isRetryable: isRetryableS3Error }
+      );
+      return newKey;
+    });
 
-      try {
-        await this.s3.send(
-          new CopyObjectCommand({
-            Bucket: bucket,
-            CopySource: `${bucket}/${encodeURIComponent(key)}`,
-            Key: newKey,
-          })
-        );
-
-        await this.s3.send(
-          new DeleteObjectCommand({
-            Bucket: bucket,
-            Key: key,
-          })
-        );
-
-        processed++;
-        params.onProgress?.({ total, processed, currentKey: key, newKey });
-      } catch (err) {
-        console.error(`Failed to move ${key}:`, err);
-        throw err;
+    const copyErrors: RenameFolderError[] = [];
+    copyResults.forEach((result, i) => {
+      const key = allKeys[i];
+      if (result.status === 'fulfilled') {
+        copiedCount++;
+        params.onProgress?.({
+          phase: 'copying',
+          total: totalKeys,
+          processed: copiedCount,
+          currentKey: key,
+          newKey: result.value,
+        });
+      } else {
+        const reason = result.reason;
+        copyErrors.push({
+          key,
+          code: reason instanceof S3ServiceException ? reason.name : undefined,
+          message: reason instanceof Error ? reason.message : String(reason),
+        });
       }
+    });
+
+    // Stop here on any copy failure. Nothing has been deleted, so oldPrefix is
+    // still the complete, untouched source - the caller can retry the exact
+    // same rename once the underlying problem (permissions, throttling) clears.
+    if (copyErrors.length > 0) {
+      return {
+        totalKeys,
+        copiedKeys: copiedCount,
+        deletedKeys: 0,
+        errors: copyErrors,
+        completed: false,
+      };
     }
 
-    return { total, processed };
+    // 3. Verify. Every CopyObject call succeeding should mean newPrefix is
+    // complete, but this is a cheap, independent check before we start
+    // deleting the only remaining full copy of the data.
+    params.onProgress?.({ phase: 'verifying', total: totalKeys, processed: 0 });
+    const verifiedKeys = await this.listFromPrefix(newPrefix);
+    if (verifiedKeys.length < totalKeys) {
+      return {
+        totalKeys,
+        copiedKeys: copiedCount,
+        deletedKeys: 0,
+        errors: [
+          {
+            key: newPrefix,
+            message:
+              `Verification failed: expected ${totalKeys} object(s) under the new prefix, ` +
+              `found ${verifiedKeys.length}. Nothing was deleted from the old prefix.`,
+          },
+        ],
+        completed: false,
+      };
+    }
+
+    // 4. Delete the old keys. Batches through deleteBatch, which already
+    // surfaces per-object failures instead of swallowing them (opndrive#73).
+    const deleteErrors: RenameFolderError[] = [];
+    let deletedCount = 0;
+    const batchSize = 1000;
+
+    for (let i = 0; i < allKeys.length; i += batchSize) {
+      const batch = allKeys.slice(i, i + batchSize);
+      const result = await this.deleteBatch(batch.map((key) => ({ Key: key })));
+
+      deletedCount += result.deleted;
+      deleteErrors.push(
+        ...result.errors.map((e) => ({ key: e.key, code: e.code, message: e.message }))
+      );
+      params.onProgress?.({ phase: 'deleting', total: totalKeys, processed: deletedCount });
+    }
+
+    return {
+      totalKeys,
+      copiedKeys: copiedCount,
+      deletedKeys: deletedCount,
+      errors: deleteErrors,
+      // Old keys surviving deletion means the rename half-succeeded (new
+      // location is complete, cleanup did not finish) - report that honestly
+      // rather than claiming success while stray objects remain at the old path.
+      completed: deleteErrors.length === 0,
+    };
   }
 
   async createFolder(key: string): Promise<void> {

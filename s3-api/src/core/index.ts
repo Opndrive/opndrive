@@ -19,6 +19,7 @@ import {
   PresignedUploadParams,
   RenameFileParams,
   RenameFolderParams,
+  RenameFolderResult,
   SearchParams,
   SearchResult,
   SignedUrlParams,
@@ -118,7 +119,7 @@ export abstract class BaseS3ApiProvider {
 
   abstract renameFile(params: RenameFileParams): Promise<boolean>;
 
-  abstract renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }>;
+  abstract renameFolder(params: RenameFolderParams): Promise<RenameFolderResult>;
 
   abstract search(params: SearchParams): Promise<SearchResult>;
 
