@@ -11,6 +11,7 @@ import {
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
@@ -78,6 +79,13 @@ async function initializeUploadManagers(
   creds: Credentials
 ): Promise<{ manager: UploadManager; signedUrlManager: SignedUrlUploadManager }> {
   await disposeUploadManagers();
+
+  // Establishing a session must not inherit a previous one's search results.
+  // clearSession() already does this, but /connect is reachable client-side
+  // without logging out first, so a session can start without one ever having
+  // been cleared. Same belt-and-braces reasoning as disposing the upload
+  // managers on both edges rather than only on logout.
+  useSearchStore.getState().clearCache();
 
   const manager = UploadManager.getInstance({
     s3: api.getS3Client(),
@@ -162,6 +170,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     checkAuth();
+    // Mount-only on purpose. This restores a persisted session exactly once
+    // per app load; including `pathname`/`router` would re-run the whole
+    // restore on every client-side navigation, and including `clearSession`
+    // would re-run it whenever the provider re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Create a session & persist in localStorage
@@ -214,6 +227,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // UploadProvider unmounts - without this, records from this bucket would
       // still be on screen after connecting to a different one.
       useUploadStore.getState().clearSessionData();
+
+      // And the search cache, which holds raw object keys from this bucket.
+      // It is keyed by query+prefix with a 5 minute TTL and nothing else
+      // clears it, so without this a repeat search after switching accounts
+      // is served the previous account's file and folder names straight out
+      // of memory.
+      useSearchStore.getState().clearCache();
 
       // Clear localStorage
       localStorage.removeItem(STORAGE_KEY);
