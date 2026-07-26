@@ -51,18 +51,25 @@ git checkout -b fix/issue-description
 
 ### 5. Test Your Changes
 
-```bash
-# Run type checking
-pnpm type-check
+Run from the repository root:
 
-# Run linting
+```bash
+# Type checking (both packages)
+pnpm typecheck
+
+# Linting (both packages)
 pnpm lint
 
-# Run tests
-pnpm test
+# Lint + format check together (what CI runs)
+pnpm check
+```
 
-# Run all checks
-pnpm check-all
+Run tests from inside the package you changed:
+
+```bash
+cd frontend && pnpm test
+# or
+cd s3-api && pnpm test
 ```
 
 ### 6. Commit and Push
@@ -225,7 +232,7 @@ Any other context, screenshots, or examples.
 
 ### Component Development
 
-- Follow our [Component Guidelines](./COMPONENT_GUIDELINES.md)
+- Follow our [Component Guidelines](../architecture/components.md)
 - Use feature-based organization
 - Write comprehensive TypeScript types
 - Include accessibility features
@@ -233,10 +240,10 @@ Any other context, screenshots, or examples.
 
 ### Testing Requirements
 
-- **Unit tests** for utility functions and hooks
-- **Component tests** for UI components
-- **Integration tests** for complex workflows
-- **Maintain >80% code coverage**
+Test coverage is real but still thin (see [Testing](./testing.md) for the
+current state) - there's no enforced coverage percentage. When you touch logic
+that's easy to get subtly wrong (hooks, state transitions, anything async), add
+a Vitest test for it rather than relying on manual testing alone.
 
 ### Documentation
 
@@ -299,12 +306,8 @@ If applicable, add screenshots or videos to help explain your changes.
 
 ## Recognition
 
-Contributors will be recognized in:
-
-- **Contributors list** in README
-- **Release notes** for significant contributions
-- **Discord/community** shoutouts
-- **Contributor badge** on profile
+Contributors are recognized in release notes for significant contributions and
+in the GitHub contributor graph.
 
 ## Getting Help
 
@@ -312,9 +315,8 @@ If you need help:
 
 1. **Check documentation** in the `/docs` folder
 2. **Search existing issues** on GitHub
-3. **Join our community** (Discord/Slack links in README)
-4. **Create a discussion** on GitHub Discussions
-5. **Ask questions** in issues with the "question" label
+3. **Create a discussion** on GitHub Discussions
+4. **Ask questions** in issues with the "question" label
 
 ## Issue Labels
 
@@ -357,15 +359,6 @@ For UI/UX improvements:
 4. **Provide Figma files** or design mockups when possible
 5. **Consider dark mode** compatibility
 
-## Internationalization
-
-To add translations:
-
-1. Check existing locale files in `/locales`
-2. Add new language files following the existing structure
-3. Test with right-to-left languages if applicable
-4. Update language selection UI
-
 ## Code Standards
 
 All contributors are expected to follow our coding standards and maintain a
@@ -383,47 +376,23 @@ respectful, collaborative environment.
 This project uses [Husky](https://typicode.github.io/husky/) to ensure code
 quality through automated Git hooks.
 
-### Pre-commit Hooks
+### Pre-commit Hook
 
-When you commit code, Husky automatically runs:
+`.husky/pre-commit` runs `lint-staged` on every commit, which (per the
+`lint-staged` config in the root `package.json`):
 
-- **Linting**: ESLint checks for code quality issues
-- **Type checking**: TypeScript compiler validates types
-- **Formatting**: Prettier ensures consistent code style
-- **Tests**: Runs relevant tests for changed files
+- Runs `eslint --fix --max-warnings=0` and Prettier on staged JS/TS files
+- Runs Prettier on staged JSON/Markdown/YAML/CSS/HTML files
+
+This is the only Git hook in the repo today - there's no `commit-msg` or
+`pre-push` hook, so commit message format and full test runs aren't enforced
+automatically. Run `pnpm check` yourself before opening a PR to catch what the
+hook doesn't.
 
 ### Setup
 
-Husky is automatically installed when you run:
-
-```bash
-pnpm install
-```
-
-### Manual Hook Execution
-
-You can also run the hooks manually:
-
-```bash
-# Run pre-commit hooks manually
-npx husky run pre-commit
-
-# Or run individual checks
-pnpm lint
-pnpm type-check
-pnpm test
-```
-
-### Hook Configuration
-
-Our hooks are configured in the `.husky/` directory:
-
-- `pre-commit`: Runs before each commit
-- `commit-msg`: Validates commit message format
-- `pre-push`: Runs before pushing to remote
-
-This ensures that only high-quality, properly formatted code makes it into the
-repository!
+Husky installs itself when you run `pnpm install` at the repository root (via
+the `prepare` script).
 
 ## License
 

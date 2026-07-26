@@ -1,18 +1,17 @@
 # Development Setup
 
-This guide will help you set up Opndrive for local development. Follow these
-steps to get your development environment running quickly.
+This guide gets Opndrive running locally for development. It reflects the actual
+scripts and tools in this repository, not idealized ones, so every command here
+should work as written.
 
 ## Prerequisites
-
-Before you begin, ensure you have the following installed:
 
 - **Node.js** (v18 or later) - [Download here](https://nodejs.org/)
 - **PNPM** (v8 or later) - Install with `npm install -g pnpm`
 - **Git** - [Download here](https://git-scm.com/)
 - **VS Code** (recommended) - [Download here](https://code.visualstudio.com/)
 
-### Optional but Recommended:
+### Optional but Recommended
 
 - **AWS CLI** - For S3 integration testing
 
@@ -28,7 +27,7 @@ cd opndrive
 ### 2. Install Dependencies
 
 ```bash
-# Install root dependencies
+# Install root dependencies (lint/format tooling, Husky hooks)
 pnpm install
 
 # Install frontend dependencies
@@ -40,7 +39,7 @@ cd ../s3-api
 pnpm install
 ```
 
-### 3. Start Development Server
+### 3. Start the Development Server
 
 ```bash
 cd frontend
@@ -51,216 +50,152 @@ pnpm dev
 
 - **Frontend**: http://localhost:3000
 
-**That's it!** Opndrive uses UI-based configuration - no need to manually edit
-environment files. When you first visit the app, you'll see a "Get Started"
-button that takes you to `/connect` where you can enter your AWS credentials
-through the interface.
+**That's it.** Opndrive is configured through its UI, not environment files. The
+first time you visit the app you'll see a "Get Started" button that takes you to
+`/connect`, where you enter your AWS credentials through a form. See
+[Environment Variables](../reference/environment-variables.md) for the small
+number of env vars the app actually reads (none of them are AWS credentials).
 
 ## Project Structure Understanding
 
-After setup, familiarize yourself with the key directories:
+After setup, the directories you'll touch most:
 
 ```
 opndrive/
 ├── frontend/src/
 │   ├── app/                 # Next.js pages and layouts
-│   ├── features/            # Feature-based components
-│   │   └── dashboard/       # Main dashboard feature
-│   ├── shared/              # Reusable components
-│   ├── lib/                 # Utilities and configurations
-│   └── types/               # TypeScript type definitions
-└── s3-api/                  # Backend S3 integration
+│   ├── features/            # Feature-based modules (dashboard, upload, settings, ...)
+│   ├── shared/               # Reusable components
+│   ├── context/              # React Context providers (auth, data, theme, ...)
+│   └── services/             # Code that talks to @opndrive/s3-api
+└── s3-api/                  # Published npm package, S3 integration layer
 ```
+
+See [Repository Structure](./project-structure.md) for the full breakdown.
 
 ## Development Workflow
 
 ### 1. Branch Strategy
 
 ```bash
-# Create a feature branch
 git checkout -b feature/your-feature-name
-
-# Make your changes
 git add .
 git commit -m "feat: add your feature description"
-
-# Push and create PR
 git push origin feature/your-feature-name
 ```
 
 ### 2. Code Quality Checks
 
-Before committing, run these commands:
+Run these from the **repository root** before committing:
 
 ```bash
-# Type checking
-pnpm type-check
+# Type-check both packages
+pnpm typecheck
 
-# Linting
+# Lint both packages
 pnpm lint
 
-# Formatting
-pnpm format
+# Format check
+pnpm format:check
 
-# Run all checks
-pnpm check-all
+# Lint + format check together (what CI runs)
+pnpm check
 ```
+
+Husky runs `lint-staged` on every commit automatically (see
+`.husky/pre-commit`), so most formatting issues are caught before you even open
+a pull request.
 
 ### 3. Testing
 
 ```bash
-# Run unit tests
+# From frontend/
 pnpm test
 
-# Run tests in watch mode
+# From s3-api/
+pnpm test
 pnpm test:watch
-
-# Run E2E tests (when available)
-pnpm test:e2e
 ```
+
+Both packages use [Vitest](https://vitest.dev/). There is no end-to-end test
+suite in this repository today. See [Testing](./testing.md) for what's actually
+covered and how to add to it.
 
 ## Working with Features
 
 ### Adding a New Feature
 
-1. **Create the feature directory:**
-
 ```bash
-mkdir -p frontend/src/features/your-feature
-cd frontend/src/features/your-feature
+mkdir -p frontend/src/features/your-feature/{components,types}
+mkdir -p frontend/src/features/your-feature/components/{ui,views,layout}
+touch frontend/src/features/your-feature/components/index.ts
 ```
 
-2. **Create the basic structure:**
+Look at an existing feature (`frontend/src/features/dashboard`) for the pattern
+before starting a new one.
 
-```bash
-mkdir -p components/{ui,views,layout}
-mkdir -p types
-touch components/index.ts
-touch types/index.ts
-```
-
-3. **Add to path aliases** in `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@/features/your-feature/*": ["./src/features/your-feature/*"]
-    }
-  }
-}
-```
-
-### Working with Components
-
-1. **Use the component templates:**
+### Component Template
 
 ```typescript
-// Basic component template
-'use client'
+'use client';
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils';
 
 interface YourComponentProps {
-  className?: string
-  // other props
+  className?: string;
 }
 
 export function YourComponent({ className, ...props }: YourComponentProps) {
   return (
-    <div className={cn("base-styles", className)} {...props}>
+    <div className={cn('base-styles', className)} {...props}>
       {/* component content */}
     </div>
-  )
+  );
 }
-```
-
-2. **Export from index files:**
-
-```typescript
-// features/your-feature/components/index.ts
-export { YourComponent } from './ui/your-component';
-export type { YourComponentProps } from './ui/your-component';
 ```
 
 ## Styling Guidelines
 
-### Tailwind CSS Setup
-
-The project uses Tailwind CSS with custom design tokens:
+The project uses Tailwind CSS with CSS custom properties for theming, plus
+[shadcn/ui](https://ui.shadcn.com/) (configured in `frontend/components.json`)
+for component primitives.
 
 ```typescript
-// Use design system classes
 <div className="bg-background text-foreground border border-border">
   <h1 className="text-2xl font-semibold text-primary">Title</h1>
   <p className="text-muted-foreground">Description</p>
 </div>
 ```
 
-### Dark Mode Support
-
-Components automatically support dark mode:
-
-```typescript
-// These classes adapt to light/dark mode automatically
-<div className="bg-card text-card-foreground">
-  <button className="bg-primary text-primary-foreground hover:bg-primary/90">
-    Click me
-  </button>
-</div>
-```
+These classes adapt automatically between light and dark mode - there's no
+separate dark-mode variant to write by hand.
 
 ## S3 Integration
 
-### Direct S3 Integration
-
-Opndrive uses direct S3 integration through the browser with the s3-api package:
-
-```typescript
-import { s3Client } from '@/lib/byo-s3-api';
-
-// Upload a file
-const uploadFile = async (file: File, key: string) => {
-  return await s3Client.upload({
-    file,
-    key,
-    onProgress: (progress) => console.log(`Upload progress: ${progress}%`),
-  });
-};
-```
-
-### Configuration
-
-Configure your S3 credentials in the environment variables:
-
-```env
-NEXT_PUBLIC_AWS_REGION=us-east-1
-NEXT_PUBLIC_S3_BUCKET=your-bucket-name
-```
+Opndrive talks to S3 directly from the browser through the `@opndrive/s3-api`
+package, wrapped by `frontend/src/services/`. There is no backend server in
+between. See [S3 API Layer](./s3-api.md) for what the package actually exposes
+(upload managers, multipart uploads, retry/concurrency helpers).
 
 ## Debugging
 
 ### Common Issues and Solutions
 
-**1. Module Resolution Errors**
+**Module Resolution Errors**
 
 ```bash
-# Clear Next.js cache
 rm -rf .next
 pnpm dev
 ```
 
-**2. TypeScript Errors**
+**TypeScript Errors**
+
+Restart the TS server in VS Code: `Cmd/Ctrl + Shift + P` → "TypeScript: Restart
+TS Server"
+
+**Styling Not Applied**
 
 ```bash
-# Restart TypeScript server in VS Code
-Cmd/Ctrl + Shift + P > "TypeScript: Restart TS Server"
-```
-
-**3. Styling Not Applied**
-
-```bash
-# Restart development server
 pnpm dev
 ```
 
@@ -270,84 +205,31 @@ pnpm dev
 - **Next.js DevTools** - Built-in development overlay
 - **Tailwind CSS DevTools** - Browser extension for CSS debugging
 
-## Performance Monitoring
+## Common Commands Reference
 
-### Bundle Analysis
+These are the scripts that actually exist in `package.json` today:
 
-```bash
-# Analyze bundle size
-ANALYZE=true pnpm build
-```
+| Command              | Where to run it                 | What it does                                         |
+| -------------------- | ------------------------------- | ---------------------------------------------------- |
+| `pnpm dev`           | `frontend/`                     | Start the dev server (Turbopack)                     |
+| `pnpm build`         | `frontend/`                     | Production build                                     |
+| `pnpm start`         | `frontend/`                     | Start the production build                           |
+| `pnpm typecheck`     | root, `frontend/`, or `s3-api/` | Type-check (root runs both packages)                 |
+| `pnpm test`          | `frontend/` or `s3-api/`        | Run the Vitest suite                                 |
+| `pnpm test:watch`    | `s3-api/`                       | Run tests in watch mode                              |
+| `pnpm lint`          | root                            | Lint both `frontend/` and `s3-api/`                  |
+| `pnpm lint:frontend` | root                            | Lint only `frontend/`                                |
+| `pnpm format`        | root                            | Format the whole repo with Prettier                  |
+| `pnpm format:check`  | root                            | Check formatting without writing                     |
+| `pnpm check`         | root                            | `lint` + `format:check` (what CI's quality job runs) |
 
-### Development Metrics
-
-Monitor these during development:
-
-- **First Load JS**: < 100kb (check in browser dev tools)
-- **Lighthouse Score**: > 90 (run in Chrome DevTools)
-- **Core Web Vitals**: All green in production
-
-## Deployment Preview
-
-### Build and Test Locally
-
-```bash
-# Build the application
-pnpm build
-
-# Start production server
-pnpm start
-
-# Test production build
-open http://localhost:3000
-```
-
-### Environment-specific Builds
-
-```bash
-# Development build
-pnpm build:dev
-
-# Staging build
-pnpm build:staging
-
-# Production build
-pnpm build:prod
-```
-
-## Troubleshooting
-
-### Getting Help
-
-1. **Check the docs** - Read other files in the `/docs` folder
-2. **Search issues** - Look for existing GitHub issues
-3. **Ask questions** - Create a new issue with the question label
-4. **Community** - Join our Discord/Slack (links in main README)
-
-### Common Commands Reference
-
-```bash
-# Development
-pnpm dev              # Start development server
-pnpm build            # Build for production
-pnpm start            # Start production server
-pnpm lint             # Run ESLint
-pnpm type-check       # Check TypeScript types
-
-# Testing
-pnpm test             # Run unit tests
-pnpm test:watch       # Run tests in watch mode
-pnpm test:coverage    # Run tests with coverage
-
-# Utilities
-pnpm clean            # Clean all build artifacts
-pnpm format           # Format code with Prettier
-pnpm check-all        # Run all quality checks
-```
+There's no `type-check` (hyphenated), `check-all`, `test:coverage`, `clean`, or
+environment-specific build script (`build:dev`/`build:staging`/`build:prod`) in
+this repo. If you've seen those referenced elsewhere, that's stale
+documentation - please open an issue.
 
 ---
 
-**You're all set!** Start exploring the codebase and building amazing features.
-Don't forget to read the [Project Structure](./PROJECT_STRUCTURE.md) and
-[Frontend Architecture](./FRONTEND_ARCHITECTURE.md) docs to understand the
-codebase better.
+**You're all set.** Continue to [Repository Structure](./project-structure.md)
+and [Frontend Architecture](../architecture/frontend.md) to understand the
+codebase in more depth.

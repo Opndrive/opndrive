@@ -129,19 +129,28 @@ features/dashboard/components/
 
 ### State Management Strategy
 
-```typescript
-// 1. Server State (React Query/SWR)
-const { data: files } = useFiles(folderId);
+Opndrive does not use a data-fetching library like React Query or SWR. State is
+split across three real mechanisms:
 
-// 2. URL State (Next.js Router)
+```typescript
+// 1. URL State (Next.js Router)
 const searchParams = useSearchParams();
 
-// 3. Local State (React hooks)
+// 2. Local State (React hooks)
 const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
-// 4. Global State (React Context)
+// 3. Global State (Zustand stores + React Context)
+// Zustand stores live under features/*/stores (e.g. dashboard, upload)
+const files = useDashboardStore((s) => s.files);
+
+// Context providers handle cross-cutting concerns like auth and theme
 const { theme, setTheme } = useTheme();
 ```
+
+Auth state (`context/auth-context.tsx`) and drive/folder state
+(`context/data-context.tsx`) are the two Context providers most components
+depend on. See [State Management](../development/state-management.md) for the
+full picture.
 
 ### Component Patterns
 
@@ -314,28 +323,6 @@ const FileViewer = lazy(() => import('./FileViewer'))
 const { DashboardComponents } = await import('@/features/dashboard')
 ```
 
-### Optimistic UI Updates
-
-```typescript
-function useFileUpload() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: uploadFile,
-    onMutate: (file) => {
-      // Optimistically add file to UI
-      queryClient.setQueryData(['files'], (old) => [...old, file]);
-    },
-    onError: (error, file) => {
-      // Revert on error
-      queryClient.setQueryData(['files'], (old) =>
-        old.filter((f) => f.id !== file.id)
-      );
-    },
-  });
-}
-```
-
 ### Image Optimization
 
 ```typescript
@@ -381,29 +368,25 @@ function FileList() {
 
 ## Testing Strategy
 
-### Testing Pyramid
-
-```
-┌─────────────┐
-│   E2E Tests │ ← Playwright (critical user flows)
-├─────────────┤
-│ Integration │ ← React Testing Library (component interactions)
-├─────────────┤
-│ Unit Tests  │ ← Jest/Vitest (utility functions, hooks)
-└─────────────┘
-```
+Testing runs on [Vitest](https://vitest.dev/) plus React Testing Library. There
+is no Jest and no end-to-end suite (Playwright or otherwise) in this repository
+today - test coverage is intentionally thin and growing, not a pyramid to model
+your own tests after yet. See [Testing](../development/testing.md) for the
+current state and how to add to it.
 
 ### Component Testing Pattern
 
 ```typescript
-test('FileItem displays file information correctly', () => {
-  const mockFile = createMockFile({ name: 'document.pdf', size: 1024 })
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-  render(<FileItem file={mockFile} />)
+describe('FileItem', () => {
+  it('displays the file name', () => {
+    render(<FileItem file={{ name: 'document.pdf', size: 1024 }} />);
 
-  expect(screen.getByText('document.pdf')).toBeInTheDocument()
-  expect(screen.getByText('1 KB')).toBeInTheDocument()
-})
+    expect(screen.getByText('document.pdf')).toBeInTheDocument();
+  });
+});
 ```
 
 ## Development Workflow

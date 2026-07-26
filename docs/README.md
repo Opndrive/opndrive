@@ -25,8 +25,8 @@ If you're new to programming or this project, start here:
    10 minutes
 3. **[Your First Look](./getting-started/understanding-the-code.md)** - Tour of
    the codebase
-4. **[Making Changes](./getting-started/making-your-first-change.md)** - How to
-   contribute
+4. **[Contributing Guide](./development/contributing.md)** - How to make and
+   submit your first change
 
 ## For Developers
 
@@ -42,11 +42,10 @@ Already comfortable with coding? Jump to these sections:
 
 ### Architecture
 
-- **[Frontend Overview](./architecture/frontend.md)** - How the UI is built
+- **[Frontend Overview](./architecture/frontend.md)** - How the UI is built,
+  including how folder navigation and breadcrumbs work
 - **[Component System](./architecture/components.md)** - How we organize
   components
-- **[File Navigation](./architecture/navigation.md)** - How folder browsing
-  works
 
 ## Documentation Organization
 

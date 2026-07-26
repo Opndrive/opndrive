@@ -52,8 +52,6 @@ What this does:
 That's it for setup! Opndrive handles configuration through its user interface,
 so we don't need to manually edit any files.
 
-## Step 4: Start Opndrive
-
 Time to see Opndrive in action!
 
 ```bash
@@ -70,13 +68,13 @@ You should see output like:
 - ready started server on 0.0.0.0:3000, url: http://localhost:3000
 ```
 
-## Step 5: Open in Your Browser
+## Step 4: Open in Your Browser
 
 Open your web browser and go to: http://localhost:3000
 
 **You should see the Opndrive welcome page!**
 
-## Step 6: Connect Your AWS S3
+## Step 5: Connect Your AWS S3
 
 1. **Click the "Get Started" button** in the center of the page
 2. **You'll be redirected to `/connect`** - this is Opndrive's setup wizard

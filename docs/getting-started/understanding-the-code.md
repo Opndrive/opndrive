@@ -228,5 +228,6 @@ When you want to make changes:
 
 ---
 
-**Next Step**: Ready to make your first change? Continue to
-[Making Your First Change](./making-your-first-change.md)
+**Next Step**: Ready to make your first change? Continue to the
+[Contributing Guide](../development/contributing.md) to learn about branch
+naming, commit conventions, and how to submit a pull request.
