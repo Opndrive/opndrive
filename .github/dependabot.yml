@@ -4,6 +4,14 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Major-version bumps are not proposed automatically. They tend to be
+    # breaking (see the eslint 9->10 / typescript 5->7 incident), and this
+    # repo has no workspace, so a break in one package isn't always caught
+    # by the checks that run against a different package. Majors are a
+    # deliberate, manual upgrade, done one at a time with verification.
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       root-dependencies:
         patterns:
@@ -16,6 +24,9 @@ updates:
     directory: '/frontend'
     schedule:
       interval: 'weekly'
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       frontend-dependencies:
         patterns:
@@ -29,6 +40,9 @@ updates:
     directory: '/s3-api'
     schedule:
       interval: 'weekly'
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       s3-api-dependencies:
         patterns:
@@ -42,6 +56,9 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       github-actions:
         patterns:
