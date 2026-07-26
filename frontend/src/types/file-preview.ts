@@ -15,13 +15,7 @@ export interface PreviewableFile {
 }
 
 export type FilePreviewType =
-  | 'image'
-  | 'pdf'
-  | 'document'
-  | 'code'
-  | 'video'
-  | 'audio'
-  | 'unsupported';
+  'image' | 'pdf' | 'document' | 'code' | 'video' | 'audio' | 'unsupported';
 
 export interface FilePreviewState {
   isOpen: boolean;
