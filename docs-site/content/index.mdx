@@ -2,7 +2,6 @@
 title: Opndrive Documentation
 ---
 
-import Image from 'next/image';
 import { Cards } from 'nextra/components';
 import {
   Rocket,
@@ -14,21 +13,13 @@ import {
 } from 'lucide-react';
 
 <div style={{ textAlign: 'center', padding: '3rem 0 2rem' }}>
-  <Image
-    src="/docs/logo.png"
-    alt="Opndrive"
-    width={72}
-    height={72}
-    priority
-    unoptimized
-  />
-  <h1 style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '1.25rem', marginBottom: '0.5rem' }}>
+  <h1 style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
     Opndrive Documentation
   </h1>
-  <p style={{ fontSize: '1.15rem', color: 'var(--x-color-gray-600, #6b7280)', maxWidth: '38rem', margin: '0 auto' }}>
+  <div style={{ fontSize: '1.15rem', color: 'var(--x-color-gray-600, #6b7280)', maxWidth: '38rem', margin: '0 auto' }}>
     An open-source web UI for Amazon S3 and S3-compatible storage.
     Everything for using it, building it, and maintaining it.
-  </p>
+  </div>
 </div>
 
 <Cards num={3}>
@@ -42,5 +33,7 @@ import {
 
 ---
 
-Found something wrong or missing in these docs? That's worth an issue or a PR
-on its own - see [First Contribution](./contributing/first-contribution.md).
+<div style={{ maxWidth: '38rem', margin: '0 auto', textAlign: 'center' }}>
+  Found something wrong or missing in these docs? That's worth an issue or a
+  PR on its own - see [First Contribution](./contributing/first-contribution.md).
+</div>
