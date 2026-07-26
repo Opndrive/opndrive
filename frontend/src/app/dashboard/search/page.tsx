@@ -70,6 +70,7 @@ export default function SearchPage() {
     invalidateCurrentQuery,
     cancelSearch,
     requestCount,
+    isReady,
   } = useSearch();
 
   const { clearSelection, getSelectionCount } = useMultiSelectStore();
@@ -113,23 +114,31 @@ export default function SearchPage() {
     }
   };
 
-  // Search when query changes - now with automatic caching
+  // Search when query changes - now with automatic caching.
+  // `isReady` is a dependency on purpose: search() is inert until the S3
+  // provider exists, so an effect keyed on query alone would fire once into
+  // the void and never retry, stranding the page on an empty result for a
+  // query that was never actually run (see #82).
   useEffect(() => {
-    if (query.trim()) {
-      if (shouldShowCreditWarning('search-operation')) {
-        setPendingSearchQuery(query);
-        setShowCreditWarning(true);
-      } else {
-        // search now checks cache automatically
-        search(query);
-      }
+    if (!isReady || !query.trim()) return;
+
+    if (shouldShowCreditWarning('search-operation')) {
+      setPendingSearchQuery(query);
+      setShowCreditWarning(true);
+    } else {
+      // search now checks cache automatically
+      search(query);
     }
-  }, [query]); // Only depend on query, not search function
+    // `search` is deliberately omitted: its identity changes with the drive
+    // prefix and notification handler, and re-running on those would fire
+    // duplicate searches for the same query - and every search is billed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, isReady]);
 
   // Clear selection when returning to search page
   useEffect(() => {
     clearSelection();
-  }, []); // Empty dependency array - runs once on mount
+  }, [clearSelection]); // clearSelection is a stable store action - runs once on mount
 
   // Clear selection when query changes
   useEffect(() => {
@@ -383,7 +392,12 @@ export default function SearchPage() {
           {/* Search Info and Controls */}
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-muted-foreground">
-              {isLoading && totalDisplayed === 0 ? (
+              {!isReady ? (
+                <span className="flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Connecting to your storage...
+                </span>
+              ) : isLoading && totalDisplayed === 0 ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   Searching...
@@ -466,8 +480,10 @@ export default function SearchPage() {
 
         {/* Results */}
         <div className="flex-1 overflow-auto pt-2 ">
-          {isLoading && totalDisplayed === 0 ? (
-            // Show skeleton loaders during initial load or cache miss
+          {(!isReady || isLoading) && totalDisplayed === 0 ? (
+            // Show skeleton loaders during initial load or cache miss.
+            // !isReady shares this branch on purpose: the search has not run
+            // yet, so anything claiming "no results" would be false.
             <div className="mt-4">
               {/* Skeleton for folders */}
               <div className="mb-8">

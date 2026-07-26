@@ -63,7 +63,7 @@ export function SearchBar({
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { search, isLoading, searchResults, cancelSearch } = useSearch();
+  const { search, isLoading, searchResults, cancelSearch, isReady } = useSearch();
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -493,11 +493,13 @@ export function SearchBar({
             </button>
           </div>
         </div>
-      ) : isLoading ? (
+      ) : isLoading || !isReady ? (
         <div className="p-4 sm:p-6 text-center">
           <div className="flex items-center justify-center gap-3 text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span className="text-sm font-medium">Searching...</span>
+            <span className="text-sm font-medium">
+              {isReady ? 'Searching...' : 'Connecting to your storage...'}
+            </span>
           </div>
         </div>
       ) : query.trim().length >= 2 ? (

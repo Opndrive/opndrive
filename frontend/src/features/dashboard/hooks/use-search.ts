@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useMemo } from 'react';
 import { createSearchService } from '@/features/dashboard/services/search-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore } from '@/context/data-context';
@@ -61,20 +61,33 @@ export const useSearch = () => {
     searchResultsRef.current = searchResults;
   }, [searchResults]);
 
-  if (!apiS3) {
-    return {
-      search: async () => {},
-      clearResults: () => {},
-      invalidateCurrentQuery: () => {},
-      cancelSearch: () => {},
-      isLoading: false,
-      searchResults: null,
-      hasResults: false,
-      canLoadMore: false,
+  // Abort any in-flight search when the consumer unmounts. Without this the
+  // service keeps paginating (the scan ceiling is 100k objects) for a
+  // component that no longer exists, and the results still land in the
+  // module-level store afterwards - so on logout they repopulate a cache that
+  // clearSession has already cleared. These are billed S3 requests, which is
+  // why this is worth more than the usual "avoid setState after unmount".
+  useEffect(() => {
+    const ref = abortControllerRef;
+    return () => {
+      if (ref.current) {
+        ref.current.abort();
+        ref.current = null;
+        // The search's own `finally` only resets shared state when the
+        // controller it started with is still the current one. We just
+        // cleared it, so that branch will be skipped - and isLoading lives in
+        // a module-level store that outlives this component, so leaving it
+        // true would strand the next mount on a permanent spinner.
+        setLoading(false);
+      }
     };
-  }
+  }, [setLoading]);
 
-  const searchService = createSearchService(apiS3);
+  // apiS3 flips between null and a real provider as auth state resolves (see
+  // #82) - every hook below must run unconditionally on every render no
+  // matter which state we're in, so guard inside the callbacks instead of
+  // returning early here.
+  const searchService = useMemo(() => (apiS3 ? createSearchService(apiS3) : null), [apiS3]);
 
   /**
    * Cancel the current search operation
@@ -95,6 +108,10 @@ export const useSearch = () => {
    */
   const search = useCallback(
     async (query: string, nextToken?: string, forceRefresh = false) => {
+      if (!searchService) {
+        return;
+      }
+
       if (!query.trim()) {
         setCurrentQuery(null, null);
         return;
@@ -117,9 +134,11 @@ export const useSearch = () => {
         abortControllerRef.current.abort();
       }
 
-      // Create new AbortController for this search
-      abortControllerRef.current = new AbortController();
-      const signal = abortControllerRef.current.signal;
+      // Held in a local as well as the ref so the cleanup below can tell
+      // whether THIS search is still the current one.
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const signal = controller.signal;
 
       // Fetch from API
       setLoading(true);
@@ -242,8 +261,16 @@ export const useSearch = () => {
           setCurrentQuery(null, null);
         }
       } finally {
-        setLoading(false);
-        abortControllerRef.current = null;
+        // Only tear down shared state if this search is still the current
+        // one. Starting a second search aborts the first, and the first's
+        // rejection lands here afterwards - unconditionally clearing the ref
+        // would discard the SECOND search's controller, leaving the Cancel
+        // button wired to nothing, and unconditionally clearing isLoading
+        // would hide the spinner while that search is still running.
+        if (abortControllerRef.current === controller) {
+          setLoading(false);
+          abortControllerRef.current = null;
+        }
       }
     },
     [
@@ -286,5 +313,13 @@ export const useSearch = () => {
     requestCount,
     hasResults: searchResults !== null && searchResults.totalKeys > 0,
     canLoadMore: searchResults?.nextToken !== undefined,
+    /**
+     * False while the S3 provider is unavailable, during which `search()` is
+     * inert. Callers MUST branch on this rather than treating an empty
+     * `searchResults` as "nothing matched" - the two are indistinguishable
+     * from the result alone, and rendering "No results found" when we never
+     * ran the query tells the user something untrue.
+     */
+    isReady: searchService !== null,
   };
 };
