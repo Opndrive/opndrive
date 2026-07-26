@@ -1,6 +1,8 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   Credentials,
+  DeleteBatchError,
+  DeleteBatchResult,
   DirectoryStructure,
   DownloadFileParams,
   MoveFileParams,
@@ -220,8 +222,17 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     );
   }
 
-  async deleteBatch(batch: ObjectIdentifier[]): Promise<void> {
-    await this.s3.send(
+  /**
+   * Deletes up to 1000 objects in one request.
+   *
+   * DeleteObjects responds 200 even when individual keys fail (AccessDenied,
+   * object-lock retention, governance holds). Those failures come back in the
+   * Errors array rather than as a thrown exception, and Quiet mode suppresses
+   * only the success entries - errors are still returned. Callers must check
+   * `errors` before reporting the deletion as complete.
+   */
+  async deleteBatch(batch: ObjectIdentifier[]): Promise<DeleteBatchResult> {
+    const response = await this.s3.send(
       new DeleteObjectsCommand({
         Bucket: this.credentials.bucketName,
         Delete: {
@@ -230,6 +241,20 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         },
       })
     );
+
+    // Every field on the SDK's _Error type is optional, including Key.
+    const errors: DeleteBatchError[] = (response.Errors ?? []).map((e) => ({
+      key: e.Key ?? '',
+      versionId: e.VersionId,
+      code: e.Code,
+      message: e.Message,
+    }));
+
+    return {
+      requested: batch.length,
+      deleted: batch.length - errors.length,
+      errors,
+    };
   }
 
   async listFromPrefix(prefix: string): Promise<string[]> {
