@@ -10,6 +10,7 @@ import {
 } from '@aws-sdk/client-s3';
 import {
   Credentials,
+  DeleteBatchResult,
   DirectoryStructure,
   DownloadFileParams,
   logTypes,
@@ -123,7 +124,7 @@ export abstract class BaseS3ApiProvider {
 
   abstract listFromPrefix(prefix: string): Promise<string[]>;
 
-  abstract deleteBatch(batch: ObjectIdentifier[]): Promise<void>;
+  abstract deleteBatch(batch: ObjectIdentifier[]): Promise<DeleteBatchResult>;
 
   abstract getBucketName(): string;
 

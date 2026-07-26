@@ -75,6 +75,33 @@ export interface RenameFolderParams {
   }) => void;
 }
 
+/**
+ * A single object that S3 refused to delete within a DeleteObjects call.
+ * DeleteObjects returns 200 even when individual keys fail, so these must be
+ * inspected by the caller - they are not thrown.
+ */
+export interface DeleteBatchError {
+  key: string;
+  /** Present when the bucket is versioned; the error is meaningless without it. */
+  versionId?: string;
+  code?: string;
+  message?: string;
+}
+
+export interface DeleteBatchResult {
+  /** How many keys were sent in the request. */
+  requested: number;
+  /**
+   * How many were removed. Derived as `requested - errors.length`: Quiet mode
+   * returns no success list, so this is an inference and assumes S3 emits at
+   * most one error entry per requested key. Callers passing duplicate keys will
+   * see it drift.
+   */
+  deleted: number;
+  /** Per-object failures. Empty on a fully successful batch. */
+  errors: DeleteBatchError[];
+}
+
 export interface SearchParams {
   prefix: string;
   searchTerm: string;
