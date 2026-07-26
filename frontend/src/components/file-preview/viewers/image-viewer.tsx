@@ -12,6 +12,11 @@ interface ImageViewerProps {
 }
 
 export function ImageViewer({ file }: ImageViewerProps) {
+  // Touch gesture support for mobile
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance?: number } | null>(
+    null
+  );
+
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,15 +28,9 @@ export function ImageViewer({ file }: ImageViewerProps) {
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (isLoading) {
-    return <PreviewLoading message="Authenticating..." />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
-
   useEffect(() => {
+    if (isLoading || !isAuthenticated || !apiS3) return;
+
     async function loadImage() {
       try {
         if (!apiS3) return;
@@ -68,7 +67,7 @@ export function ImageViewer({ file }: ImageViewerProps) {
     }
 
     loadImage();
-  }, [file, apiS3]);
+  }, [file, apiS3, isLoading, isAuthenticated]);
 
   // Handle wheel events with proper passive: false
   useEffect(() => {
@@ -150,11 +149,6 @@ export function ImageViewer({ file }: ImageViewerProps) {
     setRotation(0);
   };
 
-  // Touch gesture support for mobile
-  const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance?: number } | null>(
-    null
-  );
-
   const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
     const dx = touch1.clientX - touch2.clientX;
     const dy = touch1.clientY - touch2.clientY;
@@ -206,6 +200,14 @@ export function ImageViewer({ file }: ImageViewerProps) {
     }
     setTouchStart(null);
   };
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   if (loading) {
     return (
