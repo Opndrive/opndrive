@@ -77,8 +77,21 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     currentPath: '',
   });
 
-  const { success, error } = useNotification();
+  const { success, error, warning } = useNotification();
   const { refreshCurrentData } = useDriveStore();
+
+  /**
+   * Shared handling for a folder rename that succeeded but left old copies
+   * behind. This is a warning, not a failure - and it still refreshes, because
+   * the files really did move and the browser must reflect that.
+   */
+  const handlePartialCleanup = useCallback(
+    (message: string) => {
+      warning(message, 10000);
+      refreshCurrentData().catch(() => {});
+    },
+    [warning, refreshCurrentData]
+  );
 
   const showRenameDialog = useCallback(
     (item: FileItem | Folder, type: 'file' | 'folder', currentPath: string) => {
@@ -134,6 +147,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             newName,
             type: 'file',
             onReplace: async () => {
+              let reportedError = false;
               try {
                 setActiveRenames((prev) => new Set(prev).add(fileId));
 
@@ -143,6 +157,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     refreshCurrentData().catch(() => {});
                   },
                   onError: (errorMessage) => {
+                    reportedError = true;
                     error(`Failed to rename "${file.name}": ${errorMessage}`);
                   },
                 });
@@ -151,7 +166,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 resolve();
               } catch (err) {
                 console.error('Rename file error:', err);
-                error(`Failed to rename "${file.name}"`);
+                if (!reportedError) error(`Failed to rename "${file.name}"`);
                 resolve();
               } finally {
                 setActiveRenames((prev) => {
@@ -162,6 +177,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               }
             },
             onKeepBoth: async () => {
+              let reportedError = false;
               try {
                 setActiveRenames((prev) => new Set(prev).add(fileId));
 
@@ -177,6 +193,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     refreshCurrentData().catch(() => {});
                   },
                   onError: (errorMessage) => {
+                    reportedError = true;
                     error(`Failed to rename "${file.name}": ${errorMessage}`);
                   },
                 });
@@ -185,7 +202,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 resolve();
               } catch (err) {
                 console.error('Rename file error:', err);
-                error(`Failed to rename "${file.name}"`);
+                if (!reportedError) error(`Failed to rename "${file.name}"`);
                 resolve();
               } finally {
                 setActiveRenames((prev) => {
@@ -201,6 +218,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       setActiveRenames((prev) => new Set(prev).add(fileId));
 
+      let reportedError = false;
       try {
         await renameService.renameFile(file, newName, currentPath, {
           onComplete: () => {
@@ -208,12 +226,13 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             refreshCurrentData().catch(() => {});
           },
           onError: (errorMessage) => {
+            reportedError = true;
             error(`Failed to rename "${file.name}": ${errorMessage}`);
           },
         });
       } catch (err) {
         console.error('Rename file error:', err);
-        error(`Failed to rename "${file.name}"`);
+        if (!reportedError) error(`Failed to rename "${file.name}"`);
       } finally {
         setActiveRenames((prev) => {
           const newSet = new Set(prev);
@@ -243,6 +262,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             newName,
             type: 'folder',
             onReplace: async () => {
+              let reportedError = false;
               try {
                 setActiveRenames((prev) => new Set(prev).add(folderId));
 
@@ -251,7 +271,9 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     success(`"${folder.name}" renamed to "${newName}"`);
                     refreshCurrentData().catch(() => {});
                   },
+                  onPartialCleanup: handlePartialCleanup,
                   onError: (errorMessage) => {
+                    reportedError = true;
                     error(`Failed to rename "${folder.name}": ${errorMessage}`);
                   },
                 });
@@ -260,7 +282,9 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 resolve();
               } catch (err) {
                 console.error('Rename folder error:', err);
-                error(`Failed to rename "${folder.name}"`);
+                // onError already surfaced the detail - don't stack a second,
+                // less useful toast on top of it.
+                if (!reportedError) error(`Failed to rename "${folder.name}"`);
                 resolve();
               } finally {
                 setActiveRenames((prev) => {
@@ -271,6 +295,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               }
             },
             onKeepBoth: async () => {
+              let reportedError = false;
               try {
                 setActiveRenames((prev) => new Set(prev).add(folderId));
 
@@ -281,7 +306,9 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     success(`"${folder.name}" renamed to "${uniqueName}"`);
                     refreshCurrentData().catch(() => {});
                   },
+                  onPartialCleanup: handlePartialCleanup,
                   onError: (errorMessage) => {
+                    reportedError = true;
                     error(`Failed to rename "${folder.name}": ${errorMessage}`);
                   },
                 });
@@ -290,7 +317,7 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 resolve();
               } catch (err) {
                 console.error('Rename folder error:', err);
-                error(`Failed to rename "${folder.name}"`);
+                if (!reportedError) error(`Failed to rename "${folder.name}"`);
                 resolve();
               } finally {
                 setActiveRenames((prev) => {
@@ -306,19 +333,22 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       setActiveRenames((prev) => new Set(prev).add(folderId));
 
+      let reportedError = false;
       try {
         await renameService.renameFolder(folder, newName, currentPath, {
           onComplete: () => {
             success(`"${folder.name}" renamed to "${newName}"`);
             refreshCurrentData().catch(() => {});
           },
+          onPartialCleanup: handlePartialCleanup,
           onError: (errorMessage) => {
+            reportedError = true;
             error(`Failed to rename "${folder.name}": ${errorMessage}`);
           },
         });
       } catch (err) {
         console.error('Rename folder error:', err);
-        error(`Failed to rename "${folder.name}"`);
+        if (!reportedError) error(`Failed to rename "${folder.name}"`);
       } finally {
         setActiveRenames((prev) => {
           const newSet = new Set(prev);

@@ -1,34 +1,29 @@
 /**
- * Maps `items` through `worker` with at most `concurrency` in flight at once.
+ * Runs `worker` over every item with at most `concurrency` in flight at once.
  *
- * Unlike Promise.all, this bounds how many requests are outstanding
- * simultaneously - important when issuing S3 operations in the thousands,
- * where unbounded concurrency risks tripping provider rate limits.
+ * Only `concurrency` promises exist at any moment - the runners pull from a
+ * shared cursor rather than the caller materialising one promise per item,
+ * which matters when operating on folders containing 100k+ objects.
  *
- * A rejection from one item does not stop the others; the corresponding
- * result entry is a rejected settlement, mirroring Promise.allSettled, so
- * callers can process every outcome (including failures) after the fact.
+ * Returns nothing, deliberately: collecting a settled result per item would
+ * allocate an array as large as the input, which is exactly the overhead this
+ * helper exists to avoid at scale. Workers that need to record outcomes should
+ * catch internally and accumulate only what they actually need (typically just
+ * the failures).
  */
-export async function mapWithConcurrency<T, R>(
+export async function forEachWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
   let nextIndex = 0;
 
   const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
     while (nextIndex < items.length) {
       const index = nextIndex++;
-      try {
-        const value = await worker(items[index], index);
-        results[index] = { status: 'fulfilled', value };
-      } catch (reason) {
-        results[index] = { status: 'rejected', reason };
-      }
+      await worker(items[index], index);
     }
   });
 
   await Promise.all(runners);
-  return results;
 }

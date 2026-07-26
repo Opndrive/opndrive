@@ -85,17 +85,32 @@ export interface RenameFolderError {
   message?: string;
 }
 
+/**
+ * - `completed`      - copied, verified, and old keys removed. Fully done.
+ * - `copied-not-cleaned` - every object is present and correct at the NEW
+ *   location, but some old objects could not be deleted. The user's data is
+ *   safe and complete; this is a cleanup problem, NOT a failed rename, and
+ *   must not be reported as one.
+ * - `failed`         - the copy did not fully succeed, so nothing was deleted.
+ *   The source prefix is intact and the same rename can safely be retried.
+ */
+export type RenameFolderStatus = 'completed' | 'copied-not-cleaned' | 'failed';
+
 export interface RenameFolderResult {
+  status: RenameFolderStatus;
   totalKeys: number;
+  /**
+   * Objects successfully written to the new prefix.
+   *
+   * When `status` is 'failed' this doubles as the count of orphaned copies
+   * left at the destination - harmless (a retry overwrites them, since
+   * CopyObject is idempotent) but worth surfacing so the user knows they are
+   * there.
+   */
   copiedKeys: number;
   deletedKeys: number;
   errors: RenameFolderError[];
-  /**
-   * True only when every key was copied, the copy was verified, and every old
-   * key was deleted. False on any failure - the source prefix is guaranteed
-   * intact in that case (see BaseS3ApiProvider.renameFolder for why), so the
-   * caller can safely retry the same rename rather than treat it as corrupted.
-   */
+  /** Convenience for `status === 'completed'`. */
   completed: boolean;
 }
 

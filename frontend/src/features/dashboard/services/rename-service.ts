@@ -7,6 +7,13 @@ export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
   onComplete?: () => void;
   onError?: (error: string) => void;
+  /**
+   * The rename succeeded - every object is present and correct at the new
+   * name - but some objects could not be removed from the old location. This
+   * is NOT a failure: the user's data is safe and complete. Callers should
+   * surface it as a warning and still refresh, never as a failed rename.
+   */
+  onPartialCleanup?: (message: string) => void;
 }
 
 /**
@@ -26,9 +33,13 @@ interface RenameFolderErrorLike {
   message?: string;
 }
 
+type RenameStatus = 'completed' | 'copied-not-cleaned' | 'failed';
+
 interface NormalizedRenameResult {
-  completed: boolean;
+  status: RenameStatus;
   totalKeys: number;
+  /** On a 'failed' result this is also the number of orphaned copies left at the destination. */
+  copiedKeys: number;
   errors: RenameFolderErrorLike[];
   /** False when running against the pre-2.7.0 algorithm, which has no per-object error detail and is not safe to blindly retry. */
   reliable: boolean;
@@ -38,24 +49,32 @@ function isRenameFolderError(v: unknown): v is RenameFolderErrorLike {
   return !!v && typeof v === 'object' && typeof (v as Record<string, unknown>).key === 'string';
 }
 
+function isRenameStatus(v: unknown): v is RenameStatus {
+  return v === 'completed' || v === 'copied-not-cleaned' || v === 'failed';
+}
+
 function normalizeRenameResult(raw: unknown): NormalizedRenameResult {
   const candidate = (raw ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-  if (Array.isArray(candidate.errors)) {
+  if (isRenameStatus(candidate.status)) {
     return {
-      completed: candidate.completed === true,
-      totalKeys: typeof candidate.totalKeys === 'number' ? candidate.totalKeys : 0,
-      errors: candidate.errors.filter(isRenameFolderError),
+      status: candidate.status,
+      totalKeys: num(candidate.totalKeys),
+      copiedKeys: num(candidate.copiedKeys),
+      errors: Array.isArray(candidate.errors) ? candidate.errors.filter(isRenameFolderError) : [],
       reliable: true,
     };
   }
 
-  // Legacy { total, processed } shape.
-  const total = typeof candidate.total === 'number' ? candidate.total : 0;
-  const processed = typeof candidate.processed === 'number' ? candidate.processed : 0;
+  // Legacy { total, processed } shape - no phase information, so a partial
+  // cleanup is indistinguishable from a failure here.
+  const total = num(candidate.total);
+  const processed = num(candidate.processed);
   return {
-    completed: processed === total,
+    status: processed === total ? 'completed' : 'failed',
     totalKeys: total,
+    copiedKeys: processed,
     errors: [],
     reliable: false,
   };
@@ -74,15 +93,38 @@ function warnLegacyRenameFolderOnce(): void {
   );
 }
 
-function describeRenameFailures(errors: RenameFolderErrorLike[], total: number): string {
+function describeFirstError(errors: RenameFolderErrorLike[]): string {
   const first = errors[0];
-  if (!first) return 'Rename did not fully complete.';
+  if (!first) return '';
   const parts = [first.key];
   if (first.code) parts.push(first.code);
   if (first.message) parts.push(first.message);
+  return parts.join(' - ');
+}
+
+/** Copy phase failed: nothing was deleted, the original folder is untouched. */
+function describeRenameFailure(result: NormalizedRenameResult): string {
+  const detail = describeFirstError(result.errors);
+  const orphanNote =
+    result.copiedKeys > 0
+      ? ` ${result.copiedKeys} partial copy/copies were left at the new location; ` +
+        `retrying overwrites them.`
+      : '';
   return (
-    `${errors.length} of ${total} object(s) failed during rename. ` +
-    `First failure: ${parts.join(' - ')}`
+    `Rename failed, so nothing was changed - your original folder is intact and ` +
+    `you can safely try again.${orphanNote}` +
+    (detail ? ` First problem: ${detail}` : '')
+  );
+}
+
+/** Copy + verify succeeded, only cleanup of the old copies fell short. */
+function describePartialCleanup(folderName: string, result: NormalizedRenameResult): string {
+  const detail = describeFirstError(result.errors);
+  return (
+    `Renamed to "${folderName}" and all ${result.totalKeys} file(s) are safely at the ` +
+    `new location, but ${result.errors.length} old file(s) could not be removed and ` +
+    `still exist at the previous path.` +
+    (detail ? ` First problem: ${detail}` : '')
   );
 }
 
@@ -138,7 +180,7 @@ class RenameService {
     currentPath: string,
     options: RenameOptions = {}
   ): Promise<void> {
-    const { onProgress, onComplete, onError } = options;
+    const { onProgress, onComplete, onError, onPartialCleanup } = options;
 
     try {
       onProgress?.({ status: 'renaming' });
@@ -163,12 +205,22 @@ class RenameService {
       const result = normalizeRenameResult(rawResult);
       if (!result.reliable) warnLegacyRenameFolderOnce();
 
-      if (result.completed) {
+      if (result.status === 'completed') {
         onProgress?.({ status: 'success' });
         onComplete?.();
-      } else {
-        throw new Error(describeRenameFailures(result.errors, result.totalKeys));
+        return;
       }
+
+      if (result.status === 'copied-not-cleaned') {
+        // Deliberately NOT an error path. The rename worked; only cleanup of
+        // the old copies fell short. Throwing here would tell the user their
+        // rename failed while their files sit correctly at the new name.
+        onProgress?.({ status: 'success' });
+        onPartialCleanup?.(describePartialCleanup(newName, result));
+        return;
+      }
+
+      throw new Error(describeRenameFailure(result));
     } catch (error) {
       console.error('renameService.renameFolder error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to rename folder';
