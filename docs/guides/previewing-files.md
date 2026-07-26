@@ -13,6 +13,8 @@ stay in context or open it somewhere shareable.
 Supported file types include images, PDFs, video, audio, text/code, and
 spreadsheets.
 
+<!-- SCREENSHOT: Modal preview open over the file browser, with prev/next arrows visible -->
+
 ## Route Preview and File Versions
 
 The route preview URL is built from the file's S3 ETag, not just its path. If

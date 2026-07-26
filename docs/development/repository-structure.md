@@ -12,6 +12,8 @@ opndrive/
 ├── s3-api/                   # Published npm package: @opndrive/s3-api
 ├── CONTRIBUTING.md           # Short contributor entry point
 ├── CODE_OF_CONDUCT.md
+├── CHANGELOG.md              # Frontend app changes (s3-api has its own)
+├── SECURITY.md               # How to report a vulnerability privately
 ├── LICENSE                   # AGPL-3.0
 ├── README.md
 ├── eslint.config.mjs         # Shared lint config for both packages

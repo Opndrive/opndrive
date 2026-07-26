@@ -40,6 +40,8 @@ sequenceDiagram
     Store-->>U: progress bar updates
 ```
 
+<!-- SCREENSHOT: Upload panel showing multiple files with progress bars, one paused -->
+
 1. Click the upload button, or drag files onto the file list.
 2. Track progress per file in the upload panel.
 3. With multipart mode, pause and resume an in-progress upload; with signed URL
