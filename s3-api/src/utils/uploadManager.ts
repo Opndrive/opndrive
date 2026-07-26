@@ -12,7 +12,7 @@ import {
 } from '../core/types.js';
 
 export class UploadManager {
-  private static instance: UploadManager;
+  private static instance: UploadManager | undefined;
   private s3: S3Client;
   private prefix: string = ''; // Base prefix from config
   private bucket: string = ''; // Bucket from config
@@ -21,6 +21,11 @@ export class UploadManager {
   private activeUploads = 0;
   private maxConcurrency: number; // Max files to upload at once
   private partSize: number;
+  // Set once this instance has been superseded by disposeInstance(). getInstance()
+  // silently discards its config once an instance exists, so a stale manager left
+  // over from a previous session/bucket must refuse new work rather than upload to
+  // credentials the caller no longer intends to use.
+  private isDisposed = false;
 
   // --- Part Concurrency ---
   // This is the max parts for a SINGLE file upload.
@@ -44,6 +49,58 @@ export class UploadManager {
     return UploadManager.instance;
   }
 
+  /**
+   * Tears down the current singleton so the next getInstance() call builds a
+   * fresh manager bound to new credentials.
+   *
+   * Must be called whenever a session ends or changes bucket - getInstance()
+   * silently ignores its config argument once an instance already exists, so
+   * without this, uploads keep going to whichever bucket was connected first.
+   *
+   * Clears the static reference synchronously (before any awaiting), so a
+   * getInstance() call made immediately after is guaranteed a fresh instance
+   * regardless of how long in-flight cancellation takes. Never throws - safe
+   * to call without awaiting from a synchronous caller such as logout.
+   */
+  public static async disposeInstance(): Promise<void> {
+    const existing = UploadManager.instance;
+    UploadManager.instance = undefined;
+    if (!existing) return;
+
+    existing.isDisposed = true;
+    try {
+      await existing.cancelAllUploads();
+    } catch (err) {
+      console.error('Failed to cleanly cancel in-flight uploads during dispose:', err);
+    }
+  }
+
+  /**
+   * Cancels every queued, uploading, or paused item; leaves completed/failed/
+   * cancelled alone.
+   *
+   * Uses allSettled rather than all: a failed AbortMultipartUpload leaves an
+   * orphaned multipart upload accruing storage charges, so every failure has to
+   * be surfaced individually instead of the first rejection masking the rest.
+   */
+  private async cancelAllUploads(): Promise<void> {
+    const ids = Array.from(this.uploads.entries())
+      .filter(([, item]) => ['queued', 'uploading', 'paused'].includes(item.status))
+      .map(([id]) => id);
+
+    const results = await Promise.allSettled(ids.map((id) => this.cancelUpload(id)));
+
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `Failed to cancel upload ${ids[i]} during dispose. If a multipart ` +
+            'upload was in progress it may now be orphaned in the bucket:',
+          result.reason
+        );
+      }
+    });
+  }
+
   // --- Event Emitter Methods (Unchanged) ---
   public on(event: UploadEvent, listener: EventListener): void {
     if (!this.listeners.has(event)) {
@@ -61,6 +118,12 @@ export class UploadManager {
    * The concurrency for the uploader is now a fixed value, not the manager's concurrency.
    */
   public addUpload(file: File, config: { key: string }): string {
+    if (this.isDisposed) {
+      throw new Error(
+        'This UploadManager instance has been disposed. Obtain a new one via getInstance().'
+      );
+    }
+
     const id = uuidv4();
     const uploader = new MultipartUploader({
       s3: this.s3,
@@ -130,6 +193,8 @@ export class UploadManager {
   }
 
   public async resumeUpload(id: string): Promise<void> {
+    if (this.isDisposed) return;
+
     const item = this.uploads.get(id);
     if (!item || item.status !== 'paused') return;
 
@@ -142,19 +207,35 @@ export class UploadManager {
     const item = this.uploads.get(id);
     if (!item) return;
 
+    const previousStatus = item.status;
+
+    // Already terminal - nothing to cancel, and re-running the bookkeeping
+    // below would double-decrement activeUploads.
+    if (previousStatus === 'completed' || previousStatus === 'failed') return;
+    if (previousStatus === 'cancelled') return;
+
     const queueIndex = this.queue.indexOf(id);
     if (queueIndex > -1) {
       this.queue.splice(queueIndex, 1);
     }
 
-    if (item.status === 'uploading' || item.status === 'paused') {
-      await item.uploader.cancel();
-      if (item.status === 'uploading') {
-        this.activeUploads--;
-      }
+    // Mark terminal BEFORE awaiting the uploader. uploader.cancel() performs a
+    // network round-trip (AbortMultipartUpload), and while it is in flight the
+    // upload worker unwinds and resolves normally - it would otherwise still
+    // see status 'uploading' and transition the item to 'completed', emitting a
+    // bogus success event for an upload the caller just cancelled.
+    this.updateItemStatus(id, 'cancelled');
+
+    // The worker's `finally` only decrements for completed/failed, so once the
+    // status is 'cancelled' this bookkeeping becomes ours.
+    if (previousStatus === 'uploading') {
+      this.activeUploads--;
     }
 
-    this.updateItemStatus(id, 'cancelled');
+    if (previousStatus === 'uploading' || previousStatus === 'paused') {
+      await item.uploader.cancel();
+    }
+
     this.processQueue();
   }
 
@@ -172,6 +253,12 @@ export class UploadManager {
   }
 
   private async processQueue(): Promise<void> {
+    // cancelUpload() calls this after every cancellation, including the mass
+    // cancellation inside disposeInstance(). Without this guard, cancelling a
+    // queued item would pull the NEXT queued item off and start uploading it to
+    // the very bucket being torn down.
+    if (this.isDisposed) return;
+
     if (this.activeUploads >= this.maxConcurrency || this.queue.length === 0) {
       return;
     }
@@ -240,8 +327,20 @@ export class UploadManager {
     this.emitStatusChange(id, status, item.progress, error);
   }
 
+  /**
+   * Listeners are isolated from each other: a subscriber that throws must not
+   * break the emit loop. This matters most during disposeInstance(), where a
+   * single throwing listener would otherwise propagate up through
+   * updateItemStatus -> cancelUpload and leave the remaining uploads running.
+   */
   private emit(event: UploadEvent, payload: EventPayload): void {
-    this.listeners.get(event)?.forEach((listener) => listener(payload));
+    this.listeners.get(event)?.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (err) {
+        console.error(`Upload event listener for "${event}" threw:`, err);
+      }
+    });
   }
 
   private emitStatusChange(id: string, status: UploadStatus, progress: number, error?: string) {
