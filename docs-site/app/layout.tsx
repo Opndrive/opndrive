@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
@@ -11,9 +12,26 @@ export const metadata: Metadata = {
   },
   description:
     'Documentation for Opndrive, an open-source web UI for Amazon S3 and S3-compatible storage.',
+  openGraph: {
+    images: ['/docs/og-image.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/docs/og-image.png'],
+  },
 };
 
-const navbar = <Navbar logo={<b>Opndrive</b>} projectLink="https://github.com/Opndrive/opndrive" />;
+const navbar = (
+  <Navbar
+    logo={
+      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <Image src="/docs/logo.png" alt="" width={24} height={24} priority unoptimized />
+        <b>Opndrive</b>
+      </span>
+    }
+    projectLink="https://github.com/Opndrive/opndrive"
+  />
+);
 
 const footer = <Footer>AGPL-3.0 {new Date().getFullYear()} © Opndrive.</Footer>;
 

@@ -18,6 +18,7 @@ const navItems = [
   { label: 'Features', href: '#features' },
   { label: 'Tools', href: '#tools' },
   { label: 'FAQ', href: '#faq' },
+  { label: 'Docs', href: '/docs' },
   { label: 'Get Started', href: '#get-started' },
 ];
 
@@ -68,6 +69,10 @@ export default function LandingPage() {
 
   const handleNavClick = (href: string) => {
     setIsMobileMenuOpen(false);
+    if (!href.startsWith('#')) {
+      router.push(href);
+      return;
+    }
     const element = document.querySelector(href);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });

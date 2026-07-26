@@ -3,6 +3,7 @@
 import { assets } from '@/assets';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
@@ -13,6 +14,7 @@ const navItems = [
   { label: 'Features', href: '#features' },
   { label: 'Tools', href: '#tools' },
   { label: 'FAQ', href: '#faq' },
+  { label: 'Docs', href: '/docs' },
   { label: 'Get Started', href: '#get-started' },
 ];
 
@@ -22,6 +24,7 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ handleGetStarted, isLoading }: HeroSectionProps) {
+  const router = useRouter();
   const effectiveTheme = useEffectiveTheme();
 
   // Use custom hook for GitHub stars
@@ -122,6 +125,10 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
               <button
                 key={index}
                 onClick={() => {
+                  if (!item.href.startsWith('#')) {
+                    router.push(item.href);
+                    return;
+                  }
                   const element = document.querySelector(item.href);
                   if (element) {
                     element.scrollIntoView({ behavior: 'smooth' });

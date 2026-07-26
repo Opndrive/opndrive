@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "estree-util-value-to-estree": "^3.5.0",
+    "lucide-react": "^1.27.0",
     "mermaid": "^11.4.1",
     "next": "15.2.8",
     "nextra": "^4.6.1",
