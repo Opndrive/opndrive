@@ -71,7 +71,7 @@ opndrive/
 └── s3-api/                  # Published npm package, S3 integration layer
 ```
 
-See [Repository Structure](./project-structure.md) for the full breakdown.
+See [Repository Structure](./repository-structure.md) for the full breakdown.
 
 ## Development Workflow
 
@@ -230,6 +230,7 @@ documentation - please open an issue.
 
 ---
 
-**You're all set.** Continue to [Repository Structure](./project-structure.md)
-and [Frontend Architecture](../architecture/frontend.md) to understand the
-codebase in more depth.
+**You're all set.** Continue to
+[Repository Structure](./repository-structure.md) and
+[Frontend Architecture](./frontend-architecture.md) to understand the codebase
+in more depth.

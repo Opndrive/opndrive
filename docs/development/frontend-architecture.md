@@ -149,8 +149,7 @@ const { theme, setTheme } = useTheme();
 
 Auth state (`context/auth-context.tsx`) and drive/folder state
 (`context/data-context.tsx`) are the two Context providers most components
-depend on. See [State Management](../development/state-management.md) for the
-full picture.
+depend on. See [State Management](./state-management.md) for the full picture.
 
 ### Component Patterns
 
@@ -371,8 +370,8 @@ function FileList() {
 Testing runs on [Vitest](https://vitest.dev/) plus React Testing Library. There
 is no Jest and no end-to-end suite (Playwright or otherwise) in this repository
 today - test coverage is intentionally thin and growing, not a pyramid to model
-your own tests after yet. See [Testing](../development/testing.md) for the
-current state and how to add to it.
+your own tests after yet. See [Testing](./testing.md) for the current state and
+how to add to it.
 
 ### Component Testing Pattern
 
