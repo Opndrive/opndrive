@@ -5,6 +5,20 @@ reference material this page links out to, see
 [Coding Standards](./coding-standards.md),
 [Branching & PRs](./branching-and-prs.md), and [CI/CD](./ci-cd.md).
 
+```mermaid
+flowchart LR
+    A[Fork & clone] --> B[Branch]
+    B --> C[Make changes]
+    C --> D[pnpm check + test]
+    D --> E[Commit & push]
+    E --> F[Open PR]
+    F --> G{CI: ci-ok}
+    G -->|fails| C
+    G -->|passes| H[CODEOWNERS review]
+    H -->|changes requested| C
+    H -->|approved| I[Merge]
+```
+
 ## 1. Fork and Clone
 
 ```bash

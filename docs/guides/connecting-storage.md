@@ -41,6 +41,21 @@ give a user (or yourself) visibility into the whole bucket.
 
 ## What Happens on Connect
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as /connect page
+    participant S3 as S3 (or compatible endpoint)
+    participant LS as Browser localStorage
+
+    U->>C: Fill in provider, keys, bucket, (endpoint, prefix)
+    C->>S3: Verify credentials against the bucket
+    S3-->>C: OK
+    C->>LS: Store credentials
+    C->>U: Redirect to dashboard
+    Note over LS,S3: From here on, the browser talks to S3 directly -<br/>no Opndrive server is ever in this path.
+```
+
 1. Opndrive builds an S3 client from the form (setting `endpoint` also switches
    the client to path-style addressing, which self-hosted S3 implementations
    generally require).

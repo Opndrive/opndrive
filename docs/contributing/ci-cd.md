@@ -7,6 +7,21 @@ What actually runs when you push or open a PR, read straight from
 
 Triggers on every pull request and on pushes to `main`.
 
+```mermaid
+flowchart TD
+    A[Push or PR] --> B{changes: paths-filter}
+    B -->|frontend/** changed| C[frontend job]
+    B -->|s3-api/** changed| D[s3-api job]
+    B -->|root config changed| E[quality job]
+    B -->|no relevant change| F[job skipped]
+    C --> G[ci-ok]
+    D --> G
+    E --> G
+    F --> G
+    G -->|any job that ran failed| H[Required check: fails]
+    G -->|everything that ran succeeded| I[Required check: passes]
+```
+
 1. **`changes`** - detects which of `frontend/**`, `s3-api/**`, or root config
    files (`package.json`, `pnpm-lock.yaml`, `eslint.config.mjs`,
    `prettier.config.js`, `.prettierignore`, the workflow file itself) changed.

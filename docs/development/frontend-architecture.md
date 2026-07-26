@@ -47,16 +47,11 @@ src/
 
 ### 2. Component Architecture Layers
 
-```
-┌─────────────────────────────────────┐
-│             App Pages               │ ← Next.js App Router pages
-├─────────────────────────────────────┤
-│          Feature Views              │ ← Business logic containers
-├─────────────────────────────────────┤
-│        Feature Components           │ ← Feature-specific components
-├─────────────────────────────────────┤
-│         Shared Components           │ ← Reusable UI primitives
-└─────────────────────────────────────┘
+```mermaid
+graph TD
+    A["App Pages<br/>Next.js App Router pages"] --> B["Feature Views<br/>Business logic containers"]
+    B --> C["Feature Components<br/>Feature-specific components"]
+    C --> D["Shared Components<br/>Reusable UI primitives"]
 ```
 
 ## Component Organization

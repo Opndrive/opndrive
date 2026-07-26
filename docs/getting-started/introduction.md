@@ -29,11 +29,11 @@ browser's `localStorage`, nowhere else.
 
 ## How It's Built
 
-```
-opndrive/
-├── frontend/    Next.js 15 app - everything you see and click
-├── s3-api/      Published npm package (@opndrive/s3-api) - every S3 call goes through here
-└── docs/        This documentation
+```mermaid
+graph LR
+    Browser["Your Browser"] -->|renders| Frontend["frontend/<br/>Next.js 15 app"]
+    Frontend -->|imports| S3API["s3-api/<br/>@opndrive/s3-api<br/>(published npm package)"]
+    S3API -->|signed requests| S3[("Your S3 Bucket")]
 ```
 
 There's no backend server and no workspace tooling tying the two packages

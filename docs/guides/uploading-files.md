@@ -23,6 +23,23 @@ for the full wiring.
 
 ## Uploading
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Upload Button/Drop Zone
+    participant Store as useUploadStore
+    participant Mgr as UploadManager /<br/>SignedUrlUploadManager
+    participant S3 as Amazon S3
+
+    U->>B: Select or drop a file
+    B->>Store: queue upload
+    Store->>Mgr: hand off to active manager
+    Mgr->>S3: PUT (parts, or single presigned PUT)
+    S3-->>Mgr: progress / completion
+    Mgr-->>Store: update progress
+    Store-->>U: progress bar updates
+```
+
 1. Click the upload button, or drag files onto the file list.
 2. Track progress per file in the upload panel.
 3. With multipart mode, pause and resume an in-progress upload; with signed URL

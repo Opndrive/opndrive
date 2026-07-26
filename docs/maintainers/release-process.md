@@ -5,6 +5,16 @@ Opndrive ships two different things on two different cadences: the
 automated release workflow today - both are manual, and this page documents what
 that manual process actually involves.
 
+```mermaid
+flowchart LR
+    A[Bump version<br/>in package.json] --> B[pnpm check]
+    B --> C[pnpm build]
+    C --> D[npm publish --access public]
+    D --> E[Update s3-api/CHANGELOG.MD]
+    E --> F["cd frontend<br/>pnpm add @opndrive/s3-api@latest"]
+    F --> G[pnpm typecheck && pnpm build]
+```
+
 ## Publishing `@opndrive/s3-api`
 
 `s3-api/package.json` is set up as a real publishable package (`main`, `types`,
