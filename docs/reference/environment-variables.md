@@ -4,9 +4,8 @@ Opndrive reads a small, specific set of environment variables. **None of them
 are AWS or S3 credentials** - those are entered through the app's UI at
 `/connect` and stored in the browser's `localStorage` (see
 [Connecting Storage](../guides/connecting-storage.md)). If you've configured
-`NEXT_PUBLIC_AWS_*` variables somewhere expecting them to matter, they don't
-
-- nothing in the codebase reads them.
+`NEXT_PUBLIC_AWS_*` variables somewhere expecting them to matter, they don't;
+nothing in the codebase reads them.
 
 ## Core
 
