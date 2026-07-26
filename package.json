@@ -5,7 +5,8 @@
   "description": "**Your Secure, Open-Source Cloud Storage** Opndrive offers a powerful, AI-enhanced platform for seamless file sharing and collaboration, giving you full control over your data.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "pnpm --dir frontend test",
+    "typecheck": "pnpm --dir frontend typecheck && pnpm --dir s3-api typecheck",
     "prepare": "husky",
     "lint": "eslint frontend/ s3-api/",
     "lint:fix": "eslint frontend/ --fix",

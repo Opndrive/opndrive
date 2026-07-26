@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm typecheck && pnpm test",
     "build": "tsc"
   },
   "exports": {

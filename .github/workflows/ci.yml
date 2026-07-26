@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.7.0'
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      s3api: ${{ steps.filter.outputs.s3api }}
+      root: ${{ steps.filter.outputs.root }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            s3api:
+              - 's3-api/**'
+            root:
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'eslint.config.mjs'
+              - 'prettier.config.js'
+              - '.prettierignore'
+              - '.github/workflows/ci.yml'
+
+  quality:
+    name: Lint & format
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm exec prettier --check "**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html,mjs,cjs}"
+
+      # Deliberately no --max-warnings=0 here: the repo currently carries 98
+      # pre-existing react-hooks/exhaustive-deps and ratcheted rules-of-hooks
+      # warnings (see eslint.config.mjs) that are tracked separately, not
+      # newly introduced. Zero-warning enforcement on touched files is done
+      # by lint-staged in the pre-commit hook; this gate only fails on errors.
+      - name: Lint
+        run: pnpm exec eslint frontend/ s3-api/
+
+  frontend:
+    name: Frontend (typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: actions/cache@v4
+        with:
+          path: frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/src/**/*.ts', 'frontend/src/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_ENABLE_BLOG: 'false'
+
+  s3-api:
+    name: s3-api (typecheck, build)
+    needs: changes
+    if: needs.changes.outputs.s3api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: s3-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: s3-api/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+  # Required-status-check target. Individual jobs are skipped by path
+  # filtering, and GitHub treats "skipped" as never-satisfied for branch
+  # protection, so branch protection must require this job, not the others.
+  ci-ok:
+    name: CI OK
+    needs: [quality, frontend, s3-api]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          for result in "${{ needs.quality.result }}" "${{ needs.frontend.result }}" "${{ needs.s3-api.result }}"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "A required job did not succeed (result: $result)"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed or were correctly skipped."
