@@ -19,6 +19,7 @@ import {
   PresignedUploadParams,
   RenameFileParams,
   RenameFolderParams,
+  RenameFolderResult,
   SearchParams,
   SearchResult,
   SignedUrlParams,
@@ -44,6 +45,14 @@ export abstract class BaseS3ApiProvider {
       },
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
+      // Retry policy lives here and ONLY here. The SDK's standard strategy
+      // already retries throttling (SlowDown), 5xx, and network failures with
+      // its own exponential backoff, so wrapping individual send() calls in a
+      // second retry layer multiplies attempts (4 outer x 3 inner = 12 requests
+      // per object) and fights the SDK's internal rate limiter. Bulk operations
+      // like folder rename and batch delete issue thousands of requests, so a
+      // slightly higher ceiling than the default 3 is worth the slower failure.
+      maxAttempts: 5,
     };
 
     if (this.credentials.endpoint) {
@@ -118,7 +127,7 @@ export abstract class BaseS3ApiProvider {
 
   abstract renameFile(params: RenameFileParams): Promise<boolean>;
 
-  abstract renameFolder(params: RenameFolderParams): Promise<{ total: number; processed: number }>;
+  abstract renameFolder(params: RenameFolderParams): Promise<RenameFolderResult>;
 
   abstract search(params: SearchParams): Promise<SearchResult>;
 

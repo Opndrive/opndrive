@@ -67,12 +67,51 @@ export interface RenameFileParams {
 export interface RenameFolderParams {
   oldPrefix: string;
   newPrefix: string;
-  onProgress?: (progress: {
-    total: number;
-    processed: number;
-    currentKey?: string;
-    newKey?: string;
-  }) => void;
+  onProgress?: (progress: RenameFolderProgress) => void;
+}
+
+export interface RenameFolderProgress {
+  phase: 'copying' | 'verifying' | 'deleting';
+  total: number;
+  processed: number;
+  currentKey?: string;
+  newKey?: string;
+}
+
+/** A single object that could not be copied or deleted while renaming a folder. */
+export interface RenameFolderError {
+  key: string;
+  code?: string;
+  message?: string;
+}
+
+/**
+ * - `completed`      - copied, verified, and old keys removed. Fully done.
+ * - `copied-not-cleaned` - every object is present and correct at the NEW
+ *   location, but some old objects could not be deleted. The user's data is
+ *   safe and complete; this is a cleanup problem, NOT a failed rename, and
+ *   must not be reported as one.
+ * - `failed`         - the copy did not fully succeed, so nothing was deleted.
+ *   The source prefix is intact and the same rename can safely be retried.
+ */
+export type RenameFolderStatus = 'completed' | 'copied-not-cleaned' | 'failed';
+
+export interface RenameFolderResult {
+  status: RenameFolderStatus;
+  totalKeys: number;
+  /**
+   * Objects successfully written to the new prefix.
+   *
+   * When `status` is 'failed' this doubles as the count of orphaned copies
+   * left at the destination - harmless (a retry overwrites them, since
+   * CopyObject is idempotent) but worth surfacing so the user knows they are
+   * there.
+   */
+  copiedKeys: number;
+  deletedKeys: number;
+  errors: RenameFolderError[];
+  /** Convenience for `status === 'completed'`. */
+  completed: boolean;
 }
 
 /**
