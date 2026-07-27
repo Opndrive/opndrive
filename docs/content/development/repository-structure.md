@@ -7,7 +7,7 @@ below was checked against the actual filesystem.
 
 ```
 opndrive/
-├── docs/                     # Documentation (you are here)
+├── docs/                # This documentation site (Nextra) - content/ is the source of truth
 ├── frontend/                 # Next.js application
 ├── s3-api/                   # Published npm package: @opndrive/s3-api
 ├── CONTRIBUTING.md           # Short contributor entry point
@@ -21,6 +21,12 @@ opndrive/
 ├── pnpm-lock.yaml
 └── prettier.config.js
 ```
+
+There used to be a separate `docs/` folder at the root, copied verbatim into
+`docs/content/`. It was removed - Nextra has no supported way to read content
+from outside its own app directory, so a copy meant two places that could
+silently drift out of sync. `docs/content/` is the only place these files live
+now; it's still plain Markdown/MDX, so it reads fine directly on GitHub too.
 
 There's no `pnpm-workspace.yaml` - each package manages its own `node_modules`
 independently. That's a deliberate choice, not an oversight (see

@@ -33,10 +33,12 @@ want to fix it, it's a good first contribution).
 **Is there a workspace `pnpm-workspace.yaml`?** No. Root, `frontend/`, and
 `s3-api/` are independent packages by design.
 
-**What license is this under?** AGPL-3.0. See [LICENSE](../../LICENSE).
+**What license is this under?** AGPL-3.0. See
+[LICENSE](https://github.com/Opndrive/opndrive/blob/main/LICENSE).
 
 **How do I report a security vulnerability?** Privately - see
-[SECURITY.md](../../SECURITY.md). Don't open a public issue for it.
+[SECURITY.md](https://github.com/Opndrive/opndrive/blob/main/SECURITY.md). Don't
+open a public issue for it.
 
 **Something's not covered here.** Check [Troubleshooting](./troubleshooting.md),
 then [open an issue](https://github.com/Opndrive/opndrive/issues) or a GitHub

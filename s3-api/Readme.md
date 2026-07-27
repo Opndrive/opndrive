@@ -33,8 +33,9 @@ const { files, folders } = await api.fetchDirectoryStructure('photos/', 50);
 
 Supports directory listing, single and multipart uploads, presigned URLs,
 downloads with progress, rename/move, batch delete, and search. See the full
-[S3 API Layer](../docs/development/s3-api.md) reference for the complete method
-list and the reasoning behind the trickier ones (`deleteBatch`, `renameFolder`).
+[S3 API Layer](../docs/content/development/s3-api.md) reference for the complete
+method list and the reasoning behind the trickier ones (`deleteBatch`,
+`renameFolder`).
 
 ## Development
 
@@ -44,5 +45,5 @@ pnpm check   # typecheck + test
 pnpm build
 ```
 
-See [Release Process](../docs/maintainers/release-process.md) for how versions
-get published.
+See [Release Process](../docs/content/maintainers/release-process.md) for how
+versions get published.

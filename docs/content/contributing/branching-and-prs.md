@@ -16,7 +16,8 @@ git checkout -b feature/add-file-sharing
 ## Opening a Pull Request
 
 Target `main` on `Opndrive/opndrive`. GitHub pre-fills the
-[PR template](../../.github/pull_request_template.md), which asks for:
+[PR template](https://github.com/Opndrive/opndrive/blob/main/.github/pull_request_template.md),
+which asks for:
 
 - What the PR does and which issue it relates to
 - Type of change (bug fix, feature, refactor, docs, other)
@@ -44,11 +45,12 @@ not a required check.
 
 Use the GitHub issue templates rather than a blank issue:
 
-- **[Bug report](../../.github/ISSUE_TEMPLATE/bug_report.md)** asks for
-  reproduction steps, expected vs. actual behavior, and environment details.
-- **[Feature request](../../.github/ISSUE_TEMPLATE/feature_request.md)** asks
-  for the problem you're solving, your proposed solution, and alternatives you
-  considered.
+- **[Bug report](https://github.com/Opndrive/opndrive/blob/main/.github/ISSUE_TEMPLATE/bug_report.md)**
+  asks for reproduction steps, expected vs. actual behavior, and environment
+  details.
+- **[Feature request](https://github.com/Opndrive/opndrive/blob/main/.github/ISSUE_TEMPLATE/feature_request.md)**
+  asks for the problem you're solving, your proposed solution, and alternatives
+  you considered.
 
 ## Issue Labels
 

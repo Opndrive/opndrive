@@ -55,8 +55,8 @@ docker build -t opndrive .
 docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive
 ```
 
-See [Deployment](./docs/getting-started/deployment.md) for build args and other
-hosting options (Vercel, Netlify).
+See [Deployment](./docs/content/getting-started/deployment.md) for build args
+and other hosting options (Vercel, Netlify).
 
 Then:
 
@@ -68,10 +68,10 @@ Then:
 ### For Developers
 
 **New to the Project?** Start with our
-[Introduction](./docs/getting-started/introduction.md)
+[Introduction](./docs/content/getting-started/introduction.md)
 
 **Ready to Contribute?** Check out our
-[Development Setup](./docs/development/setup.md)
+[Development Setup](./docs/content/development/setup.md)
 
 ## Architecture
 
@@ -81,7 +81,7 @@ Opndrive uses a modern, feature-based architecture:
 opndrive/
 ├── frontend/           # Next.js 15 web application
 ├── s3-api/            # S3 integration layer
-└── docs/              # Comprehensive documentation
+└── docs/               # Documentation site (content/ is the source of truth)
 ```
 
 ### Tech Stack
@@ -116,37 +116,39 @@ opndrive/
 
 ## Documentation
 
-Full docs live in [`/docs`](./docs/README.md), organized by audience:
+Full docs live in [`docs/content`](./docs/content/index.mdx), organized by
+audience:
 
 ### **Getting Started** (Perfect for Beginners)
 
-- [Introduction](./docs/getting-started/introduction.md)
-- [Installation](./docs/getting-started/installation.md) - Get running in a few
-  minutes
-- [First Upload](./docs/getting-started/first-upload.md) - Connect your bucket
-  and upload a file
+- [Introduction](./docs/content/getting-started/introduction.md)
+- [Installation](./docs/content/getting-started/installation.md) - Get running
+  in a few minutes
+- [First Upload](./docs/content/getting-started/first-upload.md) - Connect your
+  bucket and upload a file
 
 ### **Development** (For Contributors)
 
-- [Development Setup](./docs/development/setup.md) - Complete setup guide
-- [Repository Structure](./docs/development/repository-structure.md) - How code
-  is organized
-- [First Contribution](./docs/contributing/first-contribution.md) - How to
-  contribute
+- [Development Setup](./docs/content/development/setup.md) - Complete setup
+  guide
+- [Repository Structure](./docs/content/development/repository-structure.md) -
+  How code is organized
+- [First Contribution](./docs/content/contributing/first-contribution.md) - How
+  to contribute
 
 ### **Architecture** (Technical Deep Dive)
 
-- [Frontend Architecture](./docs/development/frontend-architecture.md)
-- [S3 API Layer](./docs/development/s3-api.md)
-- [Component Guidelines](./docs/development/component-guidelines.md)
+- [Frontend Architecture](./docs/content/development/frontend-architecture.md)
+- [S3 API Layer](./docs/content/development/s3-api.md)
+- [Component Guidelines](./docs/content/development/component-guidelines.md)
 
 ## Contributing
 
 We welcome contributions from developers of all skill levels - bug reports,
 features, docs, design, and tests. See [CONTRIBUTING.md](./CONTRIBUTING.md) for
 the quick start, or the full
-[Contributing Guide](./docs/contributing/first-contribution.md) for branch
-naming, commit conventions, and the PR process.
+[Contributing Guide](./docs/content/contributing/first-contribution.md) for
+branch naming, commit conventions, and the PR process.
 
 ## Development
 
@@ -157,9 +159,9 @@ pnpm test                  # run tests (from frontend/ or s3-api/)
 pnpm lint                  # from the repository root
 ```
 
-See [Development Setup](./docs/development/setup.md) for the full guide, and
-[Deployment](./docs/getting-started/deployment.md) for Vercel, Netlify, and
-Docker.
+See [Development Setup](./docs/content/development/setup.md) for the full guide,
+and [Deployment](./docs/content/getting-started/deployment.md) for Vercel,
+Netlify, and Docker.
 
 ## Security
 
@@ -188,7 +190,7 @@ see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Documentation**: [docs/README.md](./docs/README.md)
+- **Documentation**: [docs/content](./docs/content/index.mdx)
 - **Bug reports and questions**:
   [Create an issue](https://github.com/Opndrive/opndrive/issues)
 - **Security vulnerabilities**: [SECURITY.md](./SECURITY.md) - please don't use

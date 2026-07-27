@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing. This file covers the essentials; the
 full guide (branching, commit conventions, testing, troubleshooting) lives in
-[docs/contributing/first-contribution.md](./docs/contributing/first-contribution.md)
+[docs/content/contributing/first-contribution.md](./docs/content/contributing/first-contribution.md)
 so there's one place to keep it accurate.
 
 ## Code of Conduct
@@ -46,10 +46,10 @@ pnpm test
 ## Where to Go Next
 
 - **New to the project?** Start with the
-  [Introduction](./docs/getting-started/introduction.md).
+  [Introduction](./docs/content/getting-started/introduction.md).
 - **Ready to write code?** Read the
-  [full Contributing Guide](./docs/contributing/first-contribution.md) for
-  branch naming, commit conventions, and the PR process.
+  [full Contributing Guide](./docs/content/contributing/first-contribution.md)
+  for branch naming, commit conventions, and the PR process.
 - **Found a bug or have an idea?**
   [Open an issue](https://github.com/Opndrive/opndrive/issues).
 

@@ -25,7 +25,7 @@ When you look at the `opndrive` folder, you'll see:
 opndrive/
 ├── frontend/          # The web app you see in your browser
 ├── s3-api/           # Code that talks to Amazon S3
-├── docs/             # Documentation (like this file!)
+├── docs/        # Documentation (like this file!) - content/ folder
 └── package.json      # Project settings
 ```
 
