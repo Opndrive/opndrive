@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
+import { DOCS_URL } from '@/config/links';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
   { label: 'Features', href: '#features' },
   { label: 'Tools', href: '#tools' },
   { label: 'FAQ', href: '#faq' },
-  { label: 'Docs', href: '/docs' },
+  { label: 'Docs', href: DOCS_URL },
   { label: 'Get Started', href: '#get-started' },
 ];
 
@@ -64,6 +65,10 @@ export default function Navbar() {
               <button
                 key={index}
                 onClick={() => {
+                  if (item.href.startsWith('http')) {
+                    window.location.href = item.href;
+                    return;
+                  }
                   if (!item.href.startsWith('#')) {
                     router.push(item.href);
                     return;

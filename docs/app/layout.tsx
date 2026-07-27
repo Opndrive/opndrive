@@ -13,11 +13,11 @@ export const metadata: Metadata = {
   description:
     'Documentation for Opndrive, an open-source web UI for Amazon S3 and S3-compatible storage.',
   openGraph: {
-    images: ['/docs/og-image.png'],
+    images: ['/og-image.png'],
   },
   twitter: {
     card: 'summary_large_image',
-    images: ['/docs/og-image.png'],
+    images: ['/og-image.png'],
   },
 };
 
@@ -25,7 +25,7 @@ const navbar = (
   <Navbar
     logo={
       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <Image src="/docs/logo.png" alt="" width={24} height={24} priority unoptimized />
+        <Image src="/logo.png" alt="" width={24} height={24} priority unoptimized />
         <b>Opndrive</b>
       </span>
     }

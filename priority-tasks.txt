@@ -1,0 +1,240 @@
+OPNDRIVE - TOP 5 PRIORITY TASKS
+Selected from issues #65-96. Ranked by blast radius: silent incorrectness and
+misplaced data first, then crashes, then broken core features.
+
+Generated: 2026-07-26
+Revised:   2026-07-26 (after verifying #73 - see correction note at bottom)
+
+===============================================================================
+[x] 1. deleteBatch discards S3 per-object errors -> silent partial delete
+        DONE - merged. s3-api bumped to 2.5.0 and published. #73 rewritten
+        in place to reflect the real cause. Follow-ups filed: #97, #98, #99.
+        Labels: bug, data-loss, priority: high, s3-api
+        Milestone: Data Integrity Fixes
+
+        WHY #1: DeleteObjects returns HTTP 200 even when individual keys fail;
+        the failures come back in an Errors array. deleteBatch throws that
+        entire response away and returns Promise<void>. All three live delete
+        paths (folder delete, multi-select batch delete, delete-by-keys) then
+        report success. Objects the user believes are deleted are still in the
+        bucket, still billed, and now unreachable through the UI because the
+        folder marker above them was removed in the same pass.
+
+        Files: s3-api/src/index.ts (deleteBatch, line 223)
+               s3-api/src/core/index.ts (abstract signature)
+               s3-api/src/core/types.ts (new result type)
+               frontend/src/features/upload/hooks/use-delete-operations.ts
+                 (deleteFolderWithProgress, batchDelete, batchDeleteByKeys)
+
+-------------------------------------------------------------------------------
+[x] 2. #77 - Upload managers are singletons that survive logout
+        https://github.com/Opndrive/opndrive/issues/77
+        Labels: bug, security, priority: high, s3-api
+        Milestone: Data Integrity Fixes
+
+        DONE (code) - disposeInstance() added to both managers in s3-api,
+        bumped to 2.6.0 locally (NOT YET PUBLISHED). auth-context.tsx now
+        disposes+rebuilds on every session start and disposes on logout, via
+        a feature-detecting shim identical in spirit to the deleteBatch one.
+        Verified against the real built dist: old manager throws on new
+        uploads after dispose, new manager works. Follow-up filed: #101
+        (upload/delete history also leaks across sessions - separate bug,
+        UI/memory only, not a misrouted-upload risk).
+        STILL PENDING: npm publish 2.6.0, then bump frontend to ^2.6.0 and
+        delete the shim in auth-context.tsx.
+
+        WHY #2: Writes user data into the wrong AWS account. getInstance()
+        returns the first instance ever built and discards the config on every
+        later call, so after switching buckets uploads still go to the previous
+        one with the previous credentials. For a bring-your-own-credentials
+        tool this is the most trust-destroying failure mode available. Ranked
+        below #1 only because it needs a bucket switch to trigger.
+
+        Files: s3-api/src/utils/uploadManager.ts
+               s3-api/src/utils/signedUrlUploadManager.ts
+               frontend/src/context/auth-context.tsx
+
+-------------------------------------------------------------------------------
+[x] 3. #74 - Folder rename cannot roll back or resume
+        https://github.com/Opndrive/opndrive/issues/74
+        Labels: bug, data-integrity, priority: high, s3-api
+        Milestone: Data Integrity Fixes
+
+        DONE (code) - rewrote renameFolder as copy-all (concurrent, retrying)
+        -> verify (count check) -> delete-all (reusing the fixed deleteBatch
+        from task 1). Any failure now leaves the source prefix fully intact -
+        worst case is a harmless duplicate, safe to clean up by re-running the
+        same rename. New utils/retry.ts + utils/concurrency.ts. s3-api bumped
+        to 2.7.0 locally (still not published - batching all 5 tasks per
+        agreed plan). frontend/rename-service.ts updated via the same
+        feature-detecting shim pattern as tasks 1-2.
+        Scoped down from the original ask on purpose (confirmed with user):
+        this fixes "any failure is safe to retry" but does NOT add
+        cross-session auto-resume (detecting an interrupted rename after a
+        closed tab and resuming without user action) - that's a real feature
+        with its own edge cases, deliberately left for a follow-up issue
+        rather than bundled in here.
+        Verified against the real built dist with a fake S3 double: clean
+        rename, permanent failure leaves source 100% untouched, transient
+        SlowDown retries and succeeds, retrying an identical failed rename
+        completes cleanly with no duplicates, pagination across multiple
+        pages. Proved the test has teeth by reverting to the old algorithm in
+        the compiled output first - it failed/crashed as expected, then
+        rebuilt from source and confirmed 19/19 pass.
+        rename-context.tsx and rename-dialog.tsx needed NO changes - confirmed
+        there is no progress UI currently wired up at all.
+
+        WHY #3: A failure partway through leaves the folder split across two
+        prefixes with no record of the boundary. Recovery means hand-
+        reconciling in the AWS console. Triggered by throttling, expired
+        credentials, a closed tab, or a dropped connection - none rare on a
+        5,000-object folder doing 10,000 sequential round-trips.
+        CONFIRMED live: rename-service.ts calls api.renameFolder directly.
+
+        Files: s3-api/src/index.ts
+               frontend/src/features/dashboard/services/rename-service.ts
+
+-------------------------------------------------------------------------------
+[x] 4. #82 - useSearch violates the Rules of Hooks
+        https://github.com/Opndrive/opndrive/issues/82
+        Labels: bug, priority: high, search, state-management
+
+        DONE - traced the actual trigger first, per the TODO below, and it
+        does NOT match the issue as literally written: AuthProvider renders a
+        loading placeholder instead of children while isLoading is true, and
+        every path that sets apiS3 sets userCreds in the same synchronous
+        continuation (React batches them), so a mounted SearchPage/SearchBar
+        instance never actually sees apiS3 flip mid-life under the current
+        code. The real risk is that LayoutShell's gate (layout.tsx) checks
+        isLoading + userCreds but NOT apiS3 - the two are only in sync by
+        convention across auth-context.tsx and use-auth-guard.tsx, not by any
+        enforced invariant, so the crash is one refactor away rather than
+        currently firing. Fixed anyway since conditional hooks are unsafe
+        regardless of whether today's callers happen to avoid it.
+        Removed the early return; searchService is now memoized with
+        useMemo(apiS3) instead of rebuilt every render (this also fixes a
+        second, always-active bug: it sat in search's own useCallback deps,
+        so search was rebuilt every render and memoization did nothing).
+        Every exposed function now guards on searchService being null instead
+        of the hook returning a differently-shaped object - one return shape,
+        always.
+        Added vitest + @testing-library/react + jsdom to frontend (previously
+        zero test infra there) specifically to catch this class of bug, since
+        it's a React runtime invariant that a logic-only test can't see.
+        Proved the test has teeth: reverted to the old early-return shape and
+        got the actual React errors ("Rendered fewer hooks than expected" /
+        "Rendered more hooks than during the previous render") on both
+        transition directions (null->apiS3 and apiS3->null). Restored the fix,
+        reran clean. Typecheck, eslint, and next build all pass.
+
+        POST-REVIEW (paranoid pass found 5 real problems, all fixed):
+        a) My "eslint passes" claim was hollow - eslint-plugin-react-hooks was
+           NOT installed at all. Proved it by linting a textbook conditional
+           useCallback: exit 0. Installed and wired it. It immediately found
+           62 rules-of-hooks errors in 15 OTHER files - #82 was one instance
+           of a systemic pattern, not a one-off. Filed #105 with the full list.
+           Enabling it as a hard error broke `next build` (exit 1), so it is
+           now error globally + warn for the 15 known-debt files. That is a
+           ratchet not an amnesty: lint-staged runs --max-warnings=0, so
+           touching a debt file still forces a fix, and no new file can join
+           the list. Verified both directions.
+        b) My null guard traded a loud crash for a silent lie: with no
+           provider, search() no-ops and the page renders "No results found"
+           for a query that never ran - and page.tsx's effect keyed on [query]
+           alone would never retry once apiS3 arrived. Added isReady, gated
+           the effect on it, and gave both the page and the search bar a
+           distinct "Connecting to your storage..." state.
+        c) In-flight searches were never aborted on unmount - the service kept
+           paginating (100k ceiling) for a dead component and its results
+           landed in the module-level store afterwards. These are billed S3
+           requests. Added a cleanup that aborts and resets the shared loading
+           flag (which outlives the component, so skipping it would strand the
+           next mount on a permanent spinner).
+        d) The finally block cleared shared state unconditionally, so a
+           superseded search would discard the controller of the search that
+           replaced it - killing the Cancel button and hiding the spinner
+           mid-search. Now keyed to the controller it started with.
+        e) `globals: true` without a matching type reference meant an
+           idiomatic globals-style test would pass `pnpm test` and then break
+           `next build`. Added vitest-env.d.ts (a reference file, NOT
+           compilerOptions.types, which would have switched off auto-inclusion
+           of @types/node and friends).
+        Tests 2 -> 9. Proved teeth by reverting each fix separately: memoisation
+        (2 fail), unmount abort (1), finally race (1), isReady (1). One test
+        was TOOTHLESS on first write - "does not touch store state" passed even
+        with the guard removed, because the error path happened to reset the
+        same state. Rewrote it to count store transitions instead of asserting
+        on final state; it now fails with "expected 4 to be +0".
+        Also caught a mock artifact: my useNotification mock minted a fresh
+        vi.fn() per render, failing the memoisation assertion for a reason that
+        does not exist in production (the real one is useCallback-stable).
+        Follow-ups filed: #104 (search cache survives logout - leaks results
+        across AWS accounts, reachable TODAY and arguably worse than #82),
+        #105 (the 62 violations), #106 (store over-subscription).
+
+        Files: frontend/src/features/dashboard/hooks/use-search.ts
+               frontend/src/features/dashboard/hooks/use-search.test.tsx (new)
+               frontend/src/app/dashboard/search/page.tsx
+               frontend/src/features/dashboard/components/views/search/search-bar.tsx
+               frontend/vitest.config.ts (new)
+               frontend/vitest-env.d.ts (new)
+               frontend/package.json (test script + devDependencies)
+               eslint.config.mjs (react-hooks plugin + debt ratchet)
+               package.json (eslint-plugin-react-hooks)
+
+        BRANCHES PUSHED TO FORK (PRs not yet opened):
+          fix/use-search-hooks-violation   (b8da314) - task 4, off main
+          fix/search-cache-logout-leak     (eb54048) - #104, STACKED on the
+            above because the vitest infra it needs lands in the task 4 PR.
+            MERGE THE TASK 4 PR FIRST or this one carries its commits.
+
+-------------------------------------------------------------------------------
+[ ] 5. #84 - Download progress is fake, cancel is dead, filenames are wrong
+        https://github.com/Opndrive/opndrive/issues/84
+        Labels: bug, ui, s3-api
+
+        WHY #5: Download is a core feature broken in a way users hit every
+        time. link.download is ignored for cross-origin URLs, so presigned S3
+        downloads save under the wrong name on every single download. The
+        progress bar is Math.random() on an interval and Cancel aborts a
+        controller wired to nothing.
+
+        Files: frontend/src/features/dashboard/services/download-service.ts
+               s3-api/src/index.ts
+
+===============================================================================
+CORRECTION LOG
+
+#73 as filed claims the bug is in delete-service.ts (fetchDirectoryStructure
+defaulting to maxKeys=50 with no pagination). That defect is real in that file,
+but the file is DEAD CODE - createDeleteService has zero call sites. Verified
+by grep across frontend/src.
+
+The live path is:
+  folder-overflow-menu.tsx
+    -> useDeleteWithProgress().deleteFolder
+    -> useDeleteOperations().deleteFolderWithProgress
+    -> apiS3.listFromPrefix()   (paginates exhaustively - correct)
+    -> apiS3.deleteBatch()      (chunks of 1000 - correct batching)
+
+That path lists and batches correctly. The actual defect is one level down, in
+deleteBatch ignoring the Errors array. Same class of bug (silent partial delete
+reported as success), different file and different mechanism.
+
+ACTIONS:
+  - Rewrite or close #73; open a new issue against deleteBatch
+  - Separate cleanup issue: delete frontend/src/features/dashboard/services/
+    delete-service.ts entirely (dead code, good first issue)
+
+===============================================================================
+DELIBERATELY NOT IN THE TOP 5
+
+#83 (no error boundaries) - severe, but a safety net rather than a root cause.
+    Fix right after these; it limits the damage of everything else.
+#85 (no keyboard access to files/folders) - worst accessibility issue we have
+    and a core interaction, but it does not lose or misplace data.
+#93 (delete forever on versioned buckets) - mislabeled copy and retained
+    billing, but data is preserved rather than lost. Overlaps with #1 above;
+    fix them together.
+#76 (search stops early) - silent incorrectness, but read-only. Nothing is
+    written or destroyed.
