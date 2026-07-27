@@ -12,12 +12,14 @@ import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
+import { DOCS_URL } from '@/config/links';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
   { label: 'Features', href: '#features' },
   { label: 'Tools', href: '#tools' },
   { label: 'FAQ', href: '#faq' },
+  { label: 'Docs', href: DOCS_URL },
   { label: 'Get Started', href: '#get-started' },
 ];
 
@@ -68,6 +70,14 @@ export default function LandingPage() {
 
   const handleNavClick = (href: string) => {
     setIsMobileMenuOpen(false);
+    if (href.startsWith('http')) {
+      window.location.href = href;
+      return;
+    }
+    if (!href.startsWith('#')) {
+      router.push(href);
+      return;
+    }
     const element = document.querySelector(href);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });

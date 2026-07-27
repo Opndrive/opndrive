@@ -25,7 +25,7 @@ When you look at the `opndrive` folder, you'll see:
 opndrive/
 ├── frontend/          # The web app you see in your browser
 ├── s3-api/           # Code that talks to Amazon S3
-├── docs/             # Documentation (like this file!)
+├── docs/        # Documentation (like this file!) - content/ folder
 └── package.json      # Project settings
 ```
 
@@ -229,4 +229,6 @@ When you want to make changes:
 ---
 
 **Next Step**: Ready to make your first change? Continue to
-[Making Your First Change](./making-your-first-change.md)
+[Repository Structure](./repository-structure.md) for a deeper map of the
+codebase, then [First Contribution](../contributing/first-contribution.md) to
+learn about branch naming, commit conventions, and how to submit a pull request.

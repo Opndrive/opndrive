@@ -49,25 +49,29 @@ control, you connect your own storage backend - AWS S3.
 
 ### Option 2: Run with Docker
 
-1. **Run the Container**
+```bash
+cd frontend
+docker build -t opndrive .
+docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive
+```
 
-   ```bash
-   docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive/opndrive:1.0.0
-   ```
+See [Deployment](./docs/content/getting-started/deployment.md) for build args
+and other hosting options (Vercel, Netlify).
 
-2. **Open Your Browser**
-   - Go to [http://localhost:3000](http://localhost:3000)
-   - Click **Get Started**
-   - Enter your AWS S3 credentials in the UI
-   - Start managing your files!
+Then:
+
+- Go to [http://localhost:3000](http://localhost:3000)
+- Click **Get Started**
+- Enter your AWS S3 credentials in the UI
+- Start managing your files!
 
 ### For Developers
 
 **New to the Project?** Start with our
-[Beginner's Guide](./docs/getting-started/prerequisites.md)
+[Introduction](./docs/content/getting-started/introduction.md)
 
 **Ready to Contribute?** Check out our
-[Development Setup](./docs/development/setup.md)
+[Development Setup](./docs/content/development/setup.md)
 
 ## Architecture
 
@@ -77,7 +81,7 @@ Opndrive uses a modern, feature-based architecture:
 opndrive/
 ├── frontend/           # Next.js 15 web application
 ├── s3-api/            # S3 integration layer
-└── docs/              # Comprehensive documentation
+└── docs/               # Documentation site (content/ is the source of truth)
 ```
 
 ### Tech Stack
@@ -105,94 +109,68 @@ opndrive/
 - **File Preview** - View images, PDFs, and text files directly
 - **File Management** - Rename, delete, download files
 - **Search** - Find files quickly across your storage
-- **Multiple Upload Methods** - Auto, signed-URL, multipart, concurrent
+- **Multiple Upload Methods** - Multipart (pause/resume, large files) and
+  signed-URL (faster for small files)
 - **Responsive Design** - Works on all devices
 - **Dark/Light Theme** - Choose your preferred interface
 
 ## Documentation
 
-Our documentation is organized for different audiences:
+Full docs live in [`docs/content`](./docs/content/index.mdx), organized by
+audience:
 
 ### **Getting Started** (Perfect for Beginners)
 
-- [What You Need](./docs/getting-started/prerequisites.md) - Software
-  requirements
-- [Quick Setup](./docs/getting-started/quick-setup.md) - Get running in 10
-  minutes
-- [Understanding the Code](./docs/getting-started/understanding-the-code.md) -
-  Project tour
+- [Introduction](./docs/content/getting-started/introduction.md)
+- [Installation](./docs/content/getting-started/installation.md) - Get running
+  in a few minutes
+- [First Upload](./docs/content/getting-started/first-upload.md) - Connect your
+  bucket and upload a file
 
 ### **Development** (For Contributors)
 
-- [Development Setup](./docs/development/setup.md) - Complete setup guide
-- [Project Structure](./docs/development/project-structure.md) - How code is
-  organized
-- [Contributing Guide](./docs/development/contributing.md) - How to contribute
+- [Development Setup](./docs/content/development/setup.md) - Complete setup
+  guide
+- [Repository Structure](./docs/content/development/repository-structure.md) -
+  How code is organized
+- [First Contribution](./docs/content/contributing/first-contribution.md) - How
+  to contribute
 
 ### **Architecture** (Technical Deep Dive)
 
-- [Frontend Architecture](./docs/architecture/frontend.md) - Technical
-  architecture
-- [Component Guidelines](./docs/architecture/components.md) - Component patterns
+- [Frontend Architecture](./docs/content/development/frontend-architecture.md)
+- [S3 API Layer](./docs/content/development/s3-api.md)
+- [Component Guidelines](./docs/content/development/component-guidelines.md)
 
 ## Contributing
 
-We welcome contributions from developers of all skill levels!
-
-### Quick Contribution Steps
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Make** your changes
-4. **Test** your changes
-5. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-6. **Push** to your branch (`git push origin feature/amazing-feature`)
-7. **Open** a Pull Request
-
-### Ways to Contribute
-
-- **Report bugs** - Help us find and fix issues
-- **Suggest features** - Share your ideas for improvements
-- **Improve docs** - Help make our documentation better
-- **Design improvements** - Enhance the user interface
-- **Add tests** - Help improve code quality
-- **Translations** - Help make Opndrive available in more languages
+We welcome contributions from developers of all skill levels - bug reports,
+features, docs, design, and tests. See [CONTRIBUTING.md](./CONTRIBUTING.md) for
+the quick start, or the full
+[Contributing Guide](./docs/content/contributing/first-contribution.md) for
+branch naming, commit conventions, and the PR process.
 
 ## Development
 
-### Prerequisites
-
-- Node.js 18+
-- PNPM 8+
-- Git
-
-### Local Development
-
 ```bash
-# Install dependencies
 pnpm install
-
-# Start development server
-cd frontend && pnpm dev
-
-# Run tests
-pnpm test
-
-# Check code quality
-pnpm lint
+cd frontend && pnpm dev    # start the dev server
+pnpm test                  # run tests (from frontend/ or s3-api/)
+pnpm lint                  # from the repository root
 ```
 
-### Vercel/Netlify
-
-Opndrive frontend can be deployed to any platform that supports Next.js
-applications.
+See [Development Setup](./docs/content/development/setup.md) for the full guide,
+and [Deployment](./docs/content/getting-started/deployment.md) for Vercel,
+Netlify, and Docker.
 
 ## Security
 
-- All file operations use secure AWS API calls
 - No files pass through our servers - direct browser-to-S3 communication
-- Your AWS credentials are stored locally in your browser
+- Your AWS credentials are stored locally in your browser, never on a server
 - Open source - you can audit all code yourself
+
+Found a security vulnerability? Don't open a public issue - see
+[SECURITY.md](./SECURITY.md) for how to report it privately.
 
 ## License
 
@@ -212,11 +190,11 @@ see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Documentation**: Check our [docs](./docs/) folder
-- **Bug Reports**:
+- **Documentation**: [docs/content](./docs/content/index.mdx)
+- **Bug reports and questions**:
   [Create an issue](https://github.com/Opndrive/opndrive/issues)
-- **Contact**: [Create an issue](https://github.com/Opndrive/opndrive/issues)
-  for any questions
+- **Security vulnerabilities**: [SECURITY.md](./SECURITY.md) - please don't use
+  a public issue for these
 
 ---
 

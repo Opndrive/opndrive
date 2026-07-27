@@ -1,10 +1,15 @@
-# Route-Based File Preview Implementation
+# Preview Architecture
+
+For the user-facing behavior, see
+[Previewing Files](../guides/previewing-files.md). This page is the
+implementation reference: how the route-based preview works alongside the older
+modal preview.
 
 ## Overview
 
-This implementation adds a route-based preview system to complement the existing
-modal preview. Users can now open files in new tabs with shareable URLs while
-maintaining the quick modal preview for in-context viewing.
+There are two preview systems that complement each other: users can open files
+in new tabs with shareable URLs, while the quick modal preview still handles
+in-context viewing while browsing.
 
 ## Architecture
 

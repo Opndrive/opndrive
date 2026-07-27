@@ -1,0 +1,39 @@
+---
+title: Opndrive Documentation
+---
+
+import { Cards } from 'nextra/components';
+import {
+  Rocket,
+  BookOpen,
+  Code2,
+  GitPullRequest,
+  ShieldCheck,
+  FileQuestion,
+} from 'lucide-react';
+
+<div style={{ textAlign: 'center', padding: '3rem 0 2rem' }}>
+  <h1 style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+    Opndrive Documentation
+  </h1>
+  <div style={{ fontSize: '1.15rem', color: 'var(--x-color-gray-600, #6b7280)', maxWidth: '38rem', margin: '0 auto' }}>
+    An open-source web UI for Amazon S3 and S3-compatible storage.
+    Everything for using it, building it, and maintaining it.
+  </div>
+</div>
+
+<Cards num={3}>
+  <Cards.Card icon={<Rocket />} title="Getting Started" href="/getting-started/introduction" />
+  <Cards.Card icon={<BookOpen />} title="Guides" href="/guides/connecting-storage" />
+  <Cards.Card icon={<Code2 />} title="Development" href="/development/setup" />
+  <Cards.Card icon={<GitPullRequest />} title="Contributing" href="/contributing/first-contribution" />
+  <Cards.Card icon={<ShieldCheck />} title="Maintainers" href="/maintainers/release-process" />
+  <Cards.Card icon={<FileQuestion />} title="Reference" href="/reference/faq" />
+</Cards>
+
+---
+
+<div style={{ maxWidth: '38rem', margin: '0 auto', textAlign: 'center' }}>
+  Found something wrong or missing in these docs? That's worth an issue or a
+  PR on its own - see [First Contribution](./contributing/first-contribution.md).
+</div>
