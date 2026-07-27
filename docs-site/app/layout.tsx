@@ -33,7 +33,11 @@ const navbar = (
   />
 );
 
-const footer = <Footer>AGPL-3.0 {new Date().getFullYear()} © Opndrive.</Footer>;
+const footer = (
+  <Footer style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
+    AGPL-3.0 {new Date().getFullYear()} © Opndrive.
+  </Footer>
+);
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
