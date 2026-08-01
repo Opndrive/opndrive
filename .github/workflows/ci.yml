@@ -151,6 +151,13 @@ jobs:
       - name: Test & coverage gate
         run: pnpm test:coverage
 
+      # Puts the gate's numbers on the run summary page instead of leaving them
+      # buried in the job log. Runs even when the gate fails, which is exactly
+      # when you want to see which metric dropped and by how much.
+      - name: Publish coverage summary
+        if: always()
+        run: node ../.github/scripts/coverage-summary.mjs
+
       - name: Build
         run: pnpm build
 

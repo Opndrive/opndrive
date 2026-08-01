@@ -12,7 +12,9 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
+      // json-summary backs the CI step that publishes the coverage table to
+      // the GitHub run summary page; it is not useful locally on its own.
+      reporter: ['text', 'html', 'lcov', 'json-summary'],
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
