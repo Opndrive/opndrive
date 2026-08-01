@@ -26,6 +26,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "packageManager": "pnpm@10.7.0",
   "bugs": {
     "url": "https://github.com/Opndrive/opndrive/issues"
   },
