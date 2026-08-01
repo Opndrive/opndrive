@@ -1,2 +1,9 @@
 # Default owner for everything not matched below
 * @yash-sangwan
+
+# Coverage ratchet. The thresholds in this file are the only thing stopping
+# covered behaviour from being quietly dropped, and CI will faithfully enforce
+# whatever number is committed - including a lowered one. Requiring a second
+# maintainer here makes the ratchet one-way in practice, not just on paper.
+# Later rules win in CODEOWNERS, so this must stay below the `*` entry.
+/s3-api/vitest.config.ts @yash-sangwan @Rakesh-46-VR

@@ -1,0 +1,17 @@
+{
+  // Build-only view of the sources. `tsconfig.json` deliberately still sees the
+  // collocated `*.test.ts` files so `pnpm typecheck` covers them, but they must
+  // not end up compiled into `dist/` and published to npm.
+  //
+  // `src/vitest.d.ts` is excluded for a different reason: it emits nothing, but
+  // leaving it in drags vitest and aws-sdk-client-mock-vitest types into the
+  // build program, making `pnpm build` fail on a production-only install.
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "src/tests",
+    "src/vitest.d.ts"
+  ]
+}
