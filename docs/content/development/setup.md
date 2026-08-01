@@ -115,11 +115,13 @@ pnpm test
 # From s3-api/
 pnpm test
 pnpm test:watch
+pnpm test:coverage
 ```
 
-Both packages use [Vitest](https://vitest.dev/). There is no end-to-end test
-suite in this repository today. See [Testing](./testing.md) for what's actually
-covered and how to add to it.
+Both packages use [Vitest](https://vitest.dev/). The `s3-api` suite mocks the
+AWS SDK, so it needs no credentials and makes no network calls. There is no
+end-to-end test suite in this repository today. See [Testing](./testing.md) for
+what's actually covered and how to add to it.
 
 ## Working with Features
 
@@ -217,16 +219,17 @@ These are the scripts that actually exist in `package.json` today:
 | `pnpm typecheck`     | root, `frontend/`, or `s3-api/` | Type-check (root runs both packages)                 |
 | `pnpm test`          | `frontend/` or `s3-api/`        | Run the Vitest suite                                 |
 | `pnpm test:watch`    | `s3-api/`                       | Run tests in watch mode                              |
+| `pnpm test:coverage` | `s3-api/`                       | Run tests with a v8 coverage report                  |
 | `pnpm lint`          | root                            | Lint both `frontend/` and `s3-api/`                  |
 | `pnpm lint:frontend` | root                            | Lint only `frontend/`                                |
 | `pnpm format`        | root                            | Format the whole repo with Prettier                  |
 | `pnpm format:check`  | root                            | Check formatting without writing                     |
 | `pnpm check`         | root                            | `lint` + `format:check` (what CI's quality job runs) |
 
-There's no `type-check` (hyphenated), `check-all`, `test:coverage`, `clean`, or
+There's no `type-check` (hyphenated), `check-all`, `clean`, or
 environment-specific build script (`build:dev`/`build:staging`/`build:prod`) in
-this repo. If you've seen those referenced elsewhere, that's stale
-documentation - please open an issue.
+this repo, and no `test:coverage` in `frontend/`. If you've seen those
+referenced elsewhere, that's stale documentation - please open an issue.
 
 ---
 

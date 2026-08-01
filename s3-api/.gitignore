@@ -1,5 +1,7 @@
 node_modules
 test-uploads
+coverage
+dist
 
 .env
 *.tgz

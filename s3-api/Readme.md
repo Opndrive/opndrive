@@ -41,9 +41,18 @@ method list and the reasoning behind the trickier ones (`deleteBatch`,
 
 ```bash
 pnpm install
-pnpm check   # typecheck + test
+pnpm check           # typecheck + test
+pnpm test:coverage   # text summary + HTML report in coverage/
 pnpm build
 ```
+
+Tests mock the AWS SDK with
+[`aws-sdk-client-mock`](https://github.com/m-radzikowski/aws-sdk-client-mock),
+so **no AWS credentials are needed** and nothing hits the network. Test files
+live next to the code they cover (`foo.ts` → `foo.test.ts`) and import from
+source, never from `dist/`. See the
+[Testing guide](../docs/content/development/testing.md) for the mock patterns
+and conventions.
 
 See [Release Process](../docs/content/maintainers/release-process.md) for how
 versions get published.

@@ -99,3 +99,15 @@ See [Connecting Storage](../guides/connecting-storage.md) for how `credentials`
 gets built from the `/connect` form, and
 [Release Process](../maintainers/release-process.md) for how this package gets
 versioned and published.
+
+## Testing It
+
+The listing, metadata, and single-object methods above
+(`fetchDirectoryStructure`, `fetchMetadata`, `listFromPrefix`, `search`,
+`uploadWithPreSignedUrl`, `getSignedUrl`, `downloadFile`, `deleteFile`,
+`deleteBatch`, `createFolder`) are covered by unit tests that mock the AWS SDK,
+so `pnpm test` in `s3-api/` needs no credentials and makes no network calls.
+
+The rename/move family, `uploadMultipartParallely`, the accessors, and the
+upload managers are not covered yet. See [Testing](./testing.md) for the mock
+patterns and conventions.

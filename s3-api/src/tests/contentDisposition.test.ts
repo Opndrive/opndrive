@@ -1,5 +1,5 @@
-import { BYOS3ApiProvider } from '../../dist/index';
-import type { Credentials, SignedUrlParams } from '../../dist/index';
+import { BYOS3ApiProvider } from '../index.js';
+import type { Credentials, SignedUrlParams } from '../core/types.js';
 import { describe, it, expect } from 'vitest';
 
 /**

@@ -9,8 +9,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
     "check": "pnpm typecheck && pnpm test",
-    "build": "tsc"
+    "build": "tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -30,6 +31,9 @@
     "@types/node": "^26.1.1",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "aws-sdk-client-mock": "^4.1.0",
+    "aws-sdk-client-mock-vitest": "^7.1.0",
     "eslint": "^9.39.5",
     "tsup": "^8.5.0",
     "tsx": "^4.20.3",

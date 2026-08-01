@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  NODE_VERSION: '22'
+  # Node version is NOT pinned here - every job reads .nvmrc via
+  # setup-node's node-version-file, so contributors' local `nvm use` and CI
+  # can never drift apart.
   PNPM_VERSION: '10.7.0'
 
 jobs:
@@ -40,6 +42,7 @@ jobs:
               - 'eslint.config.mjs'
               - 'prettier.config.js'
               - '.prettierignore'
+              - '.nvmrc'
               - '.github/workflows/ci.yml'
 
   quality:
@@ -56,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -90,7 +93,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -115,7 +118,7 @@ jobs:
           NEXT_PUBLIC_ENABLE_BLOG: 'false'
 
   s3-api:
-    name: s3-api (typecheck, build)
+    name: s3-api (typecheck, test, build)
     needs: changes
     if: needs.changes.outputs.s3api == 'true'
     runs-on: ubuntu-latest
@@ -131,7 +134,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: s3-api/pnpm-lock.yaml
 
@@ -139,6 +142,21 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Runs the full suite AND enforces the coverage thresholds in
+      # vitest.config.ts (95/90/95/95), so this single step both catches
+      # regressions and fails the build if covered behaviour is removed.
+      # No AWS credentials are needed: the suite mocks the SDK, and the
+      # credential-gated integration tests in src/tests/ skip themselves.
+      - name: Test & coverage gate
+        run: pnpm test:coverage
+
+      # Puts the gate's numbers on the run summary page instead of leaving them
+      # buried in the job log. Runs even when the gate fails, which is exactly
+      # when you want to see which metric dropped and by how much.
+      - name: Publish coverage summary
+        if: always()
+        run: node ../.github/scripts/coverage-summary.mjs
 
       - name: Build
         run: pnpm build

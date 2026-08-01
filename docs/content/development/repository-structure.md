@@ -123,13 +123,22 @@ s3-api/
 │   │   ├── signedUrlUploader.ts
 │   │   ├── multipartUploader.ts
 │   │   └── concurrency.ts
-│   ├── tests/byoS3.test.ts
-│   └── index.ts               # Public exports
+│   ├── tests/                  # Credential-gated integration suite (skips by default)
+│   ├── index.ts                # Public exports
+│   ├── index.listing.test.ts   # Listing + metadata coverage
+│   ├── index.objects.test.ts   # Single-object operation coverage
+│   └── vitest.d.ts             # Types for the aws-sdk-client-mock matchers
 ├── CHANGELOG.MD
 ├── package.json                # Published as @opndrive/s3-api
-├── tsconfig.json
-└── vitest.config.ts
+├── tsconfig.json               # Type-checking (includes test files)
+├── tsconfig.build.json         # Build only (excludes test files from dist/)
+├── vitest.config.ts
+└── vitest.setup.ts             # Registers the AWS mock matchers
 ```
+
+Unit tests are collocated with the code they cover; `src/tests/` predates that
+convention and now holds only the integration suite. See
+[Testing](./testing.md).
 
 See [S3 API Layer](./s3-api.md) for what each of these actually does.
 
