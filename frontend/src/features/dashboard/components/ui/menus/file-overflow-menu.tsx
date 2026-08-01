@@ -13,7 +13,7 @@ import {
   ChevronRight,
   ExternalLink,
 } from 'lucide-react';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDownloadActions, useIsFileDownloading } from '@/features/dashboard/hooks/use-download';
 import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
 import { useRename } from '@/context/rename-context';
 import { useDetails } from '@/context/details-context';
@@ -56,7 +56,8 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   );
   const [openWithButtonRef, setOpenWithButtonRef] = useState<HTMLButtonElement | null>(null);
 
-  const { downloadFile, isDownloading } = useDownload();
+  const { downloadFile } = useDownloadActions();
+  const isDownloading = useIsFileDownloading(file.id);
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { openPreview } = useFilePreview();
@@ -105,80 +106,82 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
     onClose();
   };
 
-  const getDefaultFileMenuActions = (file: FileItem): FileMenuAction[] => [
-    {
-      id: 'open',
-      label: 'Open with',
-      icon: MdOpenWith,
-      // This will be handled specially to show submenu
-      onClick: () => {
-        // Submenu handles the actual actions
-      },
-    },
-    {
-      id: 'download',
-      label: 'Download',
-      icon: Download,
-      disabled: isDownloading(file.id),
-      onClick: (file) => {
-        setTimeout(() => downloadFile(file), 0);
-        onClose();
-      },
-    },
-    {
-      id: 'share',
-      label: 'Share',
-      icon: Share,
-      onClick: () => {
-        openShareDialog(file);
-        onClose();
-      },
-    },
-    {
-      id: 'rename',
-      label: 'Rename',
-      icon: Edit3,
-      disabled: isRenaming(file.id || file.Key || file.name),
-      onClick: () => {
-        openRenameDialog(file, 'file', currentPrefix || '');
-        onClose();
-      },
-    },
-    {
-      id: 'info',
-      label: 'File information',
-      icon: Info,
-      onClick: () => {
-        openDetails(file);
-        onClose();
-      },
-    },
-    {
-      id: 'delete',
-      label: isDeleting(file.id || file.Key || file.name) ? 'Deleting...' : 'Delete forever',
-      icon: Trash2,
-      variant: 'destructive' as const,
-      disabled: isDeleting(file.id || file.Key || file.name),
-      onClick: async () => {
-        const confirmDelete = window.confirm(
-          `Are you sure you want to delete "${file.name}" forever? This action cannot be undone.`
-        );
-
-        if (confirmDelete) {
-          try {
-            await deleteFile(file);
-          } catch (error) {
-            console.error('Delete failed:', error);
-          }
-        }
-        onClose();
-      },
-    },
-  ];
-
   // Merge additional actions with default actions
   const actions = React.useMemo(() => {
-    const defaultActions = getDefaultFileMenuActions(file);
+    // Built inside the memo so React can see what it actually depends on. As a
+    // hoisted helper its live reads - download/rename/delete `disabled` - were
+    // invisible to the dependency array, so those states stayed stale until an
+    // unrelated prop happened to change.
+    const defaultActions: FileMenuAction[] = [
+      {
+        id: 'open',
+        label: 'Open with',
+        icon: MdOpenWith,
+        // This will be handled specially to show submenu
+        onClick: () => {
+          // Submenu handles the actual actions
+        },
+      },
+      {
+        id: 'download',
+        label: 'Download',
+        icon: Download,
+        disabled: isDownloading,
+        onClick: (file) => {
+          setTimeout(() => downloadFile(file), 0);
+          onClose();
+        },
+      },
+      {
+        id: 'share',
+        label: 'Share',
+        icon: Share,
+        onClick: () => {
+          openShareDialog(file);
+          onClose();
+        },
+      },
+      {
+        id: 'rename',
+        label: 'Rename',
+        icon: Edit3,
+        disabled: isRenaming(file.id || file.Key || file.name),
+        onClick: () => {
+          openRenameDialog(file, 'file', currentPrefix || '');
+          onClose();
+        },
+      },
+      {
+        id: 'info',
+        label: 'File information',
+        icon: Info,
+        onClick: () => {
+          openDetails(file);
+          onClose();
+        },
+      },
+      {
+        id: 'delete',
+        label: isDeleting(file.id || file.Key || file.name) ? 'Deleting...' : 'Delete forever',
+        icon: Trash2,
+        variant: 'destructive' as const,
+        disabled: isDeleting(file.id || file.Key || file.name),
+        onClick: async () => {
+          const confirmDelete = window.confirm(
+            `Are you sure you want to delete "${file.name}" forever? This action cannot be undone.`
+          );
+
+          if (confirmDelete) {
+            try {
+              await deleteFile(file);
+            } catch (error) {
+              console.error('Delete failed:', error);
+            }
+          }
+          onClose();
+        },
+      },
+    ];
 
     if (additionalActions.length === 0) {
       return defaultActions;
@@ -200,7 +203,21 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
       ...additionalActions,
       ...defaultActions.slice(insertIndex + 1),
     ];
-  }, [file, additionalActions, insertAdditionalActionsAfter]);
+  }, [
+    file,
+    additionalActions,
+    insertAdditionalActionsAfter,
+    isDownloading,
+    downloadFile,
+    onClose,
+    openShareDialog,
+    isRenaming,
+    openRenameDialog,
+    currentPrefix,
+    openDetails,
+    isDeleting,
+    deleteFile,
+  ]);
 
   // Prevent body scroll when menu is open
   useEffect(() => {

@@ -4,7 +4,7 @@ import React from 'react';
 import { X, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { PreviewableFile } from '@/types/file-preview';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDownloadActions, useIsFileDownloading } from '@/features/dashboard/hooks/use-download';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FileExtension } from '@/features/dashboard/types/file';
 import { getFileExtensionWithoutDot, getEffectiveExtension } from '@/config/file-extensions';
@@ -32,7 +32,8 @@ export function PreviewHeader({
   canNavigateNext,
   canNavigatePrevious,
 }: PreviewHeaderProps) {
-  const { downloadFile, isDownloading } = useDownload();
+  const { downloadFile } = useDownloadActions();
+  const isDownloading = useIsFileDownloading(file.id);
 
   const handleDownload = () => {
     const fileItem = {
@@ -165,7 +166,7 @@ export function PreviewHeader({
           variant="ghost"
           size="icon"
           onClick={handleDownload}
-          disabled={isDownloading(file.id)}
+          disabled={isDownloading}
           className="hover:bg-accent h-8 w-8 sm:h-10 sm:w-10 rounded-full"
           style={{ color: 'var(--foreground)' }}
           title="Download file"

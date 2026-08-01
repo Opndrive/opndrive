@@ -2,12 +2,12 @@
 
 import React from 'react';
 import { X, Download, CheckCircle, AlertCircle } from 'lucide-react';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { cn } from '@/shared/utils/utils';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 export const DownloadProgressManager: React.FC = () => {
-  const { getAllDownloads, cancelDownload } = useDownload();
+  const { getAllDownloads, cancelDownload } = useDownloadList();
   const downloads = getAllDownloads();
 
   if (downloads.length === 0) return null;

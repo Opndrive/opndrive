@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { FileItem } from '../types/file';
 import { Folder } from '../types/folder';
-import { useDownload } from './use-download';
+import { useDownloadActions } from './use-download';
 import { useDeleteWithProgress } from './use-delete-with-progress';
 import { useFilePreview } from '@/context/file-preview-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
@@ -12,7 +12,7 @@ interface UseMultiSelectActionsProps {
 }
 
 export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectActionsProps) {
-  const { downloadMultipleFiles } = useDownload();
+  const { downloadMultipleFiles } = useDownloadActions();
   const { deleteFile, deleteFolder, batchDeleteFiles } = useDeleteWithProgress();
   const { openPreview } = useFilePreview();
   const { clearSelection } = useMultiSelectStore();

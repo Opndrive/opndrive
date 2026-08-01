@@ -10,7 +10,7 @@ import { ExcelViewer } from './viewers/excel-viewer';
 import { CodeViewer } from './viewers/code-viewer';
 import { checkPreviewEligibility } from '@/services/file-size-limits';
 import { Download } from 'lucide-react';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDownloadActions, useIsFileDownloading } from '@/features/dashboard/hooks/use-download';
 import {
   isFileInCategory,
   getFileExtension,
@@ -30,7 +30,8 @@ function isFileType(
 }
 
 export function PreviewContent({ file }: PreviewContentProps) {
-  const { downloadFile, isDownloading } = useDownload();
+  const { downloadFile } = useDownloadActions();
+  const isDownloading = useIsFileDownloading(file.id);
 
   // Get file size from either 'size' or 'Size' property
   const fileSize =
@@ -109,10 +110,10 @@ export function PreviewContent({ file }: PreviewContentProps) {
               color: 'var(--primary-foreground)',
             }}
             onClick={handleDownload}
-            disabled={isDownloading(file.id)}
+            disabled={isDownloading}
           >
             <Download size={18} />
-            {isDownloading(file.id) ? 'Downloading...' : 'Download File'}
+            {isDownloading ? 'Downloading...' : 'Download File'}
           </button>
         </div>
       </div>

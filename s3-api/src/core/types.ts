@@ -46,6 +46,12 @@ export interface SignedUrlParams {
   expiryInSeconds: number;
   isPreview: boolean;
   responseContentType?: string;
+  /**
+   * Name the browser should save the file as. Only honoured when `isPreview` is
+   * false; sets `Content-Disposition: attachment` on the presigned response so
+   * the name survives the cross-origin hop that makes `<a download>` a no-op.
+   */
+  downloadFilename?: string;
 }
 
 export interface DownloadFileParams {

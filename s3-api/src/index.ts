@@ -19,6 +19,7 @@ import {
   userTypes,
 } from './core/types.js';
 import { forEachWithConcurrency } from './utils/concurrency.js';
+import { buildAttachmentDisposition } from './utils/content-disposition.js';
 import {
   ListObjectsV2Command,
   ListObjectsV2CommandInput,
@@ -165,7 +166,13 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         ResponseContentType: params.responseContentType,
       });
     } else {
-      cmd = new GetObjectCommand({ Bucket: this.credentials.bucketName, Key: params.key });
+      cmd = new GetObjectCommand({
+        Bucket: this.credentials.bucketName,
+        Key: params.key,
+        ResponseContentDisposition: params.downloadFilename
+          ? buildAttachmentDisposition(params.downloadFilename)
+          : undefined,
+      });
     }
     return getSignedUrl(this.s3, cmd, { expiresIn: params.expiryInSeconds });
   }
