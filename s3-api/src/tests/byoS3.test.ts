@@ -1,10 +1,12 @@
-import { BYOS3ApiProvider, RenameFolderParams, SearchParams } from '../../dist/index';
-import {
+import { BYOS3ApiProvider } from '../index.js';
+import type {
   Credentials,
   PresignedUploadParams,
   RenameFileParams,
+  RenameFolderParams,
+  SearchParams,
   SignedUrlParams,
-} from '../../dist/index';
+} from '../core/types.js';
 import { describe, it, expect } from 'vitest';
 
 import dotenv from 'dotenv';
