@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
-import { useDownload } from '@/features/dashboard/hooks/use-download';
+import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
@@ -84,7 +84,7 @@ export const OperationsModal: React.FC = () => {
     duplicateDialog,
     hideDuplicateDialog,
   } = useUploadStore();
-  const { getAllDownloads, cancelDownload } = useDownload();
+  const { getAllDownloads, cancelDownload } = useDownloadList();
   const downloads = getAllDownloads();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -95,11 +95,9 @@ export const OperationsModal: React.FC = () => {
   // Check if pause/resume is supported in current mode
   const supportsPauseResume = uploadMode === 'multipart';
 
-  if (!uploadManager) {
-    return 'Loading...';
-  }
-
-  // Simulate speed tracking for active uploads (demo purposes) - moved to top to fix hook order
+  // Simulate speed tracking for active uploads (demo purposes).
+  // Must stay above the uploadManager guard below: hooks cannot sit after an
+  // early return, or the hook count changes once the manager resolves.
   React.useEffect(() => {
     const interval = setInterval(() => {
       // Check if there are any uploading operations
@@ -116,6 +114,10 @@ export const OperationsModal: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [uploads]); // Depend on uploads object
+
+  if (!uploadManager) {
+    return 'Loading...';
+  }
 
   // Helper function to cancel operations (upload, delete, and download)
   const cancelOperation = (

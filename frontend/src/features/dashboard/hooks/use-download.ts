@@ -1,138 +1,120 @@
-import { useState, useCallback } from 'react';
-import { createDownloadService, type DownloadProgress } from '../services/download-service';
+import { useCallback, useMemo } from 'react';
+import { type DownloadProgress } from '../services/download-service';
+import { useDownloadStore } from '../stores/use-download-store';
 import { useNotification } from '@/context/notification-context';
 import type { FileItem } from '@/features/dashboard/types/file';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 
-export const useDownload = () => {
-  const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(
-    new Map()
-  );
+/**
+ * How many files stream at once when several are downloaded together.
+ *
+ * Each in-flight download buffers its whole body in memory before handing it to
+ * disk, so an unbounded fan-out over a multi-select turns straight into peak
+ * RAM. Three keeps the pipe busy without letting a 20-file selection allocate
+ * twenty file bodies at the same time.
+ */
+const MULTI_DOWNLOAD_CONCURRENCY = 3;
 
+/** Runs `task` over `items`, keeping at most `limit` in flight. */
+async function withConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await task(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
+/**
+ * Actions only - deliberately subscribes to no store state.
+ *
+ * Zustand action identities are stable, so components using this hook do not
+ * re-render as progress ticks. This matters because the overflow menu mounts
+ * once per file row: subscribing it to the downloads map would re-render every
+ * row in the listing on every chunk of every download.
+ */
+export const useDownloadActions = () => {
   const { error: showError, info } = useNotification();
   const { apiS3 } = useAuthGuard();
 
-  if (!apiS3) {
-    return {
-      downloadFile: async () => {},
-      downloadMultipleFiles: async () => {},
-      cancelDownload: () => {},
-      isDownloading: () => false,
-      getAllDownloads: () => [],
-      downloadProgress: [],
-    };
-  }
-
-  const downloadService = createDownloadService(apiS3);
-
-  const updateProgress = useCallback((progress: DownloadProgress) => {
-    setDownloadProgress((prev) => new Map(prev.set(progress.fileId, progress)));
-  }, []);
-
-  const handleComplete = useCallback((fileId: string) => {
-    setDownloadProgress((prev) => {
-      const newMap = new Map(prev);
-      const progress = newMap.get(fileId);
-      if (progress) {
-        newMap.set(fileId, { ...progress, status: 'completed', progress: 100 });
-      }
-      return newMap;
-    });
-
-    setTimeout(() => {
-      setDownloadProgress((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(fileId);
-        return newMap;
-      });
-    }, 3000);
-  }, []);
+  const startDownload = useDownloadStore((state) => state.startDownload);
+  const cancelInStore = useDownloadStore((state) => state.cancelDownload);
 
   const handleError = useCallback(
-    (fileId: string, error: string) => {
-      setDownloadProgress((prev) => {
-        const newMap = new Map(prev);
-        const progress = newMap.get(fileId);
-        if (progress) {
-          newMap.set(fileId, { ...progress, status: 'error', error });
-          showError(`Failed to download ${progress.fileName}`);
-        }
-        return newMap;
-      });
+    (_fileId: string, error: string) => {
+      showError(error);
     },
     [showError]
   );
 
   const downloadFile = useCallback(
     async (file: FileItem) => {
+      // Guarded here rather than by an early return above the hooks: bailing out
+      // before the useCallbacks changed the hook count between renders once
+      // apiS3 resolved, which React rejects outright.
+      if (!apiS3) return;
+
       try {
-        await downloadService.downloadFile(file, {
-          onProgress: updateProgress,
-          onComplete: handleComplete,
-          onError: handleError,
-        });
+        await startDownload(apiS3, file, { onError: handleError });
       } catch (error) {
         showError(`Failed to download ${file.name}, ${error}`);
       }
     },
-    [updateProgress, handleComplete, handleError, showError]
+    [apiS3, startDownload, handleError, showError]
   );
 
   const downloadMultipleFiles = useCallback(
     async (files: FileItem[]) => {
-      if (files.length === 0) return;
+      if (!apiS3 || files.length === 0) return;
 
       info(`Downloading ${files.length} file${files.length > 1 ? 's' : ''}...`);
-
-      // Start all downloads immediately
-      files.forEach((file) => {
-        downloadFile(file);
-      });
+      await withConcurrency(files, MULTI_DOWNLOAD_CONCURRENCY, downloadFile);
     },
-    [downloadFile, info]
+    [apiS3, downloadFile, info]
   );
 
   const cancelDownload = useCallback(
     (fileId: string) => {
-      downloadService.cancelDownload(fileId);
-      setDownloadProgress((prev) => {
-        const newMap = new Map(prev);
-        const progress = newMap.get(fileId);
-        if (progress) {
-          newMap.set(fileId, { ...progress, status: 'cancelled' });
-          setTimeout(() => {
-            setDownloadProgress((current) => {
-              const updated = new Map(current);
-              updated.delete(fileId);
-              return updated;
-            });
-          }, 2000);
-        }
-        return newMap;
-      });
+      cancelInStore(fileId);
       info('Download cancelled');
     },
-    [info]
+    [cancelInStore, info]
   );
 
-  const isDownloading = useCallback(
-    (fileId: string): boolean => {
-      const progress = downloadProgress.get(fileId);
-      return progress?.status === 'downloading' || progress?.status === 'pending';
-    },
+  return { downloadFile, downloadMultipleFiles, cancelDownload };
+};
+
+/**
+ * Subscribes to a single file's download state.
+ *
+ * The selector collapses to a boolean, so a row re-renders only when its own
+ * download starts or stops - not on every progress update of every file.
+ */
+export const useIsFileDownloading = (fileId: string): boolean =>
+  useDownloadStore((state) => {
+    const status = state.downloads.get(fileId)?.status;
+    return status === 'downloading' || status === 'pending' || status === 'queued';
+  });
+
+/**
+ * Full download list. Only for the components that render progress UI - this
+ * re-renders on every progress update by design.
+ */
+export const useDownloadList = () => {
+  const downloads = useDownloadStore((state) => state.downloads);
+  const { cancelDownload } = useDownloadActions();
+
+  const downloadProgress = useMemo(() => Array.from(downloads.values()), [downloads]);
+  const getAllDownloads = useCallback(
+    (): DownloadProgress[] => downloadProgress,
     [downloadProgress]
   );
 
-  const getAllDownloads = useCallback((): DownloadProgress[] => {
-    return Array.from(downloadProgress.values());
-  }, [downloadProgress]);
-
-  return {
-    downloadFile,
-    downloadMultipleFiles,
-    cancelDownload,
-    isDownloading,
-    getAllDownloads,
-    downloadProgress: Array.from(downloadProgress.values()),
-  };
+  return { downloadProgress, getAllDownloads, cancelDownload };
 };
