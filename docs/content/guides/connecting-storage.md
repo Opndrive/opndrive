@@ -77,3 +77,10 @@ you're using one). If you see permission errors after connecting successfully,
 check the bucket policy or IAM policy attached to the access key first - a
 successful connection only confirms the credentials are valid, not that every
 operation is permitted.
+
+Large uploads also use `s3:AbortMultipartUpload` and `s3:ListMultipartUploads`.
+Opndrive calls the abort itself when an upload is cancelled, but it cannot do so
+if the tab is closed mid-upload, and the parts left behind are billed while
+staying invisible to every normal listing. Set up the lifecycle rule in
+[Uploading Files](./uploading-files.md#required-clean-up-incomplete-multipart-uploads)
+before putting real data through this.
