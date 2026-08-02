@@ -19,6 +19,9 @@ export default [
       // Dependencies
       '**/node_modules/**',
 
+      // types
+      '**/next-env.d.ts',
+
       // Package manager files
       'package-lock.json',
       'yarn.lock',

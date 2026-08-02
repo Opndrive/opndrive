@@ -5,9 +5,15 @@
   "description": "**Your Secure, Open-Source Cloud Storage** Opndrive offers a powerful, AI-enhanced platform for seamless file sharing and collaboration, giving you full control over your data.",
   "main": "index.js",
   "scripts": {
-    "test": "pnpm --dir frontend test",
-    "typecheck": "pnpm --dir frontend typecheck && pnpm --dir s3-api typecheck",
-    "prepare": "husky",
+    "test": "pnpm --filter frontend test",
+    "typecheck": "pnpm --filter frontend typecheck && pnpm --filter @opndrive/s3-api typecheck",
+    "prepare": "husky && pnpm --filter @opndrive/s3-api build",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "start:frontend": "pnpm --filter frontend start",
+    "dev:docs": "pnpm --filter docs dev",
+    "build:docs": "pnpm --filter docs build",
+    "start:docs": "pnpm --filter docs start",
     "lint": "eslint frontend/ s3-api/",
     "lint:fix": "eslint frontend/ --fix",
     "lint:frontend": "eslint frontend/",
@@ -27,6 +33,11 @@
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.7.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "nextra-theme-docs@4.6.1": "docs/patches/nextra-theme-docs@4.6.1.patch"
+    }
+  },
   "bugs": {
     "url": "https://github.com/Opndrive/opndrive/issues"
   },
@@ -44,7 +55,7 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [
-      "eslint --fix --max-warnings=0",
+      "eslint --fix --max-warnings=0 --no-warn-ignored",
       "prettier --write"
     ],
     "*.{json,md,yml,yaml,css,scss,html}": [
