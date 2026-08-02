@@ -182,11 +182,37 @@ export class UploadManager {
   }
 
   // --- All other methods (pause, resume, cancel, processQueue, etc.) remain the same ---
+  /**
+   * Drops the memory-heavy references on an item that has finished.
+   *
+   * The item itself stays in `uploads` - getStatus() and getAllStatuses() are
+   * documented to keep answering for finished work, and the upload worker's
+   * `finally` reads the map to decide whether to free a concurrency slot, so
+   * deleting the entry outright would both break the public contract and
+   * deadlock the queue once maxConcurrency items had completed.
+   *
+   * What actually leaked is the payload: a File pins an OS handle, and a
+   * MultipartUploader holds its part bookkeeping. Ten thousand finished
+   * uploads held ten thousand of each until logout.
+   *
+   * Only ever called on a terminal item. Paused items must keep their
+   * resources - resumeUpload() needs the uploader's in-progress uploadId.
+   */
+  private releaseResources(id: string): void {
+    const item = this.uploads.get(id);
+    if (!item) return;
+
+    item.file = undefined;
+    item.uploader = undefined;
+  }
+
   public pauseUpload(id: string): void {
     const item = this.uploads.get(id);
     if (!item || item.status !== 'uploading') return;
 
-    item.uploader.pause();
+    // Non-null: resources are released only on terminal states, and this item
+    // is 'uploading'.
+    item.uploader!.pause();
     this.activeUploads--;
     this.updateItemStatus(id, 'paused');
     this.processQueue();
@@ -232,8 +258,16 @@ export class UploadManager {
       this.activeUploads--;
     }
 
-    if (previousStatus === 'uploading' || previousStatus === 'paused') {
-      await item.uploader.cancel();
+    try {
+      if (previousStatus === 'uploading' || previousStatus === 'paused') {
+        // Non-null: 'uploading' and 'paused' are both pre-terminal.
+        await item.uploader!.cancel();
+      }
+    } finally {
+      // In a finally so a failed AbortMultipartUpload still frees the file
+      // handle. The rejection continues to propagate - cancelAllUploads()
+      // reports each one individually.
+      this.releaseResources(id);
     }
 
     this.processQueue();
@@ -281,10 +315,12 @@ export class UploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        if (item.uploader['uploadId']) {
-          await item.uploader.resume(item.file, onProgress);
+        // Non-null: the item was just moved to 'uploading', so its resources
+        // cannot have been released yet.
+        if (item.uploader!['uploadId']) {
+          await item.uploader!.resume(item.file!, onProgress);
         } else {
-          await item.uploader.start(item.file, onProgress);
+          await item.uploader!.start(item.file!, onProgress);
         }
 
         if (this.uploads.get(id)?.status === 'uploading') {
@@ -304,6 +340,10 @@ export class UploadManager {
       } finally {
         const finalStatus = this.uploads.get(id)?.status;
         if (finalStatus === 'completed' || finalStatus === 'failed') {
+          // 'cancelled' is not handled here: cancelUpload() already released
+          // this item. 'paused' deliberately keeps its resources so it can
+          // resume.
+          this.releaseResources(id);
           this.activeUploads--;
           this.processQueue();
         }

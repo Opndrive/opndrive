@@ -508,3 +508,131 @@ describe('addFolderUpload', () => {
     expect(fileIds).toHaveLength(1);
   });
 });
+
+describe('resource release', () => {
+  /**
+   * The manager keeps every item it has been given so `getStatus` can still
+   * answer for finished work. That is the documented contract, and it is also
+   * why the payload has to be dropped explicitly: without this, a session that
+   * uploaded ten thousand files held ten thousand `File` handles and ten
+   * thousand uploaders until logout.
+   *
+   * Reaching into the private map is deliberate. There is no public read of an
+   * item's payload - that is the point - so the retention it fixes is only
+   * observable from the inside.
+   */
+  const itemOf = (manager: UploadManager, id: string) =>
+    (
+      manager as unknown as { uploads: Map<string, { file?: File; uploader?: unknown }> }
+    ).uploads.get(id);
+
+  it('drops the file and uploader once an upload completes', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    expect(itemOf(manager, id)!.file).toBeInstanceOf(File);
+
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+
+    expect(manager.getStatus(id)!.status).toBe('completed');
+    // The status record survives; the payload does not.
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+    expect(itemOf(manager, id)!.uploader).toBeUndefined();
+  });
+
+  it('drops them when an upload fails', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    uploaderInstances[0]!.gate.reject(new Error('network died'));
+    await settle();
+
+    expect(manager.getStatus(id)!.status).toBe('failed');
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+  });
+
+  it('drops them when an upload is cancelled', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    await manager.cancelUpload(id);
+
+    expect(manager.getStatus(id)!.status).toBe('cancelled');
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+  });
+
+  it('drops them even when the abort round-trip fails', async () => {
+    // A failed AbortMultipartUpload still has to free the handle - the
+    // orphaned parts are the bucket's problem, not the browser's.
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+    uploaderInstances[0]!.cancel.mockRejectedValueOnce(new Error('abort failed'));
+
+    await expect(manager.cancelUpload(id)).rejects.toThrow('abort failed');
+
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+  });
+
+  it('keeps them while an upload is paused', async () => {
+    // A paused item must be able to resume, which needs the uploader's
+    // in-progress uploadId and the file itself.
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    manager.pauseUpload(id);
+
+    expect(manager.getStatus(id)!.status).toBe('paused');
+    expect(itemOf(manager, id)!.file).toBeInstanceOf(File);
+    expect(itemOf(manager, id)!.uploader).toBeDefined();
+  });
+
+  it('resumes correctly after a pause', async () => {
+    // Negative control for the test above: if pausing released the payload,
+    // the resumed worker would have nothing to upload.
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+    manager.pauseUpload(id);
+    uploaderInstances[0]!.uploadId = 'mpu-1';
+
+    await manager.resumeUpload(id);
+    await settle();
+
+    expect(manager.getStatus(id)!.status).toBe('uploading');
+    expect(uploaderInstances[0]!.resume).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the queue moving after many completions', async () => {
+    // The reason this is release-and-not-delete. The worker's `finally` reads
+    // the map to decide whether to free a concurrency slot; deleting the entry
+    // would leave activeUploads pinned and stall the queue permanently once
+    // maxConcurrency items had finished.
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 2 });
+    const ids = Array.from({ length: 6 }, (_, i) => manager.addUpload(makeFile(), { key: `${i}` }));
+
+    for (let i = 0; i < 6; i++) {
+      await settle();
+      uploaderInstances[i]!.gate.resolve();
+      await settle();
+    }
+
+    expect(ids.map((id) => manager.getStatus(id)!.status)).toEqual(Array(6).fill('completed'));
+  });
+
+  it('still reports finished uploads through getAllStatuses', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+
+    expect(manager.getAllStatuses()[id]).toEqual({ status: 'completed', progress: 100 });
+  });
+});
