@@ -9,16 +9,21 @@ below was checked against the actual filesystem.
 opndrive/
 ├── docs/                # This documentation site (Nextra) - content/ is the source of truth
 ├── frontend/                 # Next.js application
-├── s3-api/                   # Published npm package: @opndrive/s3-api
+├── s3-api/                   # Workspace package: @opndrive/s3-api
 ├── CONTRIBUTING.md           # Short contributor entry point
 ├── CODE_OF_CONDUCT.md
 ├── CHANGELOG.md              # Frontend app changes (s3-api has its own)
 ├── SECURITY.md               # How to report a vulnerability privately
 ├── LICENSE                   # AGPL-3.0
 ├── README.md
+├── .github/                  # CI/CodeQL workflows, Dependabot, issue + PR templates
+├── .husky/                   # Git hooks (pre-commit runs lint-staged)
+├── .nvmrc                    # Pinned Node version (22) - CI reads this too
+├── .prettierignore
 ├── eslint.config.mjs         # Shared lint config for both packages
-├── package.json              # Root scripts: lint, format, check, typecheck
-├── pnpm-lock.yaml
+├── package.json              # Root scripts and workspace helper commands
+├── pnpm-lock.yaml            # The only lockfile - packages don't have their own
+├── pnpm-workspace.yaml
 └── prettier.config.js
 ```
 
@@ -28,10 +33,9 @@ from outside its own app directory, so a copy meant two places that could
 silently drift out of sync. `docs/content/` is the only place these files live
 now; it's still plain Markdown/MDX, so it reads fine directly on GitHub too.
 
-There's no `pnpm-workspace.yaml` - each package manages its own `node_modules`
-independently. That's a deliberate choice, not an oversight (see
-[Dependency Policy](../maintainers/dependency-policy.md) for why it matters for
-dependency updates).
+The root `pnpm-workspace.yaml` links `frontend/`, `s3-api/`, and `docs/`. Run
+`pnpm install` once from the repository root to install all workspaces and link
+the frontend to the local `@opndrive/s3-api` package.
 
 ## Frontend (`/frontend`)
 
@@ -116,20 +120,23 @@ s3-api/
 ├── src/
 │   ├── core/
 │   │   ├── index.ts          # Abstract interface
+│   │   ├── index.test.ts     # Client construction, accessors, debugLog
 │   │   └── types.ts
-│   ├── utils/
+│   ├── utils/                # Each of these has a collocated *.test.ts
 │   │   ├── uploadManager.ts          # Multipart upload orchestration
 │   │   ├── signedUrlUploadManager.ts # Signed-URL upload orchestration
 │   │   ├── signedUrlUploader.ts
 │   │   ├── multipartUploader.ts
 │   │   └── concurrency.ts
-│   ├── tests/                  # Credential-gated integration suite (skips by default)
+│   ├── tests/                  # contentDisposition unit tests + credential-gated integration suite
 │   ├── index.ts                # Public exports
 │   ├── index.listing.test.ts   # Listing + metadata coverage
 │   ├── index.objects.test.ts   # Single-object operation coverage
+│   ├── index.rename.test.ts    # move/rename file + folder coverage
+│   ├── index.multipart.test.ts # uploadMultipartParallely coverage
 │   └── vitest.d.ts             # Types for the aws-sdk-client-mock matchers
 ├── CHANGELOG.MD
-├── package.json                # Published as @opndrive/s3-api
+├── package.json                # Workspace package, publishable as @opndrive/s3-api
 ├── tsconfig.json               # Type-checking (includes test files)
 ├── tsconfig.build.json         # Build only (excludes test files from dist/)
 ├── vitest.config.ts
@@ -137,8 +144,8 @@ s3-api/
 ```
 
 Unit tests are collocated with the code they cover; `src/tests/` predates that
-convention and now holds only the integration suite. See
-[Testing](./testing.md).
+convention and still holds the `contentDisposition` unit tests alongside the
+credential-gated integration suite. See [Testing](./testing.md).
 
 See [S3 API Layer](./s3-api.md) for what each of these actually does.
 

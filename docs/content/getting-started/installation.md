@@ -7,9 +7,12 @@ app's UI in the next step, [First Upload](./first-upload.md).
 
 | Tool                           | Version    | Check with       |
 | ------------------------------ | ---------- | ---------------- |
-| [Node.js](https://nodejs.org/) | 18+ (LTS)  | `node --version` |
-| [PNPM](https://pnpm.io/)       | 8+         | `pnpm --version` |
+| [Node.js](https://nodejs.org/) | 22         | `node --version` |
+| [PNPM](https://pnpm.io/)       | 10.7.0     | `pnpm --version` |
 | [Git](https://git-scm.com/)    | any recent | `git --version`  |
+
+Node 22 is what `.nvmrc`, CI, and the Dockerfile all use - if you have nvm,
+`nvm use` in the repo root selects it.
 
 Install PNPM if you don't have it:
 
@@ -30,28 +33,23 @@ cd opndrive
 
 ## 2. Install Dependencies
 
-Opndrive is a two-package monorepo (no shared workspace), so each package
-installs its own dependencies:
+Opndrive uses a PNPM workspace. Install once from the repository root and PNPM
+will install dependencies for `frontend/`, `s3-api/`, and `docs/`:
 
 ```bash
-pnpm install              # root: lint/format tooling, Husky hooks
-
-cd frontend
 pnpm install
-
-cd ../s3-api
-pnpm install
-cd ..
 ```
 
-This downloads a fair amount - `frontend/` alone pulls in Next.js, the AWS SDK,
-and the UI component libraries. A few minutes is normal.
+This also runs the root `prepare` script, which sets up Husky and builds the
+`@opndrive/s3-api` workspace package. The first install downloads a fair amount
+
+- Next.js, the AWS SDK, and the UI component libraries - so a few minutes is
+  normal.
 
 ## 3. Start the Dev Server
 
 ```bash
-cd frontend
-pnpm dev
+pnpm dev:frontend
 ```
 
 ```
@@ -73,7 +71,7 @@ your terminal.
 **Port 3000 already in use**
 
 ```bash
-pnpm dev -- --port 3001
+pnpm dev:frontend -- --port 3001
 ```
 
 **`Cannot find module` errors**

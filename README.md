@@ -29,14 +29,12 @@ control, you connect your own storage backend - AWS S3.
    git clone https://github.com/Opndrive/opndrive.git
    cd opndrive
    pnpm install
-   cd frontend; pnpm install
    ```
 
 2. **Start the App**
 
    ```bash
-   cd frontend
-   pnpm dev
+   pnpm dev:frontend
    ```
 
 3. **Open Your Browser**
@@ -153,10 +151,10 @@ branch naming, commit conventions, and the PR process.
 ## Development
 
 ```bash
-pnpm install
-cd frontend && pnpm dev    # start the dev server
-pnpm test                  # run tests (from frontend/ or s3-api/)
-pnpm lint                  # from the repository root
+pnpm install        # install all workspaces and run prepare
+pnpm dev:frontend   # start the frontend dev server
+pnpm test           # run the frontend test suite
+pnpm lint           # lint frontend/ and s3-api/
 ```
 
 See [Development Setup](./docs/content/development/setup.md) for the full guide,

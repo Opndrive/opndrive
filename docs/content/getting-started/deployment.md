@@ -8,8 +8,11 @@ simple: anywhere that runs a Next.js app works.
 ## Vercel or Netlify
 
 Point either platform at the `frontend/` directory as the project root (not the
-repository root - this is a two-package monorepo). Both auto-detect Next.js and
-need no special build configuration.
+repository root - this is a PNPM workspace with `frontend/`, `s3-api/`, and
+`docs/`). Both auto-detect Next.js. Because `frontend/` depends on
+`@opndrive/s3-api` via `workspace:*`, the install has to resolve against the
+root `pnpm-lock.yaml`, so make sure the platform's monorepo/workspace detection
+is on rather than installing inside `frontend/` alone.
 
 ## Docker
 

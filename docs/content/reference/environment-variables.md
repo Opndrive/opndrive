@@ -30,8 +30,14 @@ If you're not working on the marketing/blog surface, you can set
 
 ## Local Development
 
-There's no `.env.example` committed today (a real, gitignored `.env` exists
-locally for development, but isn't a template). If you need
+There's no `.env.example` for the **frontend**. If you need
 `NEXT_PUBLIC_SITE_URL` or the blog variables locally, create
 `frontend/.env.local` yourself with just the ones you need - the app runs fine
 with none of them set.
+
+The one committed template is `s3-api/.env.example`, and it isn't for running
+the app: it lists `ENVIRONMENT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_REGION`, and `BUCKET_NAME`, which only the credential-gated integration
+suite in `s3-api/src/tests/` reads. That suite skips itself unless all of them
+are set, so you can ignore the file entirely unless you're running those tests
+against a real bucket. See [Testing](../development/testing.md).

@@ -20,11 +20,9 @@ git remote add upstream https://github.com/Opndrive/opndrive.git
 
 # Install dependencies
 pnpm install
-cd frontend && pnpm install
-cd ../s3-api && pnpm install
 
 # Start developing
-cd ../frontend && pnpm dev
+pnpm dev:frontend
 ```
 
 Open http://localhost:3000 - you should see Opndrive running.
