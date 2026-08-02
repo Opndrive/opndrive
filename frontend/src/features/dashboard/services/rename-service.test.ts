@@ -138,23 +138,42 @@ describe('renameFile', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('KNOWN GAP: does not short-circuit when the new name equals the old one', async () => {
+  it('never touches S3 when the new name equals the old one', async () => {
+    const api = fakeApi();
+    const h = handlers();
+
+    await createRenameService(api).renameFile(file, 'draft.md', 'docs', h);
+
+    // Without this guard the call becomes a copy of the object onto itself
+    // followed by a delete of that same key. Real S3 refuses the self-copy so
+    // the delete is never reached, but that safety belongs to the backend - an
+    // S3-compatible service that permits the copy would delete the file.
+    expect(api.moveFile).not.toHaveBeenCalled();
+  });
+
+  it('reports a same-name rename as a clean success', async () => {
+    const h = handlers();
+
+    await expect(
+      createRenameService(fakeApi()).renameFile(file, 'draft.md', 'docs', h)
+    ).resolves.toBeUndefined();
+
+    // The user asked for the name it already has, so nothing is wrong - the UI
+    // should close the dialog, not show an error.
+    expect(h.onProgress.mock.calls.map(([p]) => p.status)).toEqual(['renaming', 'success']);
+    expect(h.onComplete).toHaveBeenCalledOnce();
+    expect(h.onError).not.toHaveBeenCalled();
+  });
+
+  it('still renames when only the casing differs', async () => {
     const api = fakeApi();
 
-    await createRenameService(api).renameFile(file, 'draft.md', 'docs');
+    await createRenameService(api).renameFile(file, 'Draft.md', 'docs');
 
-    // There is no equality check, so this issues a copy of the object onto
-    // itself followed by a delete of that same key. Real S3 rejects a self-copy
-    // ("this copy request is illegal"), so the delete is never reached and the
-    // user sees a confusing error rather than losing the file - but the safety
-    // here is S3's, not ours, and S3-compatible backends may not all refuse it.
-    //
-    // Pinned, not endorsed. A `if (oldKey === newKey) return;` guard would make
-    // this test fail, which is the prompt to also stop the UI offering a rename
-    // that changes nothing.
+    // S3 keys are case-sensitive, so this is a real rename, not a no-op.
     expect(api.moveFile).toHaveBeenCalledExactlyOnceWith({
       oldKey: 'docs/draft.md',
-      newKey: 'docs/draft.md',
+      newKey: 'docs/Draft.md',
     });
   });
 });
