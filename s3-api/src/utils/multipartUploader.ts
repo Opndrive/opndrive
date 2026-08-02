@@ -30,9 +30,10 @@ export class MultipartUploader {
     this.key = config.key;
     this.fileName = config.fileName;
     this.concurrency = config.concurrency && config.concurrency > 0 ? config.concurrency : 3;
+    // S3 rejects a multipart upload whose non-final parts are under 5 MiB.
     this.partSize =
-      config.partSizeMB && config.partSizeMB >= 5 * 1024 * 1024
-        ? config.partSizeMB
+      config.partSizeBytes && config.partSizeBytes >= 5 * 1024 * 1024
+        ? config.partSizeBytes
         : 5 * 1024 * 1024;
     localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
