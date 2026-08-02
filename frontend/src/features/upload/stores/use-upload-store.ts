@@ -27,14 +27,12 @@ interface UploadBatch {
 }
 
 interface RefreshState {
-  debounceTimer: NodeJS.Timeout | null;
   isRefreshing: boolean;
   lastRefreshAttempt: number;
 }
 
 // Global refresh state management
 const refreshState: RefreshState = {
-  debounceTimer: null,
   isRefreshing: false,
   lastRefreshAttempt: 0,
 };
@@ -140,16 +138,26 @@ const reportFolderCheckFailure = (
   });
 };
 
-interface DuplicateDialogState {
-  isOpen: boolean;
-  duplicateItem: {
-    name: string;
-    type: 'file' | 'folder';
-    size?: number;
-    files?: File[];
-  } | null;
-  onReplace: (() => void) | null;
-  onKeepBoth: (() => void) | null;
+export interface DuplicateItem {
+  name: string;
+  type: 'file' | 'folder';
+  size?: number;
+  files?: File[];
+}
+
+/**
+ * One pending "this already exists" question.
+ *
+ * These are queued rather than kept in a single slot. Two drops that both hit a
+ * duplicate used to overwrite each other: the second prompt replaced the first,
+ * and the first prompt's callbacks went with it - so the upload that was
+ * waiting on that answer never resolved and simply hung.
+ */
+export interface DuplicatePrompt {
+  id: string;
+  duplicateItem: DuplicateItem;
+  onReplace: () => void;
+  onKeepBoth: () => void;
 }
 
 interface UploadProgress {
@@ -185,7 +193,8 @@ interface UploadStore {
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
   batches: Record<string, UploadBatch>;
-  duplicateDialog: DuplicateDialogState;
+  /** Pending duplicate questions, oldest first. The UI renders index 0. */
+  duplicateQueue: DuplicatePrompt[];
   setUploadManager: (manager: UploadManager | SignedUrlUploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
@@ -231,10 +240,17 @@ interface UploadStore {
 
   // Duplicate dialog methods
   showDuplicateDialog: (
-    duplicateItem: { name: string; type: 'file' | 'folder'; size?: number; files?: File[] },
+    duplicateItem: DuplicateItem,
     onReplace: () => void,
     onKeepBoth: () => void
   ) => void;
+  /**
+   * Runs the head prompt's chosen callback. Deliberately does NOT dequeue: the
+   * dialog component calls the choice handler and then onClose, so dequeuing
+   * here as well would skip the next prompt.
+   */
+  resolveDuplicate: (choice: 'replace' | 'keepBoth') => void;
+  /** Dismisses the head prompt, revealing the next one. */
   hideDuplicateDialog: () => void;
 
   // Batch tracking methods
@@ -257,12 +273,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   uploads: {},
   deletes: {},
   batches: {},
-  duplicateDialog: {
-    isOpen: false,
-    duplicateItem: null,
-    onReplace: null,
-    onKeepBoth: null,
-  },
+  duplicateQueue: [],
 
   setUploads: (uploads: Record<string, UploadProgress>) => set({ uploads }),
 
@@ -350,12 +361,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       uploads: {},
       deletes: {},
       batches: {},
-      duplicateDialog: {
-        isOpen: false,
-        duplicateItem: null,
-        onReplace: null,
-        onKeepBoth: null,
-      },
+      duplicateQueue: [],
     }),
 
   handleFilesDroppedToDirectory: async (
@@ -986,24 +992,33 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   // Duplicate dialog methods
   showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth) =>
-    set({
-      duplicateDialog: {
-        isOpen: true,
-        duplicateItem,
-        onReplace,
-        onKeepBoth,
-      },
-    }),
+    set((state) => ({
+      duplicateQueue: [
+        ...state.duplicateQueue,
+        {
+          id: `dup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+          duplicateItem,
+          onReplace,
+          onKeepBoth,
+        },
+      ],
+    })),
+
+  resolveDuplicate: (choice) => {
+    const prompt = get().duplicateQueue[0];
+    if (!prompt) return;
+
+    // Only invokes; hideDuplicateDialog does the dequeue. The dialog component
+    // calls the choice handler and then onClose, so dequeuing here too would
+    // drop the prompt behind this one.
+    if (choice === 'replace') prompt.onReplace();
+    else prompt.onKeepBoth();
+  },
 
   hideDuplicateDialog: () =>
-    set({
-      duplicateDialog: {
-        isOpen: false,
-        duplicateItem: null,
-        onReplace: null,
-        onKeepBoth: null,
-      },
-    }),
+    set((state) => ({
+      duplicateQueue: state.duplicateQueue.slice(1),
+    })),
 
   // Batch tracking methods
   createUploadBatch: (type: UploadBatch['type'], uploadIds: string[]): string => {
@@ -1103,12 +1118,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   },
 
   forceRefreshData: async (): Promise<void> => {
-    // Clear timer
-    if (refreshState.debounceTimer) {
-      clearTimeout(refreshState.debounceTimer);
-      refreshState.debounceTimer = null;
-    }
-
     refreshState.isRefreshing = true;
 
     try {

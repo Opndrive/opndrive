@@ -161,12 +161,7 @@ describe('clearing', () => {
     expect(store().uploads).toEqual({});
     expect(store().deletes).toEqual({});
     expect(store().batches).toEqual({});
-    expect(store().duplicateDialog).toEqual({
-      isOpen: false,
-      duplicateItem: null,
-      onReplace: null,
-      onKeepBoth: null,
-    });
+    expect(store().duplicateQueue).toEqual([]);
   });
 });
 
@@ -457,52 +452,120 @@ describe('batch tracking', () => {
   });
 });
 
-describe('duplicate dialog', () => {
-  it('opens with the item and both choices', () => {
+describe('duplicate prompt queue', () => {
+  /** Mirrors what DuplicateDialog does: choose, then close. */
+  function answer(choice: 'replace' | 'keepBoth') {
+    store().resolveDuplicate(choice);
+    store().hideDuplicateDialog();
+  }
+
+  it('queues a prompt with its item and both choices', () => {
     const onReplace = vi.fn();
     const onKeepBoth = vi.fn();
 
     store().showDuplicateDialog({ name: 'a.pdf', type: 'file', size: 10 }, onReplace, onKeepBoth);
 
-    expect(store().duplicateDialog).toEqual({
-      isOpen: true,
+    expect(store().duplicateQueue).toHaveLength(1);
+    expect(store().duplicateQueue[0]).toMatchObject({
       duplicateItem: { name: 'a.pdf', type: 'file', size: 10 },
       onReplace,
       onKeepBoth,
     });
   });
 
-  it('KNOWN GAP: a second prompt replaces the first instead of queueing', () => {
+  it('gives each prompt its own id', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn());
+    store().showDuplicateDialog({ name: 'b.txt', type: 'file' }, vi.fn(), vi.fn());
+
+    const [first, second] = store().duplicateQueue;
+    expect(first!.id).not.toBe(second!.id);
+  });
+
+  it('keeps both prompts when two drops collide, oldest first', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn());
+    store().showDuplicateDialog({ name: 'b.txt', type: 'file' }, vi.fn(), vi.fn());
+
+    // A single slot used to drop the first prompt's callbacks here, so the
+    // upload waiting on that answer hung forever.
+    expect(store().duplicateQueue.map((p) => p.duplicateItem.name)).toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('resolves two concurrent drops in order, each with its own choice', async () => {
+    const outcomes: string[] = [];
+
+    // Exactly the shape the store uses internally: an upload parked on a
+    // promise until the user answers.
+    const dropA = new Promise<string>((resolve) => {
+      store().showDuplicateDialog(
+        { name: 'a.txt', type: 'file' },
+        () => resolve('a:replace'),
+        () => resolve('a:keepBoth')
+      );
+    });
+    const dropB = new Promise<string>((resolve) => {
+      store().showDuplicateDialog(
+        { name: 'b.txt', type: 'file' },
+        () => resolve('b:replace'),
+        () => resolve('b:keepBoth')
+      );
+    });
+
+    expect(store().duplicateQueue).toHaveLength(2);
+
+    answer('replace');
+    expect(store().duplicateQueue).toHaveLength(1);
+    // The next question is now the head, not a lost prompt.
+    expect(store().duplicateQueue[0]!.duplicateItem.name).toBe('b.txt');
+
+    answer('keepBoth');
+    expect(store().duplicateQueue).toHaveLength(0);
+
+    outcomes.push(await dropA, await dropB);
+    // Both uploads resumed, each with the answer the user gave it.
+    expect(outcomes).toEqual(['a:replace', 'b:keepBoth']);
+  });
+
+  it('runs only the head prompt callback', () => {
     const firstReplace = vi.fn();
     const secondReplace = vi.fn();
-
     store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, firstReplace, vi.fn());
     store().showDuplicateDialog({ name: 'b.txt', type: 'file' }, secondReplace, vi.fn());
 
-    // The dialog is a single slot, not a queue. Two duplicates resolved
-    // concurrently would lose the first prompt: its callbacks are dropped, so
-    // whatever it was waiting on never resolves.
-    //
-    // Not reachable from a single drop today - the folder loop returns on the
-    // first duplicate it finds - but two overlapping drops can do it. Pinned so
-    // a future queue implementation has to change this deliberately.
-    expect(store().duplicateDialog.duplicateItem).toEqual({ name: 'b.txt', type: 'file' });
-    expect(store().duplicateDialog.onReplace).toBe(secondReplace);
-    expect(firstReplace).not.toHaveBeenCalled();
+    store().resolveDuplicate('replace');
+
+    expect(firstReplace).toHaveBeenCalledOnce();
+    expect(secondReplace).not.toHaveBeenCalled();
   });
 
-  it('clears the callbacks when hidden', () => {
-    store().showDuplicateDialog({ name: 'a.pdf', type: 'file' }, vi.fn(), vi.fn());
+  it('does not dequeue on resolve alone', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn());
+
+    store().resolveDuplicate('replace');
+
+    // The dialog component calls the choice handler and THEN onClose, so
+    // dequeuing here as well would silently skip the prompt behind this one.
+    expect(store().duplicateQueue).toHaveLength(1);
+  });
+
+  it('dismisses without answering when closed outright', () => {
+    const onReplace = vi.fn();
+    const onKeepBoth = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, onKeepBoth);
 
     store().hideDuplicateDialog();
 
-    // Leaving the callbacks behind would let a later dialog fire the previous
-    // prompt's decision.
-    expect(store().duplicateDialog).toEqual({
-      isOpen: false,
-      duplicateItem: null,
-      onReplace: null,
-      onKeepBoth: null,
-    });
+    expect(store().duplicateQueue).toHaveLength(0);
+    expect(onReplace).not.toHaveBeenCalled();
+    expect(onKeepBoth).not.toHaveBeenCalled();
+  });
+
+  it('ignores a resolve when nothing is queued', () => {
+    expect(() => store().resolveDuplicate('replace')).not.toThrow();
+    expect(store().duplicateQueue).toEqual([]);
+  });
+
+  it('ignores a dismiss when nothing is queued', () => {
+    expect(() => store().hideDuplicateDialog()).not.toThrow();
+    expect(store().duplicateQueue).toEqual([]);
   });
 });

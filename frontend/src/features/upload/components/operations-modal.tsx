@@ -81,9 +81,13 @@ export const OperationsModal: React.FC = () => {
     deletes,
     removeUpload,
     removeDeleteOperation,
-    duplicateDialog,
+    duplicateQueue,
+    resolveDuplicate,
     hideDuplicateDialog,
   } = useUploadStore();
+
+  // Only the oldest pending duplicate is shown; answering it reveals the next.
+  const currentDuplicate = duplicateQueue[0] ?? null;
   const { getAllDownloads, cancelDownload } = useDownloadList();
   const downloads = getAllDownloads();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -296,7 +300,7 @@ export const OperationsModal: React.FC = () => {
   });
 
   // If no operations and no duplicate dialog, don't show modal
-  if (sortedOperations.length === 0 && !duplicateDialog.isOpen) {
+  if (sortedOperations.length === 0 && !currentDuplicate) {
     return null;
   }
 
@@ -332,7 +336,7 @@ export const OperationsModal: React.FC = () => {
   // Get title based on operations
   const getTitle = () => {
     // If only duplicate dialog is open, show appropriate title
-    if (sortedOperations.length === 0 && duplicateDialog.isOpen) {
+    if (sortedOperations.length === 0 && currentDuplicate) {
       return 'File Upload';
     }
 
@@ -1090,11 +1094,11 @@ export const OperationsModal: React.FC = () => {
 
       {/* Duplicate Dialog */}
       <DuplicateDialog
-        isOpen={duplicateDialog.isOpen}
+        isOpen={currentDuplicate !== null}
         onClose={hideDuplicateDialog}
-        duplicateItem={duplicateDialog.duplicateItem}
-        onReplace={duplicateDialog.onReplace || (() => {})}
-        onKeepBoth={duplicateDialog.onKeepBoth || (() => {})}
+        duplicateItem={currentDuplicate?.duplicateItem ?? null}
+        onReplace={() => resolveDuplicate('replace')}
+        onKeepBoth={() => resolveDuplicate('keepBoth')}
       />
     </>
   );
