@@ -135,25 +135,22 @@ describe('fetchDirectoryStructure', () => {
     });
   });
 
-  it('KNOWN DEBT: reports a denied listing identically to an empty folder', async () => {
+  it('reports a denied listing as an error, not as an empty folder', async () => {
     s3Mock.on(ListObjectsV2Command).resolves({});
     const whenGenuinelyEmpty = await makeApi().fetchDirectoryStructure('users/alice/', 50);
 
     s3Mock.reset();
     s3Mock.on(ListObjectsV2Command).rejects(s3Error('AccessDenied', 403));
-    const whenAccessDenied = await makeApi().fetchDirectoryStructure('users/alice/', 50);
 
-    // KNOWN DEBT - `fetchDirectoryStructure` in src/index.ts catches every
-    // error and returns an empty structure, so a permissions failure is
-    // byte-for-byte indistinguishable from a genuinely empty folder and the UI
-    // cannot tell the user why their files vanished.
-    //
-    // This test PINS that behaviour so it cannot change silently. It does NOT
-    // endorse it. When the method learns to surface errors, this test SHOULD
-    // fail - and that failure is the prompt to update every caller that
-    // currently treats an empty result as authoritative.
-    expect(whenAccessDenied).toEqual(whenGenuinelyEmpty);
-    expect(whenAccessDenied).toEqual({
+    // A failure must be distinguishable from an empty folder. When this method
+    // swallowed errors, callers asking "does this folder exist?" answered "no"
+    // on a permissions blip and then created or uploaded over what was there.
+    await expect(makeApi().fetchDirectoryStructure('users/alice/', 50)).rejects.toThrow(
+      'AccessDenied'
+    );
+
+    // An genuinely empty folder still reports empty, not an error.
+    expect(whenGenuinelyEmpty).toEqual({
       files: [],
       folders: [],
       nextToken: undefined,

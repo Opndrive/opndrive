@@ -53,37 +53,37 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     this.userType = userType;
   }
 
+  /**
+   * Lists one page of a directory.
+   *
+   * Throws if the listing fails. It used to swallow every error and return an
+   * empty structure, which made a permissions failure look exactly like an
+   * empty folder - and callers that ask "does this folder exist?" would then
+   * answer "no" and happily create or upload over something that was already
+   * there. Callers must handle the rejection.
+   */
   async fetchDirectoryStructure(
     prefix: string | undefined | null,
     maxKeys: number = 50,
     token?: string
   ): Promise<DirectoryStructure> {
-    try {
-      const input: ListObjectsV2CommandInput = {
-        Bucket: this.credentials.bucketName,
-        Prefix: prefix ?? this.credentials.prefix,
-        MaxKeys: maxKeys,
-        ContinuationToken: token,
-        Delimiter: '/',
-      };
+    const input: ListObjectsV2CommandInput = {
+      Bucket: this.credentials.bucketName,
+      Prefix: prefix ?? this.credentials.prefix,
+      MaxKeys: maxKeys,
+      ContinuationToken: token,
+      Delimiter: '/',
+    };
 
-      const command = new ListObjectsV2Command(input);
-      const response = await this.s3.send(command);
+    const command = new ListObjectsV2Command(input);
+    const response = await this.s3.send(command);
 
-      return {
-        files: response.Contents ?? [],
-        folders: response.CommonPrefixes ?? [],
-        nextToken: response.NextContinuationToken,
-        isTruncated: response.IsTruncated,
-      };
-    } catch (error) {
-      return {
-        files: [],
-        folders: [],
-        nextToken: undefined,
-        isTruncated: undefined,
-      };
-    }
+    return {
+      files: response.Contents ?? [],
+      folders: response.CommonPrefixes ?? [],
+      nextToken: response.NextContinuationToken,
+      isTruncated: response.IsTruncated,
+    };
   }
 
   async fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null> {

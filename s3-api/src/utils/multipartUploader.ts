@@ -58,7 +58,18 @@ export class MultipartUploader {
           Key: this.key,
         })
       );
-      this.uploadId = UploadId!;
+
+      // UploadId is optional on the response type, and some S3-compatible
+      // services do omit it. Without this guard every part goes out with
+      // UploadId: undefined and completeUpload() then returns early, so the
+      // upload finishes "successfully" having stored nothing.
+      if (!UploadId) {
+        throw new Error(
+          `S3 did not return an UploadId when starting the multipart upload for ${this.key}`
+        );
+      }
+
+      this.uploadId = UploadId;
     }
 
     await this.uploadParts(file, onProgress);
