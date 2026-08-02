@@ -13,6 +13,16 @@ import { useDriveStore } from './data-context';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
+/**
+ * How many files upload at once.
+ *
+ * Owned by the s3-api managers, which is why nothing downstream keeps a pool.
+ * Three is a compromise: enough to keep a connection busy through the latency
+ * of small files, few enough that a browser's per-host connection budget still
+ * leaves room for listings and previews.
+ */
+const UPLOAD_CONCURRENCY = 3;
+
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
   uploadManager: UploadManager | null;
@@ -87,17 +97,20 @@ async function initializeUploadManagers(
   // managers on both edges rather than only on logout.
   useSearchStore.getState().clearCache();
 
+  // This is the ONE place upload concurrency is set. The executor deliberately
+  // has no pool of its own - two components each believing they control how
+  // many uploads are in flight is how "3 at a time" becomes six.
   const manager = UploadManager.getInstance({
     s3: api.getS3Client(),
     bucket: api.getBucketName(),
     prefix: creds.prefix || '',
-    maxConcurrency: 2,
+    maxConcurrency: UPLOAD_CONCURRENCY,
     partSizeMB: 5,
   });
 
   const signedUrlManager = SignedUrlUploadManager.getInstance({
     apiProvider: api,
-    maxConcurrency: 2,
+    maxConcurrency: UPLOAD_CONCURRENCY,
     expiresInSeconds: 3600,
   });
 
