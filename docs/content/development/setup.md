@@ -6,8 +6,11 @@ should work as written.
 
 ## Prerequisites
 
-- **Node.js** (v18 or later) - [Download here](https://nodejs.org/)
-- **PNPM** (v8 or later) - Install with `npm install -g pnpm`
+- **Node.js** 22 - [Download here](https://nodejs.org/). The version is pinned
+  in `.nvmrc`; if you use nvm, `nvm use` in the repo root picks it up. CI and
+  the Dockerfile both use 22, so matching it locally avoids surprises.
+- **PNPM** 10.7.0 - Install with `npm install -g pnpm`. The root `package.json`
+  declares `"packageManager": "pnpm@10.7.0"`, and CI uses the same version.
 - **Git** - [Download here](https://git-scm.com/)
 - **VS Code** (recommended) - [Download here](https://code.visualstudio.com/)
 
@@ -27,23 +30,17 @@ cd opndrive
 ### 2. Install Dependencies
 
 ```bash
-# Install root dependencies (lint/format tooling, Husky hooks)
-pnpm install
-
-# Install frontend dependencies
-cd frontend
-pnpm install
-
-# Install S3 API dependencies
-cd ../s3-api
 pnpm install
 ```
+
+This installs every workspace listed in `pnpm-workspace.yaml` (`frontend/`,
+`s3-api/`, and `docs/`). It also runs the root `prepare` script, which sets up
+Husky and builds the `@opndrive/s3-api` workspace package.
 
 ### 3. Start the Development Server
 
 ```bash
-cd frontend
-pnpm dev
+pnpm dev:frontend
 ```
 
 ### 4. Open Your Browser
@@ -68,7 +65,7 @@ opndrive/
 │   ├── shared/               # Reusable components
 │   ├── context/              # React Context providers (auth, data, theme, ...)
 │   └── services/             # Code that talks to @opndrive/s3-api
-└── s3-api/                  # Published npm package, S3 integration layer
+└── s3-api/                  # Workspace package, S3 integration layer
 ```
 
 See [Repository Structure](./repository-structure.md) for the full breakdown.
@@ -109,13 +106,10 @@ a pull request.
 ### 3. Testing
 
 ```bash
-# From frontend/
-pnpm test
-
-# From s3-api/
-pnpm test
-pnpm test:watch
-pnpm test:coverage
+pnpm --filter frontend test
+pnpm --filter @opndrive/s3-api test
+pnpm --filter @opndrive/s3-api test:watch
+pnpm --filter @opndrive/s3-api test:coverage
 ```
 
 Both packages use [Vitest](https://vitest.dev/). The `s3-api` suite mocks the
@@ -175,9 +169,9 @@ separate dark-mode variant to write by hand.
 ## S3 Integration
 
 Opndrive talks to S3 directly from the browser through the `@opndrive/s3-api`
-package, wrapped by `frontend/src/services/`. There is no backend server in
-between. See [S3 API Layer](./s3-api.md) for what the package actually exposes
-(upload managers, multipart uploads, retry/concurrency helpers).
+workspace package, wrapped by `frontend/src/services/`. There is no backend
+server in between. See [S3 API Layer](./s3-api.md) for what the package actually
+exposes (upload managers, multipart uploads, retry/concurrency helpers).
 
 ## Debugging
 
@@ -186,8 +180,8 @@ between. See [S3 API Layer](./s3-api.md) for what the package actually exposes
 **Module Resolution Errors**
 
 ```bash
-rm -rf .next
-pnpm dev
+rm -rf frontend/.next
+pnpm dev:frontend
 ```
 
 **TypeScript Errors**
@@ -198,7 +192,7 @@ TS Server"
 **Styling Not Applied**
 
 ```bash
-pnpm dev
+pnpm dev:frontend
 ```
 
 ### Development Tools
@@ -211,20 +205,25 @@ pnpm dev
 
 These are the scripts that actually exist in `package.json` today:
 
-| Command              | Where to run it                 | What it does                                         |
-| -------------------- | ------------------------------- | ---------------------------------------------------- |
-| `pnpm dev`           | `frontend/`                     | Start the dev server (Turbopack)                     |
-| `pnpm build`         | `frontend/`                     | Production build                                     |
-| `pnpm start`         | `frontend/`                     | Start the production build                           |
-| `pnpm typecheck`     | root, `frontend/`, or `s3-api/` | Type-check (root runs both packages)                 |
-| `pnpm test`          | `frontend/` or `s3-api/`        | Run the Vitest suite                                 |
-| `pnpm test:watch`    | `s3-api/`                       | Run tests in watch mode                              |
-| `pnpm test:coverage` | `s3-api/`                       | Run tests with a v8 coverage report                  |
-| `pnpm lint`          | root                            | Lint both `frontend/` and `s3-api/`                  |
-| `pnpm lint:frontend` | root                            | Lint only `frontend/`                                |
-| `pnpm format`        | root                            | Format the whole repo with Prettier                  |
-| `pnpm format:check`  | root                            | Check formatting without writing                     |
-| `pnpm check`         | root                            | `lint` + `format:check` (what CI's quality job runs) |
+| Command                                        | Where to run it | What it does                                         |
+| ---------------------------------------------- | --------------- | ---------------------------------------------------- |
+| `pnpm install`                                 | root            | Install every workspace and run `prepare`            |
+| `pnpm dev:frontend`                            | root            | Start the frontend dev server (Turbopack)            |
+| `pnpm build:frontend`                          | root            | Build the frontend app                               |
+| `pnpm start:frontend`                          | root            | Start the built frontend app                         |
+| `pnpm dev:docs`                                | root            | Start the docs dev server                            |
+| `pnpm build:docs`                              | root            | Build the docs app                                   |
+| `pnpm start:docs`                              | root            | Start the built docs app                             |
+| `pnpm typecheck`                               | root            | Type-check frontend and `@opndrive/s3-api`           |
+| `pnpm test`                                    | root            | Run the frontend Vitest suite                        |
+| `pnpm --filter @opndrive/s3-api test`          | root            | Run the S3 API Vitest suite                          |
+| `pnpm --filter @opndrive/s3-api test:watch`    | root            | Run S3 API tests in watch mode                       |
+| `pnpm --filter @opndrive/s3-api test:coverage` | root            | Run S3 API tests with a v8 coverage report           |
+| `pnpm lint`                                    | root            | Lint both `frontend/` and `s3-api/`                  |
+| `pnpm lint:frontend`                           | root            | Lint only `frontend/`                                |
+| `pnpm format`                                  | root            | Format the whole repo with Prettier                  |
+| `pnpm format:check`                            | root            | Check formatting without writing                     |
+| `pnpm check`                                   | root            | `lint` + `format:check` (what CI's quality job runs) |
 
 There's no `type-check` (hyphenated), `check-all`, `clean`, or
 environment-specific build script (`build:dev`/`build:staging`/`build:prod`) in

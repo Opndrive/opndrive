@@ -27,13 +27,5 @@
     "@types/react-dom": "^19",
     "pagefind": "^1.5.2",
     "typescript": "^5"
-  },
-  "pnpm": {
-    "overrides": {
-      "zod": "^4.0.0"
-    },
-    "patchedDependencies": {
-      "nextra-theme-docs@4.6.1": "patches/nextra-theme-docs@4.6.1.patch"
-    }
   }
 }

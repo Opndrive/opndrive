@@ -18,7 +18,8 @@ Brief description of the changes made in this pull request.
 
 ## How to Test
 
-1. Start the application: `cd frontend; pnpm dev`
+1. Start the application from the repository root:
+   `pnpm install && pnpm dev:frontend`
 2. Navigate to...
 3. Try...
 4. Verify that...

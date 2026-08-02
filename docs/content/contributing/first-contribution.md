@@ -60,16 +60,18 @@ pnpm lint        # both packages
 pnpm check       # lint + format check, what CI runs
 ```
 
-From the package you changed:
+Then the test suite for the package you changed, also from the root:
 
 ```bash
-pnpm test
+pnpm test                             # frontend
+pnpm --filter @opndrive/s3-api test   # s3-api
 ```
 
-There's no enforced coverage percentage (see
-[Testing](../development/testing.md) for the current state), but if you touched
-a hook, a state transition, or anything async, a Vitest test is the difference
-between "works on my machine" and "works."
+The frontend has no coverage gate, but `s3-api` does - CI runs its suite with
+coverage thresholds, so removing covered behaviour there fails the build (see
+[Testing](../development/testing.md)). Either way, if you touched a hook, a
+state transition, or anything async, a Vitest test is the difference between
+"works on my machine" and "works."
 
 ## 6. Commit
 

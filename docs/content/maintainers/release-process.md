@@ -11,8 +11,8 @@ flowchart LR
     B --> C[pnpm build]
     C --> D[npm publish --access public]
     D --> E[Update s3-api/CHANGELOG.MD]
-    E --> F["cd frontend<br/>pnpm add @opndrive/s3-api@latest"]
-    F --> G[pnpm typecheck && pnpm build]
+    E --> F["Keep frontend on workspace:*"]
+    F --> G[pnpm typecheck && pnpm build:frontend]
 ```
 
 ## Publishing `@opndrive/s3-api`
@@ -38,37 +38,40 @@ npm publish --access public
 `s3-api/CHANGELOG.MD` should be updated alongside the version bump so consumers
 can see what changed.
 
-## Bumping the Frontend's Dependency
+## Frontend Workspace Dependency
 
-Publishing a new `s3-api` version does **not** automatically update the
-frontend. `frontend/package.json` pins an explicit version range (for example
-`"@opndrive/s3-api": "^2.4.0"`), so after a publish:
+The frontend consumes `@opndrive/s3-api` through the local PNPM workspace:
 
-```bash
-cd frontend
-pnpm add @opndrive/s3-api@latest
-pnpm typecheck && pnpm build
+```json
+"@opndrive/s3-api": "workspace:*"
 ```
 
-It's normal for the frontend's pinned version to lag behind the latest published
-`s3-api` for a while - just be aware it's a separate, manual step, not something
-that happens as a side effect of publishing.
+Do not replace that with `pnpm add @opndrive/s3-api@latest` for local repo
+development. After changing or publishing `s3-api`, verify the workspace from
+the root:
+
+```bash
+pnpm typecheck
+pnpm build:frontend
+```
 
 ## Frontend Releases
 
 The frontend (`frontend/package.json`, currently `2.0.0`) doesn't publish
 anywhere - it's deployed directly (Vercel/Netlify) or built into a Docker image
-(see [Deployment](../getting-started/deployment.md)). There's no root
-`CHANGELOG.md` today; if you're cutting a notable release, consider adding one
-rather than relying on commit history alone.
+(see [Deployment](../getting-started/deployment.md)). Notable frontend changes
+go in the root `CHANGELOG.md`, which follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and starts from the
+point it was added rather than backfilling history. `s3-api` keeps its own
+`s3-api/CHANGELOG.MD` because it's versioned and published separately.
 
 ## A Note on Version Numbers
 
 The root `package.json` (`1.0.0`), `frontend/package.json` (`2.0.0`), and
 `s3-api/package.json` (independently versioned, published to npm) are three
-separate version numbers that don't move together. That's expected in a
-non-workspace monorepo like this one, but it's worth knowing so a "v2.0.0"
-mentioned in one context isn't assumed to mean the same thing in another.
+separate version numbers that don't move together. That's expected in this
+workspace, but it's worth knowing so a "v2.0.0" mentioned in one context isn't
+assumed to mean the same thing in another.
 
 ## Open Improvement
 

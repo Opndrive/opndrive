@@ -1,9 +1,10 @@
 # Testing
 
 An honest picture of test coverage today, not an aspirational one. The frontend
-is still thin. `s3-api` is mid-way through a push to full coverage: every S3
-operation is now exercised against a mocked AWS client, but the upload managers
-and the multipart uploader are still untested.
+is still thin - three files. `s3-api` came out the other side of its coverage
+push: every S3 operation, the upload managers, and the multipart uploader are
+now exercised against a mocked AWS client, and CI enforces coverage thresholds
+on the package.
 
 ## The Stack
 
@@ -18,10 +19,14 @@ and the multipart uploader are still untested.
 
 ## Running Tests
 
+Run these from the repository root - PNPM workspace filters target each package,
+so there's no need to `cd` anywhere:
+
 ```bash
-cd frontend && pnpm test
-cd s3-api && pnpm test            # or: pnpm test:watch
-cd s3-api && pnpm test:coverage   # text summary + HTML report in coverage/
+pnpm test                                       # frontend suite (root shortcut)
+pnpm --filter @opndrive/s3-api test
+pnpm --filter @opndrive/s3-api test:watch
+pnpm --filter @opndrive/s3-api test:coverage    # text summary + HTML report in s3-api/coverage/
 ```
 
 **No AWS credentials are required.** `aws-sdk-client-mock` intercepts the SDK
@@ -33,26 +38,39 @@ rather than adding real keys.
 The one exception is `s3-api/src/tests/byoS3.test.ts`, an integration suite that
 talks to a real bucket. It **skips itself** unless `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, `BUCKET_NAME`, and `AWS_REGION` are all set (see
-`.env.example`). CI never sets them, so it never runs there.
+`s3-api/.env.example`). CI never sets them, so it never runs there.
 
-There's no enforced coverage threshold yet; `pnpm test:coverage` reports but
-does not gate.
+Coverage **is** gated for `s3-api`. `s3-api/vitest.config.ts` sets thresholds of
+95% statements, 90% branches, 95% functions, and 95% lines, and the CI `s3-api`
+job runs `test:coverage`, so a genuine drop in covered behaviour fails the
+build. Branches sits lowest on purpose - the remaining gap is unreachable
+defensive code (see the `DEAD CODE:` and `KNOWN BUG:` cases in
+`multipartUploader.test.ts`), not missing tests. The job also publishes the
+coverage table to the GitHub run summary via
+`.github/scripts/coverage-summary.mjs`.
+
+The frontend has no coverage gate and no `test:coverage` script.
 
 ## What's Actually Covered
 
-**`s3-api`** — listing, metadata, and single-object operations:
+**`s3-api`** — effectively the whole public surface:
 
 - `src/index.listing.test.ts` — `fetchDirectoryStructure`, `fetchMetadata`,
   `listFromPrefix`, `search`
 - `src/index.objects.test.ts` — `uploadWithPreSignedUrl`, `getSignedUrl`,
   `downloadFile`, `deleteFile`, `deleteBatch`, `createFolder`
+- `src/index.rename.test.ts` — `moveFile`, `renameFile`, and `renameFolder`
+  (guard rails, copy/verify/delete phases, and partial-failure behaviour)
+- `src/index.multipart.test.ts` — `uploadMultipartParallely`
+- `src/core/index.test.ts` — `S3Client` construction, the accessors, `debugLog`
+- `src/utils/uploadManager.test.ts` and
+  `src/utils/signedUrlUploadManager.test.ts` — queueing, pause/resume/cancel,
+  status reporting, events, folder uploads
+- `src/utils/multipartUploader.test.ts` and
+  `src/utils/signedUrlUploader.test.ts` — the uploaders themselves
+- `src/utils/concurrency.test.ts` — `forEachWithConcurrency`
 - `src/tests/contentDisposition.test.ts` — the `Content-Disposition` builder, in
   depth (unicode, header injection, path stripping)
-
-Still untested: `moveFile`, `renameFile`, `renameFolder`,
-`uploadMultipartParallely`, the `getBucketName`/`getPrefix`/`getRegion`/
-`getS3Client` accessors, `MultipartUploader`, `UploadManager`,
-`SignedUrlUploadManager`, `SignedUrlUploader`, and `forEachWithConcurrency`.
 
 **`frontend`** — three files, and nothing else:
 

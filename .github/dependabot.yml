@@ -5,10 +5,9 @@ updates:
     schedule:
       interval: 'weekly'
     # Major-version bumps are not proposed automatically. They tend to be
-    # breaking (see the eslint 9->10 / typescript 5->7 incident), and this
-    # repo has no workspace, so a break in one package isn't always caught
-    # by the checks that run against a different package. Majors are a
-    # deliberate, manual upgrade, done one at a time with verification.
+    # breaking (see the eslint 9->10 / typescript 5->7 incident). This repo
+    # now uses a PNPM workspace, but majors are still a deliberate, manual
+    # upgrade, done one at a time with verification.
     ignore:
       - dependency-name: '*'
         update-types: ['version-update:semver-major']

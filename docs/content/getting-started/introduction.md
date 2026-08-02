@@ -32,12 +32,13 @@ browser's `localStorage`, nowhere else.
 ```mermaid
 graph LR
     Browser["Your Browser"] -->|renders| Frontend["frontend/<br/>Next.js 15 app"]
-    Frontend -->|imports| S3API["s3-api/<br/>@opndrive/s3-api<br/>(published npm package)"]
+    Frontend -->|imports| S3API["s3-api/<br/>@opndrive/s3-api<br/>(workspace package)"]
     S3API -->|signed requests| S3[("Your S3 Bucket")]
 ```
 
-There's no backend server and no workspace tooling tying the two packages
-together - each is installed and versioned independently. See
+There's no backend server. Local development is tied together by
+`pnpm-workspace.yaml`, so the frontend uses the local `@opndrive/s3-api`
+workspace package. See
 [Repository Structure](../development/repository-structure.md) for the full map.
 
 **Tech stack**: Next.js 15, React 19, TypeScript, Tailwind CSS, Zustand + React

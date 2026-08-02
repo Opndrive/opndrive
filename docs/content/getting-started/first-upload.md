@@ -53,11 +53,11 @@ methods (direct, multipart, signed URL) and when each is used.
 ## Stopping and Restarting the Dev Server
 
 ```bash
-# Stop: Ctrl+C in the terminal running `pnpm dev`
+# Stop: Ctrl+C in the terminal running `pnpm dev:frontend`
 
 # Restart later:
-cd opndrive/frontend
-pnpm dev
+cd opndrive
+pnpm dev:frontend
 ```
 
 ## Troubleshooting

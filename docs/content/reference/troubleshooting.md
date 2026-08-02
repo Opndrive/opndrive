@@ -12,12 +12,12 @@ everything else.
 `Cmd/Ctrl + Shift + P` → "TypeScript: Restart TS Server" in VS Code. Next.js's
 incremental type info can get stale.
 
-**Styling changes not showing up** Restart `pnpm dev`. If that doesn't help,
-delete `.next/` and restart:
+**Styling changes not showing up** Restart `pnpm dev:frontend`. If that doesn't
+help, delete the frontend `.next/` cache and restart:
 
 ```bash
-rm -rf .next
-pnpm dev
+rm -rf frontend/.next
+pnpm dev:frontend
 ```
 
 **Module resolution errors after pulling new changes**
@@ -27,8 +27,7 @@ rm -rf node_modules
 pnpm install
 ```
 
-Do this in whichever package (`frontend/` or `s3-api/`) is affected - they have
-independent `node_modules`.
+Run this from the repository root so PNPM can restore the whole workspace.
 
 ## Linting and Formatting
 
@@ -59,8 +58,8 @@ pending indefinitely rather than failing outright. See
 
 **CI fails but the same commands pass locally** Run the exact commands from
 [CI/CD](../contributing/ci-cd.md#running-the-same-checks-locally) rather than
-`pnpm dev`-adjacent commands - a stale local `.next/` cache or `node_modules`
-state is the usual cause of "works on my machine."
+`pnpm dev:frontend`-adjacent commands - a stale local `.next/` cache or
+`node_modules` state is the usual cause of "works on my machine."
 
 ## Still Stuck?
 

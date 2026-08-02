@@ -1,0 +1,34 @@
+# The build context is the whole repo now, so keep it small. Anything the
+# builder stage regenerates (installs, compiles) should be excluded here.
+
+.git
+.github
+.husky
+.pnpm-store
+
+node_modules
+**/node_modules
+
+**/.next
+**/out
+s3-api/dist
+**/coverage
+
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+**/*.log
+**/.DS_Store
+
+# The docs site is a separate workspace and is not part of the app image.
+# docs/package.json and docs/patches are still copied explicitly by the
+# Dockerfile because pnpm needs them to validate the lockfile and patches.
+docs/**
+!docs/package.json
+!docs/patches
+!docs/patches/**
+
+Dockerfile
+.dockerignore

@@ -1,9 +1,10 @@
 # S3 API Layer
 
-`@opndrive/s3-api` is the published npm package that does every S3 operation
-Opndrive performs. The frontend never talks to `@aws-sdk/client-s3` directly -
-everything goes through this package. This page documents the real exported
-surface, read from `s3-api/src/`.
+`@opndrive/s3-api` is the workspace package that does every S3 operation
+Opndrive performs. It is also publishable to npm for external consumers. The
+frontend never talks to `@aws-sdk/client-s3` directly - everything goes through
+this package. This page documents the real exported surface, read from
+`s3-api/src/`.
 
 ## Shape of the Package
 
@@ -106,8 +107,10 @@ The listing, metadata, and single-object methods above
 (`fetchDirectoryStructure`, `fetchMetadata`, `listFromPrefix`, `search`,
 `uploadWithPreSignedUrl`, `getSignedUrl`, `downloadFile`, `deleteFile`,
 `deleteBatch`, `createFolder`) are covered by unit tests that mock the AWS SDK,
-so `pnpm test` in `s3-api/` needs no credentials and makes no network calls.
+so `pnpm --filter @opndrive/s3-api test` needs no credentials and makes no
+network calls.
 
-The rename/move family, `uploadMultipartParallely`, the accessors, and the
-upload managers are not covered yet. See [Testing](./testing.md) for the mock
-patterns and conventions.
+The rename/move family, `uploadMultipartParallely`, the accessors, the upload
+managers, and the uploaders are covered too, and CI enforces coverage thresholds
+on this package. See [Testing](./testing.md) for the full inventory plus the
+mock patterns and conventions.
