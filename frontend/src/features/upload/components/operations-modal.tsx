@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
-import { FileIcon } from '@/shared/components/icons/file-icons';
-import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { DuplicateDialog } from './duplicate-dialog';
+import { OperationRow, type OperationType } from './operation-row';
 import type { FileExtension } from '@/config/file-extensions';
-import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
 
@@ -16,7 +14,7 @@ interface OperationItem {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  operationType: 'upload' | 'delete' | 'download';
+  operationType: OperationType;
   status: string;
   progress: number;
   size?: number;
@@ -75,16 +73,81 @@ const getAverageUploadSpeed = (): number => {
   return totalSpeed / speedTracker.speeds.length;
 };
 
+type UploadsMap = ReturnType<typeof useUploadStore.getState>['uploads'];
+
+/**
+ * Hoisted out of the component: these are pure functions of the store data,
+ * so redefining them on every render only created garbage and fresh identities
+ * for no benefit.
+ */
+
+// Calculate folder progress based on its files
+function getFolderProgress(uploads: UploadsMap, folderId: string): number {
+  const folder = uploads[folderId];
+  if (!folder || !folder.fileIds) return 0;
+
+  const fileProgresses = folder.fileIds.map((id) => uploads[id]?.progress || 0);
+  return fileProgresses.reduce((sum, progress) => sum + progress, 0) / fileProgresses.length;
+}
+
+// Calculate folder status based on its files
+function getFolderStatus(uploads: UploadsMap, folderId: string): string {
+  const folder = uploads[folderId];
+  if (!folder || !folder.fileIds) return folder?.status || 'queued';
+
+  const fileStatuses = folder.fileIds.map((id) => uploads[id]?.status).filter(Boolean);
+
+  // If folder itself is cancelled, return cancelled
+  if (folder.status === 'cancelled') return 'cancelled';
+
+  // If any file is uploading, folder is uploading
+  if (fileStatuses.some((status) => status === 'uploading')) return 'uploading';
+
+  // If any file is paused, folder is paused
+  if (fileStatuses.some((status) => status === 'paused')) return 'paused';
+
+  // If all files are completed, folder is completed
+  if (fileStatuses.length > 0 && fileStatuses.every((status) => status === 'completed'))
+    return 'completed';
+
+  // If some files are completed but others are not, folder is still uploading
+  if (
+    fileStatuses.some((status) => status === 'completed') &&
+    fileStatuses.some((status) => ['uploading', 'queued', 'paused'].includes(status))
+  ) {
+    return 'uploading';
+  }
+
+  // If any file failed, folder has failed
+  if (fileStatuses.some((status) => status === 'failed')) return 'failed';
+
+  // Default to queued if all files are queued
+  return 'queued';
+}
+
+// Extract file extension from filename
+function getFileExtension(filename: string): FileExtension | undefined {
+  const parts = filename.split('.');
+  if (parts.length <= 1) return undefined;
+
+  const ext = parts[parts.length - 1].toLowerCase();
+  // Type assertion is safe here since we're checking against known extensions
+  // If the extension is not in our FileExtension type, we'll return undefined
+  return ext as FileExtension;
+}
+
 export const OperationsModal: React.FC = () => {
-  const {
-    uploads,
-    deletes,
-    removeUpload,
-    removeDeleteOperation,
-    duplicateQueue,
-    resolveDuplicate,
-    hideDuplicateDialog,
-  } = useUploadStore();
+  // Field-level selectors, not `useUploadStore()`. Subscribing to the whole
+  // store meant every batch update, every delete tick and every duplicate
+  // prompt re-rendered this panel along with each of its rows.
+  const uploads = useUploadStore((state) => state.uploads);
+  const deletes = useUploadStore((state) => state.deletes);
+  const removeUpload = useUploadStore((state) => state.removeUpload);
+  const removeDeleteOperation = useUploadStore((state) => state.removeDeleteOperation);
+  const updateUpload = useUploadStore((state) => state.updateUpload);
+  const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
+  const resolveDuplicate = useUploadStore((state) => state.resolveDuplicate);
+  const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
 
   // Only the oldest pending duplicate is shown; answering it reveals the next.
   const currentDuplicate = duplicateQueue[0] ?? null;
@@ -94,18 +157,25 @@ export const OperationsModal: React.FC = () => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const uploadManager = useActiveUploadManager();
-  const { uploadMode } = useUploadSettingsStore();
+  const uploadMode = useUploadSettingsStore((state) => state.uploadMode);
 
   // Check if pause/resume is supported in current mode
   const supportsPauseResume = uploadMode === 'multipart';
 
+  // Read inside the interval instead of depending on `uploads`, which changes
+  // on every progress tick - the old dependency tore down and rebuilt the
+  // interval each time, so under a steady stream of ticks the 3s timer could
+  // never actually reach 3s.
+  const uploadsRef = useRef(uploads);
+  uploadsRef.current = uploads;
+
   // Simulate speed tracking for active uploads (demo purposes).
   // Must stay above the uploadManager guard below: hooks cannot sit after an
   // early return, or the hook count changes once the manager resolves.
-  React.useEffect(() => {
+  useEffect(() => {
     const interval = setInterval(() => {
       // Check if there are any uploading operations
-      const hasActiveUploads = Object.values(uploads).some(
+      const hasActiveUploads = Object.values(uploadsRef.current).some(
         (upload) => upload.status === 'uploading'
       );
 
@@ -117,187 +187,161 @@ export const OperationsModal: React.FC = () => {
     }, 3000); // Update every 3 seconds
 
     return () => clearInterval(interval);
-  }, [uploads]); // Depend on uploads object
+  }, []);
+
+  // Helper function to cancel operations (upload, delete, and download).
+  // Stable across renders so the memoized rows are not invalidated by a fresh
+  // closure on every tick.
+  const cancelOperation = useCallback(
+    (itemId: string, operationType: OperationType, isFolder = false) => {
+      if (operationType === 'upload') {
+        if (isFolder) {
+          const folder = useUploadStore.getState().uploads[itemId];
+          if (folder && folder.fileIds) {
+            // Cancel all individual files in the folder
+            folder.fileIds.forEach((fileId) => {
+              uploadManager?.cancelUpload(fileId);
+            });
+            // Through the store action rather than by assigning to
+            // `folder.status`: that mutated zustand's state object in place,
+            // so no subscriber was notified and the panel kept showing the
+            // folder as active until some unrelated update forced a render.
+            updateUpload(itemId, { status: 'cancelled', progress: 100 });
+          }
+        } else {
+          uploadManager?.cancelUpload(itemId);
+        }
+      } else if (operationType === 'delete') {
+        // For delete operations, we need to cancel the delete operation
+        // This depends on your delete implementation - you might need to add a cancel method
+        // For now, we'll remove it from the store (assuming it can be cancelled)
+        removeDeleteOperation(itemId);
+      } else if (operationType === 'download') {
+        // Cancel download operation
+        cancelDownload(itemId);
+      }
+    },
+    [uploadManager, updateUpload, removeDeleteOperation, cancelDownload]
+  );
+
+  const removeOperation = useCallback(
+    (itemId: string, operationType: OperationType) => {
+      if (operationType === 'upload') {
+        removeUpload(itemId);
+      } else if (operationType === 'delete') {
+        removeDeleteOperation(itemId);
+      }
+    },
+    [removeUpload, removeDeleteOperation]
+  );
+
+  const pauseOperation = useCallback(
+    (itemId: string) => uploadManager?.pauseUpload(itemId),
+    [uploadManager]
+  );
+
+  const resumeOperation = useCallback(
+    (itemId: string) => uploadManager?.resumeUpload(itemId),
+    [uploadManager]
+  );
+
+  // Derivation lives above the `uploadManager` guard because useMemo is a
+  // hook and hooks cannot follow an early return.
+  const sortedOperations = useMemo(() => {
+    // Combine and transform operations into unified format
+    const allOperations: OperationItem[] = [
+      // Upload operations
+      ...Object.values(uploads)
+        .filter((u) => u.type === 'folder' || (u.type === 'file' && !u.parentFolderId))
+        .map((upload) => ({
+          id: upload.id,
+          name: upload.name,
+          type: upload.type,
+          operationType: 'upload' as const,
+          status: upload.type === 'folder' ? getFolderStatus(uploads, upload.id) : upload.status,
+          progress:
+            upload.type === 'folder' ? getFolderProgress(uploads, upload.id) : upload.progress,
+          fileIds: upload.fileIds,
+          parentFolderId: upload.parentFolderId,
+          extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
+        })),
+      // Delete operations
+      ...Object.values(deletes).map((deleteOp) => ({
+        id: deleteOp.id,
+        name: deleteOp.name,
+        type: deleteOp.type,
+        operationType: 'delete' as const,
+        status: deleteOp.status,
+        progress: deleteOp.progress,
+        size: deleteOp.size,
+        totalFiles: deleteOp.totalFiles,
+        completedFiles: deleteOp.completedFiles,
+        isCalculatingSize: deleteOp.isCalculatingSize,
+        error: deleteOp.error,
+        extension: deleteOp.type === 'file' ? getFileExtension(deleteOp.name) : undefined,
+      })),
+      // Download operations
+      ...downloads.map((download) => ({
+        id: download.fileId,
+        name: download.fileName,
+        type: 'file' as const,
+        operationType: 'download' as const,
+        status: download.status,
+        progress: download.progress,
+        error: download.error,
+        queuePosition: download.queuePosition,
+        extension: getFileExtension(download.fileName),
+      })),
+    ];
+
+    // Sort operations to prioritize active ones (uploading, deleting, downloading, queued) at the top
+    return allOperations.sort((a, b) => {
+      const getStatusPriority = (status: string) => {
+        switch (status) {
+          case 'uploading':
+          case 'deleting':
+          case 'downloading':
+            return 1; // Highest priority (actively processing)
+          case 'pending':
+            return 1.5; // Just started
+          case 'queued':
+            return 2; // Second priority (waiting to be processed)
+          case 'completed':
+            return 3; // Third priority (finished successfully)
+          case 'cancelled':
+            return 4; // Fourth priority (user cancelled)
+          case 'failed':
+          case 'error':
+            return 5; // Lowest priority (failed operations)
+          default:
+            return 6; // Unknown status
+        }
+      };
+
+      const aPriority = getStatusPriority(a.status);
+      const bPriority = getStatusPriority(b.status);
+
+      // If priorities are different, sort by priority
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      // If both are queued downloads, sort by queue position
+      if (a.status === 'queued' && b.status === 'queued') {
+        if (a.queuePosition && b.queuePosition) {
+          return a.queuePosition - b.queuePosition;
+        }
+      }
+
+      // If priorities are the same, maintain original order (stable sort)
+      // This means newer operations with the same status will appear after older ones
+      return 0;
+    });
+  }, [uploads, deletes, downloads]);
 
   if (!uploadManager) {
     return 'Loading...';
   }
-
-  // Helper function to cancel operations (upload, delete, and download)
-  const cancelOperation = (
-    itemId: string,
-    operationType: 'upload' | 'delete' | 'download',
-    isFolder = false
-  ) => {
-    if (operationType === 'upload') {
-      if (isFolder) {
-        const folder = uploads[itemId];
-        if (folder && folder.fileIds) {
-          // Cancel all individual files in the folder
-          folder.fileIds.forEach((fileId) => {
-            uploadManager.cancelUpload(fileId);
-          });
-          folder.status = 'cancelled';
-          folder.progress = 100;
-          // The folder status will be updated by the upload manager
-        }
-      } else {
-        uploadManager.cancelUpload(itemId);
-      }
-    } else if (operationType === 'delete') {
-      // For delete operations, we need to cancel the delete operation
-      // This depends on your delete implementation - you might need to add a cancel method
-      // For now, we'll remove it from the store (assuming it can be cancelled)
-      removeDeleteOperation(itemId);
-    } else if (operationType === 'download') {
-      // Cancel download operation
-      cancelDownload(itemId);
-    }
-  };
-
-  // Calculate folder progress based on its files
-  const getFolderProgress = (folderId: string): number => {
-    const folder = uploads[folderId];
-    if (!folder || !folder.fileIds) return 0;
-
-    const fileProgresses = folder.fileIds.map((id) => uploads[id]?.progress || 0);
-    return fileProgresses.reduce((sum, progress) => sum + progress, 0) / fileProgresses.length;
-  };
-
-  // Calculate folder status based on its files
-  const getFolderStatus = (folderId: string): string => {
-    const folder = uploads[folderId];
-    if (!folder || !folder.fileIds) return folder?.status || 'queued';
-
-    const fileStatuses = folder.fileIds.map((id) => uploads[id]?.status).filter(Boolean);
-
-    // If folder itself is cancelled, return cancelled
-    if (folder.status === 'cancelled') return 'cancelled';
-
-    // If any file is uploading, folder is uploading
-    if (fileStatuses.some((status) => status === 'uploading')) return 'uploading';
-
-    // If any file is paused, folder is paused
-    if (fileStatuses.some((status) => status === 'paused')) return 'paused';
-
-    // If all files are completed, folder is completed
-    if (fileStatuses.length > 0 && fileStatuses.every((status) => status === 'completed'))
-      return 'completed';
-
-    // If some files are completed but others are not, folder is still uploading
-    if (
-      fileStatuses.some((status) => status === 'completed') &&
-      fileStatuses.some((status) => ['uploading', 'queued', 'paused'].includes(status))
-    ) {
-      return 'uploading';
-    }
-
-    // If any file failed, folder has failed
-    if (fileStatuses.some((status) => status === 'failed')) return 'failed';
-
-    // Default to queued if all files are queued
-    return 'queued';
-  };
-
-  // Extract file extension from filename
-  const getFileExtension = (filename: string): FileExtension | undefined => {
-    const parts = filename.split('.');
-    if (parts.length <= 1) return undefined;
-
-    const ext = parts[parts.length - 1].toLowerCase();
-    // Type assertion is safe here since we're checking against known extensions
-    // If the extension is not in our FileExtension type, we'll return undefined
-    return ext as FileExtension;
-  };
-
-  // Combine and transform operations into unified format
-  const allOperations: OperationItem[] = [
-    // Upload operations
-    ...Object.values(uploads)
-      .filter((u) => u.type === 'folder' || (u.type === 'file' && !u.parentFolderId))
-      .map((upload) => ({
-        id: upload.id,
-        name: upload.name,
-        type: upload.type,
-        operationType: 'upload' as const,
-        status: upload.type === 'folder' ? getFolderStatus(upload.id) : upload.status,
-        progress: upload.type === 'folder' ? getFolderProgress(upload.id) : upload.progress,
-        fileIds: upload.fileIds,
-        parentFolderId: upload.parentFolderId,
-        extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
-      })),
-    // Delete operations
-    ...Object.values(deletes).map((deleteOp) => ({
-      id: deleteOp.id,
-      name: deleteOp.name,
-      type: deleteOp.type,
-      operationType: 'delete' as const,
-      status: deleteOp.status,
-      progress: deleteOp.progress,
-      size: deleteOp.size,
-      totalFiles: deleteOp.totalFiles,
-      completedFiles: deleteOp.completedFiles,
-      isCalculatingSize: deleteOp.isCalculatingSize,
-      error: deleteOp.error,
-      extension: deleteOp.type === 'file' ? getFileExtension(deleteOp.name) : undefined,
-    })),
-    // Download operations
-    ...downloads.map((download) => ({
-      id: download.fileId,
-      name: download.fileName,
-      type: 'file' as const,
-      operationType: 'download' as const,
-      status: download.status,
-      progress: download.progress,
-      error: download.error,
-      queuePosition: download.queuePosition,
-      extension: getFileExtension(download.fileName),
-    })),
-  ];
-
-  // Sort operations to prioritize active ones (uploading, deleting, downloading, queued) at the top
-  const sortedOperations = allOperations.sort((a, b) => {
-    const getStatusPriority = (status: string) => {
-      switch (status) {
-        case 'uploading':
-        case 'deleting':
-        case 'downloading':
-          return 1; // Highest priority (actively processing)
-        case 'pending':
-          return 1.5; // Just started
-        case 'queued':
-          return 2; // Second priority (waiting to be processed)
-        case 'completed':
-          return 3; // Third priority (finished successfully)
-        case 'cancelled':
-          return 4; // Fourth priority (user cancelled)
-        case 'failed':
-        case 'error':
-          return 5; // Lowest priority (failed operations)
-        default:
-          return 6; // Unknown status
-      }
-    };
-
-    const aPriority = getStatusPriority(a.status);
-    const bPriority = getStatusPriority(b.status);
-
-    // If priorities are different, sort by priority
-    if (aPriority !== bPriority) {
-      return aPriority - bPriority;
-    }
-
-    // If both are queued downloads, sort by queue position
-    if (a.status === 'queued' && b.status === 'queued') {
-      if (a.queuePosition && b.queuePosition) {
-        return a.queuePosition - b.queuePosition;
-      }
-    }
-
-    // If priorities are the same, maintain original order (stable sort)
-    // This means newer operations with the same status will appear after older ones
-    return 0;
-  });
 
   // If no operations and no duplicate dialog, don't show modal
   if (sortedOperations.length === 0 && !currentDuplicate) {
@@ -639,366 +683,29 @@ export const OperationsModal: React.FC = () => {
           {/* Operations List */}
           {isExpanded && sortedOperations.length > 0 && (
             <div className="max-h-60 sm:max-h-96 overflow-y-auto custom-scrollbar">
-              {sortedOperations.map((operation) => {
-                const canCancel = [
-                  'uploading',
-                  'queued',
-                  'deleting',
-                  'paused',
-                  'downloading',
-                  'pending',
-                ].includes(operation.status);
-                const isActive = [
-                  'uploading',
-                  'queued',
-                  'deleting',
-                  'downloading',
-                  'pending',
-                ].includes(operation.status);
-
-                return (
-                  <div
-                    key={operation.id}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-opacity-50 transition-colors duration-200"
-                    style={{
-                      borderBottom: '1px solid var(--border)',
-                      background: 'transparent',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (canCancel) {
-                        e.currentTarget.style.background = 'var(--secondary)';
-                        setHoveredItem(operation.id);
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      setHoveredItem(null);
-                    }}
-                  >
-                    {/* File/Folder Icon */}
-                    <div className="flex-shrink-0">
-                      {operation.type === 'folder' ? (
-                        <FolderIcon />
-                      ) : (
-                        <FileIcon
-                          extension={operation.extension}
-                          filename={operation.name}
-                          className="w-6 h-6"
-                        />
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-xs font-medium truncate"
-                        title={operation.name}
-                        style={{ color: 'var(--foreground)' }}
-                      >
-                        {operation.name}
-                      </p>
-                      {operation.status === 'completed' && (
-                        <p
-                          className="text-xs"
-                          style={{
-                            color:
-                              operation.operationType === 'upload'
-                                ? 'var(--muted-foreground)'
-                                : operation.operationType === 'download'
-                                  ? 'var(--muted-foreground)'
-                                  : '#ef4444',
-                          }}
-                        >
-                          {operation.operationType === 'upload'
-                            ? 'Upload complete'
-                            : operation.operationType === 'delete'
-                              ? 'Delete complete'
-                              : 'Download complete'}
-                        </p>
-                      )}
-                      {operation.status === 'cancelled' && (
-                        <p className="text-xs" style={{ color: '#ef4444' }}>
-                          {operation.operationType === 'upload'
-                            ? 'Upload cancelled'
-                            : operation.operationType === 'delete'
-                              ? 'Delete cancelled'
-                              : 'Download cancelled'}
-                        </p>
-                      )}
-                      {operation.status === 'uploading' && (
-                        <p className="text-xs" style={{ color: 'var(--primary)' }}>
-                          Uploading...
-                        </p>
-                      )}
-                      {operation.status === 'downloading' && (
-                        <p className="text-xs" style={{ color: 'var(--primary)' }}>
-                          Downloading...
-                        </p>
-                      )}
-                      {operation.status === 'pending' && (
-                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                          Starting...
-                        </p>
-                      )}
-                      {operation.status === 'queued' && (
-                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                          {operation.queuePosition
-                            ? `In queue (${operation.queuePosition})`
-                            : 'Queued'}
-                        </p>
-                      )}
-                      {operation.status === 'paused' && (
-                        <p className="text-xs" style={{ color: '#f59e0b' }}>
-                          Paused
-                        </p>
-                      )}
-                      {operation.status === 'error' && (
-                        <p className="text-xs" style={{ color: '#ef4444' }}>
-                          {operation.error || 'Failed'}
-                        </p>
-                      )}
-                      {operation.totalFiles && operation.completedFiles !== undefined && (
-                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                          {operation.completedFiles} of {operation.totalFiles}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Pause/Resume Buttons and Progress Circle */}
-                    <div className="flex-shrink-0 flex items-center gap-2">
-                      {/* Pause/Resume Buttons for file uploads only - only in multipart mode */}
-                      {supportsPauseResume &&
-                        operation.operationType === 'upload' &&
-                        operation.type === 'file' &&
-                        (isActive || operation.status === 'paused') && (
-                          <div className="flex items-center">
-                            {/* Pause Button - always visible on mobile, hover-based on desktop */}
-                            {operation.status === 'uploading' &&
-                              operation.operationType === 'upload' &&
-                              operation.type === 'file' && (
-                                <AriaLabel
-                                  label={`Pause upload of ${operation.name}`}
-                                  position="top"
-                                >
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      uploadManager.pauseUpload(operation.id);
-                                    }}
-                                    className={`w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center ${
-                                      hoveredItem === operation.id ? 'flex' : 'flex sm:hidden'
-                                    }`}
-                                    style={{
-                                      color: 'var(--muted-foreground)',
-                                      background: 'var(--accent)',
-                                      border: '1px solid var(--border)',
-                                    }}
-                                  >
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  </button>
-                                </AriaLabel>
-                              )}
-
-                            {/* Resume Button - for paused files, near the progress circle */}
-                            {operation.status === 'paused' &&
-                              operation.operationType === 'upload' &&
-                              operation.type === 'file' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    uploadManager.resumeUpload(operation.id);
-                                  }}
-                                  className="w-7 h-7 rounded transition-colors duration-200 flex items-center justify-center"
-                                  style={{
-                                    color: 'var(--muted-foreground)',
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = 'var(--accent)';
-                                    e.currentTarget.style.border = '1px solid var(--border)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'transparent';
-                                    e.currentTarget.style.border = 'none';
-                                  }}
-                                  title="Resume Upload"
-                                >
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </button>
-                              )}
-                          </div>
-                        )}
-
-                      {/* Progress Circle */}
-                      <div className="relative">
-                        {isActive || operation.status === 'paused' ? (
-                          <div className="relative w-6 h-6">
-                            {/* Progress Circle Background */}
-                            <svg className="w-6 h-6 transform -rotate-90" viewBox="0 0 24 24">
-                              <circle
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                fill="none"
-                                stroke="var(--progress-track)"
-                                strokeWidth="2"
-                              />
-                              <circle
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                fill="none"
-                                stroke={
-                                  operation.operationType === 'delete'
-                                    ? '#ef4444'
-                                    : operation.operationType === 'download'
-                                      ? '#3b82f6'
-                                      : 'var(--primary)'
-                                }
-                                strokeWidth="2"
-                                strokeDasharray={`${2 * Math.PI * 10}`}
-                                strokeDashoffset={`${2 * Math.PI * 10 * (1 - operation.progress / 100)}`}
-                                strokeLinecap="round"
-                                className="transition-all duration-300"
-                              />
-                            </svg>
-
-                            {/* Cancel Button on Hover for Paused Files */}
-                            {operation.status === 'paused' &&
-                              operation.operationType === 'upload' &&
-                              operation.type === 'file' &&
-                              hoveredItem === operation.id && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    cancelOperation(
-                                      operation.id,
-                                      operation.operationType,
-                                      operation.type === 'folder'
-                                    );
-                                  }}
-                                  className="absolute inset-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200"
-                                  style={{
-                                    background: 'var(--card)',
-                                    border: '1px solid var(--border)',
-                                  }}
-                                  title="Cancel"
-                                >
-                                  <HiOutlineXMark
-                                    className="w-3 h-3"
-                                    style={{ color: 'var(--muted-foreground)' }}
-                                  />
-                                </button>
-                              )}
-
-                            {/* Cancel Button on Hover for non-paused active operations */}
-                            {hoveredItem === operation.id &&
-                              canCancel &&
-                              operation.status !== 'paused' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    cancelOperation(
-                                      operation.id,
-                                      operation.operationType,
-                                      operation.type === 'folder'
-                                    );
-                                  }}
-                                  className="absolute inset-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200"
-                                  style={{
-                                    background: 'var(--card)',
-                                    border: '1px solid var(--border)',
-                                  }}
-                                >
-                                  <HiOutlineXMark
-                                    className="w-3 h-3"
-                                    style={{ color: 'var(--muted-foreground)' }}
-                                  />
-                                </button>
-                              )}
-                          </div>
-                        ) : operation.status === 'completed' ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 flex items-center justify-center">
-                              <div
-                                className="w-4 h-4 rounded-full flex items-center justify-center"
-                                style={{ background: '#22c55e' }}
-                              >
-                                <svg className="w-2.5 h-2.5" fill="white" viewBox="0 0 20 20">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => {
-                                // Remove completed item from list
-                                if (operation.operationType === 'upload') {
-                                  removeUpload(operation.id);
-                                } else if (operation.operationType === 'delete') {
-                                  removeDeleteOperation(operation.id);
-                                }
-                              }}
-                              className="p-1 rounded transition-colors duration-200"
-                              style={{ color: 'var(--muted-foreground)' }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'var(--accent)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent';
-                              }}
-                            >
-                              <HiOutlineXMark className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : operation.status === 'cancelled' ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                // Remove cancelled item from list
-                                if (operation.operationType === 'upload') {
-                                  removeUpload(operation.id);
-                                } else if (operation.operationType === 'delete') {
-                                  removeDeleteOperation(operation.id);
-                                }
-                              }}
-                              className="p-1 rounded transition-colors duration-200"
-                              style={{ color: 'var(--muted-foreground)' }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'var(--accent)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent';
-                              }}
-                              title="Remove from list"
-                            >
-                              <HiOutlineXMark className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {sortedOperations.map((operation) => (
+                <OperationRow
+                  key={operation.id}
+                  id={operation.id}
+                  name={operation.name}
+                  type={operation.type}
+                  operationType={operation.operationType}
+                  status={operation.status}
+                  progress={operation.progress}
+                  extension={operation.extension}
+                  error={operation.error}
+                  queuePosition={operation.queuePosition}
+                  totalFiles={operation.totalFiles}
+                  completedFiles={operation.completedFiles}
+                  isHovered={hoveredItem === operation.id}
+                  supportsPauseResume={supportsPauseResume}
+                  onHoverChange={setHoveredItem}
+                  onCancel={cancelOperation}
+                  onRemove={removeOperation}
+                  onPause={pauseOperation}
+                  onResume={resumeOperation}
+                />
+              ))}
             </div>
           )}
         </div>

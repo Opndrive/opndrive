@@ -5,8 +5,17 @@ import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 
+/**
+ * NOTE: nothing imports this component - `OperationsModal` is what the app
+ * actually renders (see upload-card.tsx). It is kept here rather than deleted
+ * because that is the user's call, but the two fixes below were applied so it
+ * is not a trap if someone mounts it later.
+ */
 export const UploadOperationsCard: React.FC = () => {
-  const { uploads } = useUploadStore();
+  // Field selector, not the whole store: subscribing to everything re-rendered
+  // this card on unrelated delete and duplicate-prompt updates.
+  const uploads = useUploadStore((state) => state.uploads);
+  const updateUpload = useUploadStore((state) => state.updateUpload);
   const uploadManager = useActiveUploadManager();
 
   if (!uploadManager) {
@@ -20,7 +29,9 @@ export const UploadOperationsCard: React.FC = () => {
       folder.fileIds.forEach((fileId) => {
         uploadManager.cancelUpload(fileId);
       });
-      folder.status = 'cancelled';
+      // Through the store action: assigning to `folder.status` mutated
+      // zustand's state in place, so nothing re-rendered.
+      updateUpload(folderId, { status: 'cancelled' });
     }
   };
 
