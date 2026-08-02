@@ -6,8 +6,13 @@ import { UploadStatus, UploadEvent, EventListener, EventPayload } from '../core/
 
 interface SignedUrlUploadItem {
   id: string;
-  file: File;
-  uploader: SignedUrlUploader;
+  /**
+   * Released once the item is terminal, so a finished upload stops pinning an
+   * OS file handle. See UploadManager.releaseResources for the full reasoning;
+   * the item itself is kept so getStatus() can still answer.
+   */
+  file?: File;
+  uploader?: SignedUrlUploader;
   config: {
     key: string;
     folderId?: string;
@@ -173,12 +178,24 @@ export class SignedUrlUploadManager {
     }
 
     if (item.status === 'uploading') {
-      item.uploader.cancel();
+      // Non-null: resources are released only on terminal states, and the
+      // terminal check above has already returned.
+      item.uploader!.cancel();
       this.activeUploads--;
     }
 
     this.updateItemStatus(id, 'cancelled');
+    this.releaseResources(id);
     this.processQueue();
+  }
+
+  /** See UploadManager.releaseResources - same leak, same reasoning. */
+  private releaseResources(id: string): void {
+    const item = this.uploads.get(id);
+    if (!item) return;
+
+    item.file = undefined;
+    item.uploader = undefined;
   }
 
   /**
@@ -251,7 +268,8 @@ export class SignedUrlUploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        await item.uploader.upload(item.file, onProgress);
+        // Non-null: the item was just moved to 'uploading'.
+        await item.uploader!.upload(item.file!, onProgress);
 
         if (this.uploads.get(id)?.status === 'uploading') {
           this.updateItemStatus(id, 'completed', 100);
@@ -270,6 +288,8 @@ export class SignedUrlUploadManager {
       } finally {
         const finalStatus = this.uploads.get(id)?.status;
         if (finalStatus === 'completed' || finalStatus === 'failed') {
+          // 'cancelled' is already released by cancelUpload().
+          this.releaseResources(id);
           this.activeUploads--;
           this.processQueue();
         }

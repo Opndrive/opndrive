@@ -180,10 +180,24 @@ export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'completed' | 'fa
 
 export interface UploadItem {
   id: string;
-  file: File;
+  /**
+   * The file being uploaded, or undefined once the item has finished.
+   *
+   * The manager keeps every item it has ever been given so `getStatus` can
+   * still answer for finished work, but a `File` pins an OS-level handle and
+   * the uploader alongside it holds per-part state. Retaining both for the
+   * lifetime of the session meant a 10,000-file upload never gave anything
+   * back until logout, so they are dropped the moment an item reaches
+   * 'completed', 'failed', or 'cancelled'.
+   *
+   * Invariant: present for 'queued', 'uploading', and 'paused' (a paused item
+   * must keep them to resume); absent for terminal states.
+   */
+  file?: File;
   status: UploadStatus;
   progress: number;
-  uploader: MultipartUploader;
+  /** The uploader driving this item. Released with `file`; see above. */
+  uploader?: MultipartUploader;
   error?: string;
   config: {
     key: string;

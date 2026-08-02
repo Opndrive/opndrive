@@ -436,3 +436,63 @@ describe('addFolderUpload', () => {
     expect(fileIds).toHaveLength(1);
   });
 });
+
+describe('resource release', () => {
+  /** See UploadManager's equivalent suite for why this reaches into the map. */
+  const itemOf = (manager: SignedUrlUploadManager, id: string) =>
+    (
+      manager as unknown as { uploads: Map<string, { file?: File; uploader?: unknown }> }
+    ).uploads.get(id);
+
+  it('drops the file and uploader once an upload completes', async () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    expect(itemOf(manager, id)!.file).toBeInstanceOf(File);
+
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+
+    expect(manager.getStatus(id)!.status).toBe('completed');
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+    expect(itemOf(manager, id)!.uploader).toBeUndefined();
+  });
+
+  it('drops them when an upload fails', async () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    uploaderInstances[0]!.gate.reject(new Error('signed url expired'));
+    await settle();
+
+    expect(manager.getStatus(id)!.status).toBe('failed');
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+  });
+
+  it('drops them when an upload is cancelled', async () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+    await settle();
+
+    await manager.cancelUpload(id);
+
+    expect(manager.getStatus(id)!.status).toBe('cancelled');
+    expect(itemOf(manager, id)!.file).toBeUndefined();
+  });
+
+  it('keeps the queue moving after many completions', async () => {
+    const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 2 });
+    const ids = Array.from({ length: 6 }, (_, i) => manager.addUpload(makeFile(), { key: `${i}` }));
+
+    for (let i = 0; i < 6; i++) {
+      await settle();
+      uploaderInstances[i]!.gate.resolve();
+      await settle();
+    }
+
+    expect(ids.map((id) => manager.getStatus(id)!.status)).toEqual(Array(6).fill('completed'));
+  });
+});
