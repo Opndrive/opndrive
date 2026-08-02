@@ -60,6 +60,14 @@ export interface DispatchResult {
   taskId: string;
   plan: PlannedUpload;
   files: DispatchedFile[];
+  /**
+   * Set when the manager refused some or all of this plan's files.
+   *
+   * `addUpload` throws on a disposed manager, which happens for real: logging
+   * out or switching bucket mid-drop tears the singleton down. Compare
+   * `files.length` against `plan.files.length` to see how much got through.
+   */
+  dispatchError?: Error;
 }
 
 const TERMINAL = ['completed', 'failed', 'cancelled'];
@@ -91,12 +99,30 @@ export function keyForPlannedFile(plan: PlannedUpload, file: File): string {
   const relativePath =
     (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
 
-  const firstSlash = relativePath.indexOf('/');
-  const withoutDroppedRoot = firstSlash === -1 ? relativePath : relativePath.slice(firstSlash + 1);
+  // Normalise BEFORE stripping, because both of these defeat a naive strip and
+  // both produce keys S3 will happily store:
+  //
+  //   "/photos/a.jpg"  - a leading slash makes the first segment empty, so the
+  //                      strip removes nothing and the folder name survives
+  //                      into the key: exactly the double-nesting this function
+  //                      exists to prevent, just harder to spot.
+  //   "photos//a.jpg"  - a repeated slash is a real, empty path segment to S3,
+  //                      giving an object that most tools cannot address.
+  //
+  // Backslashes are deliberately left alone: they are legal in a POSIX
+  // filename, so rewriting them would corrupt names rather than fix paths.
+  const normalised = relativePath.replace(/\/{2,}/g, '/').replace(/^\/+/, '');
 
-  // A file sitting directly in the dropped folder has no slash left, which is
+  const firstSlash = normalised.indexOf('/');
+  const withoutDroppedRoot = firstSlash === -1 ? normalised : normalised.slice(firstSlash + 1);
+
+  // Empty means the path was nothing but the dropped folder name (or nothing at
+  // all). Falling through would make the key equal the prefix, creating a
+  // zero-byte object shadowing the folder itself.
+  //
+  // A file sitting directly in the dropped folder has no slash left, which IS
   // correct - it belongs at the root of the resolved prefix.
-  return `${plan.prefix}${withoutDroppedRoot}`;
+  return `${plan.prefix}${withoutDroppedRoot || file.name}`;
 }
 
 interface TaskRecord {
@@ -113,9 +139,15 @@ export interface UploadExecutor {
   start(plans: readonly PlannedUpload[]): DispatchResult[];
   /** Cancels every upload belonging to a task, freeing its claim if nothing landed. */
   cancelTask(taskId: string): Promise<void>;
-  /** Task id owning an upload, or undefined once forgotten. */
+  /**
+   * Task id owning an upload.
+   *
+   * Undefined once the task is fully terminal: routing state is dropped the
+   * moment it stops being needed, so this is deliberately not a history API.
+   * The UI store keeps the record a panel needs.
+   */
   taskFor(uploadId: string): string | undefined;
-  /** Manager ids dispatched for a task. */
+  /** Manager ids still tracked for a task. Empty once the task is terminal. */
   uploadsFor(taskId: string): string[];
   /** Unsubscribes from the manager. Call on session teardown. */
   dispose(): void;
@@ -144,6 +176,24 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
     queue().commitClaim(taskId);
   };
 
+  /**
+   * Drops a finished task's routing state.
+   *
+   * Without this the two maps only ever grow: a session that uploads ten
+   * thousand files keeps ten thousand id entries alive for as long as the tab
+   * is open, long after the last of them finished. Nothing here pins a File,
+   * so it is not the s3-api leak over again, but it is still unbounded.
+   *
+   * Late events for a forgotten id fall out at the `taskFor` lookup, which is
+   * what makes this safe - a duplicate terminal event after teardown is
+   * indistinguishable from an event for another component's upload, and both
+   * are correctly ignored.
+   */
+  const forget = (taskId: string, record: TaskRecord) => {
+    for (const uploadId of record.uploadIds) taskByUpload.delete(uploadId);
+    tasks.delete(taskId);
+  };
+
   const settle = (taskId: string) => {
     const record = tasks.get(taskId);
     if (!record || record.pending > 0) return;
@@ -152,6 +202,8 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
     // genuinely free again. A committed task keeps its claim; releaseClaim
     // would refuse anyway, but not calling it says so more clearly.
     if (!record.committed) queue().releaseClaim(taskId);
+
+    forget(taskId, record);
   };
 
   const onProgress = (payload: ManagerEvent) => {
@@ -189,6 +241,21 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
       const results: DispatchResult[] = [];
 
       for (const plan of plans) {
+        // A task id is dispatched once. Overwriting the record would orphan the
+        // first attempt's uploads: they would still route to this task id, so
+        // their terminal events would decrement the NEW record and settle it
+        // early, releasing a prefix the second attempt is still uploading into
+        // - and cancelTask could no longer reach them.
+        if (tasks.has(plan.id)) {
+          results.push({
+            taskId: plan.id,
+            plan,
+            files: [],
+            dispatchError: new Error(`Task ${plan.id} has already been dispatched.`),
+          });
+          continue;
+        }
+
         // Registered BEFORE dispatching, with the full file count already in
         // `pending`. Both matter: `addUpload` emits synchronously and starts
         // the queue, so an event for the first file can arrive while the
@@ -204,21 +271,39 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         tasks.set(plan.id, record);
 
         const files: DispatchedFile[] = [];
+        let dispatchError: Error | undefined;
 
-        for (const file of plan.files) {
-          const key = keyForPlannedFile(plan, file);
-          const uploadId = manager.addUpload(file, { key });
+        try {
+          for (const file of plan.files) {
+            const key = keyForPlannedFile(plan, file);
+            const uploadId = manager.addUpload(file, { key });
 
-          record.uploadIds.add(uploadId);
-          taskByUpload.set(uploadId, plan.id);
-          files.push({ uploadId, taskId: plan.id, key, file });
+            record.uploadIds.add(uploadId);
+            taskByUpload.set(uploadId, plan.id);
+            files.push({ uploadId, taskId: plan.id, key, file });
+          }
+        } catch (error) {
+          // The manager refused the rest of this plan - disposal mid-drop is
+          // the real case. Nothing is thrown onward: the remaining plans still
+          // deserve their turn, exactly as planning refuses to abandon later
+          // folders when an earlier one has trouble.
+          dispatchError = error instanceof Error ? error : new Error(String(error));
         }
 
-        results.push({ taskId: plan.id, plan, files });
+        // Discount the files the manager never accepted. Left at the planned
+        // total, a half-dispatched task could never reach zero and would squat
+        // its prefix for the rest of the session.
+        //
+        // Subtracted rather than assigned: a file dispatched earlier in this
+        // same loop may have already finished and decremented `pending`, and
+        // assigning the dispatched count would resurrect it.
+        record.pending -= plan.files.length - record.uploadIds.size;
 
-        // Covers both a plan with no files - which would otherwise never see an
-        // event and would leak its name forever - and one whose files all
-        // finished during dispatch.
+        results.push({ taskId: plan.id, plan, files, dispatchError });
+
+        // Covers a plan with no files, a plan the manager rejected outright,
+        // and one whose files all finished during dispatch. Without it, none of
+        // those would ever see an event and their names would leak.
         settle(plan.id);
       }
 

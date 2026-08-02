@@ -177,6 +177,47 @@ describe('keyForPlannedFile', () => {
     );
   });
 
+  it('strips the root even when the path has a leading slash', () => {
+    // The nastiest variant of the double-nesting bug: a leading slash makes the
+    // first segment empty, so a naive strip removes nothing and the original
+    // folder name survives into the key looking perfectly reasonable.
+    const plan = folderPlan({ prefix: 'docs/photos (1)/' });
+
+    expect(keyForPlannedFile(plan, makeFile('a.jpg', '/photos/a.jpg'))).toBe(
+      'docs/photos (1)/a.jpg'
+    );
+  });
+
+  it('collapses repeated slashes rather than creating an empty segment', () => {
+    // S3 treats "//" as a real, empty path component, producing an object most
+    // tools cannot address.
+    const plan = folderPlan({ prefix: 'docs/photos/' });
+
+    expect(keyForPlannedFile(plan, makeFile('a.jpg', 'photos//a.jpg'))).toBe('docs/photos/a.jpg');
+    expect(keyForPlannedFile(plan, makeFile('b.jpg', 'photos//sub//b.jpg'))).toBe(
+      'docs/photos/sub/b.jpg'
+    );
+  });
+
+  it('falls back to the file name when stripping leaves nothing', () => {
+    // Otherwise the key would equal the prefix exactly, creating a zero-byte
+    // object shadowing the folder it lives in.
+    const plan = folderPlan({ prefix: 'docs/photos/' });
+
+    expect(keyForPlannedFile(plan, makeFile('a.jpg', 'photos/'))).toBe('docs/photos/a.jpg');
+    expect(keyForPlannedFile(plan, makeFile('a.jpg', '/'))).toBe('docs/photos/a.jpg');
+  });
+
+  it('leaves backslashes alone', () => {
+    // Legal in a POSIX filename, so rewriting them would corrupt real names
+    // rather than fix paths.
+    const plan = folderPlan({ prefix: 'docs/photos/' });
+
+    expect(keyForPlannedFile(plan, makeFile('odd', 'photos/we\\ird.jpg'))).toBe(
+      'docs/photos/we\\ird.jpg'
+    );
+  });
+
   it('preserves spaces and parentheses from a resolved name', () => {
     // The resolved name is the one place suffixes appear, so it must survive
     // untouched into the key.
@@ -236,6 +277,119 @@ describe('start', () => {
     executor.start([folderPlan({ files: [] })]);
 
     expect(manager.added).toEqual([]);
+  });
+
+  it('refuses to dispatch the same task twice', () => {
+    // Overwriting the record would orphan the first attempt's uploads: they
+    // still route to this task id, so their terminal events would settle the
+    // NEW record early and free a prefix the second attempt is uploading into.
+    const plan = folderPlan({ files: [makeFile('a', 'photos/a')] });
+    executor.start([plan]);
+
+    const second = executor.start([plan]);
+
+    expect(second[0]!.dispatchError).toBeInstanceOf(Error);
+    expect(second[0]!.files).toEqual([]);
+    expect(manager.added).toHaveLength(1);
+    // The original dispatch is still intact and still cancellable.
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0']);
+  });
+
+  it('reports a dispatch failure instead of throwing', () => {
+    // addUpload throws on a disposed manager, which is what logging out or
+    // switching bucket mid-drop does.
+    const failing = fakeManager();
+    failing.addUpload = () => {
+      throw new Error('This UploadManager instance has been disposed.');
+    };
+    const failingExecutor = createUploadExecutor(failing);
+
+    const results = failingExecutor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
+
+    expect(results[0]!.dispatchError?.message).toContain('disposed');
+    expect(results[0]!.files).toEqual([]);
+    failingExecutor.dispose();
+  });
+
+  it('wraps a non-Error throw so callers always get an Error', () => {
+    const rude = fakeManager();
+    rude.addUpload = () => {
+      throw 'nope';
+    };
+    const rudeExecutor = createUploadExecutor(rude);
+
+    const results = rudeExecutor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
+
+    expect(results[0]!.dispatchError).toBeInstanceOf(Error);
+    expect(results[0]!.dispatchError!.message).toBe('nope');
+    rudeExecutor.dispose();
+  });
+
+  it('keeps dispatching later plans after one is refused', () => {
+    // Same philosophy as planning: one folder in trouble must not abandon the
+    // rest of the drop.
+    let calls = 0;
+    const flaky = fakeManager();
+    const plainAdd = flaky.addUpload.bind(flaky);
+    flaky.addUpload = (file, config) => {
+      if (calls++ === 0) throw new Error('refused');
+      return plainAdd(file, config);
+    };
+    const flakyExecutor = createUploadExecutor(flaky);
+
+    const results = flakyExecutor.start([
+      folderPlan({ id: 'task-a', prefix: 'a/', files: [makeFile('x', 'a/x')] }),
+      folderPlan({ id: 'task-b', prefix: 'b/', files: [makeFile('y', 'b/y')] }),
+    ]);
+
+    expect(results[0]!.dispatchError).toBeInstanceOf(Error);
+    expect(results[1]!.dispatchError).toBeUndefined();
+    expect(results[1]!.files).toHaveLength(1);
+    flakyExecutor.dispose();
+  });
+
+  it('frees the prefix of a plan the manager refused outright', () => {
+    // Nothing was queued, so nothing will ever emit an event to settle it.
+    queue().reservePrefix('photos', '', 'task-folder');
+    const failing = fakeManager();
+    failing.addUpload = () => {
+      throw new Error('disposed');
+    };
+    const failingExecutor = createUploadExecutor(failing);
+
+    failingExecutor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
+
+    expect(queue().claimedPrefixes()).toEqual([]);
+    failingExecutor.dispose();
+  });
+
+  it('settles a half-dispatched plan on the files that did get through', () => {
+    // `pending` must be corrected to what the manager actually accepted. Left
+    // at the planned total it could never reach zero, and the prefix would be
+    // squatted for the rest of the session.
+    queue().reservePrefix('photos', '', 'task-folder');
+    let calls = 0;
+    const flaky = fakeManager();
+    const plainAdd = flaky.addUpload.bind(flaky);
+    flaky.addUpload = (file, config) => {
+      if (calls++ === 1) throw new Error('disposed mid-folder');
+      return plainAdd(file, config);
+    };
+    const flakyExecutor = createUploadExecutor(flaky);
+
+    flakyExecutor.start([
+      folderPlan({
+        files: [makeFile('a', 'photos/a'), makeFile('b', 'photos/b'), makeFile('c', 'photos/c')],
+      }),
+    ]);
+
+    // One file made it through, so the claim is still held.
+    expect(queue().claimedPrefixes()).toEqual(['photos/']);
+
+    flaky.emit('statusChange', { id: 'upload-0', status: 'failed', progress: 0 });
+
+    expect(queue().claimedPrefixes()).toEqual([]);
+    flakyExecutor.dispose();
   });
 
   it('releases the claim of a plan that has no files', () => {
@@ -470,6 +624,71 @@ describe('cancelTask', () => {
     await expect(executor.cancelTask('never-dispatched')).resolves.toBeUndefined();
 
     expect(manager.cancelled).toEqual([]);
+  });
+});
+
+describe('routing state is not kept forever', () => {
+  it('forgets a task once every file has finished', () => {
+    // The two maps only ever grew. Ten thousand uploaded files meant ten
+    // thousand id entries alive until the tab closed, long after the last one
+    // finished. Nothing here pins a File, but it is still unbounded.
+    executor.start([folderPlan({ files: [makeFile('a', 'photos/a'), makeFile('b', 'photos/b')] })]);
+    expect(executor.taskFor('upload-0')).toBe('task-folder');
+
+    manager.emit('statusChange', { id: 'upload-0', status: 'completed', progress: 100 });
+    manager.emit('statusChange', { id: 'upload-1', status: 'completed', progress: 100 });
+
+    expect(executor.taskFor('upload-0')).toBeUndefined();
+    expect(executor.taskFor('upload-1')).toBeUndefined();
+    expect(executor.uploadsFor('task-folder')).toEqual([]);
+  });
+
+  it('holds routing state until the last file is done', () => {
+    executor.start([folderPlan({ files: [makeFile('a', 'photos/a'), makeFile('b', 'photos/b')] })]);
+
+    manager.emit('statusChange', { id: 'upload-0', status: 'completed', progress: 100 });
+
+    // Still needed: upload-1 is in flight and must stay cancellable.
+    expect(executor.taskFor('upload-1')).toBe('task-folder');
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0', 'upload-1']);
+  });
+
+  it('does not grow across many completed tasks', () => {
+    for (let t = 0; t < 50; t++) {
+      executor.start([
+        folderPlan({ id: `task-${t}`, prefix: `f${t}/`, files: [makeFile('a', `f${t}/a`)] }),
+      ]);
+      manager.emit('statusChange', { id: `upload-${t}`, status: 'completed', progress: 100 });
+    }
+
+    // Every task settled, so nothing is retained.
+    for (let t = 0; t < 50; t++) {
+      expect(executor.uploadsFor(`task-${t}`)).toEqual([]);
+      expect(executor.taskFor(`upload-${t}`)).toBeUndefined();
+    }
+  });
+
+  it('ignores a late event for a forgotten task', () => {
+    // Disposal emits a trailing cancelled per in-flight item, which can arrive
+    // after the task already settled.
+    queue().reservePrefix('photos', '', 'task-folder');
+    executor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
+    manager.emit('statusChange', { id: 'upload-0', status: 'completed', progress: 100 });
+
+    expect(() =>
+      manager.emit('statusChange', { id: 'upload-0', status: 'cancelled', progress: 0 })
+    ).not.toThrow();
+    // The commit stands - a late cancelled must not un-commit landed bytes.
+    expect(queue().claims[0]).toMatchObject({ committed: true });
+  });
+
+  it('forgets a cancelled task once its uploads report back', async () => {
+    executor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
+
+    await executor.cancelTask('task-folder');
+    manager.emit('statusChange', { id: 'upload-0', status: 'cancelled', progress: 0 });
+
+    expect(executor.taskFor('upload-0')).toBeUndefined();
   });
 });
 
