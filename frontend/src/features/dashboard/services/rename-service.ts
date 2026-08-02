@@ -2,6 +2,7 @@ import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
+import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 
 export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
@@ -260,18 +261,19 @@ class RenameService {
   }
 
   async checkFolderExists(folderName: string, currentPath: string): Promise<boolean> {
-    try {
-      // Normalize currentPath to work with generateS3Key
-      let normalizedPath = currentPath || '';
-      if (normalizedPath.startsWith('/')) {
-        normalizedPath = normalizedPath.slice(1);
-      }
+    // Normalize currentPath to work with generateS3Key
+    let normalizedPath = currentPath || '';
+    if (normalizedPath.startsWith('/')) {
+      normalizedPath = normalizedPath.slice(1);
+    }
 
-      const folderPrefix = generateS3Key(`${folderName}/`, normalizedPath);
-      const result = await this.api.fetchDirectoryStructure(folderPrefix, 1);
-      return result.files.length > 0 || result.folders.length > 0;
+    const folderPrefix = generateS3Key(`${folderName}/`, normalizedPath);
+    try {
+      return await folderExists(this.api, folderPrefix);
     } catch {
-      return false;
+      // "false" would mean the target name is free, and the rename would then
+      // overwrite whatever is actually there.
+      throw new Error(describeFolderCheckError('the rename'));
     }
   }
 

@@ -274,18 +274,19 @@ describe('start', () => {
     expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
   });
 
-  it('KNOWN BUG: a session created without an UploadId uploads parts that never complete', async () => {
+  it('fails fast when S3 starts a session without returning an UploadId', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({}); // no UploadId
     s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
     s3Mock.on(CompleteMultipartUploadCommand).resolves({});
 
-    await makeUploader().start(makeFile(5 * MB));
+    await expect(makeUploader().start(makeFile(5 * MB))).rejects.toThrow(
+      /did not return an UploadId/
+    );
 
-    // `this.uploadId = UploadId!` asserts away the undefined, so the parts go
-    // out with UploadId: undefined and completeUpload's `if (!this.uploadId)`
-    // guard then returns early. The upload silently "succeeds" having written
-    // nothing. Pinned, not endorsed.
-    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(1);
+    // Nothing may be sent afterwards. Without the guard the parts went out
+    // with UploadId: undefined and completeUpload returned early, so the
+    // upload "succeeded" having stored nothing.
+    expect(s3Mock).not.toHaveReceivedCommand(UploadPartCommand);
     expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
   });
 });
