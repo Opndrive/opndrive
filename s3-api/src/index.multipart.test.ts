@@ -62,7 +62,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'users/alice/big.bin',
       fileName: 'big.bin',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 4,
     });
 
@@ -79,7 +79,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'users/alice/big.bin',
       fileName: 'big.bin',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 1,
     });
     await uploader.start(new File(['hello'], 'big.bin'));
@@ -104,7 +104,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 1,
     });
     await uploader.start(new File(['hello'], 'f'));
@@ -122,7 +122,7 @@ describe('uploadMultipartParallely', () => {
     makeApi().uploadMultipartParallely({
       key: 'users/alice/big.bin',
       fileName: 'big.bin',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 4,
     });
 
@@ -148,7 +148,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 0,
     });
     await uploader.start(new File(['x'.repeat(30 * MB)], 'f'));
@@ -172,7 +172,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 2,
     });
     await uploader.start(new File(['x'.repeat(30 * MB)], 'f'));
@@ -189,7 +189,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 5 * MB,
+      partSizeBytes: 5 * MB,
       concurrency: 1,
     });
     await uploader.start(new File(['x'.repeat(15 * MB)], 'f'), (p) => progress.push(p));
@@ -199,28 +199,23 @@ describe('uploadMultipartParallely', () => {
     expect(progress).toEqual([(1 / 3) * 100, (2 / 3) * 100, 100]);
   });
 
-  it('KNOWN BUG: partSizeMB is compared against bytes, so real MB values are ignored', async () => {
+  it('passes the part size through in bytes', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'u' });
     s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
     s3Mock.on(CompleteMultipartUploadCommand).resolves({});
 
-    // The field is named partSizeMB, but MultipartUploader guards it with
-    // `partSizeMB >= 5 * 1024 * 1024` - a BYTE threshold. So a caller passing
-    // the documented unit (10, meaning 10 MB) fails the check and silently
-    // gets the 5 MB default instead of 10 MB parts.
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 10,
+      partSizeBytes: 10 * MB,
       concurrency: 1,
     });
     await uploader.start(new File(['x'.repeat(10 * MB)], 'f'));
 
-    // 10 MB at the intended 10 MB part size would be ONE part; at the silently
-    // substituted 5 MB default it is two. Pinned, not endorsed - fixing the
-    // unit should make this test fail.
-    const parts = s3Mock.commandCalls(UploadPartCommand);
-    expect(parts).toHaveLength(2);
+    // 10 MB of data at a 10 MiB part size is a single part. Before the rename
+    // this field was called partSizeMB, so `10` meant 10 bytes, failed the
+    // 5 MiB floor, and silently produced two 5 MiB parts instead.
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(1);
   });
 
   it('clamps any part size below 5MB up to the 5MB minimum', async () => {
@@ -231,7 +226,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 1024, // far below the byte threshold
+      partSizeBytes: 1024, // far below the 5 MiB floor
       concurrency: 1,
     });
     await uploader.start(new File(['x'.repeat(12 * MB)], 'f'));
@@ -255,7 +250,7 @@ describe('uploadMultipartParallely', () => {
     const uploader = makeApi().uploadMultipartParallely({
       key: 'k',
       fileName: 'f',
-      partSizeMB: 1,
+      partSizeBytes: 1,
       concurrency: 1,
     });
 

@@ -28,7 +28,17 @@ export type userTypes = 'BYO';
 export interface MultipartUploadParams {
   key: string;
   fileName: string;
-  partSizeMB: number;
+  /**
+   * Size of each upload part, in BYTES. Values below the 5 MiB S3 minimum are
+   * clamped up to it.
+   *
+   * Named `partSizeMB` until 3.0.0, where it was already compared against a
+   * byte threshold - so passing `10` for "10 MB" failed the check and silently
+   * fell back to 5 MiB parts. Renamed rather than reinterpreted, because
+   * changing the unit would have quietly altered behaviour for callers already
+   * passing bytes.
+   */
+  partSizeBytes: number;
   concurrency: number;
 }
 
@@ -37,7 +47,8 @@ export interface MultipartUploadConfig extends MultipartUploadParams {
   bucket: string;
   key: string;
   fileName: string;
-  partSizeMB: number;
+  /** Size of each upload part, in BYTES. See MultipartUploadParams. */
+  partSizeBytes: number;
   concurrency: number;
 }
 
@@ -185,7 +196,8 @@ export type UploadManagerConfig = {
   bucket: string;
   prefix: string; // Base prefix for all uploads
   maxConcurrency?: number;
-  partSizeMB?: number; // Default part size for all uploads
+  /** Default part size for all uploads, in MEGABYTES. Converted to bytes before reaching MultipartUploader. */
+  partSizeMB?: number;
 };
 
 // For the event emitter

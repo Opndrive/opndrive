@@ -130,7 +130,7 @@ export class UploadManager {
       bucket: this.bucket,
       key: config.key,
       fileName: file.name,
-      partSizeMB: this.partSize,
+      partSizeBytes: this.partSize,
       concurrency: this.partConcurrency,
     });
 

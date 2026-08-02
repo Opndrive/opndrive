@@ -37,13 +37,13 @@ function installLocalStorage() {
   });
 }
 
-function makeUploader(overrides: { partSizeMB?: number; concurrency?: number } = {}) {
+function makeUploader(overrides: { partSizeBytes?: number; concurrency?: number } = {}) {
   return new MultipartUploader({
     s3: new S3Client({ region: 'us-east-1' }),
     bucket: 'test-bucket',
     key: 'users/alice/big.bin',
     fileName: 'big.bin',
-    partSizeMB: overrides.partSizeMB ?? 5 * MB,
+    partSizeBytes: overrides.partSizeBytes ?? 5 * MB,
     concurrency: overrides.concurrency ?? 1,
   });
 }
@@ -89,24 +89,23 @@ describe('construction', () => {
     expect(store.has(STATE_KEY)).toBe(false);
   });
 
-  it('KNOWN BUG: partSizeMB is compared against BYTES, so real MB values are ignored', async () => {
+  it('takes the part size in bytes', async () => {
     stubHappyPath();
 
-    // multipartUploader.ts guards with `partSizeMB >= 5 * 1024 * 1024` - a byte
-    // threshold on a field named MB. A caller passing the documented unit (10,
-    // meaning 10 MB) fails that check and silently falls back to the 5 MB
-    // default instead of getting 10 MB parts.
-    await makeUploader({ partSizeMB: 10 }).start(makeFile(10 * MB));
+    // The field was called partSizeMB but has always been compared against a
+    // byte threshold, so `10` meaning "10 MB" silently became the 5 MiB
+    // default. Renaming it is the fix; the unit itself never changed.
+    await makeUploader({ partSizeBytes: 10 * MB }).start(makeFile(20 * MB));
 
-    // At the intended 10 MB this is ONE part; at the substituted 5 MB it is two.
-    // Fixing the unit should make this assertion fail.
     expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(2);
   });
 
-  it('honours a part size expressed in bytes above the 5MB floor', async () => {
+  it('clamps a part size below the 5MB minimum', async () => {
     stubHappyPath();
 
-    await makeUploader({ partSizeMB: 10 * MB }).start(makeFile(20 * MB));
+    // 10 bytes is nonsense, and pre-rename this is exactly what `10` meaning
+    // "10 MB" resolved to.
+    await makeUploader({ partSizeBytes: 10 }).start(makeFile(10 * MB));
 
     expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(2);
   });
