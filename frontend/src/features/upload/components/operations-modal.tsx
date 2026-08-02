@@ -6,6 +6,9 @@ import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { DuplicateDialog } from './duplicate-dialog';
 import { OperationRow, type OperationType } from './operation-row';
+import { QueueNotices } from './queue-notices';
+import { useUploadExecutor } from '../context/upload-context';
+import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import type { FileExtension } from '@/config/file-extensions';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
@@ -157,7 +160,11 @@ export const OperationsModal: React.FC = () => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const uploadManager = useActiveUploadManager();
+  const executor = useUploadExecutor();
   const uploadMode = useUploadSettingsStore((state) => state.uploadMode);
+  // Only the count, so the panel re-renders when notices appear or disappear
+  // but not when their contents change - QueueNotices owns that.
+  const noticeCount = useUploadQueueStore((state) => state.notices.length);
 
   // Check if pause/resume is supported in current mode
   const supportsPauseResume = uploadMode === 'multipart';
@@ -196,18 +203,24 @@ export const OperationsModal: React.FC = () => {
     (itemId: string, operationType: OperationType, isFolder = false) => {
       if (operationType === 'upload') {
         if (isFolder) {
-          const folder = useUploadStore.getState().uploads[itemId];
-          if (folder && folder.fileIds) {
-            // Cancel all individual files in the folder
-            folder.fileIds.forEach((fileId) => {
-              uploadManager?.cancelUpload(fileId);
-            });
-            // Through the store action rather than by assigning to
-            // `folder.status`: that mutated zustand's state object in place,
-            // so no subscriber was notified and the panel kept showing the
-            // folder as active until some unrelated update forced a render.
-            updateUpload(itemId, { status: 'cancelled', progress: 100 });
+          // A folder card's id IS the executor's task id, so cancelling goes
+          // through the executor: it aborts every file, and - crucially -
+          // decides whether the prefix claim can be handed back. Cancelling the
+          // files directly would abort the uploads but leave the name reserved
+          // for the rest of the session.
+          if (executor && executor.uploadsFor(itemId).length > 0) {
+            void executor.cancelTask(itemId);
+          } else {
+            // Folders queued before this session's executor existed, or
+            // already settled. Fall back to the per-file path.
+            const folder = useUploadStore.getState().uploads[itemId];
+            folder?.fileIds?.forEach((fileId) => uploadManager?.cancelUpload(fileId));
           }
+          // Through the store action rather than by assigning to
+          // `folder.status`: that mutated zustand's state object in place,
+          // so no subscriber was notified and the panel kept showing the
+          // folder as active until some unrelated update forced a render.
+          updateUpload(itemId, { status: 'cancelled', progress: 100 });
         } else {
           uploadManager?.cancelUpload(itemId);
         }
@@ -221,7 +234,7 @@ export const OperationsModal: React.FC = () => {
         cancelDownload(itemId);
       }
     },
-    [uploadManager, updateUpload, removeDeleteOperation, cancelDownload]
+    [executor, uploadManager, updateUpload, removeDeleteOperation, cancelDownload]
   );
 
   const removeOperation = useCallback(
@@ -343,8 +356,11 @@ export const OperationsModal: React.FC = () => {
     return 'Loading...';
   }
 
-  // If no operations and no duplicate dialog, don't show modal
-  if (sortedOperations.length === 0 && !currentDuplicate) {
+  // If no operations, no duplicate dialog and nothing to report, don't show
+  // modal. Notices count: a drop where every folder was skipped starts no
+  // uploads at all, and hiding the panel would leave the user with no
+  // indication that anything happened.
+  if (sortedOperations.length === 0 && !currentDuplicate && noticeCount === 0) {
     return null;
   }
 
@@ -679,6 +695,11 @@ export const OperationsModal: React.FC = () => {
               </button>
             </div>
           )}
+
+          {/* What the drop could not do quietly: renames, skipped files, and
+              folders we could not verify against the bucket. Subscribes to the
+              queue store, which no progress tick touches. */}
+          {isExpanded && <QueueNotices />}
 
           {/* Operations List */}
           {isExpanded && sortedOperations.length > 0 && (
