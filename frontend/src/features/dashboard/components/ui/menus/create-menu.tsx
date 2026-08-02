@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadDispatch } from '@/features/upload/hooks/use-upload-dispatch';
 import { useDriveStore } from '@/context/data-context';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
@@ -36,21 +36,16 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   className = '',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { handleFilesDroppedToDirectory } = useUploadStore();
+  const dispatchDrop = useUploadDispatch();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [originPosition, setOriginPosition] = useState<
     'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   >('top-left');
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (isLoading) {
-    return <PreviewLoading message="Authenticating..." />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
-
+  // The auth guards used to sit here, above every hook below them, so React
+  // saw a different hook count before and after the session resolved. They now
+  // live with the other early return, once all hooks have run.
   const { currentPrefix } = useDriveStore();
 
   //  file upload handlers using utility functions
@@ -62,13 +57,13 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
           result.files
         );
-        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+        void dispatchDrop(processedData, currentPrefix ?? '', apiS3);
         onClose(); // Close menu after successful file selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
+  }, [dispatchDrop, onClose, currentPrefix, apiS3]);
 
   const triggerFolderUpload = useCallback(async () => {
     try {
@@ -78,13 +73,13 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
         const processedData: ProcessedDragData = FolderStructureProcessor.processFileList(
           result.files
         );
-        handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+        void dispatchDrop(processedData, currentPrefix ?? '', apiS3);
         onClose(); // Close menu after successful folder selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [handleFilesDroppedToDirectory, onClose, currentPrefix, apiS3]);
+  }, [dispatchDrop, onClose, currentPrefix, apiS3]);
 
   // Handle new folder action - simple approach
   const handleNewFolderClick = useCallback(() => {
@@ -203,6 +198,14 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isOpen, onClose]);
+
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   if (!isOpen || !position) return null;
 

@@ -15,7 +15,7 @@ import { HiOutlineRefresh } from 'react-icons/hi';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadDispatch } from '@/features/upload/hooks/use-upload-dispatch';
 import { EmptyStateDropzone } from '@/features/dashboard/components/views/home/empty-state-dropzone';
 import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
 import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
@@ -37,7 +37,7 @@ export default function HomePage() {
     setApiS3,
   } = useDriveStore();
 
-  const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
+  const dispatchDrop = useUploadDispatch();
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
   const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -47,20 +47,17 @@ export default function HomePage() {
     useMultiShareDialog();
   const { clearSelection, getSelectionCount } = useMultiSelectStore();
 
+  // Every hook lives above the early returns below. They used to sit after
+  // them, so React saw a different number of hooks depending on whether the
+  // session had loaded - the "rendered fewer hooks than expected" crash waiting
+  // to happen. The ones that need a session guard internally instead.
+
   // Clear selection when multi-share dialog closes
   useEffect(() => {
     if (!isOpen) {
       clearSelection();
     }
   }, [isOpen, clearSelection]);
-
-  if (isLoading) {
-    return <DashboardLoading />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
 
   useEffect(() => {
     if (apiS3) {
@@ -69,6 +66,10 @@ export default function HomePage() {
   }, [apiS3, setApiS3]);
 
   useEffect(() => {
+    // Keyed on apiS3 rather than running once on mount: the early return used
+    // to delay this until a session existed, so it has to wait for one now.
+    if (!apiS3) return;
+
     const rootPrefix = apiS3.getPrefix();
     if (rootPrefix === '') {
       setRootPrefix('/');
@@ -77,16 +78,16 @@ export default function HomePage() {
       setRootPrefix(rootPrefix);
       setCurrentPrefix(rootPrefix);
     }
-  }, []);
+  }, [apiS3, setRootPrefix, setCurrentPrefix]);
 
   useEffect(() => {
     if (currentPrefix) fetchRecentItems({ sync: false, itemsPerType: 10 });
-  }, [currentPrefix]);
+  }, [currentPrefix, fetchRecentItems]);
 
   // Clear selection when returning to home page
   useEffect(() => {
     clearSelection();
-  }, []); // Empty dependency array - runs once on mount
+  }, [clearSelection]); // clearSelection is a stable store action, so this still runs once
 
   // Clear selection when clicking outside - only for single item selection
   useEffect(() => {
@@ -108,6 +109,28 @@ export default function HomePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [clearSelection, getSelectionCount]);
 
+  const handleFilesDroppedToDirectoryWrapper = useCallback(
+    async (processedData: ProcessedDragData) => {
+      await dispatchDrop(processedData, currentPrefix ?? '', apiS3);
+    },
+    [dispatchDrop, apiS3, currentPrefix]
+  );
+
+  const handleFilesDroppedToFolderWrapper = useCallback(
+    async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
+      await dispatchDrop(processedData, targetFolder.path, apiS3);
+    },
+    [dispatchDrop, apiS3]
+  );
+
+  if (isLoading) {
+    return <DashboardLoading />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
+
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix && folder.name) {
       // Navigate to the folder using the enhanced browse route
@@ -118,20 +141,6 @@ export default function HomePage() {
       router.push(url);
     }
   };
-
-  const handleFilesDroppedToDirectoryWrapper = useCallback(
-    async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
-    },
-    [handleFilesDroppedToDirectory, apiS3, currentPrefix]
-  );
-
-  const handleFilesDroppedToFolderWrapper = useCallback(
-    async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(processedData, targetFolder, apiS3);
-    },
-    [handleFilesDroppedToFolder, apiS3]
-  );
 
   const handleLoadMoreFiles = async () => {
     setIsLoadingMoreFiles(true);
