@@ -20,6 +20,10 @@ export default defineConfig({
         'src/features/**/stores/**/*.ts',
         'src/features/**/services/**/*.ts',
         'src/services/**/*.ts',
+        // Phase 3 adds the interaction layer: drop extraction and the drag
+        // handlers. Components are still out of scope.
+        'src/features/**/utils/folder-structure-processor.ts',
+        'src/features/**/hooks/use-folder-drop-target.ts',
       ],
       exclude: ['**/*.test.{ts,tsx}'],
       // No thresholds yet - Phase 2 is only half written. Add them at the end,
