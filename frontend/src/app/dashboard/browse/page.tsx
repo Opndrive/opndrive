@@ -19,7 +19,7 @@ import {
 } from '@/features/folder-navigation/folder-navigation';
 import { HiOutlineRefresh } from 'react-icons/hi';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadDispatch } from '@/features/upload/hooks/use-upload-dispatch';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
@@ -54,7 +54,7 @@ function BrowsePageContent() {
 
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  const { handleFilesDroppedToDirectory, handleFilesDroppedToFolder } = useUploadStore();
+  const dispatchDrop = useUploadDispatch();
 
   const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
     useMultiShareDialog();
@@ -88,13 +88,9 @@ function BrowsePageContent() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [clearSelection, getSelectionCount]);
 
-  if (isLoading) {
-    return <DashboardLoading />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null; // useAuthGuard will handle redirect
-  }
+  // The auth guards used to sit here, above roughly a dozen hooks, so React saw
+  // a different hook count before and after the session resolved. They now run
+  // once every hook has, just above the JSX.
 
   // Parse URL parameters using utility function
   const params = parseFolderParams(searchParams);
@@ -121,6 +117,10 @@ function BrowsePageContent() {
   }, [apiS3, setApiS3]);
 
   useEffect(() => {
+    // Guarded here now that the auth early return no longer stands between
+    // this effect and a session that may not exist yet.
+    if (!apiS3) return;
+
     const rootPrefix = apiS3.getPrefix();
     if (rootPrefix === '') {
       setRootPrefix('/');
@@ -155,7 +155,7 @@ function BrowsePageContent() {
   // Also clear selection when component mounts (navigating to browse page)
   useEffect(() => {
     clearSelection();
-  }, []); // Empty dependency array - runs once on mount
+  }, [clearSelection]); // clearSelection is a stable store action, so this still runs once
 
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix) {
@@ -176,16 +176,16 @@ function BrowsePageContent() {
 
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
-      await handleFilesDroppedToDirectory(processedData, currentPrefix, apiS3);
+      await dispatchDrop(processedData, currentPrefix ?? '', apiS3);
     },
-    [currentPrefix, handleFilesDroppedToDirectory, apiS3]
+    [currentPrefix, dispatchDrop, apiS3]
   );
 
   const handleFilesDroppedToFolderWrapper = useCallback(
     async (processedData: ProcessedDragData, targetFolder: DragDropTarget) => {
-      await handleFilesDroppedToFolder(processedData, targetFolder, apiS3);
+      await dispatchDrop(processedData, targetFolder.path, apiS3);
     },
-    [handleFilesDroppedToFolder, apiS3]
+    [dispatchDrop, apiS3]
   );
 
   const handleSync = async () => {
@@ -298,6 +298,14 @@ function BrowsePageContent() {
       setIsLoadingMoreChunks(false);
     }, 300);
   }, [isLoadingMoreChunks, canLoadMoreChunks, canLoadMoreFileChunks, canLoadMoreFolderChunks]);
+
+  if (isLoading) {
+    return <DashboardLoading />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null; // useAuthGuard will handle redirect
+  }
 
   // Get current folder name for display using utility function
   const currentFolderName = getFolderNameFromPrefix(prefixParam) || 'My Drive';
