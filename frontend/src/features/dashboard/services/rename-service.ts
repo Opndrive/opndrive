@@ -158,6 +158,17 @@ class RenameService {
       pathParts[pathParts.length - 1] = newName; // Replace the last part (filename) with new name
       const newKey = pathParts.join('/');
 
+      // Renaming a file to the name it already has is a no-op, and must not
+      // reach S3. moveFile copies the object onto itself and then DELETES that
+      // same key - real S3 refuses the self-copy so the delete is never
+      // reached, but that safety belongs to the backend, not to us. On an
+      // S3-compatible service that permits the copy, this deletes the file.
+      if (oldKey === newKey) {
+        onProgress?.({ status: 'success' });
+        onComplete?.();
+        return;
+      }
+
       // Use moveFile method which handles the copy/delete operations
       await this.api.moveFile({
         oldKey,
