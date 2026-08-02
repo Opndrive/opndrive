@@ -30,11 +30,17 @@
  *    folder behind it in the same drop.
  * 3. Extraction losses had nowhere to go, so a folder could upload short and
  *    nothing downstream could say so.
+ * 4. A failed bucket check was read as a collision, so a dead network renamed
+ *    folders and reported conflicts that never existed.
  */
 
 import { create } from 'zustand';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
-import type { ProcessedDragData, SkippedEntry } from '../types/folder-upload-types';
+import type {
+  FolderStructure,
+  ProcessedDragData,
+  SkippedEntry,
+} from '../types/folder-upload-types';
 import { folderExists } from '@/services/folder-existence';
 
 /** Safety valve on the auto-suffix search, mirroring the rename service. */
@@ -59,6 +65,18 @@ export const VERIFY_CONCURRENCY = 5;
 export const SKIPPED_GROUP_THRESHOLD = 20;
 
 /**
+ * Hard ceiling on how many notices exist at once.
+ *
+ * Per-group aggregation handles a DEEP flood (a thousand failures in one
+ * node_modules), but not a WIDE one: nineteen failures in each of five hundred
+ * folders stays under the group threshold every time and still lands 9,500
+ * notices in state. Past this many, the tail collapses into a single overflow
+ * notice - nobody reads notice 101, and the array is what the operations panel
+ * maps over.
+ */
+export const MAX_NOTICES = 100;
+
+/**
  * One unit of work, with its destination already decided.
  *
  * By the time a PlannedUpload exists, `prefix` is final: checked against the
@@ -74,6 +92,16 @@ export interface PlannedUpload {
   resolvedName: string;
   /** Full destination prefix, ending in '/' for folders. */
   prefix: string;
+  /**
+   * Whether `prefix` survived a bucket check.
+   *
+   * 'confirmed' - the bucket answered and the name is free (possibly after
+   * bumps). 'failed' - the bucket never answered; the name is safe within this
+   * session but the executor should know it was never checked remotely.
+   * 'unchecked' - no check was asked for: planning ran without an api, or this
+   * is a loose-file batch whose collisions the per-file duplicate prompt owns.
+   */
+  verification: 'confirmed' | 'failed' | 'unchecked';
   files: File[];
   totalBytes: number;
 }
@@ -81,12 +109,13 @@ export interface PlannedUpload {
 /**
  * Something worth telling the user about a drop, short of a failure.
  *
- * `skipped` comes from extraction; `renamed` is this store's doing. Both land
- * in one list so the operations panel has a single thing to render.
+ * `skipped` comes from extraction; `renamed` and `unverified` are this store's
+ * doing. All land in one list so the operations panel has a single thing to
+ * render.
  */
 export interface QueueNotice {
   id: string;
-  kind: 'skipped' | 'renamed';
+  kind: 'skipped' | 'renamed' | 'unverified';
   path: string;
   detail: string;
   /** How many underlying entries this notice stands for. >1 means aggregated. */
@@ -117,11 +146,27 @@ export interface PlanDropOptions {
   destinationPrefix: string;
   /** Omit to skip bucket checks entirely (offline planning, or a known-fresh prefix). */
   apiS3?: BYOS3ApiProvider | null;
+  /**
+   * Aborts planning. Pending bucket checks are raced out (the answers are
+   * discarded), every claim this drop reserved is given back, and `planDrop`
+   * rejects with the signal's reason.
+   */
+  signal?: AbortSignal;
 }
 
 export interface PlanDropResult {
   planned: PlannedUpload[];
   notices: QueueNotice[];
+}
+
+/** planDrop's working record for one folder, mutated as verification bumps it. */
+interface FolderReservation {
+  folder: FolderStructure;
+  taskId: string;
+  resolvedName: string;
+  prefix: string;
+  attempt: number;
+  verification: PlannedUpload['verification'];
 }
 
 interface UploadQueueState {
@@ -211,6 +256,96 @@ async function withConcurrency<T>(
 }
 
 /**
+ * Throws the signal's abort reason if it has already fired.
+ *
+ * `signal.reason` is always populated on abort (an AbortError DOMException by
+ * default) in every runtime new enough to run this app, so no fallback reason
+ * is manufactured here.
+ */
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason;
+}
+
+/**
+ * Settles with `promise`, unless `signal` aborts first.
+ *
+ * The S3 listing call has no abort plumbing of its own, so a check that is
+ * already on the wire cannot be torn down. What CAN be guaranteed is that
+ * nobody waits on it: on abort the orphaned check keeps running in the
+ * background and its eventual answer is discarded. The listener is removed
+ * once the promise settles, so a long-lived signal does not accumulate one
+ * closure per check.
+ *
+ * Exported for direct testing. planDrop itself cannot reach the pre-aborted
+ * branch (there is no interleaving point between one check settling and the
+ * next race attaching, so an abort always lands on a live listener), but the
+ * helper must not hang if a future caller arrives with a dead signal.
+ */
+export function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    // The 'abort' event has already fired and will not fire again, so the
+    // listener path below would hang. Absorb the doomed promise's eventual
+    // rejection - its outcome stopped mattering when the user cancelled.
+    promise.catch(() => {});
+    return Promise.reject(signal.reason);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
+}
+
+/**
+ * Collapses everything past `limit` into one overflow notice.
+ *
+ * The earliest notices are kept rather than the latest: they correspond to the
+ * folders walked first, which is the order the user sees in the panel. The
+ * overflow notice carries the total number of underlying ENTRIES it stands
+ * for, not the number of notices it replaced, so the count the user reads is
+ * the count of things that actually went missing.
+ */
+function capNotices(notices: QueueNotice[], limit = MAX_NOTICES): QueueNotice[] {
+  if (notices.length <= limit) return notices;
+
+  const kept = notices.slice(0, limit - 1);
+  const dropped = notices.slice(limit - 1);
+  const entries = dropped.reduce((sum, notice) => sum + notice.count, 0);
+
+  kept.push({
+    id: nextId('overflow'),
+    kind: 'skipped',
+    path: '',
+    count: entries,
+    detail: `${entries} further item(s) across ${dropped.length} other location(s) could not be uploaded.`,
+  });
+
+  return kept;
+}
+
+/**
+ * Keeps the notice list bounded across repeated drops.
+ *
+ * Unlike `capNotices` this keeps the NEWEST, because notices accumulate over a
+ * whole session: an unbounded array would grow one drop at a time even when
+ * every individual drop was well behaved, and the notice a user is most likely
+ * to still care about is the most recent one.
+ */
+function trimNotices(notices: QueueNotice[], limit = MAX_NOTICES): QueueNotice[] {
+  return notices.length <= limit ? notices : notices.slice(notices.length - limit);
+}
+
+/**
  * Separates the two halves of a group key.
  *
  * NUL, because it is the one character that cannot occur in a path or in a
@@ -269,7 +404,7 @@ export function summariseSkipped(
     }
   }
 
-  return notices;
+  return capNotices(notices);
 }
 
 const initialState = {
@@ -307,8 +442,14 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
   },
 
   planDrop: async (data, options) => {
+    // A signal that is already dead means the caller has moved on: reserve
+    // nothing, touch nothing.
+    throwIfAborted(options.signal);
+
     const destination = normalisePrefix(options.destinationPrefix);
     const planned: PlannedUpload[] = [];
+    // Hoisted above the try so the catch can give back what Phase A claimed.
+    let reservations: FolderReservation[] = [];
 
     set({ isPlanning: true });
 
@@ -329,6 +470,9 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           originalName: '',
           resolvedName: '',
           prefix: destination,
+          // Loose files never go through folder verification; their collisions
+          // are object-level and the per-file duplicate prompt owns them.
+          verification: 'unchecked',
           files,
           totalBytes: totalBytesOf(files),
         });
@@ -338,10 +482,10 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
       // No awaits in this pass, so the drop is internally consistent in the
       // same tick: two folders named "photos" cannot both be told the name is
       // free. This is what the old bucket-only check could never do.
-      const reservations = data.folderStructures.map((folder) => {
+      reservations = data.folderStructures.map((folder) => {
         const taskId = nextId('folder');
         const reserved = get().reservePrefix(folder.name, destination, taskId);
-        return { folder, taskId, ...reserved };
+        return { folder, taskId, verification: 'unchecked' as const, ...reserved };
       });
 
       // --- Phase B: verify against the bucket, in parallel. -----------------
@@ -356,14 +500,28 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           for (;;) {
             let taken: boolean;
             try {
-              taken = await folderExists(api, reservation.prefix);
-            } catch {
-              // Indeterminate. Claiming risks an overwrite; suffixing costs a
-              // rename the user did not ask for. Suffixing is the recoverable
-              // mistake, so take it.
-              taken = true;
+              taken = await raceWithAbort(folderExists(api, reservation.prefix), options.signal);
+            } catch (error) {
+              if (options.signal?.aborted) throw error;
+
+              // An error is NOT a collision. The first version of this catch
+              // set `taken = true`, which read reasonably for a single check
+              // and composed disastrously across the loop: with the network
+              // down, the check of every bumped name failed too, so one folder
+              // burned through all 100 suffixes, came out renamed, and shipped
+              // a notice claiming a folder "was already here" that never
+              // existed. Indeterminate means STOP: keep the name the
+              // synchronous pass reserved (it is collision-safe within this
+              // session), mark the plan so the executor knows the bucket never
+              // answered, and tell the user the truth below.
+              reservation.verification = 'failed';
+              return;
             }
-            if (!taken) return;
+
+            if (!taken) {
+              reservation.verification = 'confirmed';
+              return;
+            }
 
             get().releasePrefix(reservation.prefix);
             const bumped = get().reservePrefix(
@@ -376,7 +534,14 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
             reservation.resolvedName = bumped.resolvedName;
             reservation.attempt = bumped.attempt;
 
-            if (++guard > MAX_SUFFIX_ATTEMPTS) return;
+            if (++guard > MAX_SUFFIX_ATTEMPTS) {
+              // The bucket answered "taken" a hundred times, so S3 was
+              // reachable throughout, and the timestamp fallback this landed
+              // on is outside the suffix space that was occupied. Not marked
+              // 'failed' - that would claim a network problem there wasn't.
+              reservation.verification = 'confirmed';
+              return;
+            }
           }
         });
       }
@@ -394,6 +559,20 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           });
         }
 
+        if (reservation.verification === 'failed') {
+          // Deliberately NOT describeFolderCheckError(): that message says the
+          // action "was cancelled", and nothing here is cancelled - the folder
+          // still uploads under its locally reserved name. Reusing it would
+          // trade one fabricated message for another.
+          notices.push({
+            id: nextId('unverified'),
+            kind: 'unverified',
+            path: reservation.resolvedName,
+            count: 1,
+            detail: `Could not check whether "${reservation.resolvedName}" already exists here, so it is being uploaded under that name. If it does exist, files with matching names will be overwritten.`,
+          });
+        }
+
         const files: File[] = [];
         appendAll(files, reservation.folder.files);
 
@@ -403,13 +582,21 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           originalName: reservation.folder.name,
           resolvedName: reservation.resolvedName,
           prefix: reservation.prefix,
+          verification: reservation.verification,
           files,
           totalBytes: totalBytesOf(files),
         });
       }
 
-      set((state) => ({ notices: [...state.notices, ...notices] }));
+      set((state) => ({ notices: trimNotices([...state.notices, ...notices]) }));
       return { planned, notices };
+    } catch (error) {
+      // Per-folder check failures are absorbed above, so the only throw that
+      // reaches here is an abort. A cancelled plan must not keep its names:
+      // nothing was uploaded, so there is nothing to protect, and a leaked
+      // claim would suffix the user's next drop for no reason they can see.
+      for (const reservation of reservations) get().releaseClaim(reservation.taskId);
+      throw error;
     } finally {
       set({ isPlanning: false });
     }

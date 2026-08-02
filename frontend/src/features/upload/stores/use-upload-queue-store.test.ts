@@ -14,6 +14,10 @@
  *  - Verification is CONCURRENT, so the resolved names must not depend on which
  *    HTTP response arrives first. The concurrent tests run the same scenario
  *    under reversed response ordering and demand the same outcome.
+ *  - A check ERROR is not a collision. A dead network costs one failed check
+ *    per folder, an honest 'unverified' notice, and an unchanged name - never
+ *    a suffix bump or a fabricated "was already here". Aborting mid-plan
+ *    rejects promptly and gives every reserved claim back.
  *
  * `folderExists` is mocked at the module boundary: it is the store's only
  * network edge, and mocking it there leaves every line of the planning logic
@@ -25,8 +29,10 @@ import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import {
   useUploadQueueStore,
   summariseSkipped,
+  raceWithAbort,
   VERIFY_CONCURRENCY,
   SKIPPED_GROUP_THRESHOLD,
+  MAX_NOTICES,
 } from './use-upload-queue-store';
 import type {
   FolderStructure,
@@ -401,9 +407,26 @@ describe('planDrop: local reservation phase', () => {
   });
 
   it('skips bucket checks entirely when no api is given', async () => {
-    await store().planDrop(dropOf([makeFolder('photos')]), { destinationPrefix: '' });
+    const { planned } = await store().planDrop(
+      dropOf([makeFolder('photos')], { individualFiles: [makeFile('a.txt')] }),
+      { destinationPrefix: '' }
+    );
 
     expect(mockFolderExists).not.toHaveBeenCalled();
+    // 'unchecked', not 'confirmed': nothing was verified, and the plan says so.
+    expect(planned.map((p) => p.verification)).toEqual(['unchecked', 'unchecked']);
+  });
+
+  it('marks the loose-file batch unchecked even when folders are verified', async () => {
+    const { planned } = await store().planDrop(
+      dropOf([makeFolder('photos')], { individualFiles: [makeFile('a.txt')] }),
+      { destinationPrefix: '', apiS3 }
+    );
+
+    // Folder verification does not speak for object-level file collisions;
+    // those belong to the per-file duplicate prompt.
+    expect(planned.find((p) => p.kind === 'file')!.verification).toBe('unchecked');
+    expect(planned.find((p) => p.kind === 'folder')!.verification).toBe('confirmed');
   });
 
   it('plans an empty drop without touching state', async () => {
@@ -440,6 +463,7 @@ describe('planDrop: bucket verification phase', () => {
     });
 
     expect(planned[0]!.resolvedName).toBe('photos (1)');
+    expect(planned[0]!.verification).toBe('confirmed');
     expect(store().claimedPrefixes()).toEqual(['photos (1)/']);
   });
 
@@ -466,22 +490,66 @@ describe('planDrop: bucket verification phase', () => {
     expect(planned[0]!.prefix).toBe('trips/photos (1)/');
   });
 
-  it('suffixes rather than claims when the check fails', async () => {
-    // Indeterminate is not "free". Claiming risks overwriting real data;
-    // suffixing costs a rename the user can undo. Take the recoverable one.
-    mockFolderExists.mockRejectedValueOnce(new Error('AccessDenied')).mockResolvedValueOnce(false);
+  it('halts on a failed check and keeps the locally reserved name', async () => {
+    // An error is not a collision. The first version of this store conflated
+    // them, so a dead network bumped through the full suffix space and shipped
+    // a "renamed" notice for a conflict that never existed.
+    mockFolderExists.mockRejectedValue(new Error('NetworkError: Failed to fetch'));
 
-    const { planned } = await store().planDrop(dropOf([makeFolder('photos')]), {
+    const { planned, notices } = await store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+    });
+
+    // The name the synchronous pass reserved, untouched.
+    expect(planned[0]!.resolvedName).toBe('photos');
+    expect(planned[0]!.verification).toBe('failed');
+    // ONE check, not a hundred and one: the suffix loop must not retry into a
+    // dead network.
+    expect(mockFolderExists).toHaveBeenCalledTimes(1);
+    // The claim survives - the name is still reserved for this session.
+    expect(store().claimedPrefixes()).toEqual(['photos/']);
+    // And the user is told the truth: unverified, never "renamed".
+    expect(notices.map((n) => n.kind)).toEqual(['unverified']);
+    expect(notices[0]!.detail).toContain('Could not check whether "photos" already exists');
+  });
+
+  it('keeps a genuinely bumped name when a later check fails', async () => {
+    // The first answer is a real collision; the network dies checking the
+    // bumped name. The bump that happened was real and stays. The failure
+    // stops the loop where it is.
+    mockFolderExists.mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('timeout'));
+
+    const { planned, notices } = await store().planDrop(dropOf([makeFolder('photos')]), {
       destinationPrefix: '',
       apiS3,
     });
 
     expect(planned[0]!.resolvedName).toBe('photos (1)');
+    expect(planned[0]!.verification).toBe('failed');
+    expect(notices.map((n) => n.kind)).toEqual(['renamed', 'unverified']);
+  });
+
+  it('costs one check per folder when the whole network is down', async () => {
+    // The audit's arithmetic: 20 folders against a dead network used to fire
+    // 100+ checks EACH. Now the bill is one failed check per folder, every
+    // folder keeps its own name, and every plan says so.
+    mockFolderExists.mockRejectedValue(new Error('ERR_INTERNET_DISCONNECTED'));
+
+    const { planned } = await store().planDrop(
+      dropOf(Array.from({ length: 20 }, (_, i) => makeFolder(`folder-${i}`))),
+      { destinationPrefix: '', apiS3 }
+    );
+
+    expect(mockFolderExists).toHaveBeenCalledTimes(20);
+    expect(planned.every((p) => p.verification === 'failed')).toBe(true);
+    expect(planned.every((p) => p.resolvedName === p.originalName)).toBe(true);
   });
 
   it('plans every folder even when an earlier one has trouble', async () => {
     // The old loop returned on the first duplicate and silently abandoned the
-    // rest of the drop.
+    // rest of the drop. A check failure on `a` must not poison `b` or `c` -
+    // and must not rename `a` either.
     mockFolderExists.mockImplementation(async (_api, prefix: string) => {
       if (prefix === 'a/') throw new Error('throttled');
       return prefix === 'b/';
@@ -493,7 +561,8 @@ describe('planDrop: bucket verification phase', () => {
     );
 
     expect(planned.map((p) => p.originalName)).toEqual(['a', 'b', 'c']);
-    expect(planned.map((p) => p.resolvedName)).toEqual(['a (1)', 'b (1)', 'c']);
+    expect(planned.map((p) => p.resolvedName)).toEqual(['a', 'b (1)', 'c']);
+    expect(planned.map((p) => p.verification)).toEqual(['failed', 'confirmed', 'confirmed']);
   });
 
   it('gives up after the guard limit instead of spinning forever', async () => {
@@ -513,6 +582,9 @@ describe('planDrop: bucket verification phase', () => {
     expect(planned).toHaveLength(1);
     expect(planned[0]!.resolvedName).toMatch(/^photos \(\d{10,}\)$/);
     expect(store().claims).toHaveLength(1);
+    // Not 'failed': the bucket was answering the whole time; the timestamp
+    // fallback is the designed terminal state, not a network problem.
+    expect(planned[0]!.verification).toBe('confirmed');
   });
 
   it('leaves no stale claim behind after a bump', async () => {
@@ -605,6 +677,160 @@ describe('planDrop: concurrent verification', () => {
     });
 
     expect(peak).toBe(3);
+  });
+});
+
+describe('planDrop: abort', () => {
+  it('rejects up front on a signal that is already dead', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      store().planDrop(dropOf([makeFolder('photos')]), {
+        destinationPrefix: '',
+        apiS3,
+        signal: controller.signal,
+      })
+    ).rejects.toHaveProperty('name', 'AbortError');
+
+    // Nothing was touched: no wire traffic, no claims, no planning flag.
+    expect(mockFolderExists).not.toHaveBeenCalled();
+    expect(store().claims).toEqual([]);
+    expect(store().isPlanning).toBe(false);
+  });
+
+  it('returns promptly even when the in-flight check never settles', async () => {
+    // The audit's pinned-UI scenario: without the race, an aborted plan waits
+    // however long the SDK takes to give up - here forever, so this test
+    // TIMES OUT if the race is ever removed.
+    mockFolderExists.mockReturnValue(new Promise<boolean>(() => {}));
+    const controller = new AbortController();
+
+    const pending = store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+      signal: controller.signal,
+    });
+    expect(store().isPlanning).toBe(true);
+
+    controller.abort();
+
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError');
+    expect(store().isPlanning).toBe(false);
+  });
+
+  it('gives back every claim the cancelled plan reserved', async () => {
+    mockFolderExists.mockReturnValue(new Promise<boolean>(() => {}));
+    const controller = new AbortController();
+
+    const pending = store().planDrop(
+      dropOf([makeFolder('photos'), makeFolder('videos'), makeFolder('docs')]),
+      { destinationPrefix: '', apiS3, signal: controller.signal }
+    );
+    // Phase A has already reserved all three - that is the synchronous
+    // guarantee - so there is something real to give back.
+    expect(store().claimedPrefixes()).toEqual(['photos/', 'videos/', 'docs/']);
+
+    controller.abort();
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError');
+
+    expect(store().claims).toEqual([]);
+  });
+
+  it('rejects even when the abort races a collision answer', async () => {
+    // The abort and a "taken" answer arrive in the same tick. Whichever way
+    // that race lands internally, the observable contract is the same: the
+    // plan rejects, no bump is kept, and every claim comes back.
+    const first = deferred<boolean>();
+    mockFolderExists
+      .mockReturnValueOnce(first.promise)
+      .mockRejectedValue(new Error('network died with the abort'));
+    const controller = new AbortController();
+
+    const pending = store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+      signal: controller.signal,
+    });
+
+    controller.abort();
+    first.resolve(true);
+
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError');
+    expect(store().claims).toEqual([]);
+  });
+
+  it('leaves claims from other work alone when aborting', async () => {
+    store().reservePrefix('keep-me', '', 'other-task');
+    mockFolderExists.mockReturnValue(new Promise<boolean>(() => {}));
+    const controller = new AbortController();
+
+    const pending = store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError');
+
+    // Only the cancelled drop's claims are released, not the whole session's.
+    expect(store().claimedPrefixes()).toEqual(['keep-me/']);
+  });
+
+  it('plans normally when the signal never fires', async () => {
+    const controller = new AbortController();
+
+    const { planned } = await store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+      signal: controller.signal,
+    });
+
+    expect(planned[0]!.verification).toBe('confirmed');
+    expect(store().claimedPrefixes()).toEqual(['photos/']);
+  });
+
+  it('still reports an honest failure when a signal is attached but never fired', async () => {
+    // A check error with a live signal must take the error path, not the
+    // abort path: verification 'failed', claims intact, no rejection.
+    mockFolderExists.mockRejectedValue(new Error('boom'));
+    const controller = new AbortController();
+
+    const { planned } = await store().planDrop(dropOf([makeFolder('photos')]), {
+      destinationPrefix: '',
+      apiS3,
+      signal: controller.signal,
+    });
+
+    expect(planned[0]!.verification).toBe('failed');
+    expect(store().claimedPrefixes()).toEqual(['photos/']);
+  });
+
+  describe('raceWithAbort', () => {
+    // planDrop cannot reach the pre-aborted branch (an abort always lands on
+    // a live listener there), but the helper's own contract must hold for any
+    // future caller: a dead signal rejects immediately, never hangs.
+    it('rejects immediately on an already-aborted signal instead of hanging', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        raceWithAbort(new Promise<never>(() => {}), controller.signal)
+      ).rejects.toHaveProperty('name', 'AbortError');
+    });
+
+    it('absorbs the doomed promise rejection so nothing leaks unhandled', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        raceWithAbort(Promise.reject(new Error('late failure')), controller.signal)
+      ).rejects.toHaveProperty('name', 'AbortError');
+
+      // Drain microtasks: if the discarded rejection were left unhandled,
+      // vitest would fail this file with an unhandled-rejection error.
+      await ticks(2);
+    });
   });
 });
 
@@ -770,6 +996,74 @@ describe('summariseSkipped', () => {
     expect(summariseSkipped([])).toEqual([]);
   });
 
+  describe('flood bounding', () => {
+    it('caps a wide flood that never trips the group threshold', () => {
+      // The shape per-group aggregation cannot catch: 19 failures in each of
+      // 500 folders is under the threshold every single time, and used to put
+      // 9,500 notices into state.
+      const wide = Array.from({ length: 500 }, (_, folder) =>
+        Array.from({ length: 19 }, (_, file) => ({
+          path: `proj/pkg-${folder}/f${file}.js`,
+          reason: 'could not be read (EACCES)',
+          kind: 'file' as const,
+        }))
+      ).flat();
+
+      const notices = summariseSkipped(wide);
+
+      expect(notices).toHaveLength(MAX_NOTICES);
+      // Nothing is silently lost: the overflow notice accounts for every
+      // entry the truncated notices stood for.
+      const total = notices.reduce((sum, n) => sum + n.count, 0);
+      expect(total).toBe(9500);
+    });
+
+    it('describes the overflow in terms of items, not notices', () => {
+      const wide = Array.from({ length: 300 }, (_, folder) => ({
+        path: `proj/pkg-${folder}/f.js`,
+        reason: 'could not be read',
+        kind: 'file' as const,
+      }));
+
+      const overflow = summariseSkipped(wide).at(-1)!;
+
+      expect(overflow.count).toBe(201);
+      expect(overflow.detail).toBe(
+        '201 further item(s) across 201 other location(s) could not be uploaded.'
+      );
+    });
+
+    it('leaves a list that fits the cap completely alone', () => {
+      const modest = Array.from({ length: MAX_NOTICES }, (_, i) => ({
+        path: `proj/pkg-${i}/f.js`,
+        reason: 'could not be read',
+        kind: 'file' as const,
+      }));
+
+      const notices = summariseSkipped(modest);
+
+      expect(notices).toHaveLength(MAX_NOTICES);
+      expect(notices.every((n) => n.count === 1)).toBe(true);
+    });
+
+    it('counts aggregated groups correctly in the overflow total', () => {
+      // Mixes deep and wide: each folder trips the group threshold, so every
+      // notice already stands for 25 entries before the cap applies.
+      const deepAndWide = Array.from({ length: 200 }, (_, folder) =>
+        Array.from({ length: 25 }, (_, file) => ({
+          path: `proj/pkg-${folder}/f${file}.js`,
+          reason: 'could not be read (EACCES)',
+          kind: 'file' as const,
+        }))
+      ).flat();
+
+      const notices = summariseSkipped(deepAndWide);
+
+      expect(notices).toHaveLength(MAX_NOTICES);
+      expect(notices.reduce((sum, n) => sum + n.count, 0)).toBe(5000);
+    });
+  });
+
   it('gives every notice a distinct id', () => {
     const notices = summariseSkipped(flood(10, 'proj/', 'could not be read'));
 
@@ -846,6 +1140,27 @@ describe('notices', () => {
 
     expect(store().notices).toHaveLength(1);
     expect(store().notices[0]!.path).toBe('a/two.txt');
+  });
+
+  it('stays bounded across many drops', async () => {
+    // Each drop is individually well behaved; the array still grows without a
+    // session-level trim.
+    for (let drop = 0; drop < 40; drop++) {
+      await store().planDrop(
+        dropOf([], {
+          skipped: Array.from({ length: 5 }, (_, i) => ({
+            path: `drop-${drop}/f${i}.txt`,
+            reason: 'could not be read',
+            kind: 'file' as const,
+          })),
+        }),
+        { destinationPrefix: '' }
+      );
+    }
+
+    expect(store().notices).toHaveLength(MAX_NOTICES);
+    // The newest survive - an old notice matters less than a fresh one.
+    expect(store().notices.at(-1)!.path).toBe('drop-39/f4.txt');
   });
 
   it('clears them all', async () => {
