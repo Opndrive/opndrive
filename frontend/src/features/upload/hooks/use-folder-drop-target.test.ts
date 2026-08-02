@@ -25,6 +25,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useFolderDropTarget } from './use-folder-drop-target';
 import { FolderStructureProcessor } from '../utils/folder-structure-processor';
 import type { DragDropSource } from '../types/drag-drop-types';
+import type { ProcessedDragData } from '../types/folder-upload-types';
 
 const { context } = vi.hoisted(() => ({
   context: {
@@ -86,7 +87,7 @@ beforeEach(() => {
     canAcceptDrop: true,
     isDraggedOver: false,
   });
-  processItems.mockResolvedValue({ individualFiles: [], folderStructures: [] });
+  processItems.mockResolvedValue({ individualFiles: [], folderStructures: [], skipped: [] });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -247,7 +248,11 @@ describe('drop', () => {
   });
 
   it('hands the extracted files to the caller with this folder as the target', async () => {
-    const extracted = { individualFiles: [new File([], 'a.txt')], folderStructures: [] };
+    const extracted = {
+      individualFiles: [new File([], 'a.txt')],
+      folderStructures: [],
+      skipped: [],
+    };
     processItems.mockResolvedValue(extracted);
     const { result, onFilesDropped } = mount();
 
@@ -324,7 +329,7 @@ describe('drop', () => {
     // to the provider and onFilesDropped to the upload store - so there is no
     // setState on an unmounted component. React 19 would not warn either way,
     // which is exactly why this is worth asserting rather than assuming.
-    let release!: (v: { individualFiles: File[]; folderStructures: [] }) => void;
+    let release!: (v: ProcessedDragData) => void;
     processItems.mockReturnValue(
       new Promise((resolve) => {
         release = resolve;
@@ -334,7 +339,7 @@ describe('drop', () => {
 
     const dropping = result.current.dragHandlers.onDrop(dragEvent());
     unmount();
-    release({ individualFiles: [new File([], 'a.txt')], folderStructures: [] });
+    release({ individualFiles: [new File([], 'a.txt')], folderStructures: [], skipped: [] });
     await act(async () => {
       await dropping;
     });
@@ -345,7 +350,7 @@ describe('drop', () => {
   });
 
   it('forwards an empty extraction rather than swallowing it', async () => {
-    processItems.mockResolvedValue({ individualFiles: [], folderStructures: [] });
+    processItems.mockResolvedValue({ individualFiles: [], folderStructures: [], skipped: [] });
     const { result, onFilesDropped } = mount();
 
     await act(async () => result.current.dragHandlers.onDrop(dragEvent()));

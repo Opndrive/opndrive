@@ -7,9 +7,32 @@ export interface FolderStructure {
   relativePath: string;
 }
 
+/**
+ * Something the extraction could not include, and why.
+ *
+ * Extraction is best-effort by design: one locked file must not abandon the
+ * folder around it. But "best effort" only works if the effort that failed is
+ * reported. Before this existed, a file that could not be read was dropped in a
+ * bare `catch {}` with no log, so a folder could upload short and neither the
+ * user nor the code downstream had any way to know.
+ */
+export interface SkippedEntry {
+  /** Path relative to the drop, e.g. `photos/raw/img.cr2`. */
+  path: string;
+  /** Human-readable, shown to the user as-is. */
+  reason: string;
+  kind: 'file' | 'folder';
+}
+
 export interface ProcessedDragData {
   individualFiles: File[];
   folderStructures: FolderStructure[];
+  /**
+   * Required, not optional, and deliberately so: an optional error channel is
+   * one every caller forgets. Producers must say `[]` to mean "nothing was
+   * lost".
+   */
+  skipped: SkippedEntry[];
 }
 
 export interface WebKitDirectoryEntry extends FileSystemDirectoryEntry {

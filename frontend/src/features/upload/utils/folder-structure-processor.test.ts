@@ -91,11 +91,15 @@ describe('dropping loose files', () => {
   it('skips an item that yields no file at all', async () => {
     const item = mockDataTransferItem(null, { file: null });
 
-    expect(await process([item])).toEqual({ individualFiles: [], folderStructures: [] });
+    expect(await process([item])).toEqual({
+      individualFiles: [],
+      folderStructures: [],
+      skipped: [],
+    });
   });
 
   it('handles an empty drop', async () => {
-    expect(await process([])).toEqual({ individualFiles: [], folderStructures: [] });
+    expect(await process([])).toEqual({ individualFiles: [], folderStructures: [], skipped: [] });
   });
 });
 
@@ -263,8 +267,16 @@ describe('failures during extraction', () => {
 
     const result = await process([mockDataTransferItem(dir)]);
 
-    // One unreadable file must not abandon the whole folder.
+    // One unreadable file must not abandon the whole folder - but the loss is
+    // now reported instead of vanishing into a bare catch.
     expect(pathsOf(result.folderStructures[0]!.files)).toEqual(['docs/good.txt']);
+    expect(result.skipped).toEqual([
+      {
+        kind: 'file',
+        path: 'docs/locked.txt',
+        reason: expect.stringContaining('could not be read'),
+      },
+    ]);
   });
 
   it('skips a subdirectory it cannot read and keeps the rest', async () => {
@@ -274,7 +286,9 @@ describe('failures during extraction', () => {
     const result = await process([mockDataTransferItem(dir)]);
 
     expect(pathsOf(result.folderStructures[0]!.files)).toEqual(['docs/a.txt']);
-    expect(console.error).toHaveBeenCalled();
+    expect(result.skipped).toEqual([
+      { kind: 'folder', path: 'docs/broken', reason: expect.stringContaining('could not be read') },
+    ]);
   });
 
   it('drops a top-level folder whose read fails outright', async () => {
@@ -284,7 +298,9 @@ describe('failures during extraction', () => {
 
     // Reported, not thrown: the rest of the drop still goes through.
     expect(result.folderStructures).toEqual([]);
-    expect(console.error).toHaveBeenCalled();
+    expect(result.skipped).toEqual([
+      { kind: 'folder', path: 'docs', reason: expect.stringContaining('could not be read') },
+    ]);
   });
 
   it('rejects the walk when the reader throws on a follow-up read', async () => {
@@ -312,7 +328,9 @@ describe('failures during extraction', () => {
     // Reported and dropped, not left pending - a hung promise here would stall
     // the entire drop behind Promise.all forever.
     expect(result.folderStructures).toEqual([]);
-    expect(console.error).toHaveBeenCalled();
+    expect(result.skipped).toEqual([
+      { kind: 'folder', path: 'docs', reason: expect.stringContaining('could not be read') },
+    ]);
   });
 
   it('rejects the walk when an entry is revoked mid-read', async () => {
@@ -339,7 +357,9 @@ describe('failures during extraction', () => {
     const result = await process([mockDataTransferItem(dir as unknown as FileSystemEntry)]);
 
     expect(result.folderStructures).toEqual([]);
-    expect(console.error).toHaveBeenCalled();
+    expect(result.skipped).toEqual([
+      { kind: 'folder', path: 'docs', reason: expect.stringContaining('could not be read') },
+    ]);
   });
 
   it('still uploads loose files when a folder fails', async () => {
@@ -429,6 +449,7 @@ describe('processFileList', () => {
     expect(FolderStructureProcessor.processFileList([])).toEqual({
       individualFiles: [],
       folderStructures: [],
+      skipped: [],
     });
   });
 });

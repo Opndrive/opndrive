@@ -1,11 +1,17 @@
 'use client';
 
-import { FolderStructure, ProcessedDragData, WebKitEntry } from '../types/folder-upload-types';
+import {
+  FolderStructure,
+  ProcessedDragData,
+  SkippedEntry,
+  WebKitEntry,
+} from '../types/folder-upload-types';
 
 export class FolderStructureProcessor {
   private static async readDirectoryRecursively(
     directoryEntry: FileSystemDirectoryEntry,
-    basePath: string = ''
+    basePath: string = '',
+    skipped: SkippedEntry[] = []
   ): Promise<File[]> {
     return new Promise((resolve, reject) => {
       const files: File[] = [];
@@ -35,8 +41,14 @@ export class FolderStructureProcessor {
                   });
 
                   files.push(file);
-                } catch {
-                  // Silently skip files that can't be read (locked, deleted, or permission issues)
+                } catch (fileError) {
+                  // One unreadable file must not abandon the folder around it,
+                  // but it does have to be reported - see SkippedEntry.
+                  skipped.push({
+                    kind: 'file',
+                    path: basePath ? `${basePath}/${entry.name}` : entry.name,
+                    reason: describeReason(fileError, 'could not be read'),
+                  });
                 }
               } else if (entry.isDirectory) {
                 const subPath = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -44,11 +56,20 @@ export class FolderStructureProcessor {
                 try {
                   const subFiles = await this.readDirectoryRecursively(
                     entry as FileSystemDirectoryEntry,
-                    subPath
+                    subPath,
+                    skipped
                   );
-                  files.push(...subFiles);
+                  // NOT `files.push(...subFiles)`. Spreading passes each element
+                  // as an argument, and V8 throws RangeError past ~100k of them
+                  // - which this very catch would then swallow, dropping the
+                  // whole subtree from the upload with only a log line.
+                  appendAll(files, subFiles);
                 } catch (subDirError) {
-                  console.error(`Error reading directory ${entry.name}:`, subDirError);
+                  skipped.push({
+                    kind: 'folder',
+                    path: subPath,
+                    reason: describeReason(subDirError, 'could not be read'),
+                  });
                 }
               }
             }
@@ -67,6 +88,7 @@ export class FolderStructureProcessor {
   static async processDataTransferItems(items: DataTransferItemList): Promise<ProcessedDragData> {
     const individualFiles: File[] = [];
     const folderStructures: FolderStructure[] = [];
+    const skipped: SkippedEntry[] = [];
 
     const processingPromises: Promise<void>[] = [];
 
@@ -81,7 +103,8 @@ export class FolderStructureProcessor {
             try {
               const folderFiles = await this.readDirectoryRecursively(
                 entry as FileSystemDirectoryEntry,
-                entry.name
+                entry.name,
+                skipped
               );
 
               if (folderFiles.length > 0) {
@@ -95,7 +118,11 @@ export class FolderStructureProcessor {
                 });
               }
             } catch (error) {
-              console.error(`Error processing directory ${entry.name}:`, error);
+              skipped.push({
+                kind: 'folder',
+                path: entry.name,
+                reason: describeReason(error, 'could not be read'),
+              });
             }
           };
 
@@ -116,7 +143,7 @@ export class FolderStructureProcessor {
 
     await Promise.all(processingPromises);
 
-    return { individualFiles, folderStructures };
+    return { individualFiles, folderStructures, skipped };
   }
 
   static processFileList(files: FileList | File[]): ProcessedDragData {
@@ -152,6 +179,24 @@ export class FolderStructureProcessor {
       })
     );
 
-    return { individualFiles, folderStructures };
+    return { individualFiles, folderStructures, skipped: [] };
   }
+}
+
+/** Turns whatever was thrown into something worth showing a user. */
+function describeReason(error: unknown, fallback: string): string {
+  if (error instanceof DOMException || error instanceof Error) {
+    return error.message ? `${fallback} (${error.message})` : fallback;
+  }
+  return fallback;
+}
+
+/**
+ * `target.push(...source)` for arrays that may be enormous.
+ *
+ * Spread passes every element as a separate argument, and V8 throws
+ * `RangeError: Maximum call stack size exceeded` somewhere past 100k of them.
+ */
+function appendAll<T>(target: T[], source: readonly T[]): void {
+  for (const item of source) target.push(item);
 }
