@@ -18,6 +18,8 @@ opndrive/
 ├── README.md
 ├── .github/                  # CI/CodeQL workflows, Dependabot, issue + PR templates
 ├── .husky/                   # Git hooks (pre-commit runs lint-staged)
+├── Dockerfile                # Multi-stage frontend image - build from the root
+├── .dockerignore
 ├── .nvmrc                    # Pinned Node version (22) - CI reads this too
 ├── .prettierignore
 ├── eslint.config.mjs         # Shared lint config for both packages
@@ -56,7 +58,6 @@ frontend/
 │   ├── types/                      # Shared TypeScript types
 │   └── assets/                      # Local static assets
 ├── components.json            # shadcn/ui config
-├── Dockerfile                  # Multi-stage build, node:22-alpine
 ├── next.config.ts
 ├── package.json
 ├── tailwind.config.ts

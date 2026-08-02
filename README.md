@@ -47,8 +47,9 @@ control, you connect your own storage backend - AWS S3.
 
 ### Option 2: Run with Docker
 
+From the repository root:
+
 ```bash
-cd frontend
 docker build -t opndrive .
 docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive
 ```
