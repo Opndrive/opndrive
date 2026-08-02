@@ -1,5 +1,6 @@
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { generateS3Key } from './generate-s3-key';
+import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 
 /**
  * Generates a unique filename by checking S3 and adding (1), (2), etc. if needed
@@ -79,15 +80,15 @@ export async function generateUniqueFolderName(
   currentPath: string
 ): Promise<string> {
   const checkFolderExists = async (folderName: string): Promise<boolean> => {
+    // Use the same generateS3Key logic as the hook for consistency
+    const folderPrefix = generateS3Key(`${folderName}/`, currentPath);
     try {
-      // Use the same generateS3Key logic as the hook for consistency
-      const folderPrefix = generateS3Key(`${folderName}/`, currentPath);
-      const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
-
-      // If we find any objects (files or folders) with this prefix, the folder exists
-      return result.files.length > 0 || result.folders.length > 0;
+      return await folderExists(apiS3, folderPrefix);
     } catch {
-      return false;
+      // This function picks the name an upload will be written to. Treating a
+      // failed check as "free" is how it would hand back a name that is
+      // already in use and overwrite it.
+      throw new Error(describeFolderCheckError('the upload'));
     }
   };
 

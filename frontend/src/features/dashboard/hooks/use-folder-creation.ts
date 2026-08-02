@@ -9,6 +9,7 @@ import {
   isValidFolderName,
 } from '@/features/upload/utils/sanitize-folder-name';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 
 interface UseFolderCreationOptions {
   currentPath: string;
@@ -34,43 +35,33 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
 
   const { apiS3 } = useAuthGuard();
 
-  if (!apiS3) {
-    return {
-      handleFolderCreation: async () => {
-        throw new Error('S3 API is not available yet.');
-      },
-      duplicateDialog,
-      hideDuplicateDialog: () => {
-        setDuplicateDialog({
-          isOpen: false,
-          folderName: '',
-          onReplace: null,
-          onKeepBoth: null,
-        });
-      },
-    };
-  }
-
-  // Check if folder already exists
+  // Every hook below is declared unconditionally. This used to sit behind an
+  // early `if (!apiS3) return ...`, which made the hook order depend on
+  // whether the session had loaded yet - the thing rules-of-hooks exists to
+  // prevent. The callbacks guard on apiS3 themselves instead, so the
+  // "not ready" behaviour is unchanged: calling them throws.
   const checkFolderExists = useCallback(
     async (folderName: string): Promise<boolean> => {
-      try {
-        // Create a test path to check if folder exists
-        const folderPrefix = generateS3Key(`${folderName}/`, currentPath);
-        const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
+      if (!apiS3) throw new Error('S3 API is not available yet.');
 
-        // If we find any objects with this prefix, the folder exists
-        return result.files.length > 0 || result.folders.length > 0;
+      const folderPrefix = generateS3Key(`${folderName}/`, currentPath);
+      try {
+        return await folderExists(apiS3, folderPrefix);
       } catch {
-        return false;
+        // Returning false here would mean "the name is free" and we would
+        // create a folder over one that may already exist. We do not know
+        // either way, so stop and let the user retry.
+        throw new Error(describeFolderCheckError('creating the folder'));
       }
     },
-    [currentPath]
+    [currentPath, apiS3]
   );
 
   // Create folder in S3
   const createFolder = useCallback(
     async (folderName: string): Promise<void> => {
+      if (!apiS3) throw new Error('S3 API is not available yet.');
+
       // Validate and sanitize folder name
       if (!isValidFolderName(folderName)) {
         throw new Error(
@@ -91,12 +82,14 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
       // Use the sanitized name for the success callback
       onFolderCreated?.(sanitizedName);
     },
-    [currentPath, fetchData, onFolderCreated]
+    [currentPath, fetchData, onFolderCreated, apiS3]
   );
 
   // Handle folder creation with duplicate checking
   const handleFolderCreation = useCallback(
     async (folderName: string): Promise<void> => {
+      if (!apiS3) throw new Error('S3 API is not available yet.');
+
       const exists = await checkFolderExists(folderName);
 
       if (exists) {
@@ -162,7 +155,7 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
         }
       }
     },
-    [checkFolderExists, createFolder, currentPath, refreshCurrentData]
+    [checkFolderExists, createFolder, currentPath, refreshCurrentData, apiS3]
   );
 
   return {

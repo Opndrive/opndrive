@@ -106,6 +106,11 @@ export const UploadOperationsCard: React.FC = () => {
                           ? `Folder • ${upload.fileIds?.length || 0} files`
                           : 'File'}
                       </p>
+                      {upload.error && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                          {upload.error}
+                        </p>
+                      )}
                     </div>
                   </div>
 

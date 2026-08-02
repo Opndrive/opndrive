@@ -11,6 +11,7 @@ import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { generateUniqueFileName, generateUniqueFolderName } from '../utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
+import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 
 // Enhanced batch tracking types
 interface UploadBatch {
@@ -86,35 +87,57 @@ const checkForFolderDuplicates = async (
   folderName: string,
   currentPath: string
 ): Promise<boolean> => {
-  try {
-    // Generate the folder prefix that would be used for this folder
-    let folderPrefix = currentPath;
+  // Generate the folder prefix that would be used for this folder
+  let folderPrefix = currentPath;
 
-    // Remove leading slash if present
-    if (folderPrefix.startsWith('/')) {
-      folderPrefix = folderPrefix.slice(1);
-    }
-
-    // If path is empty or just root, don't add any prefix
-    if (!folderPrefix || folderPrefix === '' || folderPrefix === '/') {
-      folderPrefix = `${folderName}/`;
-    } else {
-      // Ensure path ends with slash but doesn't start with one
-      if (!folderPrefix.endsWith('/')) {
-        folderPrefix = `${folderPrefix}/`;
-      }
-      folderPrefix = `${folderPrefix}${folderName}/`;
-    }
-
-    // Use fetchDirectoryStructure to check if any objects exist with this prefix
-    const result = await apiS3.fetchDirectoryStructure(folderPrefix, 1);
-
-    // If we find any objects (files or folders) with this prefix, the folder exists
-    return result.files.length > 0 || result.folders.length > 0;
-  } catch {
-    // If there's an error checking, assume it doesn't exist
-    return false;
+  // Remove leading slash if present
+  if (folderPrefix.startsWith('/')) {
+    folderPrefix = folderPrefix.slice(1);
   }
+
+  // If path is empty or just root, don't add any prefix
+  if (!folderPrefix || folderPrefix === '' || folderPrefix === '/') {
+    folderPrefix = `${folderName}/`;
+  } else {
+    // Ensure path ends with slash but doesn't start with one
+    if (!folderPrefix.endsWith('/')) {
+      folderPrefix = `${folderPrefix}/`;
+    }
+    folderPrefix = `${folderPrefix}${folderName}/`;
+  }
+
+  try {
+    return await folderExists(apiS3, folderPrefix);
+  } catch {
+    // Assuming "does not exist" here would upload straight into an existing
+    // folder without the user ever being asked.
+    throw new Error(describeFolderCheckError('the upload'));
+  }
+};
+
+/**
+ * Records a folder we refused to upload because we could not tell whether the
+ * name was already taken.
+ *
+ * The check used to answer "does not exist" on any error, so a network or
+ * permissions blip meant uploading straight into an existing folder. Skipping
+ * the folder is the safe call, but it must be visible - a silent no-op looks
+ * exactly like a successful upload of nothing.
+ */
+const reportFolderCheckFailure = (
+  addUpload: (id: string, upload: UploadProgress) => void,
+  folderName: string,
+  err: unknown
+): void => {
+  const id = `folder-check-failed-${folderName}-${Date.now()}`;
+  addUpload(id, {
+    id,
+    name: folderName,
+    status: 'failed',
+    progress: 0,
+    type: 'folder',
+    error: err instanceof Error ? err.message : 'Could not check whether that name is taken.',
+  });
 };
 
 interface DuplicateDialogState {
@@ -135,6 +158,8 @@ interface UploadProgress {
   status: UploadStatus;
   progress: number;
   type: 'file' | 'folder';
+  /** Why this entry failed. Shown in the operations card. */
+  error?: string;
   parentFolderId?: string; // For files that belong to a folder
   fileIds?: string[]; // For folders, track their file IDs
 }
@@ -449,11 +474,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       for (const folder of processedData.folderStructures) {
         // Check for folder duplicates if API is available
         if (apiS3) {
-          const isDuplicate = await checkForFolderDuplicates(
-            apiS3,
-            folder.name,
-            currentPrefix || ''
-          );
+          let isDuplicate: boolean;
+          try {
+            isDuplicate = await checkForFolderDuplicates(apiS3, folder.name, currentPrefix || '');
+          } catch (err) {
+            reportFolderCheckFailure(addUpload, folder.name, err);
+            continue;
+          }
 
           if (isDuplicate) {
             // Show duplicate dialog for folder
@@ -705,7 +732,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
         // Check for folder duplicates if API is available
         if (apiS3) {
-          const isDuplicate = await checkForFolderDuplicates(apiS3, folder.name, targetPath);
+          let isDuplicate: boolean;
+          try {
+            isDuplicate = await checkForFolderDuplicates(apiS3, folder.name, targetPath);
+          } catch (err) {
+            reportFolderCheckFailure(addUpload, folder.name, err);
+            continue;
+          }
 
           if (isDuplicate) {
             // Show duplicate dialog for folder
