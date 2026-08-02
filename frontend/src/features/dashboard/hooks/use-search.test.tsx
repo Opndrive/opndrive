@@ -53,7 +53,13 @@ const providerB = { id: 'B' } as never;
 describe('useSearch - Rules of Hooks (#82 defect 1)', () => {
   beforeEach(() => {
     mockUseAuthGuard.mockReset();
-    mockedCreateSearchService.mockClear();
+    // mockReset, not mockClear: two tests below install a persistent return
+    // value with mockReturnValue, and mockClear only wipes call history. That
+    // stale value survived into other suites, so both providers received the
+    // same service object and the memoisation assertions silently passed or
+    // failed depending on test order. mockReset also restores the factory
+    // implementation given to vi.fn().
+    mockedCreateSearchService.mockReset();
   });
 
   it('does not throw when apiS3 goes null -> provider on a mounted instance', () => {
@@ -84,7 +90,13 @@ describe('useSearch - Rules of Hooks (#82 defect 1)', () => {
 describe('useSearch - service memoisation (#82 defect 2)', () => {
   beforeEach(() => {
     mockUseAuthGuard.mockReset();
-    mockedCreateSearchService.mockClear();
+    // mockReset, not mockClear: two tests below install a persistent return
+    // value with mockReturnValue, and mockClear only wipes call history. That
+    // stale value survived into other suites, so both providers received the
+    // same service object and the memoisation assertions silently passed or
+    // failed depending on test order. mockReset also restores the factory
+    // implementation given to vi.fn().
+    mockedCreateSearchService.mockReset();
   });
 
   it('builds the search service once across re-renders with an unchanged apiS3', () => {
@@ -128,7 +140,13 @@ describe('useSearch - service memoisation (#82 defect 2)', () => {
 describe('useSearch - readiness and inert behaviour', () => {
   beforeEach(() => {
     mockUseAuthGuard.mockReset();
-    mockedCreateSearchService.mockClear();
+    // mockReset, not mockClear: two tests below install a persistent return
+    // value with mockReturnValue, and mockClear only wipes call history. That
+    // stale value survived into other suites, so both providers received the
+    // same service object and the memoisation assertions silently passed or
+    // failed depending on test order. mockReset also restores the factory
+    // implementation given to vi.fn().
+    mockedCreateSearchService.mockReset();
     useSearchStore.getState().clearCache();
     useSearchStore.getState().setLoading(false);
   });
@@ -177,7 +195,13 @@ describe('useSearch - readiness and inert behaviour', () => {
 describe('useSearch - in-flight search cleanup', () => {
   beforeEach(() => {
     mockUseAuthGuard.mockReset();
-    mockedCreateSearchService.mockClear();
+    // mockReset, not mockClear: two tests below install a persistent return
+    // value with mockReturnValue, and mockClear only wipes call history. That
+    // stale value survived into other suites, so both providers received the
+    // same service object and the memoisation assertions silently passed or
+    // failed depending on test order. mockReset also restores the factory
+    // implementation given to vi.fn().
+    mockedCreateSearchService.mockReset();
     useSearchStore.getState().clearCache();
     useSearchStore.getState().setLoading(false);
   });
