@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { UploadStatus } from '@opndrive/s3-api';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useActiveUploadManager } from '@/hooks/use-auth';
@@ -28,17 +28,40 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const updateUpload = useUploadStore((state) => state.updateUpload);
   const uploadManager = useActiveUploadManager();
 
-  // One executor per manager. The manager is a singleton held in auth context,
-  // so this only rebuilds when the session or upload mode actually changes.
-  const executor = useMemo(
-    () => (uploadManager ? createUploadExecutor(uploadManager) : null),
-    [uploadManager]
-  );
+  const [executor, setExecutor] = useState<UploadExecutor | null>(null);
 
-  // Disposal is keyed on the executor itself rather than the manager, so a
-  // superseded executor unsubscribes before the replacement takes over and the
-  // two never both react to the same event.
-  useEffect(() => () => executor?.dispose(), [executor]);
+  /**
+   * One executor per manager, created in an effect rather than in render.
+   *
+   * `createUploadExecutor` subscribes to the manager, which makes it a side
+   * effect, and side effects in render do not survive React's guarantees. Built
+   * in a `useMemo` it was actively broken under StrictMode: the factory runs
+   * twice, so two executors subscribe, then the simulated unmount disposes the
+   * one React kept - leaving consumers holding an executor with no listeners.
+   * Claims were never committed and never released, in dev, silently. The other
+   * executor's listeners leaked.
+   *
+   * Verified: with the memo version, a progress event after a StrictMode mount
+   * left the claim uncommitted; with this version it commits.
+   */
+  useEffect(() => {
+    if (!uploadManager) {
+      setExecutor(null);
+      return;
+    }
+
+    const next = createUploadExecutor(uploadManager);
+    setExecutor(next);
+
+    return () => {
+      next.dispose();
+      // Functional update so a newer executor installed by the next effect run
+      // is never clobbered. Consumers briefly see null rather than a disposed
+      // executor, which is the safer of the two: a drop in that window is a
+      // no-op instead of an upload whose claims never settle.
+      setExecutor((current) => (current === next ? null : current));
+    };
+  }, [uploadManager]);
 
   useEffect(() => {
     if (!uploadManager) return;

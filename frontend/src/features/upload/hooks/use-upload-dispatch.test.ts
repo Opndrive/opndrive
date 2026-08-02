@@ -22,11 +22,23 @@ import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import { useUploadStore } from '../stores/use-upload-store';
 import type { ProcessedDragData, FolderStructure } from '../types/folder-upload-types';
 import { folderExists } from '@/services/folder-existence';
+import { objectExists } from '@/services/object-existence';
+import { generateUniqueFileName } from '../utils/unique-filename';
 import { createUploadExecutor, type UploadExecutor } from '../services/upload-executor';
 
 vi.mock('@/services/folder-existence', () => ({
   folderExists: vi.fn(),
   describeFolderCheckError: vi.fn(),
+}));
+
+vi.mock('@/services/object-existence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/object-existence')>()),
+  objectExists: vi.fn(),
+}));
+
+vi.mock('../utils/unique-filename', () => ({
+  generateUniqueFileName: vi.fn(),
+  generateUniqueFolderName: vi.fn(),
 }));
 
 /** The executor is injected through context, which is mocked to a test double. */
@@ -36,6 +48,8 @@ vi.mock('../context/upload-context', () => ({
 }));
 
 const mockFolderExists = vi.mocked(folderExists);
+const mockObjectExists = vi.mocked(objectExists);
+const mockUniqueName = vi.mocked(generateUniqueFileName);
 const queue = () => useUploadQueueStore.getState();
 const uploads = () => useUploadStore.getState().uploads;
 
@@ -79,7 +93,10 @@ beforeEach(() => {
   currentExecutor = createUploadExecutor(manager);
   mockFolderExists.mockReset();
   mockFolderExists.mockResolvedValue(false);
-  useUploadStore.setState({ uploads: {} });
+  mockObjectExists.mockReset();
+  mockObjectExists.mockResolvedValue(false);
+  mockUniqueName.mockReset();
+  useUploadStore.setState({ uploads: {}, duplicateQueue: [] });
 });
 
 function dispatch() {
@@ -193,6 +210,150 @@ describe('loose files', () => {
     );
 
     expect(manager.added.map((a) => a.key)).toEqual(['notes.txt', 'photos/a.jpg']);
+  });
+});
+
+describe('loose file collisions', () => {
+  /** Answers whatever prompt the dispatch raises, once one appears. */
+  async function answer(choice: 'replace' | 'keepBoth') {
+    for (let i = 0; i < 50; i++) {
+      const prompt = useUploadStore.getState().duplicateQueue[0];
+      if (prompt) {
+        if (choice === 'replace') prompt.onReplace();
+        else prompt.onKeepBoth();
+        return;
+      }
+      await Promise.resolve();
+    }
+    throw new Error('no duplicate prompt was raised');
+  }
+
+  it('uploads without prompting when nothing is in the way', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), 'docs', apiS3);
+
+    expect(useUploadStore.getState().duplicateQueue).toEqual([]);
+    expect(manager.added.map((a) => a.key)).toEqual(['docs/notes.txt']);
+  });
+
+  it('asks before overwriting an object that already exists', async () => {
+    // S3 PUT overwrites silently, so without this the user loses the old file
+    // with no warning. This prompt existed before the executor pipeline and
+    // was bypassed by it.
+    mockObjectExists.mockResolvedValue(true);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+    await answer('replace');
+    await pending;
+
+    expect(mockObjectExists).toHaveBeenCalledWith(apiS3, 'notes.txt');
+    expect(manager.added.map((a) => a.key)).toEqual(['notes.txt']);
+  });
+
+  it('uploads under a fresh name when the user keeps both', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockResolvedValue('notes (1).txt');
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+    await answer('keepBoth');
+    await pending;
+
+    expect(manager.added.map((a) => a.key)).toEqual(['notes (1).txt']);
+  });
+
+  it('does not upload at all when no free name can be found', async () => {
+    // Keeping both is impossible, and replacing was not what the user asked
+    // for, so the only safe outcome is to leave the object alone.
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockRejectedValue(new Error('exhausted'));
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+    await answer('keepBoth');
+    const { notices } = await pending;
+
+    expect(manager.added).toEqual([]);
+    expect(notices.map((n) => n.kind)).toEqual(['skipped']);
+  });
+
+  it('uploads but warns when the check itself fails', async () => {
+    // Indeterminate is not "free". The old code caught this and returned
+    // false, so a throttled HEAD silently overwrote a real object.
+    mockObjectExists.mockRejectedValue(new Error('throttled'));
+    const dispatchDrop = dispatch();
+
+    const { notices } = await dispatchDrop(
+      drop({ individualFiles: [makeFile('notes.txt')] }),
+      '',
+      apiS3
+    );
+
+    expect(manager.added.map((a) => a.key)).toEqual(['notes.txt']);
+    expect(notices.map((n) => n.kind)).toEqual(['unverified']);
+    expect(useUploadStore.getState().duplicateQueue).toEqual([]);
+  });
+
+  it('does not object-check files inside a folder', async () => {
+    // Those collide at the prefix level, which planning already resolved.
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ folderStructures: [folder('photos')] }), '', apiS3);
+
+    expect(mockObjectExists).not.toHaveBeenCalled();
+  });
+
+  it('skips the check entirely with no api', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', null);
+
+    expect(mockObjectExists).not.toHaveBeenCalled();
+    expect(manager.added.map((a) => a.key)).toEqual(['notes.txt']);
+  });
+
+  it('checks several files at once rather than one after another', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    mockObjectExists.mockImplementation(async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return false;
+    });
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(
+      drop({ individualFiles: Array.from({ length: 8 }, (_, i) => makeFile(`f${i}.txt`)) }),
+      '',
+      apiS3
+    );
+
+    expect(peak).toBeGreaterThan(1);
+    expect(mockObjectExists).toHaveBeenCalledTimes(8);
+  });
+
+  it('asks one question at a time', async () => {
+    // Five simultaneous modals would be unusable; the queue holds them.
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    await answer('keepBoth');
+    expect(useUploadStore.getState().duplicateQueue.length).toBeLessThanOrEqual(1);
+    await answer('keepBoth');
+    await pending;
+
+    expect(manager.added.map((a) => a.key)).toEqual(['copy-a.txt', 'copy-b.txt']);
   });
 });
 
