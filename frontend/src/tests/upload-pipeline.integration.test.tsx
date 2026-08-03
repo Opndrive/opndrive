@@ -64,13 +64,37 @@ function mountPipeline() {
   return result;
 }
 
-/** Lets queued microtasks and the manager's detached workers finish. */
-async function settle(times = 12) {
-  for (let i = 0; i < times; i++) {
+/**
+ * Drains microtasks until `predicate` holds, then returns.
+ *
+ * Deliberately not a fixed number of ticks. `addUpload` starts a detached
+ * worker, so the test has to wait for something it does not hold a promise to,
+ * and a count that happens to be enough today silently becomes too few the
+ * moment an await is added to the chain - failing in a way that reads like a
+ * flake rather than the regression it is. Naming the condition also documents
+ * what each test is actually waiting for.
+ *
+ * Deliberately not a timer either. Nothing in this pipeline is wall-clock
+ * driven, so polling on time would only add slack that varies with CI load.
+ */
+async function until(predicate: () => boolean, label: string, maxDrains = 500) {
+  for (let i = 0; i < maxDrains; i++) {
+    if (predicate()) return;
     await act(async () => {
       await Promise.resolve();
     });
   }
+  throw new Error(`timed out waiting for: ${label}`);
+}
+
+/** Waits for the whole drop to come to rest: nothing queued, nothing in flight. */
+async function untilIdle(bucketRef: FakeBucket, label = 'uploads to finish') {
+  await until(
+    () =>
+      bucketRef.openUploads.size === 0 &&
+      Object.values(uploads()).every((u) => u.type === 'folder' || u.status !== 'queued'),
+    label
+  );
 }
 
 /** Builds a real drop payload by running extraction over mocked entry APIs. */
@@ -112,7 +136,7 @@ describe('1. the full happy path', () => {
     await act(async () => {
       outcome = await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     // The bucket really has the objects, under the planned prefix.
     expect([...bucket.objects.keys()].sort()).toEqual(['photos/a.jpg', 'photos/b.jpg']);
@@ -153,7 +177,7 @@ describe('1. the full happy path', () => {
     await act(async () => {
       await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     // A clean drop produces no notices, so nothing here should have rendered.
     expect(queue().notices).toEqual([]);
@@ -175,7 +199,7 @@ describe('2. the collision and suffix path', () => {
     await act(async () => {
       await dispatch.current(combined, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     // Both survived. Before the two-phase reservation the second overwrote
     // the first, because neither existed in the bucket when it was checked.
@@ -191,13 +215,13 @@ describe('2. the collision and suffix path', () => {
     await act(async () => {
       await dispatch.current(await dropOfFolder('photos', [{ path: 'a.jpg' }]), '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
     expect([...bucket.objects.keys()]).toEqual(['photos/a.jpg']);
 
     await act(async () => {
       await dispatch.current(await dropOfFolder('photos', [{ path: 'b.jpg' }]), '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect([...bucket.objects.keys()].sort()).toEqual(['photos (1)/b.jpg', 'photos/a.jpg']);
   });
@@ -209,7 +233,7 @@ describe('2. the collision and suffix path', () => {
     await act(async () => {
       await dispatch.current(await dropOfFolder('photos', [{ path: 'a.jpg' }]), '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(bucket.objects.has('photos (1)/a.jpg')).toBe(true);
     expect(bucket.objects.has('photos (1)/photos/a.jpg')).toBe(false);
@@ -228,7 +252,7 @@ describe('3. the permission lock and skip path', () => {
     await act(async () => {
       await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(data.skipped).toHaveLength(2);
     expect([...bucket.objects.keys()]).toEqual(['photos/ok.jpg']);
@@ -247,7 +271,7 @@ describe('3. the permission lock and skip path', () => {
     await act(async () => {
       await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(bucket.objects.size).toBe(0);
     expect(queue().notices.length).toBeGreaterThan(0);
@@ -264,7 +288,7 @@ describe('3. the permission lock and skip path', () => {
     await act(async () => {
       await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     render(<QueueNotices />);
     fireEvent.click(screen.getByText('Clear all'));
@@ -284,7 +308,7 @@ describe('4. the cancellation and claim release path', () => {
     await act(async () => {
       outcome = await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle(4);
+    await until(() => bucket.openUploads.size > 0, 'a multipart upload to be open');
 
     // Mid-stream: the multipart upload exists, no bytes are committed.
     expect(bucket.openUploads.size).toBeGreaterThan(0);
@@ -296,7 +320,7 @@ describe('4. the cancellation and claim release path', () => {
       await Promise.all(outcome.dispatched[0]!.files.map((f) => manager.cancelUpload(f.uploadId)));
     });
     bucket.release();
-    await settle();
+    await untilIdle(bucket);
 
     // S3 was told to abort, and the name is available again.
     expect(bucket.commands).toContain('AbortMultipartUploadCommand');
@@ -319,19 +343,19 @@ describe('4. the cancellation and claim release path', () => {
         bucket.apiS3
       );
     });
-    await settle(4);
+    await until(() => bucket.openUploads.size > 0, 'a multipart upload to be open');
 
     await act(async () => {
       await Promise.all(outcome.dispatched[0]!.files.map((f) => manager.cancelUpload(f.uploadId)));
     });
     bucket.release();
-    await settle();
+    await untilIdle(bucket);
     expect(queue().claimedPrefixes()).toEqual([]);
 
     await act(async () => {
       await dispatch.current(await dropOfFolder('photos', [{ path: 'a.jpg' }]), '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect([...bucket.objects.keys()]).toEqual(['photos/a.jpg']);
   });
@@ -345,13 +369,13 @@ describe('4. the cancellation and claim release path', () => {
     await act(async () => {
       outcome = await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
     expect(queue().claims[0]!.committed).toBe(true);
 
     await act(async () => {
       await manager.cancelUpload(outcome.dispatched[0]!.files[0]!.uploadId);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(queue().claimedPrefixes()).toEqual(['photos/']);
   });
@@ -366,7 +390,7 @@ describe('5. the network failure and unverified path', () => {
     await act(async () => {
       await dispatch.current(data, '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     // One check, not the 101 the old conflated catch produced.
     expect(bucket.listingCalls()).toBe(1);
@@ -381,7 +405,7 @@ describe('5. the network failure and unverified path', () => {
     await act(async () => {
       await dispatch.current(await dropOfFolder('photos', [{ path: 'a.jpg' }]), '', bucket.apiS3);
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(queue().notices.map((n) => n.kind)).toEqual(['unverified']);
     // Never "renamed" - nothing was renamed, and claiming otherwise would be a
@@ -411,7 +435,7 @@ describe('5. the network failure and unverified path', () => {
         bucket.apiS3
       );
     });
-    await settle();
+    await untilIdle(bucket);
 
     expect(bucket.listingCalls()).toBe(3);
     expect([...bucket.objects.keys()].sort()).toEqual(['a/x.jpg', 'b/y.jpg', 'c/z.jpg']);
