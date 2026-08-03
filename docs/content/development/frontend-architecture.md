@@ -70,8 +70,7 @@ features/dashboard/components/
 │   │   ├── sidebar-nav-item.tsx
 │   │   └── sidebar-create-button.tsx
 │   └── breadcrumb/           # Navigation breadcrumbs
-│       ├── folder-breadcrumb.tsx
-│       └── enhanced-folder-breadcrumb.tsx
+│       └── enhanced-folder-breadcrumb.tsx  # Browse trail, built on shared/ui/breadcrumb
 ├── ui/                       # Business UI Components
 │   ├── items/               # File/Folder display components
 │   │   ├── file-item-grid.tsx    # Grid view for files
@@ -240,18 +239,31 @@ const getS3Prefix = (path?: string) => {
 
 ### Breadcrumb Generation
 
-```typescript
-function generateBreadcrumbs(path?: string) {
-  if (!path) return [];
+Callers turn a prefix into crumbs and hand them to the shared `<Breadcrumb />`
+(`shared/components/ui/breadcrumb.tsx`). A crumb navigates through an `href` or
+through a callback, so the same component serves the browse trail (which pushes
+a route) and the search trail (which only moves the store's location):
 
-  const segments = path.split('/');
-  return segments.map((segment, index) => ({
-    label: segment,
-    href: `/dashboard/browse?path=${segments.slice(0, index + 1).join('/')}`,
-    isActive: index === segments.length - 1,
-  }));
-}
+```typescript
+const segments = prefixToPathSegments(prefix);
+
+const items: BreadcrumbItem[] = [
+  { name: 'My Drive', onSelect: () => navigate([]) },
+  ...segments.map((segment, index) => ({
+    name: segment,
+    onSelect: () => navigate(segments.slice(0, index + 1)),
+  })),
+];
+
+<Breadcrumb items={items} />;
 ```
+
+The component owns the two rules that keep a deep path on one line: a name over
+`maxLabelLength` (20) is truncated and carries the full name in a tooltip, and a
+trail over `maxVisibleItems` (5) collapses its middle into an overflow menu that
+still reaches every folder it hid. It is deliberately not a scroll container -
+the menu is absolutely positioned, so an `overflow-x: auto` ancestor would clip
+it.
 
 ## Styling Architecture
 
