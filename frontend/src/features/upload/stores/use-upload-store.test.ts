@@ -152,7 +152,6 @@ describe('clearing', () => {
 
   it('wipes every session-scoped collection on logout', () => {
     store().addDeleteOperation('d1', deletion());
-    store().createUploadBatch('file', ['u1']);
     store().showDuplicateDialog({ name: 'x', type: 'file' }, vi.fn(), vi.fn());
 
     store().clearSessionData();
@@ -160,7 +159,6 @@ describe('clearing', () => {
     // Records from one bucket must not surface in the next session.
     expect(store().uploads).toEqual({});
     expect(store().deletes).toEqual({});
-    expect(store().batches).toEqual({});
     expect(store().duplicateQueue).toEqual([]);
   });
 });
@@ -356,99 +354,6 @@ describe('delete operations', () => {
     store().removeDeleteOperation('d1');
 
     expect(Object.keys(store().deletes)).toEqual(['d2']);
-  });
-});
-
-describe('batch tracking', () => {
-  it('creates a batch sized to its uploads', () => {
-    const batchId = store().createUploadBatch('file', ['a', 'b', 'c']);
-
-    expect(store().getBatch(batchId)).toMatchObject({
-      type: 'file',
-      uploadIds: ['a', 'b', 'c'],
-      totalCount: 3,
-      completedCount: 0,
-      isComplete: false,
-      hasTriggeredRefresh: false,
-    });
-  });
-
-  it('copies the id list instead of holding the caller array', () => {
-    const ids = ['a', 'b'];
-    const batchId = store().createUploadBatch('file', ids);
-
-    ids.push('c');
-
-    // Holding the caller's array would let a later mutation silently change
-    // totalCount's meaning after the fact.
-    expect(store().getBatch(batchId)!.uploadIds).toEqual(['a', 'b']);
-  });
-
-  it('gives each batch a distinct id', () => {
-    const a = store().createUploadBatch('file', ['x']);
-    const b = store().createUploadBatch('file', ['y']);
-
-    expect(a).not.toBe(b);
-    expect(Object.keys(store().batches)).toHaveLength(2);
-  });
-
-  it('counts completions', () => {
-    const batchId = store().createUploadBatch('file', ['a', 'b']);
-
-    store().updateBatchProgress(batchId, 'a', true);
-
-    expect(store().getBatch(batchId)).toMatchObject({ completedCount: 1, isComplete: false });
-  });
-
-  it('marks the batch complete on the last upload', () => {
-    const batchId = store().createUploadBatch('file', ['a', 'b']);
-
-    store().updateBatchProgress(batchId, 'a', true);
-    store().updateBatchProgress(batchId, 'b', true);
-
-    expect(store().isBatchComplete(batchId)).toBe(true);
-  });
-
-  it('does not count an upload that did not complete', () => {
-    const batchId = store().createUploadBatch('file', ['a', 'b']);
-
-    store().updateBatchProgress(batchId, 'a', false);
-
-    expect(store().getBatch(batchId)!.completedCount).toBe(0);
-  });
-
-  it('ignores progress for an unknown batch', () => {
-    expect(() => store().updateBatchProgress('nope', 'a', true)).not.toThrow();
-    expect(store().batches).toEqual({});
-  });
-
-  it('reports an unknown batch as incomplete', () => {
-    expect(store().isBatchComplete('nope')).toBe(false);
-    expect(store().getBatch('nope')).toBeUndefined();
-  });
-
-  it('keeps recent and in-flight batches during cleanup', () => {
-    const active = store().createUploadBatch('file', ['a', 'b']);
-    const justFinished = store().createUploadBatch('file', ['c']);
-    store().updateBatchProgress(justFinished, 'c', true);
-
-    store().cleanupCompletedBatches();
-
-    expect(Object.keys(store().batches).sort()).toEqual([active, justFinished].sort());
-  });
-
-  it('drops completed batches older than five minutes', () => {
-    vi.useFakeTimers();
-    const stale = store().createUploadBatch('file', ['a']);
-    store().updateBatchProgress(stale, 'a', true);
-    const active = store().createUploadBatch('file', ['b', 'c']);
-
-    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
-    store().cleanupCompletedBatches();
-
-    // Unfinished batches are kept regardless of age - dropping one would lose
-    // the completion tracking for uploads still running.
-    expect(Object.keys(store().batches)).toEqual([active]);
   });
 });
 

@@ -588,7 +588,14 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
         });
       }
 
-      set((state) => ({ notices: trimNotices([...state.notices, ...notices]) }));
+      // Only touch state when there is something to add. Spreading
+      // unconditionally produced a new array identity on every drop, so a
+      // clean drop - the common case - re-rendered every notice subscriber for
+      // a list that had not changed.
+      if (notices.length > 0) {
+        set((state) => ({ notices: trimNotices([...state.notices, ...notices]) }));
+      }
+
       return { planned, notices };
     } catch (error) {
       // Per-folder check failures are absorbed above, so the only throw that
