@@ -4,19 +4,6 @@ import { UploadStatus, UploadManager, SignedUrlUploadManager } from '@opndrive/s
 import { create } from 'zustand';
 import { useDriveStore } from '@/context/data-context';
 
-// Enhanced batch tracking types
-interface UploadBatch {
-  id: string;
-  type: 'file' | 'folder' | 'mixed';
-  uploadIds: string[];
-  completedCount: number;
-  totalCount: number;
-  createdAt: number;
-  lastActivity: number;
-  isComplete: boolean;
-  hasTriggeredRefresh: boolean; // Track if this batch already triggered a refresh
-}
-
 interface RefreshState {
   isRefreshing: boolean;
   lastRefreshAttempt: number;
@@ -85,7 +72,6 @@ interface UploadStore {
   uploadManager: UploadManager | SignedUrlUploadManager | null;
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
-  batches: Record<string, UploadBatch>;
   /** Pending duplicate questions, oldest first. The UI renders index 0. */
   duplicateQueue: DuplicatePrompt[];
   setUploadManager: (manager: UploadManager | SignedUrlUploadManager | null) => void;
@@ -134,13 +120,6 @@ interface UploadStore {
   /** Dismisses the head prompt, revealing the next one. */
   hideDuplicateDialog: () => void;
 
-  // Batch tracking methods
-  createUploadBatch: (type: UploadBatch['type'], uploadIds: string[]) => string;
-  updateBatchProgress: (batchId: string, uploadId: string, isCompleted: boolean) => void;
-  getBatch: (batchId: string) => UploadBatch | undefined;
-  isBatchComplete: (batchId: string) => boolean;
-  cleanupCompletedBatches: () => void;
-
   // Enhanced data refresh methods
   refreshDataAfterUploadBatch: () => Promise<void>;
   forceRefreshData: () => Promise<void>;
@@ -153,7 +132,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   uploads: {},
   deletes: {},
-  batches: {},
   duplicateQueue: [],
 
   setUploads: (uploads: Record<string, UploadProgress>) => set({ uploads }),
@@ -241,7 +219,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     set({
       uploads: {},
       deletes: {},
-      batches: {},
       duplicateQueue: [],
     }),
 
@@ -381,79 +358,6 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     set((state) => ({
       duplicateQueue: state.duplicateQueue.slice(1),
     })),
-
-  // Batch tracking methods
-  createUploadBatch: (type: UploadBatch['type'], uploadIds: string[]): string => {
-    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const now = Date.now();
-
-    const batch: UploadBatch = {
-      id: batchId,
-      type,
-      uploadIds: [...uploadIds],
-      completedCount: 0,
-      totalCount: uploadIds.length,
-      createdAt: now,
-      lastActivity: now,
-      isComplete: false,
-      hasTriggeredRefresh: false,
-    };
-
-    set((state) => ({
-      batches: {
-        ...state.batches,
-        [batchId]: batch,
-      },
-    }));
-
-    return batchId;
-  },
-
-  updateBatchProgress: (batchId: string, uploadId: string, isCompleted: boolean) => {
-    set((state) => {
-      const batch = state.batches[batchId];
-      if (!batch) return state;
-
-      const _wasAlreadyCompleted = batch.isComplete;
-      const newCompletedCount = isCompleted ? batch.completedCount + 1 : batch.completedCount;
-
-      const isNowComplete = newCompletedCount >= batch.totalCount;
-
-      return {
-        batches: {
-          ...state.batches,
-          [batchId]: {
-            ...batch,
-            completedCount: newCompletedCount,
-            lastActivity: Date.now(),
-            isComplete: isNowComplete,
-          },
-        },
-      };
-    });
-  },
-
-  getBatch: (batchId: string): UploadBatch | undefined => {
-    return get().batches[batchId];
-  },
-
-  isBatchComplete: (batchId: string): boolean => {
-    const batch = get().batches[batchId];
-    return batch?.isComplete ?? false;
-  },
-
-  cleanupCompletedBatches: () => {
-    const now = Date.now();
-    const maxAge = 5 * 60 * 1000; // 5 minutes
-
-    set((state) => ({
-      batches: Object.fromEntries(
-        Object.entries(state.batches).filter(([, batch]) => {
-          return !batch.isComplete || now - batch.lastActivity < maxAge;
-        })
-      ),
-    }));
-  },
 
   // Simple immediate data refresh on upload completion
   refreshDataAfterUploadBatch: async (): Promise<void> => {
