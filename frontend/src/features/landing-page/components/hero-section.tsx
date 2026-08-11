@@ -8,6 +8,7 @@ import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
+import { DiscordCommunityLink } from './discord-community-link';
 import { DOCS_URL } from '@/config/links';
 
 const navItems = [
@@ -114,8 +115,10 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
       {/* sentinel for navbar intersection observer */}
       <div id="hero-anchor" className="absolute left-0 right-0 bottom-0 h-2 pointer-events-none" />
 
-      {/* Static navbar at bottom of hero section - this one shows initially */}
-      <div className="w-full flex justify-center pb-4 sm:pb-6 lg:pb-8 px-4">
+      {/* Static navbar at bottom of hero section - this one shows initially.
+          z-50 keeps it above the Discord card's z-40 page backdrop, so the
+          navbar stays sharp while the rest of the page blurs behind it. */}
+      <div className="relative z-50 w-full flex justify-center pb-4 sm:pb-6 lg:pb-8 px-4">
         {/* Static navbar visible only on large screens; kept in DOM for sticky detection */}
         <div
           id="static-navbar"
@@ -180,6 +183,13 @@ export default function HeroSection({ handleGetStarted, isLoading }: HeroSection
                   />
                 )}
               </a>
+
+              {/* Discord Community Link */}
+              <DiscordCommunityLink
+                placement="top"
+                className="flex items-center gap-1.5 lg:gap-2 px-1.5 lg:px-2 py-1"
+                iconClassName="w-4 lg:w-5 h-4 lg:h-5"
+              />
 
               <ThemeToggleCustom />
             </div>

@@ -6,6 +6,7 @@ import { FaGithub } from 'react-icons/fa';
 import { Menu, X } from 'lucide-react';
 import HeroSection from '@/features/landing-page/components/hero-section';
 import Navbar from '@/features/landing-page/components/navbar';
+import { DiscordCommunityLink } from '@/features/landing-page/components/discord-community-link';
 import FeaturesSection from '@/features/landing-page/components/feature-section';
 import WorkSmarterSection from '@/features/landing-page/components/work-smarter-section';
 import FAQSection from '@/features/landing-page/components/faq-section';
@@ -152,6 +153,12 @@ export default function LandingPage() {
                     <span className="ml-auto text-xs tabular-nums">{stars.toLocaleString()}</span>
                   )}
                 </a>
+
+                {/* Discord Community - taps open the Bento sheet */}
+                <DiscordCommunityLink
+                  variant="row"
+                  onOpenSheet={() => setIsMobileMenuOpen(false)}
+                />
 
                 {/* Theme Toggle */}
                 <div className="flex items-center justify-between px-3 py-2">
