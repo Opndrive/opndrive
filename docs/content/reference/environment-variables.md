@@ -13,6 +13,7 @@ nothing in the codebase reads them.
 | ------------------------- | -------- | ------------------------------------------------------ | --------------------------------------------------------- |
 | `NEXT_PUBLIC_SITE_URL`    | No       | `https://opndrive.app`                                 | `sitemap.ts`, `robots.ts`, SEO metadata                   |
 | `NEXT_PUBLIC_ENABLE_BLOG` | No       | enabled (anything except the literal string `'false'`) | Toggles the `/blog` routes and their WordPress dependency |
+| `NEXT_PUBLIC_DISCORD_URL` | No       | `https://discord.gg/sTVSZUumz`                         | Discord invite behind the landing page's Discord icon     |
 
 ## Blog Only (WordPress Integration)
 
