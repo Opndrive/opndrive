@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <linearGradient id="rocket-body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+    <linearGradient id="rocket-wing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="flame-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FACC15"/>
+      <stop offset="50%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+    <filter id="amber-glow" x="16" y="16" width="224" height="224" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#F97316" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#amber-glow)" transform="rotate(-15 128 128)">
+    <!-- Rocket Flame Trail -->
+    <path d="M128 176C128 212 108 232 108 232C108 232 148 232 148 232C148 232 128 212 128 176Z" fill="url(#flame-grad)"/>
+    
+    <!-- Rocket Wings -->
+    <path d="M84 140L60 176H96L84 140Z" fill="url(#rocket-wing)"/>
+    <path d="M172 140L196 176H160L172 140Z" fill="url(#rocket-wing)"/>
+
+    <!-- Main Capsule -->
+    <path d="M128 36C96 76 96 140 96 168H160C160 140 160 76 128 36Z" fill="url(#rocket-body)"/>
+
+    <!-- Rocket Nose Cone -->
+    <path d="M128 36C112 56 104 80 102 92H154C152 80 144 56 128 36Z" fill="#EF4444"/>
+
+    <!-- Glass Porthole -->
+    <circle cx="128" cy="118" r="16" fill="#0EA5E9" stroke="#E0F2FE" stroke-width="4"/>
+  </g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <linearGradient id="shield-grad" x1="40" y1="32" x2="216" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB7185"/>
+      <stop offset="50%" stop-color="#E11D48"/>
+      <stop offset="100%" stop-color="#9F1239"/>
+    </linearGradient>
+    <linearGradient id="bug-core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE4E6"/>
+      <stop offset="100%" stop-color="#FECDD3"/>
+    </linearGradient>
+    <filter id="rose-glow" x="16" y="16" width="224" height="224" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#E11D48" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#rose-glow)">
+    <!-- 3D Shield Base -->
+    <path d="M128 36L200 68V128C200 174.394 169.29 215.358 128 228C86.71 215.358 56 174.394 56 128V68L128 36Z" fill="url(#shield-grad)"/>
+    
+    <!-- Inner Bug Body -->
+    <circle cx="128" cy="116" r="28" fill="url(#bug-core)"/>
+    <circle cx="128" cy="80" r="18" fill="url(#bug-core)"/>
+
+    <!-- Bug Antennae -->
+    <path d="M118 66L104 50" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M138 66L152 50" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Bug Legs -->
+    <path d="M92 108H104M152 108H164" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M96 128L84 136M160 128L172 136" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Floating Wrench Overlay -->
+    <rect x="136" y="136" width="64" height="20" rx="10" transform="rotate(-45 136 136)" fill="#FBBF24"/>
+    <circle cx="178" cy="136" r="14" fill="#D97706"/>
+    <circle cx="178" cy="136" r="6" fill="#78350F"/>
+  </g>
+</svg>

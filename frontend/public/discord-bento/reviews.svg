@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <linearGradient id="card-grad" x1="40" y1="30" x2="216" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="git-cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#0891B2"/>
+    </linearGradient>
+    <linearGradient id="check-emerald" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="glow-pr" x="20" y="20" width="216" height="216" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#0891B2" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#glow-pr)">
+    <!-- Main Code Card Container -->
+    <rect x="44" y="36" width="168" height="184" rx="28" fill="url(#card-grad)" stroke="#334155" stroke-width="4"/>
+    
+    <!-- Code Lines Mockup -->
+    <rect x="72" y="68" width="60" height="10" rx="5" fill="#475569" />
+    <rect x="72" y="92" width="112" height="10" rx="5" fill="#334155" />
+    <rect x="72" y="116" width="88" height="10" rx="5" fill="#334155" />
+
+    <!-- Git Branch Line -->
+    <path d="M88 144V180" stroke="url(#git-cyan)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M88 160C110 160 118 144 140 144" stroke="url(#git-cyan)" stroke-width="8" stroke-linecap="round"/>
+    
+    <!-- Git Nodes -->
+    <circle cx="88" cy="144" r="10" fill="#38BDF8"/>
+    <circle cx="88" cy="180" r="10" fill="#38BDF8"/>
+    <circle cx="140" cy="144" r="10" fill="#38BDF8"/>
+
+    <!-- Floating 3D Checkmark Badge -->
+    <circle cx="176" cy="176" r="32" fill="url(#check-emerald)" />
+    <path d="M162 176L172 186L192 164" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
