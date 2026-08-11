@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <clipPath id="a"><circle cx="32" cy="32" r="32"/></clipPath>
+  </defs>
+  <g clip-path="url(#a)">
+    <rect width="64" height="64" fill="#10B981"/>
+    <ellipse cx="32" cy="60" rx="21" ry="17" fill="#E0AC69"/>
+    <circle cx="32" cy="26" r="11" fill="#E0AC69"/>
+    <path d="M21 26a11 11 0 0 1 22 0c0-4-2-8-5-9-2 3-10 3-13 2-3 2-4 4-4 7Z" fill="#7A3B14"/>
+  </g>
+</svg>
