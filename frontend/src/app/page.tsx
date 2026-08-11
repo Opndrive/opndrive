@@ -6,7 +6,7 @@ import { FaGithub } from 'react-icons/fa';
 import { Menu, X } from 'lucide-react';
 import HeroSection from '@/features/landing-page/components/hero-section';
 import Navbar from '@/features/landing-page/components/navbar';
-import { DiscordCommunityLink } from '@/features/landing-page/components/discord-community-link';
+import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import FeaturesSection from '@/features/landing-page/components/feature-section';
 import WorkSmarterSection from '@/features/landing-page/components/work-smarter-section';
 import FAQSection from '@/features/landing-page/components/faq-section';

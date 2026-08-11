@@ -8,7 +8,7 @@ import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
-import { DiscordCommunityLink } from './discord-community-link';
+import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import { DOCS_URL } from '@/config/links';
 
 const navItems = [

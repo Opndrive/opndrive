@@ -14,26 +14,54 @@ import { DiscordBentoCard } from './discord-bento-card';
 const CLOSE_DELAY_MS = 200;
 
 /**
- * Hand-drawn squiggle tying the navbar icon to the card. Inlined rather than
- * kept as a file so it can stroke with `currentColor` and follow the theme.
- * Drawn tail-first (icon end) to tip (card end), so it sketches itself in the
- * direction it points; the parent flips it vertically for the downward
- * placement.
+ * Hand-drawn squiggles tying the trigger to the card, drawn tail-first from the
+ * trigger end so each sketches itself in the direction it points.
+ *
+ * `vertical` rises from a navbar icon into a card above it; the parent mirrors
+ * it for the downward placement. `horizontal` runs sideways out of the sidebar
+ * row into a card to its right.
  */
-function ConnectorArrow({ className }: { className?: string }) {
+const ARROW_ART = {
+  vertical: {
+    viewBox: '0 0 112 64',
+    curve: 'M10 58C18 54 26 56 34 50C44 43 40 34 50 30C60 26 76 32 84 26C92 18 94 10 96 4',
+    head: 'M98 16L96 4L87 12',
+  },
+  horizontal: {
+    viewBox: '0 0 64 48',
+    curve: 'M4 40C12 37 14 43 22 38C30 33 26 26 34 22C42 18 52 21 58 14',
+    head: 'M56 26L58 14L47 18',
+  },
+} as const;
+
+/**
+ * Inlined rather than kept as a file so it can stroke with `currentColor` and
+ * follow the theme.
+ */
+function ConnectorArrow({
+  orientation = 'vertical',
+  className,
+  style,
+}: {
+  orientation?: keyof typeof ARROW_ART;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const art = ARROW_ART[orientation];
   return (
     <motion.svg
-      viewBox="0 0 112 64"
+      viewBox={art.viewBox}
       fill="none"
       aria-hidden="true"
-      className={cn('pointer-events-none absolute text-discord-brand', className)}
+      className={cn('pointer-events-none text-discord-brand', className)}
+      style={style}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, transition: { duration: 0.12 } }}
     >
-      {/* the squiggle draws itself from the icon, then the head pops on at the card */}
+      {/* the squiggle draws itself, then the head pops on at the card end */}
       <motion.path
-        d="M10 58C18 54 26 56 34 50C44 43 40 34 50 30C60 26 76 32 84 26C92 18 94 10 96 4"
+        d={art.curve}
         stroke="currentColor"
         strokeWidth="2.5"
         strokeLinecap="round"
@@ -42,7 +70,7 @@ function ConnectorArrow({ className }: { className?: string }) {
         transition={{ duration: 0.45, ease: 'easeOut' }}
       />
       <motion.path
-        d="M98 16L96 4L87 12"
+        d={art.head}
         stroke="currentColor"
         strokeWidth="2.5"
         strokeLinecap="round"
@@ -55,14 +83,19 @@ function ConnectorArrow({ className }: { className?: string }) {
   );
 }
 
+/** Distance between trigger and card, and so the span the connector covers. */
+const GAP_PX = 64;
+
 interface DiscordCommunityLinkProps {
   /** Which side of the trigger the card opens on. The hero navbar sits at the
-   *  bottom of the viewport, so it opens upward; the sticky navbar opens down. */
-  placement?: 'top' | 'bottom';
-  /** `icon` is the navbar glyph with the hover card; `row` is the labelled
-   *  full-width entry used inside the mobile hamburger menu, which always
-   *  opens the bottom sheet rather than a hover card. */
-  variant?: 'icon' | 'row';
+   *  bottom of the viewport, so it opens upward; the sticky navbar opens down;
+   *  the dashboard sidebar opens sideways out of its own column. */
+  placement?: 'top' | 'bottom' | 'right';
+  /** `icon` is the navbar glyph with the hover card; `sidebar` is the labelled
+   *  full-width row in the dashboard sidebar, also with the card; `row` is the
+   *  entry inside the mobile hamburger menu, which always opens the bottom
+   *  sheet rather than a hover card. */
+  variant?: 'icon' | 'row' | 'sidebar';
   /** Classes for the trigger anchor - lets each navbar match its GitHub icon. */
   className?: string;
   /** Classes for the Discord glyph itself, again mirroring the GitHub icon. */
@@ -83,6 +116,9 @@ export function DiscordCommunityLink({
   const [isTouch, setIsTouch] = useState(false);
   const [mounted, setMounted] = useState(false);
   const closeTimer = useRef<number | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  // Viewport coords of the trigger's right edge, for the portalled side card.
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
 
   // Resolved after mount so SSR and first client render agree.
   useEffect(() => {
@@ -97,8 +133,29 @@ export function DiscordCommunityLink({
     }
   }, []);
 
-  // The menu row is a tap target only - it never shows the hover card.
-  const hoverEnabled = variant === 'icon' && !isTouch;
+  // The mobile menu row is a tap target only - it never shows the hover card.
+  const hoverEnabled = variant !== 'row' && !isTouch;
+
+  /**
+   * The sidebar clips its overflow on the x axis, so the side card cannot be an
+   * absolutely positioned child - it is portalled out and pinned to the
+   * trigger's measured position instead. Re-measured on scroll and resize so it
+   * tracks the trigger while open.
+   */
+  useEffect(() => {
+    if (!isOpen || placement !== 'right') return;
+    const measure = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setAnchor({ left: rect.right, bottom: window.innerHeight - rect.bottom });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [isOpen, placement]);
 
   const open = useCallback(() => {
     cancelClose();
@@ -133,9 +190,10 @@ export function DiscordCommunityLink({
   };
 
   /**
-   * Page backdrop for the desktop hover card. Portalled to `body` and pinned at
-   * z-40, one layer below the navbars' z-50, so the page behind blurs while the
-   * navbar and the card itself - which paint above it - stay perfectly sharp.
+   * Page backdrop for the desktop hover card. Portalled to `body` and pinned
+   * one layer below whichever chrome holds the trigger, so the page behind
+   * blurs while that chrome and the card - which paint above it - stay sharp.
+   * The landing navbars sit at z-50; the dashboard navbar and sidebar at z-30.
    * Pointer-events are off so it can never swallow the hover-out that closes it.
    */
   const backdrop =
@@ -149,8 +207,46 @@ export function DiscordCommunityLink({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="pointer-events-none fixed inset-0 z-40 hidden backdrop-blur-md lg:block"
+            className={cn(
+              'pointer-events-none fixed inset-0 hidden backdrop-blur-md lg:block',
+              placement === 'right' ? 'z-20' : 'z-40'
+            )}
           />
+        )}
+      </AnimatePresence>,
+      document.body
+    );
+
+  /**
+   * Card and connector for the sidebar placement, portalled past the sidebar's
+   * overflow clip. The GAP_PX of left padding sits inside the hover region, so
+   * the cursor can cross to the card without spending the close grace period.
+   */
+  const sidePopover =
+    mounted &&
+    placement === 'right' &&
+    createPortal(
+      <AnimatePresence>
+        {isOpen && anchor && (
+          <>
+            <ConnectorArrow
+              orientation="horizontal"
+              className="fixed z-40 hidden h-12 w-16 lg:block"
+              style={{ left: anchor.left, bottom: anchor.bottom + 4 }}
+            />
+            <motion.div
+              initial={{ opacity: 0, x: -6, scale: 0.97 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -6, scale: 0.97 }}
+              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+              className="fixed z-40 hidden lg:block"
+              style={{ left: anchor.left, bottom: anchor.bottom, paddingLeft: GAP_PX }}
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
+            >
+              <DiscordBentoCard className="w-[420px] max-w-[calc(100vw-20rem)]" />
+            </motion.div>
+          </>
         )}
       </AnimatePresence>,
       document.body
@@ -193,6 +289,39 @@ export function DiscordCommunityLink({
       </AnimatePresence>
     </Dialog.Root>
   );
+
+  if (variant === 'sidebar') {
+    return (
+      <>
+        <div
+          ref={triggerRef}
+          className={cn('relative flex min-w-0 flex-1', className)}
+          onMouseEnter={open}
+          onMouseLeave={scheduleClose}
+          onFocus={open}
+          onBlur={scheduleClose}
+        >
+          <a
+            href={DISCORD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Join our discord channel"
+            aria-expanded={isOpen}
+            onClick={handleClick}
+            className="flex min-w-0 flex-1 items-center py-2 pl-3"
+          >
+            <FaDiscord
+              className={cn('mr-3 h-5 w-5 flex-shrink-0 text-discord-brand', iconClassName)}
+            />
+            <span className="truncate">Join our Discord</span>
+          </a>
+        </div>
+        {sidePopover}
+        {backdrop}
+        {sheet}
+      </>
+    );
+  }
 
   if (variant === 'row') {
     return (
@@ -277,7 +406,7 @@ export function DiscordCommunityLink({
             <ConnectorArrow
               className={cn(
                 // -translate-x-2 starts the tail over the icon rather than beside it.
-                'left-1/2 z-60 hidden h-16 w-28 -translate-x-2 lg:block',
+                'absolute left-1/2 z-60 hidden h-16 w-28 -translate-x-2 lg:block',
                 // Drawn icon-at-bottom for a card above; only the downward
                 // placement needs the vertical mirror.
                 placement === 'bottom' ? 'top-full -scale-y-100' : 'bottom-full'
