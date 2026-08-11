@@ -1,5 +1,7 @@
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
+import { FaDiscord } from 'react-icons/fa';
+import { DISCORD_URL } from '@/config/links';
 
 interface CTASectionProps {
   handleGetStarted: () => Promise<void>;
@@ -30,7 +32,7 @@ export default function CTASection({ handleGetStarted, isLoading }: CTASectionPr
             <strong>Opndrive's</strong> beautiful, modern interface.
           </p>
 
-          <div className="flex justify-center items-center">
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
             <Button
               size="lg"
               onClick={handleGetStarted}
@@ -39,7 +41,21 @@ export default function CTASection({ handleGetStarted, isLoading }: CTASectionPr
             >
               {isLoading ? 'Loading...' : 'Get Started'}
             </Button>
+
+            <a
+              href={DISCORD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center justify-center gap-2 rounded-md bg-discord-brand px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-medium text-discord-brand-foreground shadow-sm transition-colors duration-200 hover:bg-discord-brand-hover min-w-[120px] sm:min-w-[140px] md:min-w-[160px]"
+            >
+              <FaDiscord className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
+              Join our Discord
+            </a>
           </div>
+
+          <p className="mt-4 sm:mt-6 text-xs sm:text-sm text-muted-foreground">
+            Hangouts and live demos every Wednesday at 5 PM UTC.
+          </p>
         </div>
       </div>
     </section>
