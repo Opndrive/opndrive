@@ -15,6 +15,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import {
   S3Client,
   ListObjectsV2Command,
+  ListBucketsCommand,
   HeadObjectCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
@@ -411,6 +412,58 @@ describe('search', () => {
     await expect(
       makeApi().search({ prefix: 'docs/', searchTerm: 'x', nextToken: undefined })
     ).rejects.toThrow();
+  });
+});
+
+describe('getBuckets', () => {
+  it('passes searchTerm through as Prefix and nextToken as ContinuationToken', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({
+      Buckets: [{ Name: 'reports-2026' }],
+      ContinuationToken: 'page-2',
+    });
+
+    const result = await makeApi().getBuckets({ searchTerm: 'reports', nextToken: 'page-1' });
+
+    expect(s3Mock).toHaveReceivedCommandWith(ListBucketsCommand, {
+      Prefix: 'reports',
+      ContinuationToken: 'page-1',
+    });
+    expect(result).toEqual({
+      buckets: [{ Name: 'reports-2026' }],
+      totalBuckets: 1,
+      nextToken: 'page-2',
+      isTruncated: true,
+    });
+  });
+
+  it('lists all buckets when searchTerm is omitted', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({
+      Buckets: [{ Name: 'bucket-a' }, { Name: 'bucket-b' }],
+    });
+
+    const result = await makeApi().getBuckets({ nextToken: undefined });
+
+    expect(result.buckets).toEqual([{ Name: 'bucket-a' }, { Name: 'bucket-b' }]);
+    expect(result.totalBuckets).toBe(2);
+  });
+
+  it('reports isTruncated: false and an empty list for a page with no buckets', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({});
+
+    const result = await makeApi().getBuckets({ nextToken: undefined });
+
+    expect(result).toEqual({
+      buckets: [],
+      totalBuckets: 0,
+      nextToken: undefined,
+      isTruncated: false,
+    });
+  });
+
+  it('propagates a listing failure', async () => {
+    s3Mock.on(ListBucketsCommand).rejects(s3Error('AccessDenied', 403));
+
+    await expect(makeApi().getBuckets({ nextToken: undefined })).rejects.toThrow();
   });
 });
 
