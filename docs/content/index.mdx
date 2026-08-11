@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   FileQuestion,
 } from 'lucide-react';
+import { DISCORD_URL } from '@/lib/links';
 
 <div style={{ textAlign: 'center', padding: '3rem 1rem 2rem' }}>
   <h1 style={{ fontSize: 'clamp(1.75rem, 6vw, 2.5rem)', fontWeight: 800, marginBottom: '0.5rem', overflowWrap: 'break-word' }}>
@@ -36,4 +37,32 @@ import {
 <div style={{ maxWidth: '38rem', margin: '0 auto', textAlign: 'center' }}>
   Found something wrong or missing in these docs? That's worth an issue or a
   PR on its own - see [First Contribution](./contributing/first-contribution.md).
+</div>
+
+<div style={{ maxWidth: '38rem', margin: '2.5rem auto 0', textAlign: 'center' }}>
+  ### Stuck on something?
+
+  We hang out on Discord - hangouts and live demos every Wednesday at
+  5 PM UTC, plus help with issues and reviews on your PRs. It is a small
+  crew right now, so come get in early.
+
+  <a
+    href={DISCORD_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '0.5rem',
+      marginTop: '0.75rem',
+      padding: '0.6rem 1.1rem',
+      borderRadius: '0.75rem',
+      background: '#5865f2',
+      color: '#ffffff',
+      fontWeight: 600,
+      textDecoration: 'none',
+    }}
+  >
+    Join Opndrive Discord →
+  </a>
 </div>
