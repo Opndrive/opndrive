@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { FaDiscord } from 'react-icons/fa';
-import { DISCORD_URL } from '@/config/links';
+import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 
 const DISMISSED_KEY = 'sidebar_discord_cta_dismissed';
 
@@ -47,15 +46,7 @@ export function SidebarDiscordCta() {
   return (
     <div className="flex-shrink-0 border-t border-border px-3 py-3">
       <div className="group flex items-center rounded-lg text-sm text-secondary-foreground transition-all duration-200 ease-in-out hover:bg-accent hover:text-foreground">
-        <a
-          href={DISCORD_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex min-w-0 flex-1 items-center py-2 pl-3"
-        >
-          <FaDiscord className="mr-3 h-5 w-5 flex-shrink-0 text-discord-brand" />
-          <span className="truncate">Join our Discord</span>
-        </a>
+        <DiscordCommunityLink variant="sidebar" placement="right" />
         <button
           type="button"
           onClick={dismiss}
