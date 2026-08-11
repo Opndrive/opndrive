@@ -6,6 +6,7 @@ import { DashboardSidebarProps } from './types/sidebar';
 import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
+import { SidebarDiscordCta } from './sidebar-discord-cta';
 import { groupSidebarItems } from './utils/sidebar';
 
 export function DashboardSidebar({
@@ -171,6 +172,9 @@ export function DashboardSidebar({
             </>
           )}
         </div>
+
+        {/* Pinned below the scrolling list, so the nav items pass behind it */}
+        {isOpen && <SidebarDiscordCta />}
       </div>
     </>
   );

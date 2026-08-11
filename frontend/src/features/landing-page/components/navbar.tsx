@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
+import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import { DOCS_URL } from '@/config/links';
 
 const navItems = [
@@ -119,6 +120,13 @@ export default function Navbar() {
                   />
                 )}
               </a>
+
+              {/* Discord Community Link */}
+              <DiscordCommunityLink
+                placement="bottom"
+                className="flex items-center gap-2 px-2 py-1"
+                iconClassName="w-5 h-5"
+              />
 
               <ThemeToggleCustom />
             </div>

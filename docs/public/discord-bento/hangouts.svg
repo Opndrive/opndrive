@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <linearGradient id="cal-body" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="cal-top" x1="32" y1="32" x2="224" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="star-glow" x1="120" y1="120" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F43F5E"/>
+      <stop offset="100%" stop-color="#FB7185"/>
+    </linearGradient>
+    <filter id="shadow" x="16" y="24" width="224" height="224" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="12" flood-color="#4F46E5" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <!-- Base Calendar Body -->
+    <rect x="40" y="56" width="176" height="160" rx="32" fill="url(#cal-body)" />
+    <!-- Top Header Bar -->
+    <path d="M40 88C40 70.3269 54.3269 56 72 56H184C201.673 56 216 70.3269 216 88V100H40V88Z" fill="url(#cal-top)" />
+    <!-- Binder Rings -->
+    <rect x="80" y="36" width="16" height="36" rx="8" fill="#E0E7FF" />
+    <rect x="160" y="36" width="16" height="36" rx="8" fill="#E0E7FF" />
+    <!-- Calendar Date Grid Highlights -->
+    <circle cx="84" cy="136" r="10" fill="#EEF2FF" fill-opacity="0.6" />
+    <circle cx="128" cy="136" r="10" fill="#EEF2FF" fill-opacity="0.6" />
+    <circle cx="172" cy="136" r="10" fill="#EEF2FF" fill-opacity="0.6" />
+    <circle cx="84" cy="176" r="10" fill="#EEF2FF" fill-opacity="0.6" />
+    <!-- Highlighted Wednesday Pill -->
+    <rect x="112" y="160" width="72" height="32" rx="16" fill="url(#star-glow)" />
+    <path d="M140 170L144 182L156 182L146 188L150 200L140 192L130 200L134 188L124 182L136 182Z" fill="#FFFFFF" transform="translate(-8, -12) scale(0.7)"/>
+  </g>
+</svg>

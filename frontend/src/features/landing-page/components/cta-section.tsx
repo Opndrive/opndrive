@@ -1,5 +1,6 @@
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
+import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner';
 
 interface CTASectionProps {
   handleGetStarted: () => Promise<void>;
@@ -40,6 +41,8 @@ export default function CTASection({ handleGetStarted, isLoading }: CTASectionPr
               {isLoading ? 'Loading...' : 'Get Started'}
             </Button>
           </div>
+
+          <DiscordCtaBanner className="mt-8 sm:mt-10 max-w-2xl mx-auto" />
         </div>
       </div>
     </section>
