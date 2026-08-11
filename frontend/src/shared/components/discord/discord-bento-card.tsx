@@ -5,72 +5,14 @@ import { FaDiscord } from 'react-icons/fa';
 import { cn } from '@/shared/utils/utils';
 import { DISCORD_URL } from '@/config/links';
 
-/**
- * Decorative emoji art for the Bento tiles.
- *
- * Each entry points at a 256x256 transparent SVG in `public/discord-bento/`.
- * They are rendered as CSS background images, deliberately oversized and bled
- * past a tile corner so they read as ambient art rather than inline icons.
- * Because they are backgrounds, a missing file degrades to nothing at all - no
- * broken-image glyph.
- */
-export const BENTO_EMOJI = {
-  hangouts: '/discord-bento/hangouts.svg',
-  reviews: '/discord-bento/reviews.svg',
-  debugging: '/discord-bento/debugging.svg',
-  builders: '/discord-bento/builders.svg',
-} as const;
-
-/**
- * Placeholder member avatars for the Active Builders tile. Illustrations rather
- * than real members, kept as files so no portrait hex codes leak into the
- * component's styling.
- */
-const BUILDER_AVATARS = [
-  '/discord-bento/builder-1.svg',
-  '/discord-bento/builder-2.svg',
-  '/discord-bento/builder-3.svg',
-  '/discord-bento/builder-4.svg',
-] as const;
-
-/** Fine-grained noise, inlined as SVG so the card needs no image assets. */
-const NOISE_TEXTURE =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
-/**
- * Shared tile chrome. Colours come from the globals.css design tokens, so the
- * card tracks the active theme instead of pinning itself to a dark palette:
- * `secondary` sits just off `card` in both themes, giving the tiles a readable
- * edge against the container.
- */
-const TILE_BASE =
-  'group/tile relative overflow-hidden rounded-2xl border border-border bg-secondary/60 transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20';
-
-function CornerEmoji({ src, className }: { src: string; className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        // Sits behind the tile's content, which is `relative` and so paints on top.
-        'pointer-events-none absolute select-none bg-contain bg-center bg-no-repeat opacity-80',
-        'transition-transform duration-300 group-hover/tile:scale-110',
-        className
-      )}
-      style={{ backgroundImage: `url('${src}')` }}
-    />
-  );
-}
-
-/** Soft-light keeps the grain subtle on light and dark surfaces alike. */
-function Noise({ opacity = 0.35 }: { opacity?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 mix-blend-soft-light"
-      style={{ backgroundImage: NOISE_TEXTURE, opacity }}
-    />
-  );
-}
+import {
+  BENTO_EMOJI,
+  BuilderAvatars,
+  CornerEmoji,
+  LiveBadge,
+  Noise,
+  TILE_BASE,
+} from './bento-primitives';
 
 export function DiscordBentoCard({ className }: { className?: string }) {
   return (
@@ -99,16 +41,7 @@ export function DiscordBentoCard({ className }: { className?: string }) {
         <CornerEmoji src={BENTO_EMOJI.hangouts} className="-right-5 -top-5 h-24 w-24 rotate-12" />
 
         <div className="relative">
-          {/* live pulsing badge */}
-          <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-full border border-community-live/30 bg-community-live/10 px-2 py-0.5">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-community-live opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-community-live" />
-            </span>
-            <span className="text-[10px] font-medium text-community-live">
-              Every Wed @ 5 PM UTC
-            </span>
-          </div>
+          <LiveBadge className="mb-2.5" />
 
           <h3 className="text-sm font-semibold leading-snug text-foreground">
             Wednesday Hangouts
@@ -203,16 +136,7 @@ export function DiscordBentoCard({ className }: { className?: string }) {
 
         <div className="relative">
           {/* stacked member avatars - illustrations, not real members */}
-          <div className="flex -space-x-2">
-            {BUILDER_AVATARS.map((src, i) => (
-              <span
-                key={i}
-                aria-hidden="true"
-                className="h-5 w-5 rounded-full bg-secondary bg-cover bg-center ring-[1.5px] ring-card"
-                style={{ backgroundImage: `url('${src}')` }}
-              />
-            ))}
-          </div>
+          <BuilderAvatars />
           <h3 className="mt-2 text-[11px] font-semibold leading-tight text-foreground">
             Active Builders
           </h3>
