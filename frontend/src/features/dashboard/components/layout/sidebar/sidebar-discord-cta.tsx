@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 
@@ -22,6 +22,7 @@ export function SidebarDiscordCta() {
   // Starts hidden so the server render and the first client render agree, and
   // so an already-dismissed invite never flashes in before the check runs.
   const [isVisible, setIsVisible] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -45,8 +46,12 @@ export function SidebarDiscordCta() {
 
   return (
     <div className="flex-shrink-0 border-t border-border px-3 py-3">
-      <div className="group flex items-center rounded-lg text-sm text-secondary-foreground transition-all duration-200 ease-in-out hover:bg-accent hover:text-foreground">
-        <DiscordCommunityLink variant="sidebar" placement="right" />
+      <div
+        ref={rowRef}
+        className="group flex items-center rounded-lg text-sm text-secondary-foreground transition-all duration-200 ease-in-out hover:bg-accent hover:text-foreground"
+      >
+        {/* anchored to the whole row so the connector clears the dismiss button */}
+        <DiscordCommunityLink variant="sidebar" placement="right" anchorRef={rowRef} />
         <button
           type="button"
           onClick={dismiss}

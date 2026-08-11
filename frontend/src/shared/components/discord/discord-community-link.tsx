@@ -27,10 +27,12 @@ const ARROW_ART = {
     curve: 'M10 58C18 54 26 56 34 50C44 43 40 34 50 30C60 26 76 32 84 26C92 18 94 10 96 4',
     head: 'M98 16L96 4L87 12',
   },
+  // Spans the gap and the rise together, so its top-right corner lands exactly
+  // on the card's bottom-left corner.
   horizontal: {
-    viewBox: '0 0 64 48',
-    curve: 'M4 40C12 37 14 43 22 38C30 33 26 26 34 22C42 18 52 21 58 14',
-    head: 'M56 26L58 14L47 18',
+    viewBox: '0 0 64 72',
+    curve: 'M4 62C12 57 14 64 22 57C30 50 24 42 32 36C40 30 46 34 50 26C53 20 55 14 58 10',
+    head: 'M57 22L58 10L47 15',
   },
 } as const;
 
@@ -86,6 +88,9 @@ function ConnectorArrow({
 /** Distance between trigger and card, and so the span the connector covers. */
 const GAP_PX = 64;
 
+/** How far the side card is lifted above its trigger, for the same reason. */
+const SIDE_RISE_PX = 72;
+
 interface DiscordCommunityLinkProps {
   /** Which side of the trigger the card opens on. The hero navbar sits at the
    *  bottom of the viewport, so it opens upward; the sticky navbar opens down;
@@ -102,6 +107,10 @@ interface DiscordCommunityLinkProps {
   iconClassName?: string;
   /** Fired when the sheet opens, so the mobile menu can collapse behind it. */
   onOpenSheet?: () => void;
+  /** Measure this element instead of the trigger when placing the side card.
+   *  The sidebar passes its whole row so the connector starts clear of the
+   *  dismiss button rather than drawing straight across it. */
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function DiscordCommunityLink({
@@ -110,6 +119,7 @@ export function DiscordCommunityLink({
   className,
   iconClassName,
   onOpenSheet,
+  anchorRef,
 }: DiscordCommunityLinkProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -145,7 +155,7 @@ export function DiscordCommunityLink({
   useEffect(() => {
     if (!isOpen || placement !== 'right') return;
     const measure = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
+      const rect = (anchorRef?.current ?? triggerRef.current)?.getBoundingClientRect();
       if (rect) setAnchor({ left: rect.right, bottom: window.innerHeight - rect.bottom });
     };
     measure();
@@ -155,7 +165,7 @@ export function DiscordCommunityLink({
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
-  }, [isOpen, placement]);
+  }, [isOpen, placement, anchorRef]);
 
   const open = useCallback(() => {
     cancelClose();
@@ -231,8 +241,8 @@ export function DiscordCommunityLink({
           <>
             <ConnectorArrow
               orientation="horizontal"
-              className="fixed z-40 hidden h-12 w-16 lg:block"
-              style={{ left: anchor.left, bottom: anchor.bottom + 4 }}
+              className="fixed z-40 hidden h-18 w-16 lg:block"
+              style={{ left: anchor.left, bottom: anchor.bottom }}
             />
             <motion.div
               initial={{ opacity: 0, x: -6, scale: 0.97 }}
@@ -240,7 +250,14 @@ export function DiscordCommunityLink({
               exit={{ opacity: 0, x: -6, scale: 0.97 }}
               transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
               className="fixed z-40 hidden lg:block"
-              style={{ left: anchor.left, bottom: anchor.bottom, paddingLeft: GAP_PX }}
+              // The padding lifts and offsets the card while keeping the whole
+              // L-shaped run between row and card inside the hover region.
+              style={{
+                left: anchor.left,
+                bottom: anchor.bottom,
+                paddingLeft: GAP_PX,
+                paddingBottom: SIDE_RISE_PX,
+              }}
               onMouseEnter={cancelClose}
               onMouseLeave={scheduleClose}
             >
