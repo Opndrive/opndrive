@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "estree-util-value-to-estree": "^3.5.0",
     "lucide-react": "^1.27.0",
     "mermaid": "^11.4.1",
