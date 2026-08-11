@@ -50,6 +50,14 @@
   --aria-label-border: rgba(255, 255, 255, 0.1);
   --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   --aria-label-backdrop: blur(12px);
+
+  /* Community card - Discord brand stays fixed, status colours follow theme */
+  --discord-brand: #5865f2;
+  --discord-brand-hover: #4752c4;
+  --discord-brand-foreground: #ffffff;
+  --community-live: #1e8e3e;
+  --community-diff-add: #1e8e3e;
+  --community-diff-remove: #d93025;
 }
 
 @theme inline {
@@ -69,6 +77,12 @@
   --color-input: var(--input);
   --color-geo-map: var(--geo-map);
   --color-top-loading-bar-color: var(--top-loading-bar-color);
+  --color-discord-brand: var(--discord-brand);
+  --color-discord-brand-hover: var(--discord-brand-hover);
+  --color-discord-brand-foreground: var(--discord-brand-foreground);
+  --color-community-live: var(--community-live);
+  --color-community-diff-add: var(--community-diff-add);
+  --color-community-diff-remove: var(--community-diff-remove);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -118,6 +132,11 @@
   --aria-label-border: rgba(0, 0, 0, 0.1);
   --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   --aria-label-backdrop: blur(12px);
+
+  /* Community card - lighter status colours for dark surfaces */
+  --community-live: #81c995;
+  --community-diff-add: #81c995;
+  --community-diff-remove: #f28b82;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -166,6 +185,11 @@
     --aria-label-border: rgba(0, 0, 0, 0.1);
     --aria-label-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     --aria-label-backdrop: blur(12px);
+
+    /* Community card - lighter status colours for dark surfaces */
+    --community-live: #81c995;
+    --community-diff-add: #81c995;
+    --community-diff-remove: #f28b82;
   }
 }
 
