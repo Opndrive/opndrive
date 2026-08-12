@@ -44,12 +44,12 @@ export function DiscordBentoCard({ className }: { className?: string }) {
           <LiveBadge className="mb-2.5" />
 
           <h3 className="text-sm font-semibold leading-snug text-foreground">
-            Wednesday Hangouts
+            Community Meetups
             <br />
             &amp; Live Demos
           </h3>
 
-          {/* calendar visualizer - the week, with Wednesday lit */}
+          {/* calendar visualizer - alternating days lit, matching the cadence */}
           <div className="mt-3 flex items-center gap-1">
             <Calendar className="mr-1 h-3 w-3 text-muted-foreground" />
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => (
@@ -57,7 +57,7 @@ export function DiscordBentoCard({ className }: { className?: string }) {
                 key={i}
                 className={cn(
                   'flex h-4 w-4 items-center justify-center rounded text-[9px] font-medium',
-                  i === 2
+                  i % 2 === 0
                     ? 'bg-primary text-primary-foreground shadow-md shadow-primary/40'
                     : 'bg-foreground/10 text-muted-foreground'
                 )}
