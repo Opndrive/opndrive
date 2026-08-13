@@ -84,7 +84,7 @@ export function BuilderAvatars({ className }: { className?: string }) {
   );
 }
 
-/** The pulsing "we meet on Wednesdays" badge. */
+/** The pulsing "when we meet" badge. */
 export function LiveBadge({ className }: { className?: string }) {
   return (
     <div
@@ -98,7 +98,7 @@ export function LiveBadge({ className }: { className?: string }) {
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-community-live" />
       </span>
       <span className="whitespace-nowrap text-[10px] font-medium text-community-live">
-        Every Wed @ 5 PM UTC
+        Every other day @ 5 PM UTC
       </span>
     </div>
   );

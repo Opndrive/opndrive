@@ -31,7 +31,7 @@ export function CommunityCard() {
         <div>
           <span className={styles.badge}>
             <span className={styles.pulse} />
-            Every Wed @ 5 PM UTC
+            Every other day @ 5 PM UTC
           </span>
 
           <h3 className={styles.heading}>Build Opndrive with us</h3>
