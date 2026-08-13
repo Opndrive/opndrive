@@ -16,6 +16,8 @@ import {
   getFileExtension,
   getFileExtensionWithoutDot,
 } from '@/config/file-extensions';
+import { ErrorBoundary } from '@/shared/components/error-boundary';
+import { PreviewError } from './preview-error';
 
 interface PreviewContentProps {
   file: PreviewableFile;
@@ -27,6 +29,35 @@ function isFileType(
   category: 'image' | 'video' | 'audio' | 'document' | 'spreadsheet' | 'code'
 ): boolean {
   return isFileInCategory(filename, category);
+}
+
+// Returns null when nothing here can render the file
+function selectViewer(file: PreviewableFile) {
+  if (isFileType(file.name, 'image')) {
+    return <ImageViewer file={file} />;
+  }
+
+  if (isFileType(file.name, 'video')) {
+    return <VideoViewer file={file} />;
+  }
+
+  if (isFileType(file.name, 'audio')) {
+    return <AudioViewer file={file} />;
+  }
+
+  if (getFileExtension(file.name) === '.pdf') {
+    return <PDFViewer file={file} />;
+  }
+
+  if (isFileType(file.name, 'spreadsheet')) {
+    return <ExcelViewer file={file} />;
+  }
+
+  if (isFileType(file.name, 'code')) {
+    return <CodeViewer file={file} />;
+  }
+
+  return null;
 }
 
 export function PreviewContent({ file }: PreviewContentProps) {
@@ -120,36 +151,28 @@ export function PreviewContent({ file }: PreviewContentProps) {
     );
   }
 
-  const isImage = isFileType(file.name, 'image');
-  const isVideo = isFileType(file.name, 'video');
-  const isAudio = isFileType(file.name, 'audio');
-  const isPdf = getFileExtension(file.name) === '.pdf';
-  const isSpreadsheet = isFileType(file.name, 'spreadsheet');
-  const isCode = isFileType(file.name, 'code');
-
   // Route to appropriate viewer component
-  if (isImage) {
-    return <ImageViewer file={file} />;
-  }
+  const viewer = selectViewer(file);
 
-  if (isVideo) {
-    return <VideoViewer file={file} />;
-  }
-
-  if (isAudio) {
-    return <AudioViewer file={file} />;
-  }
-
-  if (isPdf) {
-    return <PDFViewer file={file} />;
-  }
-
-  if (isSpreadsheet) {
-    return <ExcelViewer file={file} />;
-  }
-
-  if (isCode) {
-    return <CodeViewer file={file} />;
+  // The viewers parse file content we did not write - pdf, xlsx and the code
+  // editor most of all - and this modal is rendered by the dashboard layout,
+  // which no route level error.tsx covers. Without this boundary one malformed
+  // file takes the whole dashboard down instead of just the panel.
+  if (viewer) {
+    return (
+      <ErrorBoundary
+        resetKey={file.id}
+        fallback={(_error, reset) => (
+          <PreviewError
+            title="Preview Failed"
+            message={`${file.name} could not be displayed. The file may be corrupted or in an unexpected format.`}
+            onRetry={reset}
+          />
+        )}
+      >
+        {viewer}
+      </ErrorBoundary>
+    );
   }
 
   // Unsupported file type
