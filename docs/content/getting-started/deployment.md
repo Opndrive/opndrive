@@ -43,11 +43,17 @@ on its own isn't enough: the blog pages prerender against WordPress, so
 fails. Leave the default (`false`) unless you're deploying the marketing/blog
 surface.
 
-A pre-built image isn't published by this repository's CI today - there's no
-Docker build/push step in `.github/workflows/`. If you've seen a
-`docker run opndrive/opndrive:<tag>` command elsewhere, treat it as unverified
-until you've confirmed that tag is current; building locally from the Dockerfile
-above is the reliable path.
+A pre-built image is published to GHCR on every tagged release
+(`.github/workflows/release.yml`), tagged with the full version, the minor
+version, and `latest`:
+
+```bash
+docker pull ghcr.io/opndrive/opndrive:latest
+docker run -d --restart unless-stopped --name opndrive -p 3000:3000 ghcr.io/opndrive/opndrive:latest
+```
+
+Only `linux/amd64` is published. Building locally from the Dockerfile above
+still works if you need a different platform or want to change `BLOG_STATUS`.
 
 ## Environment at Build Time
 

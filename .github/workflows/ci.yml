@@ -26,6 +26,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       s3api: ${{ steps.filter.outputs.s3api }}
       root: ${{ steps.filter.outputs.root }}
+      docker: ${{ steps.filter.outputs.docker }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -45,6 +46,12 @@ jobs:
               - '.prettierignore'
               - '.nvmrc'
               - '.github/workflows/ci.yml'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '**/package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
 
   quality:
     name: Lint & format
@@ -162,18 +169,44 @@ jobs:
       - name: Build
         run: pnpm build
 
+  docker-build:
+    name: Docker build
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only, no push - this just checks the Dockerfile still builds.
+      # Same context/build-arg as release.yml so it exercises the real path.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            BLOG_STATUS=false
+          cache-from: type=gha,scope=ci
+          cache-to: type=gha,mode=max,scope=ci
+
   # Required-status-check target. Individual jobs are skipped by path
   # filtering, and GitHub treats "skipped" as never-satisfied for branch
   # protection, so branch protection must require this job, not the others.
   ci-ok:
     name: CI OK
-    needs: [quality, frontend, s3-api]
+    needs: [quality, frontend, s3-api, docker-build]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         run: |
-          for result in "${{ needs.quality.result }}" "${{ needs.frontend.result }}" "${{ needs.s3-api.result }}"; do
+          for result in "${{ needs.quality.result }}" "${{ needs.frontend.result }}" "${{ needs.s3-api.result }}" "${{ needs.docker-build.result }}"; do
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "A required job did not succeed (result: $result)"
               exit 1
