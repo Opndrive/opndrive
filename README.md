@@ -21,37 +21,11 @@ control, you connect your own storage backend - AWS S3.
 
 ## For Users (Just Want to Use It)
 
-### Option 1: Run Locally
-
-1. **Clone and Install**
-
-   ```bash
-   git clone https://github.com/Opndrive/opndrive.git
-   cd opndrive
-   pnpm install
-   ```
-
-2. **Start the App**
-
-   ```bash
-   pnpm dev:frontend
-   ```
-
-3. **Open Your Browser**
-   - Go to [http://localhost:3000](http://localhost:3000)
-   - Click **Get Started**
-   - Enter your AWS S3 credentials in the UI
-   - Start managing your files!
-
----
-
-### Option 2: Run with Docker
-
-From the repository root:
+### Run with Docker
 
 ```bash
-docker build -t opndrive .
-docker run -d --restart unless-stopped --name opndrive -p 3000:3000 opndrive
+docker pull ghcr.io/opndrive/opndrive:latest
+docker run -d --restart unless-stopped --name opndrive -p 3000:3000 ghcr.io/opndrive/opndrive:latest
 ```
 
 See [Deployment](./docs/content/getting-started/deployment.md) for build args
@@ -71,6 +45,18 @@ Then:
 
 **Ready to Contribute?** Check out our
 [Development Setup](./docs/content/development/setup.md)
+
+**Run Locally (from source)**
+
+```bash
+git clone https://github.com/Opndrive/opndrive.git
+cd opndrive
+pnpm install
+pnpm dev:frontend
+```
+
+Or build the Docker image yourself instead of pulling the published one - see
+[Deployment](./docs/content/getting-started/deployment.md).
 
 ## Architecture
 

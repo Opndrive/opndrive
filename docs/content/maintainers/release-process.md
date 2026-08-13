@@ -57,10 +57,13 @@ pnpm build:frontend
 
 ## Frontend Releases
 
-The frontend (`frontend/package.json`, currently `2.0.0`) doesn't publish
-anywhere - it's deployed directly (Vercel/Netlify) or built into a Docker image
-(see [Deployment](../getting-started/deployment.md)). Notable frontend changes
-go in the root `CHANGELOG.md`, which follows
+The frontend (`frontend/package.json`, currently `2.0.0`) isn't published to a
+package registry, but pushing a `v*` git tag triggers
+`.github/workflows/release.yml`, which builds and pushes a Docker image to
+`ghcr.io/opndrive/opndrive` (see
+[Deployment](../getting-started/deployment.md)). It's otherwise deployed
+directly (Vercel/Netlify). Notable frontend changes go in the root
+`CHANGELOG.md`, which follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and starts from the
 point it was added rather than backfilling history. `s3-api` keeps its own
 `s3-api/CHANGELOG.MD` because it's versioned and published separately.
@@ -75,7 +78,15 @@ assumed to mean the same thing in another.
 
 ## Open Improvement
 
-There's no scripted or CI-driven release for `s3-api` yet. If publish frequency
-increases, a `release.yml` workflow (triggered on a version tag, running build +
-`npm publish`) would remove the manual steps above and the risk of forgetting
-one.
+The Docker image is now released automatically: pushing a `v*` tag runs
+`.github/workflows/release.yml`, which builds the root `Dockerfile` and pushes
+it to GHCR tagged with the version, the minor version, and `latest`. A
+build-only check also runs in `ci.yml` on pull requests that touch the
+`Dockerfile`, `.dockerignore`, or a `package.json`/lockfile, so a broken
+Dockerfile is caught before merge instead of at release time.
+
+There's still no scripted or CI-driven release for `s3-api`. If publish
+frequency increases, extending `release.yml` (or a separate workflow) triggered
+on a version tag, running build + `npm publish`, would remove the manual steps
+above and the risk of forgetting one. This needs its own npm token and is
+tracked separately so it doesn't block the Docker release.
