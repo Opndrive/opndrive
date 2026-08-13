@@ -275,13 +275,16 @@ export function useDeleteOperations() {
           throw abortError();
         }
 
-        // Get all keys (files and folders) to delete
-        const allKeys = folderContents.allKeys;
-
-        // Add the main folder if it's not already in the list
-        if (!allKeys.includes(normalizedKey)) {
-          allKeys.push(normalizedKey);
-        }
+        // The folder's own marker object goes last, always.
+        //
+        // S3 lists keys in lexicographic order and "docs/" sorts before
+        // "docs/a.txt", so the marker arrives in the very first batch. Deleting
+        // it first means an interrupted run leaves the folder invisible in the
+        // browser while its contents are still in the bucket, still billed, and
+        // with nothing pointing at them. Deleting it last leaves the opposite:
+        // a folder the user can still see and still open, holding fewer items.
+        const contentKeys = folderContents.allKeys.filter((key) => key !== normalizedKey);
+        const allKeys = [...contentKeys, normalizedKey];
 
         if (allKeys.length > 0) {
           // Use batch delete for better performance (S3 allows up to 1000 objects per batch)
@@ -509,11 +512,11 @@ export function useDeleteOperations() {
         throw error;
       }
     },
+    // batchDelete works from keys it already has, so it never lists a prefix
     [
       apiS3,
       refreshCurrentData,
       errorFunction,
-      getAllS3ObjectsWithPrefix,
       addDeleteOperation,
       setCalculatingSize,
       updateDeleteProgress,
