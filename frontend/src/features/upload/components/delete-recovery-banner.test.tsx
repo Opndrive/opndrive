@@ -193,6 +193,67 @@ describe('finishing the delete', () => {
   });
 });
 
+/**
+ * Buckets are switched in place with no reload, so a prompt that kept its state
+ * across that switch would offer to delete one bucket's keys while pointed at
+ * another. This is the case that guard exists for.
+ */
+describe('switching bucket mid flow', () => {
+  function seedBoth() {
+    useDeleteRecoveryStore.setState({
+      records: {
+        'op-a': {
+          id: 'op-a',
+          bucket: 'bucket-a',
+          prefix: 'docs/',
+          name: 'docs',
+          totalItems: 3,
+          startedAt: 1000,
+        },
+        'op-b': {
+          id: 'op-b',
+          bucket: 'bucket-b',
+          prefix: 'photos/',
+          name: 'photos',
+          totalItems: 5,
+          startedAt: 2000,
+        },
+      },
+    });
+  }
+
+  it('drops the confirm step instead of carrying keys across', async () => {
+    seedBoth();
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt', 'docs/b.txt']);
+    const { rerender } = render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+    expect(await screen.findByText('3 items still left in "docs"')).toBeDefined();
+
+    currentBucket = 'bucket-b';
+    rerender(<DeleteRecoveryBanner />);
+
+    // Back to the plain prompt, now describing the other bucket's record
+    expect(screen.getByText('Deleting "photos" did not finish')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Delete 3 items/ })).toBeNull();
+  });
+
+  it('checks the new bucket prefix rather than the old key list', async () => {
+    seedBoth();
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt', 'docs/b.txt']);
+    const { rerender } = render(<DeleteRecoveryBanner />);
+    await click(/Check what is left/);
+
+    currentBucket = 'bucket-b';
+    rerender(<DeleteRecoveryBanner />);
+    listFromPrefix.mockResolvedValue(['photos/']);
+    await click(/Check what is left/);
+
+    expect(listFromPrefix).toHaveBeenLastCalledWith('photos/');
+    expect(batchDeleteByKeys).not.toHaveBeenCalled();
+  });
+});
+
 describe('dismissing', () => {
   it('drops the record without deleting anything', async () => {
     seed();

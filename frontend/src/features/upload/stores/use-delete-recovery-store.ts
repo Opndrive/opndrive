@@ -1,7 +1,40 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+
+/**
+ * Storage that degrades instead of throwing.
+ *
+ * zustand's persist lets a storage error propagate out of the set() call, and
+ * the record is written from inside the delete itself. Private mode, a blocked
+ * cookie policy or a full quota would therefore fail the delete outright,
+ * which is far worse than the thing this record exists to soften. Losing the
+ * record is an acceptable outcome; losing the delete is not.
+ */
+const bestEffortStorage = createJSONStorage(() => ({
+  getItem: (name: string) => {
+    try {
+      return localStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name: string, value: string) => {
+    try {
+      localStorage.setItem(name, value);
+    } catch {
+      // Nothing to recover with, which the banner simply never shows
+    }
+  },
+  removeItem: (name: string) => {
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      // Already unreachable, so there is nothing left to clear
+    }
+  },
+}));
 
 /**
  * A folder delete that was started and never reported back.
@@ -58,7 +91,7 @@ export const useDeleteRecoveryStore = create<DeleteRecoveryStore>()(
           return { records };
         }),
     }),
-    { name: 'delete-recovery-storage' }
+    { name: 'delete-recovery-storage', storage: bestEffortStorage }
   )
 );
 

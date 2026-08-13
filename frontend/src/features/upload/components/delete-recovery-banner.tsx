@@ -10,6 +10,7 @@ import { markerLast } from '../utils/delete-key-order';
 import {
   useDeleteRecoveryStore,
   interruptedDeletesForBucket,
+  type InterruptedDelete,
 } from '../stores/use-delete-recovery-store';
 
 type Stage =
@@ -30,11 +31,7 @@ type Stage =
  */
 export function DeleteRecoveryBanner() {
   const { apiS3 } = useAuthGuard();
-  const { success: notifySuccess, error: notifyError } = useNotification();
-  const { batchDeleteByKeys } = useDeleteOperations();
   const records = useDeleteRecoveryStore((state) => state.records);
-  const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
-  const [stage, setStage] = useState<Stage>({ kind: 'idle' });
 
   // Records for other buckets stay untouched, ready for whenever that session
   // comes back
@@ -43,6 +40,25 @@ export function DeleteRecoveryBanner() {
   if (!apiS3 || !record) {
     return null;
   }
+
+  // Keyed so the prompt's state cannot outlive the record it belongs to.
+  // Buckets are switched in place with no reload, and a confirm step still
+  // holding the previous bucket's key list would delete those names in the
+  // bucket the user just moved to.
+  return <RecoveryPrompt key={record.id} record={record} apiS3={apiS3} />;
+}
+
+function RecoveryPrompt({
+  record,
+  apiS3,
+}: {
+  record: InterruptedDelete;
+  apiS3: { listFromPrefix: (prefix: string) => Promise<string[]> };
+}) {
+  const { success: notifySuccess, error: notifyError } = useNotification();
+  const { batchDeleteByKeys } = useDeleteOperations();
+  const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
+  const [stage, setStage] = useState<Stage>({ kind: 'idle' });
 
   const check = async () => {
     setStage({ kind: 'checking' });

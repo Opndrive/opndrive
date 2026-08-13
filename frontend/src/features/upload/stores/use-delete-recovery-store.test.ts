@@ -7,7 +7,7 @@
  * marker fix removed.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   useDeleteRecoveryStore,
   interruptedDeletesForBucket,
@@ -68,6 +68,12 @@ describe('recording', () => {
  * nothing and every record died with the tab.
  */
 describe('surviving the tab', () => {
+  // Restored here rather than at the end of each test: a failing assertion
+  // would otherwise leave setItem throwing for every test after it
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function stored() {
     const raw = localStorage.getItem('delete-recovery-storage');
     return raw ? JSON.parse(raw).state.records : null;
@@ -88,6 +94,33 @@ describe('surviving the tab', () => {
     store().clearRecord('op-1');
 
     expect(stored()).toEqual({});
+  });
+
+  /**
+   * The record is written from inside the delete. If storage can throw out of
+   * that call, then private mode or a full quota fails the delete itself,
+   * which is much worse than having no record.
+   */
+  it('does not throw when storage refuses to write', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+
+    expect(() => store().recordStarted(record())).not.toThrow();
+    expect(() => store().clearRecord('op-1')).not.toThrow();
+
+    setItem.mockRestore();
+  });
+
+  it('still tracks the record in memory when storage is unavailable', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('SecurityError');
+    });
+
+    store().recordStarted(record());
+
+    expect(store().records['op-1']).toBeDefined();
+    setItem.mockRestore();
   });
 });
 
