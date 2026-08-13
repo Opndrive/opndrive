@@ -98,7 +98,7 @@ export function DeleteRecoveryBanner() {
           <p className="mt-0.5 text-xs text-muted-foreground">
             {stage.kind === 'confirm'
               ? 'Anything added to this folder since then would be deleted too. Check before continuing.'
-              : 'The tab closed while it was running, so some files may still be there.'}
+              : `It was removing ${record.totalItems} item${record.totalItems === 1 ? '' : 's'} when the tab closed, so some may still be there.`}
           </p>
         </div>
       </div>

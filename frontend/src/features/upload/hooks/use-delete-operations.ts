@@ -150,7 +150,11 @@ export function useDeleteOperations() {
     failDeleteOperation,
     cancelDeleteOperation,
   } = useUploadStore();
-  const { recordStarted, clearRecord } = useDeleteRecoveryStore();
+  // Selected one at a time on purpose. A bare useDeleteRecoveryStore() would
+  // subscribe every consumer of this hook to every record change, which is the
+  // re-render problem tracked in #106.
+  const recordStarted = useDeleteRecoveryStore((state) => state.recordStarted);
+  const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
 
   // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
   const getAllS3ObjectsWithPrefix = useCallback(

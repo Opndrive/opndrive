@@ -62,6 +62,35 @@ describe('recording', () => {
   });
 });
 
+/**
+ * The one property the whole feature rests on. Every other test here seeds
+ * state directly, so all of them would still pass if persistence quietly did
+ * nothing and every record died with the tab.
+ */
+describe('surviving the tab', () => {
+  function stored() {
+    const raw = localStorage.getItem('delete-recovery-storage');
+    return raw ? JSON.parse(raw).state.records : null;
+  }
+
+  it('writes the record to local storage', () => {
+    store().recordStarted(record());
+
+    expect(stored()['op-1']).toMatchObject({
+      bucket: 'bucket-a',
+      prefix: 'docs/',
+      name: 'docs',
+    });
+  });
+
+  it('takes the record back out again when it is cleared', () => {
+    store().recordStarted(record());
+    store().clearRecord('op-1');
+
+    expect(stored()).toEqual({});
+  });
+});
+
 describe('bucket pinning', () => {
   beforeEach(() => {
     store().recordStarted(record({ id: 'a', bucket: 'bucket-a', startedAt: 2000 }));

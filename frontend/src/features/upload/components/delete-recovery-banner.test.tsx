@@ -86,6 +86,20 @@ describe('what it shows', () => {
     expect(screen.getByText('Deleting "docs" did not finish')).toBeDefined();
   });
 
+  it('says how big the delete was, so the risk is legible', () => {
+    seed({ totalItems: 12 });
+    render(<DeleteRecoveryBanner />);
+
+    expect(screen.getByText(/removing 12 items when the tab closed/)).toBeDefined();
+  });
+
+  it('does not say "1 items"', () => {
+    seed({ totalItems: 1 });
+    render(<DeleteRecoveryBanner />);
+
+    expect(screen.getByText(/removing 1 item when/)).toBeDefined();
+  });
+
   it('stays hidden for a record belonging to another bucket', () => {
     seed({ bucket: 'bucket-b' });
     render(<DeleteRecoveryBanner />);
