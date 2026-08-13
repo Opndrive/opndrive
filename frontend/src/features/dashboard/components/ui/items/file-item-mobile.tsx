@@ -9,6 +9,7 @@ import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { useFilePreview } from '@/context/file-preview-context';
+import { getItemKeyIntent } from './item-keyboard';
 
 interface FileItemMobileProps {
   file: FileItem;
@@ -122,6 +123,21 @@ export function FileItemMobile({
     handleFileOpen();
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const intent = getItemKeyIntent(event);
+    if (!intent) return;
+
+    // Space would scroll the page otherwise
+    event.preventDefault();
+
+    if (intent === 'select') {
+      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      return;
+    }
+
+    handleItemClick();
+  };
+
   const handleFileOpen = () => {
     // Use the same preview logic as the overflow menu's "Open" action
     const previewableFile = {
@@ -153,7 +169,10 @@ export function FileItemMobile({
   return (
     <div
       data-file-item
-      className={`flex items-center p-4 transition-colors cursor-pointer select-none touch-manipulation ${
+      role="button"
+      tabIndex={0}
+      aria-label={`${file.name}, file${selected ? ', selected' : ''}`}
+      className={`flex items-center p-4 transition-colors cursor-pointer select-none touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
         selected
           ? 'bg-primary/10 hover:bg-primary/15 active:bg-primary/20'
           : 'hover:bg-secondary/50 active:bg-secondary/70'
@@ -164,6 +183,7 @@ export function FileItemMobile({
         userSelect: 'none',
       }}
       onClick={handleItemClick}
+      onKeyDown={handleKeyDown}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -212,6 +232,7 @@ export function FileItemMobile({
       <AriaLabel label={`More actions`} position="top">
         <button
           className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
+          aria-label={`More actions for ${file.name}`}
           onClick={handleMenuClick}
         >
           <HiOutlineDotsVertical size={20} className="text-muted-foreground" />

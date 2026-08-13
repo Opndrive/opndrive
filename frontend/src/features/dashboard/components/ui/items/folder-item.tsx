@@ -10,6 +10,7 @@ import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { getItemKeyIntent } from './item-keyboard';
 
 interface FolderItemProps {
   folder: Folder;
@@ -122,6 +123,28 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const intent = getItemKeyIntent(event);
+    if (!intent) return;
+
+    // Space would scroll the page otherwise
+    event.preventDefault();
+
+    if (intent === 'select') {
+      selectItem(
+        folder,
+        'folder',
+        index,
+        event.ctrlKey || event.metaKey,
+        event.shiftKey,
+        allFolders
+      );
+      return;
+    }
+
+    onClick?.(folder);
+  };
+
   const handleMenuClick = (event: React.MouseEvent) => {
     event.stopPropagation();
     setMenuAnchor(event.currentTarget as HTMLElement);
@@ -140,11 +163,15 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     <>
       <div
         data-folder-item
+        role="button"
+        tabIndex={0}
+        aria-label={`${folder.name}, folder${selected ? ', selected' : ''}`}
         className={`
           group flex items-center gap-3 p-3 rounded-lg
           transition-all duration-200 cursor-pointer select-none
-          bg-secondary 
+          bg-secondary
           hover:bg-secondary/80
+          focus-visible:ring-2 focus-visible:ring-primary
           ${className}
         `}
         style={{
@@ -153,6 +180,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
         }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
@@ -191,6 +219,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
               hover:bg-accent transition-all duration-200
               text-muted-foreground hover:text-foreground
             "
+            aria-label={`More actions for ${folder.name}`}
             onClick={handleMenuClick}
           >
             <MoreVerticalIcon size={16} />

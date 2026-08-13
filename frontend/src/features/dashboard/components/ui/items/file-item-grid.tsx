@@ -10,6 +10,7 @@ import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { getItemKeyIntent } from './item-keyboard';
 
 interface FileItemGridProps {
   file: FileItem;
@@ -118,18 +119,39 @@ export function FileItemGrid({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const intent = getItemKeyIntent(event);
+    if (!intent) return;
+
+    // Space would scroll the page otherwise
+    event.preventDefault();
+
+    if (intent === 'select') {
+      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      return;
+    }
+
+    if (!file.Key?.endsWith('/')) {
+      openFilePreview(file, allFiles);
+    }
+  };
+
   const timeInfo = formatTimeWithTooltip(file.lastModified);
 
   return (
     <div
       data-file-item
-      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-all cursor-pointer select-none"
+      role="button"
+      tabIndex={0}
+      aria-label={`${file.name}, file${selected ? ', selected' : ''}`}
+      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-primary"
       style={{
         outline: selected ? '2px solid var(--primary)' : 'none',
         background: selected ? 'var(--accent)' : undefined,
       }}
       onClick={handleFileClick}
       onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
@@ -178,6 +200,7 @@ export function FileItemGrid({
           <AriaLabel label={`More actions`} position="top">
             <button
               className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
+              aria-label={`More actions for ${file.name}`}
               onClick={handleMenuClick}
             >
               <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
