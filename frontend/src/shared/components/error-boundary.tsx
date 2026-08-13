@@ -22,6 +22,22 @@ interface ErrorBoundaryState {
 }
 
 /**
+ * redirect() and notFound() do their work by throwing, so a boundary that
+ * treated every throw as a failure would quietly break navigation for whatever
+ * it wraps. These get handed back to Next instead.
+ */
+function isNavigationSignal(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+
+  return (
+    typeof digest === 'string' &&
+    (digest.startsWith('NEXT_REDIRECT') ||
+      digest.startsWith('NEXT_HTTP_ERROR_FALLBACK') ||
+      digest === 'NEXT_NOT_FOUND')
+  );
+}
+
+/**
  * React only catches render errors in class components, so this stays a class.
  *
  * The App Router error.tsx files cover whole route segments. This one is for
@@ -44,6 +60,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (isNavigationSignal(error)) {
+      return;
+    }
+
     // The dev overlay shows this anyway, but in production it would otherwise
     // disappear with no trace of why the panel went blank.
     console.error('Render error caught by boundary:', error, info.componentStack);
@@ -59,6 +79,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     if (!error) {
       return this.props.children;
+    }
+
+    // Rethrowing sends it up to Next's own boundary, which knows how to run
+    // the navigation this error is really asking for
+    if (isNavigationSignal(error)) {
+      throw error;
     }
 
     return typeof this.props.fallback === 'function'

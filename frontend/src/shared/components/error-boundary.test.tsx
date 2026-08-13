@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Component, type ReactNode } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ErrorBoundary } from './error-boundary';
 
@@ -16,6 +17,21 @@ function Bomb({ shouldThrow = true }: { shouldThrow?: boolean }) {
     throw new Error('viewer exploded');
   }
   return <p>rendered fine</p>;
+}
+
+function Signal({ digest }: { digest: string }): ReactNode {
+  throw Object.assign(new Error('NEXT signal'), { digest });
+}
+
+/** Stands in for Next's own boundary, so a rethrow has somewhere to land. */
+class CatchAll extends Component<{ children: ReactNode }, { caught: boolean }> {
+  state = { caught: false };
+  static getDerivedStateFromError() {
+    return { caught: true };
+  }
+  render() {
+    return this.state.caught ? <p>Next handled it</p> : this.props.children;
+  }
 }
 
 let consoleError: ReturnType<typeof vi.spyOn>;
@@ -92,6 +108,55 @@ describe('when a child throws', () => {
       expect.objectContaining({ message: 'viewer exploded' }),
       expect.anything()
     );
+  });
+});
+
+describe('navigation signals', () => {
+  it.each([
+    ['redirect', 'NEXT_REDIRECT;replace;/connect;307;'],
+    ['notFound', 'NEXT_HTTP_ERROR_FALLBACK;404'],
+    ['older notFound', 'NEXT_NOT_FOUND'],
+  ])('passes %s back to Next rather than showing a fallback', (_name, digest) => {
+    render(
+      <CatchAll>
+        <ErrorBoundary fallback={<p>fallback</p>}>
+          <Signal digest={digest} />
+        </ErrorBoundary>
+      </CatchAll>
+    );
+
+    expect(screen.queryByText('fallback')).toBeNull();
+    expect(screen.getByText('Next handled it')).toBeDefined();
+  });
+
+  it('does not log a navigation signal as a failure', () => {
+    const onError = vi.fn();
+    render(
+      <CatchAll>
+        <ErrorBoundary fallback={<p>fallback</p>} onError={onError}>
+          <Signal digest="NEXT_REDIRECT;replace;/connect;307;" />
+        </ErrorBoundary>
+      </CatchAll>
+    );
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalledWith(
+      'Render error caught by boundary:',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('still catches a normal error that happens to carry a digest', () => {
+    render(
+      <CatchAll>
+        <ErrorBoundary fallback={<p>fallback</p>}>
+          <Signal digest="abc123" />
+        </ErrorBoundary>
+      </CatchAll>
+    );
+
+    expect(screen.getByText('fallback')).toBeDefined();
   });
 });
 
