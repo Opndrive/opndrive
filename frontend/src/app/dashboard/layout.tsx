@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useDriveStore } from '@/context/data-context';
 import { UploadCard } from '@/features/upload/components/upload-card';
 import { useDeleteUnloadGuard } from '@/features/upload/hooks/use-delete-unload-guard';
+import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
 
 const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
   const { currentPrefix } = useDriveStore();
@@ -137,6 +138,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
               ref={mainRef}
               className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 min-h-0 scroll-smooth custom-scrollbar"
             >
+              <DeleteRecoveryBanner />
               <DragAndDropWrapper>{children}</DragAndDropWrapper>
             </main>
           </div>

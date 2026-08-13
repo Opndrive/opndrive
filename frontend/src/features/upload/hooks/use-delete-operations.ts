@@ -3,7 +3,9 @@
 import { useCallback } from 'react';
 import { useDriveStore } from '@/context/data-context';
 import { useUploadStore } from '../stores/use-upload-store';
+import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
+import { markerLast } from '../utils/delete-key-order';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
@@ -148,6 +150,7 @@ export function useDeleteOperations() {
     failDeleteOperation,
     cancelDeleteOperation,
   } = useUploadStore();
+  const { recordStarted, clearRecord } = useDeleteRecoveryStore();
 
   // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
   const getAllS3ObjectsWithPrefix = useCallback(
@@ -275,16 +278,21 @@ export function useDeleteOperations() {
           throw abortError();
         }
 
-        // The folder's own marker object goes last, always.
-        //
-        // S3 lists keys in lexicographic order and "docs/" sorts before
-        // "docs/a.txt", so the marker arrives in the very first batch. Deleting
-        // it first means an interrupted run leaves the folder invisible in the
-        // browser while its contents are still in the bucket, still billed, and
-        // with nothing pointing at them. Deleting it last leaves the opposite:
-        // a folder the user can still see and still open, holding fewer items.
-        const contentKeys = folderContents.allKeys.filter((key) => key !== normalizedKey);
-        const allKeys = [...contentKeys, normalizedKey];
+        // The folder's own marker object goes last, always. See markerLast.
+        const allKeys = markerLast(folderContents.allKeys, normalizedKey);
+
+        // Write down that this folder is being deleted before the first batch
+        // goes out. The finally below clears it as soon as we report anything,
+        // so a record that is still here on the next load can only mean the
+        // run was cut off without telling anyone.
+        recordStarted({
+          id: itemId,
+          bucket: apiS3.getBucketName(),
+          prefix: normalizedKey,
+          name: folder.name,
+          totalItems: allKeys.length,
+          startedAt: Date.now(),
+        });
 
         if (allKeys.length > 0) {
           // Use batch delete for better performance (S3 allows up to 1000 objects per batch)
@@ -358,6 +366,10 @@ export function useDeleteOperations() {
         failDeleteOperation(itemId, errorMessage);
         errorFunction(`Failed to delete "${folder.name}": ${errorMessage}`);
         throw error;
+      } finally {
+        // Finished, failed or cancelled all count as reported. Only a run that
+        // never gets here, because the tab went away, leaves its record behind.
+        clearRecord(itemId);
       }
     },
     [
@@ -371,6 +383,8 @@ export function useDeleteOperations() {
       updateSize,
       completeDeleteOperation,
       failDeleteOperation,
+      recordStarted,
+      clearRecord,
     ]
   );
 
