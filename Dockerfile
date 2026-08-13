@@ -62,4 +62,6 @@ WORKDIR /app/frontend
 
 EXPOSE 3000
 
+RUN pnpm --version
+
 CMD ["pnpm", "start"]
