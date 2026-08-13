@@ -51,6 +51,7 @@ jobs:
               - '.dockerignore'
               - '**/package.json'
               - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
 
   quality:
     name: Lint & format
