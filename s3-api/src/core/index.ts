@@ -13,6 +13,8 @@ import {
   DeleteBatchResult,
   DirectoryStructure,
   DownloadFileParams,
+  ListBucketParams,
+  ListBucketResult,
   logTypes,
   MoveFileParams,
   MultipartUploadParams,
@@ -137,9 +139,13 @@ export abstract class BaseS3ApiProvider {
 
   abstract getBucketName(): string;
 
+  abstract setBucketName(bucketName: string): void;
+
   abstract getPrefix(): string;
 
   abstract getRegion(): string;
+
+  abstract getBuckets(params: ListBucketParams): Promise<ListBucketResult>;
 
   abstract getS3Client(): S3Client;
 }

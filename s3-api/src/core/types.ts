@@ -1,5 +1,5 @@
 import { MultipartUploader } from '@/utils/multipartUploader.js';
-import { _Object, CommonPrefix, S3Client } from '@aws-sdk/client-s3';
+import { _Object, Bucket, CommonPrefix, S3Client } from '@aws-sdk/client-s3';
 
 export interface Credentials {
   region: string; //AWS region
@@ -164,12 +164,29 @@ export interface SearchParams {
   nextToken: string | undefined;
 }
 
+export interface ListBucketParams {
+  /**
+   * Filters to bucket names beginning with this value (server-side, via S3's
+   * ListBuckets Prefix param). S3 has no "contains" match for bucket names,
+   * only starts-with. Omit to list all buckets.
+   */
+  searchTerm?: string;
+  nextToken: string | undefined;
+}
+
 export interface SearchResult {
   files: _Object[];
   totalFiles: number;
   folders: _Object[];
   totalFolders: number;
   totalKeys: number;
+  nextToken?: string;
+  isTruncated?: boolean;
+}
+
+export interface ListBucketResult {
+  buckets: Bucket[];
+  totalBuckets: number;
   nextToken?: string;
   isTruncated?: boolean;
 }

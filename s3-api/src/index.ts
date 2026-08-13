@@ -17,6 +17,8 @@ import {
   SearchResult,
   SignedUrlParams,
   userTypes,
+  ListBucketParams,
+  ListBucketResult,
 } from './core/types.js';
 import { forEachWithConcurrency } from './utils/concurrency.js';
 import { buildAttachmentDisposition } from './utils/content-disposition.js';
@@ -35,6 +37,7 @@ import {
   DeleteObjectsCommand,
   ObjectIdentifier,
   S3Client,
+  ListBucketsCommand,
 } from '@aws-sdk/client-s3';
 import { BaseS3ApiProvider } from './core/index.js';
 import { MultipartUploader } from './utils/multipartUploader.js';
@@ -591,12 +594,38 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     return this.credentials.bucketName;
   }
 
+  setBucketName(bucketName: string): void {
+    if (!bucketName) {
+      throw new Error('Bucket name cannot be empty');
+    }
+
+    this.credentials.bucketName = bucketName;
+  }
+
   getPrefix(): string {
     return this.credentials.prefix;
   }
 
   getRegion(): string {
     return this.credentials.region;
+  }
+
+  async getBuckets(params: ListBucketParams): Promise<ListBucketResult> {
+    const response = await this.s3.send(
+      new ListBucketsCommand({
+        Prefix: params.searchTerm,
+        ContinuationToken: params.nextToken,
+      })
+    );
+
+    const buckets = response.Buckets ?? [];
+
+    return {
+      buckets,
+      totalBuckets: buckets.length,
+      nextToken: response.ContinuationToken,
+      isTruncated: response.ContinuationToken !== undefined,
+    };
   }
 
   getS3Client(): S3Client {
