@@ -9,6 +9,7 @@ import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { getItemKeyIntent } from './item-keyboard';
 
 interface FileItemListProps {
   file: FileItem;
@@ -117,6 +118,23 @@ export function FileItemList({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const intent = getItemKeyIntent(event);
+    if (!intent) return;
+
+    // Space would scroll the page otherwise
+    event.preventDefault();
+
+    if (intent === 'select') {
+      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      return;
+    }
+
+    if (!file.Key?.endsWith('/')) {
+      openFilePreview(file, allFiles);
+    }
+  };
+
   const timeInfo = formatTimeWithTooltip(file.lastModified);
 
   return (
@@ -129,12 +147,16 @@ export function FileItemList({
     >
       {/* Responsive Grid Layout */}
       <div
-        className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3 hover:bg-secondary/50 transition-all cursor-pointer items-center min-h-[56px] sm:min-h-[64px]"
+        role="button"
+        tabIndex={0}
+        aria-label={`${file.name}, file${selected ? ', selected' : ''}`}
+        className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3 hover:bg-secondary/50 transition-all cursor-pointer items-center min-h-[56px] sm:min-h-[64px] focus-visible:ring-2 focus-visible:ring-primary"
         style={{
           borderLeft: selected ? '3px solid var(--primary)' : '3px solid transparent',
         }}
         onClick={handleFileClick}
         onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
@@ -199,6 +221,7 @@ export function FileItemList({
           <AriaLabel label={`More actions`} position="top">
             <button
               className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
+              aria-label={`More actions for ${file.name}`}
               onClick={handleMenuClick}
             >
               <HiOutlineDotsVertical

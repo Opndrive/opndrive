@@ -6,6 +6,7 @@ import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { getItemKeyIntent } from './item-keyboard';
 
 interface FolderItemMobileProps {
   folder: Folder;
@@ -113,6 +114,28 @@ export function FolderItemMobile({
     handleFolderOpen();
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const intent = getItemKeyIntent(event);
+    if (!intent) return;
+
+    // Space would scroll the page otherwise
+    event.preventDefault();
+
+    if (intent === 'select') {
+      selectItem(
+        folder,
+        'folder',
+        index,
+        event.ctrlKey || event.metaKey,
+        event.shiftKey,
+        allFolders
+      );
+      return;
+    }
+
+    handleItemClick();
+  };
+
   const handleFolderOpen = () => {
     onFolderClick?.(folder);
   };
@@ -122,7 +145,10 @@ export function FolderItemMobile({
   return (
     <div
       data-folder-item
-      className={`flex items-center p-4 transition-colors cursor-pointer select-none touch-manipulation ${
+      role="button"
+      tabIndex={0}
+      aria-label={`${folder.name}, folder${selected ? ', selected' : ''}`}
+      className={`flex items-center p-4 transition-colors cursor-pointer select-none touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
         selected
           ? 'bg-primary/10 hover:bg-primary/15 active:bg-primary/20'
           : 'hover:bg-secondary/50 active:bg-secondary/70'
@@ -133,6 +159,7 @@ export function FolderItemMobile({
         userSelect: 'none',
       }}
       onClick={handleItemClick}
+      onKeyDown={handleKeyDown}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -174,7 +201,7 @@ export function FolderItemMobile({
       <button
         className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
         onClick={handleMenuClick}
-        aria-label="More actions"
+        aria-label={`More actions for ${folder.name}`}
       >
         <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
       </button>
