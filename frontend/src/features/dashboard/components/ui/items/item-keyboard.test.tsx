@@ -6,24 +6,39 @@
  * with a keyboard at all. These tests go through the accessible role and name
  * a keyboard user actually lands on, so removing the role, the tabIndex or the
  * key handler fails here rather than silently shipping.
+ *
+ * All five row components carry their own copy of the handler, so all five are
+ * covered here. They started as copies of each other and drift is the likely
+ * way this regresses.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FolderItem } from './folder-item';
+import { FolderItemMobile } from './folder-item-mobile';
 import { FileItemList } from './file-item-list';
+import { FileItemGrid } from './file-item-grid';
+import { FileItemMobile } from './file-item-mobile';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
 
-// The overflow menus pull in the rename, drive and router contexts, none of
-// which this file is about.
+// The overflow menus pull in the rename, drive and router contexts, and the
+// grid thumbnail wants an authenticated S3 client. None of that is what this
+// file is about.
 vi.mock('../menus/folder-overflow-menu', () => ({ FolderOverflowMenu: () => null }));
 vi.mock('../menus/file-overflow-menu', () => ({ FileOverflowMenu: () => null }));
+vi.mock('./file-thumbnail-with-image', () => ({ FileThumbnailWithImage: () => null }));
 
-const { openFilePreview } = vi.hoisted(() => ({ openFilePreview: vi.fn() }));
+const { openFilePreview, openPreview } = vi.hoisted(() => ({
+  openFilePreview: vi.fn(),
+  openPreview: vi.fn(),
+}));
 vi.mock('@/hooks/use-file-preview-actions', () => ({
   useFilePreviewActions: () => ({ openFilePreview }),
+}));
+vi.mock('@/context/file-preview-context', () => ({
+  useFilePreview: () => ({ openPreview }),
 }));
 
 function folder(overrides: Partial<Folder> = {}): Folder {
@@ -51,6 +66,7 @@ const selection = () => useMultiSelectStore.getState().selectedItems;
 
 beforeEach(() => {
   openFilePreview.mockClear();
+  openPreview.mockClear();
 });
 
 describe('folder rows', () => {
@@ -92,6 +108,28 @@ describe('folder rows', () => {
     expect(selection()).toHaveLength(1);
   });
 
+  it('extends the selection with Shift the way Shift+Click does', () => {
+    const folders = [folder(), folder({ id: 'taxes', name: 'Taxes', Prefix: 'taxes/' })];
+    render(
+      <>
+        <FolderItem folder={folders[0]} index={0} allFolders={folders} />
+        <FolderItem folder={folders[1]} index={1} allFolders={folders} />
+      </>
+    );
+
+    // Ctrl first to drop the anchor, then Shift to reach across
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Reports, folder' }), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Taxes, folder' }), {
+      key: 'Enter',
+      shiftKey: true,
+    });
+
+    expect(selection()).toHaveLength(2);
+  });
+
   it('reports the selection to screen readers', () => {
     render(<FolderItem folder={folder()} allFolders={[folder()]} />);
 
@@ -108,6 +146,31 @@ describe('folder rows', () => {
     render(<FolderItem folder={folder()} onClick={onClick} />);
 
     fireEvent.keyDown(screen.getByRole('button', { name: 'Reports, folder' }), { key: 'a' });
+
+    expect(onClick).not.toHaveBeenCalled();
+    expect(selection()).toHaveLength(0);
+  });
+
+  it('does not navigate again while Enter is held down', () => {
+    const onClick = vi.fn();
+    render(<FolderItem folder={folder()} onClick={onClick} />);
+    const row = screen.getByRole('button', { name: 'Reports, folder' });
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: 'Enter', repeat: true });
+    fireEvent.keyDown(row, { key: 'Enter', repeat: true });
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves Alt combinations to the operating system', () => {
+    const onClick = vi.fn();
+    render(<FolderItem folder={folder()} onClick={onClick} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Reports, folder' }), {
+      key: ' ',
+      altKey: true,
+    });
 
     expect(onClick).not.toHaveBeenCalled();
     expect(selection()).toHaveLength(0);
@@ -169,6 +232,109 @@ describe('file rows', () => {
     });
 
     expect(openFilePreview).not.toHaveBeenCalled();
+    expect(selection()).toHaveLength(1);
+  });
+
+  it('does not open the file when the overflow menu is opened with a key', () => {
+    render(<FileItemList file={file()} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for budget.xlsx' }), {
+      key: 'Enter',
+    });
+
+    expect(openFilePreview).not.toHaveBeenCalled();
+  });
+});
+
+describe('grid tiles', () => {
+  it('opens the preview on Enter', () => {
+    const files = [file()];
+    render(<FileItemGrid file={file()} allFiles={files} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'budget.xlsx, file' }), { key: 'Enter' });
+
+    expect(openFilePreview).toHaveBeenCalledWith(file(), files);
+  });
+
+  it('selects instead of opening when Ctrl is held', () => {
+    render(<FileItemGrid file={file()} allFiles={[file()]} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'budget.xlsx, file' }), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+
+    expect(openFilePreview).not.toHaveBeenCalled();
+    expect(selection()).toHaveLength(1);
+  });
+
+  it('does not open the file when the overflow menu is opened with a key', () => {
+    // The menu lives inside the tile here, so its key events reach the tile
+    render(<FileItemGrid file={file()} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for budget.xlsx' }), {
+      key: 'Enter',
+    });
+
+    expect(openFilePreview).not.toHaveBeenCalled();
+  });
+});
+
+describe('mobile rows', () => {
+  it('opens the folder on Enter', () => {
+    const onFolderClick = vi.fn();
+    render(<FolderItemMobile folder={folder()} onFolderClick={onFolderClick} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Reports, folder' }), { key: 'Enter' });
+
+    expect(onFolderClick).toHaveBeenCalledWith(folder());
+  });
+
+  it('adds to an existing selection rather than opening, the way a tap does', () => {
+    const onFolderClick = vi.fn();
+    const folders = [folder(), folder({ id: 'taxes', name: 'Taxes', Prefix: 'taxes/' })];
+    render(
+      <>
+        <FolderItemMobile folder={folders[0]} index={0} allFolders={folders} />
+        <FolderItemMobile
+          folder={folders[1]}
+          index={1}
+          allFolders={folders}
+          onFolderClick={onFolderClick}
+        />
+      </>
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Reports, folder' }), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Taxes, folder' }), { key: 'Enter' });
+
+    expect(onFolderClick).not.toHaveBeenCalled();
+    expect(selection()).toHaveLength(2);
+  });
+
+  it('opens the file preview on Enter', () => {
+    render(<FileItemMobile file={file()} allFiles={[file()]} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'budget.xlsx, file' }), { key: 'Enter' });
+
+    expect(openPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'budget.xlsx' }),
+      expect.arrayContaining([expect.objectContaining({ name: 'budget.xlsx' })])
+    );
+  });
+
+  it('selects the file instead of opening it when Ctrl is held', () => {
+    render(<FileItemMobile file={file()} allFiles={[file()]} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'budget.xlsx, file' }), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+
+    expect(openPreview).not.toHaveBeenCalled();
     expect(selection()).toHaveLength(1);
   });
 });
