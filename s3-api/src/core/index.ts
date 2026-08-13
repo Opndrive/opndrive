@@ -139,6 +139,8 @@ export abstract class BaseS3ApiProvider {
 
   abstract getBucketName(): string;
 
+  abstract setBucketName(bucketName: string): void;
+
   abstract getPrefix(): string;
 
   abstract getRegion(): string;

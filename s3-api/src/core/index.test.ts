@@ -105,6 +105,21 @@ describe('accessors', () => {
     // the user inside a prefix they never configured.
     expect(makeApi({ prefix: '' }).getPrefix()).toBe('');
   });
+
+  it('switches the active bucket', () => {
+    const api = makeApi();
+
+    api.setBucketName('other-bucket');
+
+    expect(api.getBucketName()).toBe('other-bucket');
+  });
+
+  it('rejects an empty bucket name', () => {
+    const api = makeApi();
+
+    expect(() => api.setBucketName('')).toThrow();
+    expect(api.getBucketName()).toBe('test-bucket');
+  });
 });
 
 describe('debugLog', () => {

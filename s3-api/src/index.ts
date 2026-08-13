@@ -594,6 +594,14 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     return this.credentials.bucketName;
   }
 
+  setBucketName(bucketName: string): void {
+    if (!bucketName) {
+      throw new Error('Bucket name cannot be empty');
+    }
+
+    this.credentials.bucketName = bucketName;
+  }
+
   getPrefix(): string {
     return this.credentials.prefix;
   }
