@@ -34,9 +34,22 @@ export function FolderItemMobile({
   const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleMenuClick = (event: React.MouseEvent) => {
-    // The menu opens itself now. This only keeps the row underneath
-    // from reading the same click as opening the item.
+    // The menu opens itself. This only keeps the row underneath from
+    // reading the same click as opening the item.
     event.stopPropagation();
+
+    // Opening the menu selects the item, the same way a plain click on the
+    // row does: no ctrl or shift, so it replaces whatever was selected
+    // before. Multi-select stays a keyboard gesture.
+    //
+    // Not on touch. There a tap opens an item and selection sits behind a
+    // long press, and once anything is selected a tap selects instead of
+    // opening - so selecting here would quietly change what every later
+    // tap does.
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) {
+      selectItem(folder, 'folder', index, false, false, allFolders);
+    }
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {

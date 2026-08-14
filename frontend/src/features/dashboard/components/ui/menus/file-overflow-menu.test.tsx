@@ -147,6 +147,30 @@ describe('reaching the submenu with a keyboard', () => {
   });
 });
 
+describe('where it opens', () => {
+  it('opens beside the button rather than over the rows below', async () => {
+    show();
+    trigger().focus();
+    fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeNull());
+
+    const menu = screen.getByRole('menu');
+    // The side follows the space available; what must not happen is above or
+    // below, which covers the rows underneath and their own menu buttons.
+    expect(['left', 'right']).toContain(menu.getAttribute('data-side'));
+    expect(menu.getAttribute('data-align')).toBe('start');
+  });
+
+  it('prefers the right and lets Radix flip it when there is no room', async () => {
+    show();
+    trigger().focus();
+    fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeNull());
+
+    expect(screen.getByRole('menu').getAttribute('data-side')).toBe('right');
+  });
+});
+
 describe('the page underneath', () => {
   it('does not freeze page scrolling while open', async () => {
     show();

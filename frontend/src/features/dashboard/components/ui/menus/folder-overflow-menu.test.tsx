@@ -161,6 +161,38 @@ describe('choosing and dismissing', () => {
   });
 });
 
+describe('where it opens', () => {
+  it('opens beside the button, never above or below it', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    // Which side it lands on is up to the space available, so this pins the
+    // part that matters: not above or below, because that covers the rows
+    // underneath along with their own menu buttons.
+    const side = screen.getByRole('menu').getAttribute('data-side');
+    expect(['left', 'right']).toContain(side);
+  });
+
+  it('prefers the right, so a menu with room does not jump left', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    // Radix flips this to the left on its own when the right will not fit.
+    // Asking for the left outright meant it opened there even with space.
+    expect(screen.getByRole('menu').getAttribute('data-side')).toBe('right');
+  });
+
+  it('lines its top up with the button', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    expect(screen.getByRole('menu').getAttribute('data-align')).toBe('start');
+  });
+});
+
 describe('the page underneath', () => {
   it('does not freeze page scrolling while open', async () => {
     show();
