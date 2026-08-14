@@ -162,16 +162,26 @@ describe('choosing and dismissing', () => {
 });
 
 describe('where it opens', () => {
-  it('opens beside the button, not under it', async () => {
+  it('opens beside the button, never above or below it', async () => {
     show();
 
     await openWithKeyboard('ArrowDown');
 
-    // Dropping below covers the rows underneath, including their own menu
-    // buttons, which is what the move to Radix accidentally changed. The
-    // hand-rolled version always placed this alongside the trigger.
-    const menu = screen.getByRole('menu');
-    expect(menu.getAttribute('data-side')).toBe('left');
+    // Which side it lands on is up to the space available, so this pins the
+    // part that matters: not above or below, because that covers the rows
+    // underneath along with their own menu buttons.
+    const side = screen.getByRole('menu').getAttribute('data-side');
+    expect(['left', 'right']).toContain(side);
+  });
+
+  it('prefers the right, so a menu with room does not jump left', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    // Radix flips this to the left on its own when the right will not fit.
+    // Asking for the left outright meant it opened there even with space.
+    expect(screen.getByRole('menu').getAttribute('data-side')).toBe('right');
   });
 
   it('lines its top up with the button', async () => {

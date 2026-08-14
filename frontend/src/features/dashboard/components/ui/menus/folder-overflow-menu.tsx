@@ -169,14 +169,17 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
           triggerNode
         )}
 
-        {/* Beside the button, not under it. Dropping below covers the rows
-            underneath, including their own menu buttons. The hand-rolled
-            version placed this alongside the trigger and only fell back to the
-            other side when it ran out of room, which is what is restored here:
-            `align="start"` lines the top up with the button, and Radix shifts
-            it up or down to stay on screen. */}
+        {/* Beside the button rather than under it, since dropping below covers
+            the rows underneath along with their own menu buttons.
+
+            Asks for the right and lets Radix flip it to the left when there is
+            no room, which is what the hand-rolled version worked out by hand:
+            it tried `rect.right + padding` first and only used
+            `rect.left - menuWidth - padding` when that ran off screen.
+            `align="start"` lines the top up with the button, and Radix nudges
+            it up or down to keep it in view. */}
         <DropdownMenuContent
-          side="left"
+          side="right"
           align="start"
           sideOffset={8}
           collisionPadding={8}
