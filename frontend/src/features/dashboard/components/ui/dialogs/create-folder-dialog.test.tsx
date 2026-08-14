@@ -152,6 +152,21 @@ describe('dismissing', () => {
   });
 });
 
+describe('panel width', () => {
+  it('is not widened by a leftover responsive default', async () => {
+    await open();
+
+    // Asserting on classes because this failure is invisible any other way in
+    // jsdom, and it is exactly how it got missed: the shared content styling
+    // used to carry `sm:max-w-lg`, which survives a plain `max-w-md` because
+    // tailwind-merge treats another breakpoint as a different property. The
+    // class list looked right while every dialog grew to 32rem above 640px.
+    const panel = screen.getByRole('dialog');
+    expect(panel.className).toContain('max-w-md');
+    expect(panel.className).not.toContain('sm:max-w-lg');
+  });
+});
+
 describe('it still does its job', () => {
   it('creates a folder with the typed name', async () => {
     await open();
