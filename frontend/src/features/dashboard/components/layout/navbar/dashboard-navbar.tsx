@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 
 import { Menu, Search, ArrowLeft } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
@@ -43,16 +44,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
   }, []);
 
   // Prevent body scroll when mobile search overlay is open
-  useEffect(() => {
-    if (showMobileSearchOverlay) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [showMobileSearchOverlay]);
+  useScrollLock(showMobileSearchOverlay);
 
   // Close mobile search overlay when route changes (e.g., clicking "View all results")
   useEffect(() => {
