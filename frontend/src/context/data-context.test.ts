@@ -126,6 +126,29 @@ describe('returning to a folder whose request is still open', () => {
     expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
   });
 
+  it('does not dedupe two different folders against each other', async () => {
+    const rootPage = deferred();
+    fetchDirectoryStructure.mockReturnValueOnce(rootPage.promise);
+    const loadingRoot = store().fetchData({ sync: false });
+
+    // Open a subfolder while the root is still loading.
+    store().setCurrentPrefix('docs/');
+    const docsPage = deferred();
+    fetchDirectoryStructure.mockReturnValueOnce(docsPage.promise);
+    const loadingDocs = store().fetchData({ sync: false });
+
+    // The dedupe is per cache key. Sharing one would leave the second folder
+    // waiting on a request that answers for the first.
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+
+    docsPage.resolve(page(['docs/a.txt']));
+    rootPage.resolve(page(['root.txt']));
+    await Promise.all([loadingRoot, loadingDocs]);
+
+    expect(useDriveStore.getState().cache['/']?.files.map((f) => f.id)).toEqual(['root.txt']);
+    expect(useDriveStore.getState().cache['docs/']?.files.map((f) => f.id)).toEqual(['docs/a.txt']);
+  });
+
   it('lets a forced sync run rather than joining a read already open', async () => {
     const initial = deferred();
     fetchDirectoryStructure.mockReturnValueOnce(initial.promise);
@@ -331,6 +354,52 @@ describe('ending the session', () => {
     // Writing here would repopulate the previous session's listing into a store
     // that logout had just emptied.
     expect(useDriveStore.getState().cache['/']).toBeUndefined();
+  });
+
+  it('does not append a page requested before the session ended', async () => {
+    fetchDirectoryStructure.mockResolvedValueOnce(
+      page(['old-a.txt'], { isTruncated: true, nextToken: 'token-1' })
+    );
+    await store().fetchData({ sync: false });
+
+    const nextPage = deferred();
+    fetchDirectoryStructure.mockReturnValueOnce(nextPage.promise);
+    const paging = store().loadMoreData();
+
+    // Log out and connect somewhere else, then open the same prefix. The cache
+    // is populated again by the time the old page lands, so checking that it
+    // exists is not enough to tell the two sessions apart.
+    store().clearAllData();
+    connect();
+    fetchDirectoryStructure.mockResolvedValueOnce(page(['new-a.txt']));
+    await store().fetchData({ sync: false });
+
+    nextPage.resolve(page(['old-b.txt']));
+    await paging;
+
+    // Appending here would list the previous bucket's objects inside the new one.
+    expect(cachedKeys()).toEqual(['new-a.txt']);
+  });
+
+  it('does not write paging status back into a cleared store', async () => {
+    fetchDirectoryStructure.mockResolvedValueOnce(
+      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
+    );
+    await store().fetchData({ sync: false });
+
+    const nextPage = deferred();
+    fetchDirectoryStructure.mockReturnValueOnce(nextPage.promise);
+    const paging = store().loadMoreData();
+
+    store().clearAllData();
+
+    nextPage.resolve(page(['b.txt']));
+    await paging;
+
+    // Logout emptied these; a response landing afterwards must not put a stray
+    // entry back for a folder that no longer belongs to anyone.
+    expect(useDriveStore.getState().loadMoreStatus).toEqual({});
+    expect(useDriveStore.getState().cache).toEqual({});
   });
 
   it('does not let a new session join the previous session request', async () => {

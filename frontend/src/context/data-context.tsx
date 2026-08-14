@@ -77,6 +77,7 @@ const inFlightLoadMores = new Map<string, Promise<void>>();
  */
 const latestRequestId = new Map<string, number>();
 const latestRecentRequestId = new Map<string, number>();
+const latestLoadMoreRequestId = new Map<string, number>();
 
 /**
  * Global rather than per key, and never reset. Counting from zero per key meant
@@ -246,6 +247,7 @@ export const useDriveStore = create<Store>((set, get) => ({
     inFlightLoadMores.clear();
     latestRequestId.clear();
     latestRecentRequestId.clear();
+    latestLoadMoreRequestId.clear();
 
     set({
       apiS3: null,
@@ -521,11 +523,19 @@ export const useDriveStore = create<Store>((set, get) => ({
     // on the same page from both fetching it even if that ever changes.
     return runDeduped(inFlightLoadMores, keyPrefix, true, async () => {
       const token = currentData.nextToken;
+      const requestId = claimRequestId(latestLoadMoreRequestId, keyPrefix);
 
       try {
         setLoadMoreStatus(keyPrefix, 'loading');
 
         const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000, token);
+
+        // clearAllData drops these ids, so a page requested before a logout
+        // reads as superseded here. Checking the cache alone would not be
+        // enough: connect to a different bucket and open the same prefix, and
+        // the cache is populated again by the time this lands, so the previous
+        // bucket's page would be appended to the new bucket's listing.
+        if (isSuperseded(latestLoadMoreRequestId, keyPrefix, requestId)) return;
 
         data.folders = data.folders.filter((obj) => obj.Prefix != '');
         data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
@@ -534,11 +544,7 @@ export const useDriveStore = create<Store>((set, get) => ({
         // the await. A refresh landing meanwhile replaces the cache, and
         // appending to the stale copy would put back whatever it removed.
         const latest = get().cache[keyPrefix];
-        if (!latest) {
-          // Logout or a folder change wiped it while this was open.
-          setLoadMoreStatus(keyPrefix, 'ready');
-          return;
-        }
+        if (!latest) return;
 
         setPrefixData(keyPrefix, {
           files: appendUnique(
@@ -554,6 +560,7 @@ export const useDriveStore = create<Store>((set, get) => ({
         });
         setLoadMoreStatus(keyPrefix, 'ready');
       } catch (error) {
+        if (isSuperseded(latestLoadMoreRequestId, keyPrefix, requestId)) return;
         setLoadMoreStatus(keyPrefix, 'error');
         console.error('Failed to load more data:', error);
       }
