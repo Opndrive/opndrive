@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useCallback } from 'react';
 import { FolderPlus, Upload, FolderUp } from 'lucide-react';
 import { pickMultipleFiles, pickFolder } from '@/features/upload/utils/file-picker';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
@@ -10,7 +9,13 @@ import { useDriveStore } from '@/context/data-context';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { PreviewLoading } from '@/components/file-preview/preview-loading';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/shared/components/ui/dropdown-menu';
+import { menuContentClass, menuItemClass } from './menu-styles';
 
 interface CreateMenuAction {
   id: string;
@@ -20,27 +25,26 @@ interface CreateMenuAction {
 }
 
 interface CreateMenuProps {
-  isOpen: boolean;
-  onClose: () => void;
   onNewFolderClick: () => void;
-  anchorElement: HTMLElement | null;
+  /**
+   * The button that opens the menu, rendered as the trigger itself. Replaces
+   * the old isOpen/onClose/anchorElement trio and the hand-rolled positioning
+   * that went with it.
+   */
+  trigger: React.ReactNode;
+  /** Tooltip for the trigger. Omit to render the trigger without one. */
+  triggerLabel?: string;
   className?: string;
   currentPath?: string;
 }
 
 export const CreateMenu: React.FC<CreateMenuProps> = ({
-  isOpen,
-  onClose,
   onNewFolderClick,
-  anchorElement,
+  trigger,
+  triggerLabel,
   className = '',
 }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
   const dispatchDrop = useUploadDispatch();
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const [originPosition, setOriginPosition] = useState<
-    'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  >('top-left');
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
   // The auth guards used to sit here, above every hook below them, so React
@@ -48,7 +52,6 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   // live with the other early return, once all hooks have run.
   const { currentPrefix } = useDriveStore();
 
-  //  file upload handlers using utility functions
   const triggerFileUpload = useCallback(async () => {
     try {
       const result = await pickMultipleFiles();
@@ -58,12 +61,11 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
           result.files
         );
         void dispatchDrop(processedData, currentPrefix ?? '', apiS3);
-        onClose(); // Close menu after successful file selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [dispatchDrop, onClose, currentPrefix, apiS3]);
+  }, [dispatchDrop, currentPrefix, apiS3]);
 
   const triggerFolderUpload = useCallback(async () => {
     try {
@@ -74,196 +76,72 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
           result.files
         );
         void dispatchDrop(processedData, currentPrefix ?? '', apiS3);
-        onClose(); // Close menu after successful folder selection
       }
     } catch {
       // Handle error silently or with proper error handling
     }
-  }, [dispatchDrop, onClose, currentPrefix, apiS3]);
+  }, [dispatchDrop, currentPrefix, apiS3]);
 
-  // Handle new folder action - simple approach
-  const handleNewFolderClick = useCallback(() => {
-    onNewFolderClick(); // Call the prop function
-  }, [onNewFolderClick]);
-
-  const getCreateMenuActions = (): CreateMenuAction[] => [
+  const actions: CreateMenuAction[] = [
     {
       id: 'new-folder',
       label: 'New folder',
       icon: <FolderPlus size={16} />,
-      onClick: handleNewFolderClick,
+      onClick: onNewFolderClick,
     },
     {
       id: 'file-upload',
       label: 'File upload',
       icon: <Upload size={16} />,
-      onClick: triggerFileUpload,
+      onClick: () => void triggerFileUpload(),
     },
     {
       id: 'folder-upload',
       label: 'Folder upload',
       icon: <FolderUp size={16} />,
-      onClick: triggerFolderUpload,
+      onClick: () => void triggerFolderUpload(),
     },
   ];
 
-  const actions = getCreateMenuActions();
+  // Rendering nothing at all would take the Create button away with it, so the
+  // trigger stays put and only the menu is withheld until the session is ready.
+  const ready = !isLoading && isAuthenticated;
 
-  // Prevent body scroll when menu is open
-  useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && anchorElement) {
-      const rect = anchorElement.getBoundingClientRect();
-      const menuWidth = 200;
-      const menuHeight = actions.length * 48 + 16; // Height for padding
-      const padding = 8;
-
-      let left = rect.left;
-      let top = rect.bottom + padding;
-      let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
-
-      // Horizontal positioning with boundary check
-      if (left + menuWidth > window.innerWidth - padding) {
-        left = rect.right - menuWidth;
-        origin = 'top-right';
-      }
-
-      // Ensure menu doesn't go off left edge
-      if (left < padding) {
-        left = padding;
-      }
-
-      // Ensure menu doesn't go off right edge
-      if (left + menuWidth > window.innerWidth - padding) {
-        left = window.innerWidth - menuWidth - padding;
-      }
-
-      // Vertical positioning with boundary check
-      if (top + menuHeight > window.innerHeight - padding) {
-        top = rect.top - menuHeight - padding;
-        origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
-      }
-
-      // Ensure menu doesn't go off top edge
-      if (top < padding) {
-        top = padding;
-      }
-
-      // Final check: ensure menu fits within viewport height
-      if (top + menuHeight > window.innerHeight - padding) {
-        top = window.innerHeight - menuHeight - padding;
-      }
-
-      // Clamp to ensure menu is always visible
-      top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
-      left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
-
-      setPosition({ top, left });
-      setOriginPosition(origin);
-    } else {
-      // Reset position when menu closes
-      setPosition(null);
-    }
-  }, [isOpen, anchorElement, actions.length]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, onClose]);
-
-  if (isLoading) {
-    return <PreviewLoading message="Authenticating..." />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
-
-  if (!isOpen || !position) return null;
-
-  // Get transform origin based on position
-  const getTransformOrigin = () => {
-    switch (originPosition) {
-      case 'top-right':
-        return 'top right';
-      case 'bottom-left':
-        return 'bottom left';
-      case 'bottom-right':
-        return 'bottom right';
-      default:
-        return 'top left';
-    }
-  };
-
-  const menuContent = (
-    <AriaLabel label="Create new items" position="top">
-      <div
-        ref={menuRef}
-        className={`
-          fixed z-50 min-w-[200px] max-h-[calc(100vh-16px)] overflow-y-auto p-2
-          bg-secondary border border-border rounded-lg shadow-xl
-          transition-all duration-200 ease-out
-          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-          ${className}
-        `}
-        style={{
-          top: position.top,
-          left: position.left,
-          transformOrigin: getTransformOrigin(),
-        }}
-        role="menu"
-      >
-        {actions.map((action, index) => (
-          <React.Fragment key={action.id}>
-            <button
-              className="
-              w-full flex items-center gap-3 px-3 py-3 text-sm rounded-md
-              text-left transition-colors duration-150
-              text-foreground hover:bg-card cursor-pointer
-            "
-              onClick={() => {
-                action.onClick();
-                onClose();
-              }}
-              role="menuitem"
-            >
-              <span className="flex-shrink-0">{action.icon}</span>
-              <span className="flex-1">{action.label}</span>
-            </button>
-            {index === 0 && <div className="my-1 h-px bg-border" />}
-          </React.Fragment>
-        ))}
-      </div>
-    </AriaLabel>
+  const triggerNode = (
+    <DropdownMenuTrigger asChild disabled={!ready}>
+      {trigger}
+    </DropdownMenuTrigger>
   );
 
-  return <>{typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null}</>;
+  return (
+    // modal={false}: a dropdown should not freeze the whole page. This menu used
+    // to set document.body.style.overflow itself, which is half of the scroll
+    // locking mess in #86.
+    <DropdownMenu modal={false}>
+      {triggerLabel ? (
+        <AriaLabel label={triggerLabel} position="top">
+          {triggerNode}
+        </AriaLabel>
+      ) : (
+        triggerNode
+      )}
+
+      <DropdownMenuContent
+        align="start"
+        className={`${menuContentClass} ${className}`}
+        aria-label="Create"
+      >
+        {actions.map((action) => (
+          <DropdownMenuItem
+            key={action.id}
+            className={menuItemClass}
+            onSelect={() => action.onClick()}
+          >
+            <span className="shrink-0">{action.icon}</span>
+            <span className="flex-1">{action.label}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 };

@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/shared/utils/utils';
@@ -37,16 +38,7 @@ export function DashboardSidebar({
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  useEffect(() => {
-    if (isOpen && isSmallScreen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen, isSmallScreen]);
+  useScrollLock(isOpen && isSmallScreen);
 
   useEffect(() => {
     const initialOpenSections: Record<string, boolean> = {};

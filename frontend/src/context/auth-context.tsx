@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useEffect, useState } from 'react';
+import { createContext, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   BYOS3ApiProvider,
@@ -133,6 +133,16 @@ export const AuthContext = createContext<AuthContextType>({
 
 const STORAGE_KEY = 's3_user_session';
 
+/**
+ * How long logout keeps the loading placeholder up before letting children
+ * render again.
+ *
+ * It exists to give `router.push('/')` time to commit, so the dashboard is not
+ * briefly re-rendered without a session behind it. Matches the 100ms + 50ms the
+ * two nested timers used to add up to.
+ */
+const LOGOUT_GATE_MS = 150;
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [apiS3, setApiS3] = useState<BYOS3ApiProvider | null>(null);
   const [uploadManager, setUploadManager] = useState<UploadManager | null>(null);
@@ -146,6 +156,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Get clearAllData at the top level where hooks are allowed
   const clearAllData = useDriveStore((state) => state.clearAllData);
+
+  /**
+   * The one timer logout still needs, held so it can be cancelled.
+   *
+   * Logout used to defer its work behind two nested uncancelled timers. Nothing
+   * stopped them, so they fired into whatever was left of the tree: harmless in
+   * the browser, where this provider only unmounts with the page, but in tests
+   * they land after the DOM has gone and throw `window is not defined`.
+   */
+  const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (gateTimer.current !== null) clearTimeout(gateTimer.current);
+    };
+  }, []);
+
+  const clearSessionState = () => {
+    setUserCreds(null);
+    setApiS3(null);
+    setUploadManager(null);
+    setSignedUrlUploadManager(null);
+  };
+
+  /** Lets children render again once the route change has had time to commit. */
+  const releaseLoadingGate = () => {
+    if (gateTimer.current !== null) clearTimeout(gateTimer.current);
+
+    gateTimer.current = setTimeout(() => {
+      gateTimer.current = null;
+      setIsLoading(false);
+    }, LOGOUT_GATE_MS);
+  };
 
   // Restore session from localStorage on app load
   useEffect(() => {
@@ -254,24 +297,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Navigate away from authenticated routes first
       router.push('/');
 
-      // Use setTimeout to allow navigation and component unmounting to complete
-      setTimeout(() => {
-        setUserCreds(null);
-        setApiS3(null);
-        setUploadManager(null);
-        setSignedUrlUploadManager(null);
-        setTimeout(() => setIsLoading(false), 50);
-      }, 100);
+      // Cleared straight away rather than behind a timer. `setIsLoading(true)`
+      // above lands in this same update, so the placeholder has already taken
+      // the place of every child and there is nobody left to read a half
+      // cleared session. Only lifting the gate has to wait.
+      clearSessionState();
+      releaseLoadingGate();
     } catch (error) {
       console.error('Error clearing session:', error);
-      setTimeout(() => {
-        setUserCreds(null);
-        setApiS3(null);
-        setUploadManager(null);
-        setSignedUrlUploadManager(null);
-        setIsLoading(false);
-        clearAllData();
-      }, 50);
+      clearSessionState();
+      clearAllData();
+      releaseLoadingGate();
     }
   };
 
