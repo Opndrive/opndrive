@@ -33,7 +33,7 @@ vi.mock('@/context/data-context', () => ({
 const store = () => useUploadStore.getState();
 
 type Upload = Parameters<ReturnType<typeof store>['addUpload']>[1];
-type Delete = Parameters<ReturnType<typeof store>['addDeleteOperation']>[1];
+type Delete = Parameters<ReturnType<typeof store>['startDeleteOperation']>[1];
 
 function upload(overrides: Partial<Upload> = {}): Upload {
   return {
@@ -151,7 +151,7 @@ describe('clearing', () => {
   });
 
   it('wipes every session-scoped collection on logout', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
     store().showDuplicateDialog({ name: 'x', type: 'file' }, vi.fn(), vi.fn());
 
     store().clearSessionData();
@@ -239,14 +239,28 @@ describe('refresh on completion', () => {
 });
 
 describe('delete operations', () => {
-  it('adds an operation', () => {
-    store().addDeleteOperation('d1', deletion());
+  it('adds an operation with a controller of its own', () => {
+    store().startDeleteOperation('d1', deletion());
 
-    expect(store().deletes.d1).toEqual(deletion());
+    expect(store().deletes.d1).toMatchObject(deletion());
+    expect(store().deletes.d1.abortController).toBeInstanceOf(AbortController);
+  });
+
+  it('gives each operation its own controller', () => {
+    const first = store().startDeleteOperation('d1', deletion());
+    const second = store().startDeleteOperation('d2', deletion({ id: 'd2' }));
+
+    // Sharing one would make cancelling a single delete stop all of them.
+    expect(first).not.toBe(second);
+
+    store().cancelDeleteOperation('d1');
+
+    expect(first.aborted).toBe(true);
+    expect(second.aborted).toBe(false);
   });
 
   it('updates progress', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
 
     store().updateDeleteProgress('d1', 40);
 
@@ -254,7 +268,7 @@ describe('delete operations', () => {
   });
 
   it('records file counts when given', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
 
     store().updateDeleteProgress('d1', 50, 5, 10);
 
@@ -262,7 +276,7 @@ describe('delete operations', () => {
   });
 
   it('leaves file counts alone when omitted', () => {
-    store().addDeleteOperation('d1', deletion({ completedFiles: 3, totalFiles: 9 }));
+    store().startDeleteOperation('d1', deletion({ completedFiles: 3, totalFiles: 9 }));
 
     store().updateDeleteProgress('d1', 60);
 
@@ -271,7 +285,7 @@ describe('delete operations', () => {
   });
 
   it('flags size calculation', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
 
     store().setCalculatingSize('d1', true);
     expect(store().deletes.d1.isCalculatingSize).toBe(true);
@@ -281,7 +295,7 @@ describe('delete operations', () => {
   });
 
   it('records a measured size', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
 
     store().updateSize('d1', 2048, 7);
 
@@ -289,7 +303,7 @@ describe('delete operations', () => {
   });
 
   it('completes at 100 percent', () => {
-    store().addDeleteOperation('d1', deletion({ progress: 30 }));
+    store().startDeleteOperation('d1', deletion({ progress: 30 }));
 
     store().completeDeleteOperation('d1');
 
@@ -297,7 +311,7 @@ describe('delete operations', () => {
   });
 
   it('records the reason a delete failed', () => {
-    store().addDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d1', deletion());
 
     store().failDeleteOperation('d1', 'AccessDenied');
 
@@ -305,32 +319,29 @@ describe('delete operations', () => {
   });
 
   it('aborts the in-flight request when cancelled', () => {
-    const abortController = new AbortController();
-    store().addDeleteOperation('d1', deletion({ status: 'deleting', abortController }));
+    const signal = store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
 
     store().cancelDeleteOperation('d1');
 
     // Marking it cancelled without aborting would leave the request running and
     // the objects deleted anyway.
-    expect(abortController.signal.aborted).toBe(true);
+    expect(signal.aborted).toBe(true);
     expect(store().deletes.d1.status).toBe('cancelled');
   });
 
-  it('cancels an operation that has no abort controller', () => {
-    store().addDeleteOperation('d1', deletion());
-
-    expect(() => store().cancelDeleteOperation('d1')).not.toThrow();
-    expect(store().deletes.d1.status).toBe('cancelled');
+  it('ignores a cancel for an operation it is not tracking', () => {
+    expect(() => store().cancelDeleteOperation('nope')).not.toThrow();
+    expect(store().deletes.nope).toBeUndefined();
   });
 
   it.each(['queued', 'deleting'] as const)('reports %s as active', (status) => {
-    store().addDeleteOperation('d1', deletion({ status }));
+    store().startDeleteOperation('d1', deletion({ status }));
 
     expect(store().isDeleteOperationActive('d1')).toBe(true);
   });
 
   it.each(['completed', 'failed', 'cancelled'] as const)('reports %s as inactive', (status) => {
-    store().addDeleteOperation('d1', deletion({ status }));
+    store().startDeleteOperation('d1', deletion({ status }));
 
     expect(store().isDeleteOperationActive('d1')).toBe(false);
   });
@@ -339,21 +350,125 @@ describe('delete operations', () => {
     expect(store().isDeleteOperationActive('nope')).toBeFalsy();
   });
 
-  it('exposes the abort controller', () => {
-    const abortController = new AbortController();
-    store().addDeleteOperation('d1', deletion({ abortController }));
+  it('exposes the abort controller it built', () => {
+    const signal = store().startDeleteOperation('d1', deletion());
 
-    expect(store().getDeleteAbortController('d1')).toBe(abortController);
+    // The store owns the controller, so the signal handed back to the caller
+    // and the one held in the map have to be the same object - otherwise the
+    // delete loop watches a signal nothing can ever abort.
+    expect(store().getDeleteAbortController('d1')?.signal).toBe(signal);
     expect(store().getDeleteAbortController('nope')).toBeUndefined();
   });
 
   it('removes an operation', () => {
-    store().addDeleteOperation('d1', deletion());
-    store().addDeleteOperation('d2', deletion({ id: 'd2' }));
+    store().startDeleteOperation('d1', deletion());
+    store().startDeleteOperation('d2', deletion({ id: 'd2' }));
 
     store().removeDeleteOperation('d1');
 
     expect(Object.keys(store().deletes)).toEqual(['d2']);
+  });
+
+  it('aborts a running operation it removes', () => {
+    const signal = store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
+
+    store().removeDeleteOperation('d1');
+
+    // The operations modal cancels a delete by removing it. Dropping the entry
+    // without aborting takes the card off screen while the loop keeps deleting,
+    // which is the worst of both: the user is told it stopped, and it did not.
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('removes a finished operation without touching anything', () => {
+    const signal = store().startDeleteOperation('d1', deletion({ status: 'completed' }));
+
+    store().removeDeleteOperation('d1');
+
+    // Dismissing a finished card is not a cancellation.
+    expect(signal.aborted).toBe(false);
+    expect(store().deletes.d1).toBeUndefined();
+  });
+
+  it('ignores a remove for an operation it is not tracking', () => {
+    expect(() => store().removeDeleteOperation('nope')).not.toThrow();
+    expect(store().deletes).toEqual({});
+  });
+});
+
+/**
+ * A delete loop holds the S3 client it started with in a closure, so nulling
+ * the provider on logout does not reach it. Aborting is the only thing that
+ * does, which makes these the tests that stop a destructive operation from
+ * outliving the session that authorised it.
+ */
+describe('ending a session stops running deletes', () => {
+  it('aborts every operation still in flight', () => {
+    const queued = store().startDeleteOperation('d1', deletion({ status: 'queued' }));
+    const running = store().startDeleteOperation('d2', deletion({ id: 'd2', status: 'deleting' }));
+
+    store().abortAllDeleteOperations();
+
+    expect(queued.aborted).toBe(true);
+    expect(running.aborted).toBe(true);
+    expect(store().deletes.d1.status).toBe('cancelled');
+    expect(store().deletes.d2.status).toBe('cancelled');
+  });
+
+  it('leaves an operation that already finished alone', () => {
+    store().startDeleteOperation('done', deletion({ id: 'done', status: 'completed' }));
+    store().startDeleteOperation('bad', deletion({ id: 'bad', status: 'failed' }));
+
+    store().abortAllDeleteOperations();
+
+    // Rewriting these to 'cancelled' would misreport history: the delete did
+    // happen, and the failure is what the user needs to see.
+    expect(store().deletes.done.status).toBe('completed');
+    expect(store().deletes.bad.status).toBe('failed');
+  });
+
+  it('does nothing when no delete is running', () => {
+    expect(() => store().abortAllDeleteOperations()).not.toThrow();
+    expect(store().deletes).toEqual({});
+  });
+
+  it('aborts before wiping the map on logout', () => {
+    const signal = store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
+
+    store().clearSessionData();
+
+    // Order is the whole point. `deletes` holds the only reference to the
+    // controller, so wiping it first would leave the loop running with nothing
+    // left that could ever stop it.
+    expect(signal.aborted).toBe(true);
+    expect(store().deletes).toEqual({});
+  });
+
+  it('ignores progress reported after the operation was wiped', () => {
+    store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
+    store().clearSessionData();
+
+    // The loop keeps going until its in-flight batch resolves, and then writes
+    // progress for an operation that no longer exists. Spreading onto a missing
+    // entry would resurrect it as a nameless card in the next session.
+    store().updateDeleteProgress('d1', 60, 6, 10);
+    store().completeDeleteOperation('d1');
+
+    expect(store().deletes.d1).toBeUndefined();
+    expect(store().deletes).toEqual({});
+  });
+
+  it.each([
+    ['updateDeleteProgress', () => store().updateDeleteProgress('gone', 50)],
+    ['setCalculatingSize', () => store().setCalculatingSize('gone', true)],
+    ['updateSize', () => store().updateSize('gone', 1024, 3)],
+    ['completeDeleteOperation', () => store().completeDeleteOperation('gone')],
+    ['failDeleteOperation', () => store().failDeleteOperation('gone', 'boom')],
+  ])('%s cannot recreate an operation that is gone', (_name, write) => {
+    write();
+
+    expect(store().deletes.gone).toBeUndefined();
+    expect(Object.keys(store().deletes)).toEqual([]);
   });
 });
 

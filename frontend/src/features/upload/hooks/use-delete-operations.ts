@@ -140,7 +140,7 @@ export function useDeleteOperations() {
   const { refreshCurrentData } = useDriveStore();
   const { error: errorFunction } = useNotification();
   const {
-    addDeleteOperation,
+    startDeleteOperation,
     updateDeleteProgress,
     setCalculatingSize,
     updateSize,
@@ -173,9 +173,7 @@ export function useDeleteOperations() {
       }
 
       const itemId = `delete-file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const abortController = new AbortController();
-
-      addDeleteOperation(itemId, {
+      const signal = startDeleteOperation(itemId, {
         id: itemId,
         name: file.name,
         type: 'file',
@@ -184,13 +182,12 @@ export function useDeleteOperations() {
         progress: 0,
         operationLabel: 'Deleting file',
         extension: file.extension,
-        abortController,
       });
 
       try {
         updateDeleteProgress(itemId, 0);
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -204,6 +201,12 @@ export function useDeleteOperations() {
 
         // Small delay to show progress
         await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Logout aborts every running delete. Arriving here after that must not
+        // report success or refresh the browser through the signed-out client.
+        if (signal.aborted) {
+          throw abortError();
+        }
 
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
@@ -223,7 +226,7 @@ export function useDeleteOperations() {
       apiS3,
       refreshCurrentData,
       errorFunction,
-      addDeleteOperation,
+      startDeleteOperation,
       updateDeleteProgress,
       completeDeleteOperation,
       failDeleteOperation,
@@ -238,9 +241,7 @@ export function useDeleteOperations() {
 
       // Create the operation with loading state for size calculation
       const itemId = `delete-folder-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const abortController = new AbortController();
-
-      addDeleteOperation(itemId, {
+      const signal = startDeleteOperation(itemId, {
         id: itemId,
         name: folder.name,
         type: 'folder',
@@ -248,7 +249,6 @@ export function useDeleteOperations() {
         status: 'deleting',
         progress: 0,
         operationLabel: 'Deleting folder',
-        abortController,
       });
 
       try {
@@ -256,7 +256,7 @@ export function useDeleteOperations() {
         setCalculatingSize(itemId, true);
         updateDeleteProgress(itemId, 0);
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -266,14 +266,14 @@ export function useDeleteOperations() {
 
         const folderContents = await getAllS3ObjectsWithPrefix(normalizedKey);
 
+        if (signal.aborted) {
+          throw abortError();
+        }
+
         // Update operation with actual file count, hide loading state
         setCalculatingSize(itemId, false);
         updateSize(itemId, 0, folderContents.totalItems); // Size calculation not needed for delete
         updateDeleteProgress(itemId, 5); // Small progress after calculation
-
-        if (abortController.signal.aborted) {
-          throw abortError();
-        }
 
         // Get all keys (files and folders) to delete
         const allKeys = folderContents.allKeys;
@@ -291,7 +291,7 @@ export function useDeleteOperations() {
           const failures: DeleteBatchError[] = [];
 
           for (let i = 0; i < allKeys.length; i += batchSize) {
-            if (abortController.signal.aborted) {
+            if (signal.aborted) {
               throw abortError();
             }
 
@@ -318,7 +318,7 @@ export function useDeleteOperations() {
 
           // A cancel landing after the final chunk is a cancellation, not a
           // partial failure.
-          if (abortController.signal.aborted) {
+          if (signal.aborted) {
             throw abortError();
           }
 
@@ -338,6 +338,11 @@ export function useDeleteOperations() {
 
         // Small delay to show final progress
         await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Covers the empty-folder branch too, which has no loop to check.
+        if (signal.aborted) {
+          throw abortError();
+        }
 
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
@@ -362,7 +367,7 @@ export function useDeleteOperations() {
       refreshCurrentData,
       errorFunction,
       getAllS3ObjectsWithPrefix,
-      addDeleteOperation,
+      startDeleteOperation,
       setCalculatingSize,
       updateDeleteProgress,
       updateSize,
@@ -382,7 +387,6 @@ export function useDeleteOperations() {
       }
 
       const itemId = `delete-batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const abortController = new AbortController();
 
       // Determine batch operation details
       const fileCount = items.filter((item) => 'Key' in item).length;
@@ -394,7 +398,7 @@ export function useDeleteOperations() {
             ? `Deleting ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
             : `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
 
-      addDeleteOperation(itemId, {
+      const signal = startDeleteOperation(itemId, {
         id: itemId,
         name: `${items.length} item${items.length !== 1 ? 's' : ''}`,
         type: 'folder', // Use folder icon for batch operations
@@ -402,7 +406,6 @@ export function useDeleteOperations() {
         status: 'deleting',
         progress: 0,
         operationLabel,
-        abortController,
       });
 
       try {
@@ -410,7 +413,7 @@ export function useDeleteOperations() {
         setCalculatingSize(itemId, true);
         updateDeleteProgress(itemId, 0);
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -418,7 +421,7 @@ export function useDeleteOperations() {
         const allKeysToDelete: string[] = [];
 
         for (const item of items) {
-          if (abortController.signal.aborted) {
+          if (signal.aborted) {
             throw abortError();
           }
 
@@ -437,7 +440,7 @@ export function useDeleteOperations() {
         updateSize(itemId, 0, totalItems);
         updateDeleteProgress(itemId, 5);
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -455,7 +458,7 @@ export function useDeleteOperations() {
         const failures: DeleteBatchError[] = [];
 
         for (let i = 0; i < uniqueKeys.length; i += batchSize) {
-          if (abortController.signal.aborted) {
+          if (signal.aborted) {
             throw abortError();
           }
 
@@ -477,7 +480,7 @@ export function useDeleteOperations() {
           updateDeleteProgress(itemId, progress, deletedCount, uniqueKeys.length);
         }
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -491,6 +494,10 @@ export function useDeleteOperations() {
 
         // Small delay to show final progress
         await new Promise((resolve) => setTimeout(resolve, 100));
+
+        if (signal.aborted) {
+          throw abortError();
+        }
 
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
@@ -513,8 +520,7 @@ export function useDeleteOperations() {
       apiS3,
       refreshCurrentData,
       errorFunction,
-      getAllS3ObjectsWithPrefix,
-      addDeleteOperation,
+      startDeleteOperation,
       setCalculatingSize,
       updateDeleteProgress,
       updateSize,
@@ -538,9 +544,7 @@ export function useDeleteOperations() {
       const uniqueKeys = Array.from(new Set(keys));
 
       const itemId = `delete-keys-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const abortController = new AbortController();
-
-      addDeleteOperation(itemId, {
+      const signal = startDeleteOperation(itemId, {
         id: itemId,
         name: `${uniqueKeys.length} item${uniqueKeys.length !== 1 ? 's' : ''}`,
         type: 'folder',
@@ -549,13 +553,12 @@ export function useDeleteOperations() {
         progress: 0,
         totalFiles: uniqueKeys.length,
         operationLabel: `Deleting ${uniqueKeys.length} item${uniqueKeys.length !== 1 ? 's' : ''}`,
-        abortController,
       });
 
       try {
         updateDeleteProgress(itemId, 0, 0, uniqueKeys.length);
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -566,7 +569,7 @@ export function useDeleteOperations() {
         const failures: DeleteBatchError[] = [];
 
         for (let i = 0; i < uniqueKeys.length; i += batchSize) {
-          if (abortController.signal.aborted) {
+          if (signal.aborted) {
             throw abortError();
           }
 
@@ -587,7 +590,7 @@ export function useDeleteOperations() {
           updateDeleteProgress(itemId, progress, deletedCount, uniqueKeys.length);
         }
 
-        if (abortController.signal.aborted) {
+        if (signal.aborted) {
           throw abortError();
         }
 
@@ -618,7 +621,7 @@ export function useDeleteOperations() {
       apiS3,
       refreshCurrentData,
       errorFunction,
-      addDeleteOperation,
+      startDeleteOperation,
       updateDeleteProgress,
       completeDeleteOperation,
       failDeleteOperation,
