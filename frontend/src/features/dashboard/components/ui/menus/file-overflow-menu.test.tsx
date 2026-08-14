@@ -147,6 +147,19 @@ describe('reaching the submenu with a keyboard', () => {
   });
 });
 
+describe('where it opens', () => {
+  it('opens beside the button rather than over the rows below', async () => {
+    show();
+    trigger().focus();
+    fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeNull());
+
+    const menu = screen.getByRole('menu');
+    expect(menu.getAttribute('data-side')).toBe('left');
+    expect(menu.getAttribute('data-align')).toBe('start');
+  });
+});
+
 describe('the page underneath', () => {
   it('does not freeze page scrolling while open', async () => {
     show();

@@ -203,8 +203,17 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
         triggerNode
       )}
 
+      {/* Beside the button, not under it. Dropping below covers the rows
+          underneath, including their own menu buttons. The hand-rolled version
+          placed this alongside the trigger and only ever fell back to the other
+          side when it ran out of room, which is the behaviour restored here:
+          `align="start"` lines the top up with the button, and Radix shifts it
+          up or down to stay on screen. */}
       <DropdownMenuContent
+        side="left"
         align="start"
+        sideOffset={8}
+        collisionPadding={8}
         className={`${menuContentClass} ${className}`}
         aria-label={`Actions for ${file.name}`}
       >

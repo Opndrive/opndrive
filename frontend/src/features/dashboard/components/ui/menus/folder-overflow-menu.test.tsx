@@ -161,6 +161,28 @@ describe('choosing and dismissing', () => {
   });
 });
 
+describe('where it opens', () => {
+  it('opens beside the button, not under it', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    // Dropping below covers the rows underneath, including their own menu
+    // buttons, which is what the move to Radix accidentally changed. The
+    // hand-rolled version always placed this alongside the trigger.
+    const menu = screen.getByRole('menu');
+    expect(menu.getAttribute('data-side')).toBe('left');
+  });
+
+  it('lines its top up with the button', async () => {
+    show();
+
+    await openWithKeyboard('ArrowDown');
+
+    expect(screen.getByRole('menu').getAttribute('data-align')).toBe('start');
+  });
+});
+
 describe('the page underneath', () => {
   it('does not freeze page scrolling while open', async () => {
     show();
