@@ -21,9 +21,10 @@ import { useLayoutEffect } from 'react';
  * overflow for any other reason, so clearing the inline style is the only
  * resting state that can be correct.
  *
- * Not yet used by the three overflow menus, which still lock scroll by hand.
- * Those are being moved to Radix in #88, which removes the manual locking
- * outright, so converting them here would only be undone.
+ * This is now the only thing in the app that writes body overflow. The three
+ * overflow menus used to lock scroll by hand just to show a dropdown; they are
+ * Radix menus now and do not lock at all, which is the behaviour a dropdown
+ * should have had in the first place.
  */
 let holders = 0;
 
