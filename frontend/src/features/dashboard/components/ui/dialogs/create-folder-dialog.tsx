@@ -89,7 +89,9 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
       <DialogContent
         showCloseButton={false}
         onOpenAutoFocus={focusName}
-        className="w-full max-w-md gap-0 rounded-lg bg-card p-0 shadow-xl"
+        // border-0: the shared content styling carries a border, but this card
+        // never had one and it reads as a hard outline against the backdrop.
+        className="w-full max-w-md gap-0 rounded-lg border-0 bg-card p-0 shadow-xl"
       >
         <div className="flex items-center justify-between p-6 pb-4">
           <div className="flex items-center gap-3">
