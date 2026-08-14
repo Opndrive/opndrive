@@ -18,7 +18,11 @@ export const MobileDetailsDialog = () => {
   const { isOpen, selectedItem, close } = useDetails();
   const { metadata, isLoading } = useFileMetadata(isFileItem(selectedItem) ? selectedItem : null);
 
-  useScrollLock(isOpen);
+  // Matches the render condition below rather than just `isOpen`. The context
+  // exposes a toggle() that flips isOpen without setting an item, so locking on
+  // isOpen alone can stop the page scrolling with no dialog on screen to
+  // explain why.
+  useScrollLock(isOpen && !!selectedItem);
 
   if (!isOpen || !selectedItem) return null;
 

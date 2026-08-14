@@ -33,8 +33,11 @@ const MAX_NAME_BYTES = 255;
 // eslint-disable-next-line no-control-regex -- matching them is the point
 const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
 
+// Built once: this runs on every keystroke in the create and rename dialogs.
+const utf8 = new TextEncoder();
+
 function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
+  return utf8.encode(value).length;
 }
 
 /**

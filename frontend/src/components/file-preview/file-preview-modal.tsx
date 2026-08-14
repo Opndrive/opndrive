@@ -57,7 +57,9 @@ export function FilePreviewModal() {
     };
   }, [isOpen, handleKeyDown]);
 
-  useScrollLock(isOpen);
+  // Tied to what actually renders, not just `isOpen`: locking while the modal
+  // bails out for a missing file would leave the page frozen behind nothing.
+  useScrollLock(isOpen && !!currentFile);
 
   if (!isOpen || !currentFile) {
     return null;
