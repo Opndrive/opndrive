@@ -339,7 +339,8 @@ export function useDeleteOperations() {
         // Small delay to show final progress
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Covers the empty-folder branch too, which has no loop to check.
+        // The delay above is another window for a logout to land in, and the
+        // loop's own check happened before it.
         if (signal.aborted) {
           throw abortError();
         }

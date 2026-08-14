@@ -192,6 +192,29 @@ describe('a delete must not survive its session', () => {
     expect(store().deletes).toEqual({});
   });
 
+  it('stops when the operations modal cancels it', async () => {
+    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
+    apiS3.deleteBatch.mockImplementation(async (batch) => {
+      if (apiS3.deleteBatch.mock.calls.length === 1) {
+        // Exactly what the modal's Cancel does: it removes the operation
+        // rather than calling cancelDeleteOperation.
+        store().removeDeleteOperation(onlyOperationId());
+      }
+      return { requested: batch.length, deleted: batch.length, errors: [] };
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder);
+    });
+
+    // Removing the entry used to drop the only reference to the controller, so
+    // Cancel took the card off screen and the delete carried on to the end.
+    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
   it('stops a multi select delete too', async () => {
     apiS3.deleteBatch.mockImplementation(async (batch) => {
       if (apiS3.deleteBatch.mock.calls.length === 1) {
