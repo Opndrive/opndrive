@@ -23,8 +23,6 @@ export function FolderItemMobile({
   _onAction,
   index = 0,
 }: FolderItemMobileProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
   const selected = isSelected(folder);
@@ -36,14 +34,9 @@ export function FolderItemMobile({
   const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleMenuClick = (event: React.MouseEvent) => {
+    // The menu opens itself now. This only keeps the row underneath
+    // from reading the same click as opening the item.
     event.stopPropagation();
-    setMenuAnchor(event.currentTarget as HTMLElement);
-    setIsMenuOpen(true);
-  };
-
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
-    setMenuAnchor(null);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -198,19 +191,17 @@ export function FolderItemMobile({
       </div>
 
       {/* Menu Button */}
-      <button
-        className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
-        onClick={handleMenuClick}
-        aria-label={`More actions for ${folder.name}`}
-      >
-        <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
-      </button>
-
       <FolderOverflowMenu
         folder={folder}
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorElement={menuAnchor}
+        trigger={
+          <button
+            className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
+            onClick={handleMenuClick}
+            aria-label={`More actions for ${folder.name}`}
+          >
+            <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
+          </button>
+        }
       />
     </div>
   );
