@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderPlus, X } from 'lucide-react';
-import { isValidFolderName } from '@/features/upload/utils/sanitize-folder-name';
+import { describeFolderNameError } from '@/features/upload/utils/folder-name';
 
 interface CreateFolderDialogProps {
   isOpen: boolean;
@@ -44,15 +44,9 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
     const value = e.target.value;
     setFolderName(value);
 
-    if (validationError) {
-      setValidationError('');
-    }
-
-    if (value.trim() && !isValidFolderName(value)) {
-      setValidationError(
-        'Folder name contains invalid characters. Use only letters, numbers, spaces, hyphens, and underscores.'
-      );
-    }
+    // Report the actual reason rather than a fixed sentence about letters and
+    // numbers, which described rules none of the validation ever applied.
+    setValidationError(value.trim() ? (describeFolderNameError(value) ?? '') : '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,10 +54,9 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
 
     if (!folderName.trim() || isCreating || validationError) return;
 
-    if (!isValidFolderName(folderName)) {
-      setValidationError(
-        'Invalid folder name. Please use only letters, numbers, spaces, hyphens, and underscores.'
-      );
+    const nameError = describeFolderNameError(folderName);
+    if (nameError) {
+      setValidationError(nameError);
       return;
     }
 

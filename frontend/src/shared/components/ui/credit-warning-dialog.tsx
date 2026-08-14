@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -52,16 +53,10 @@ export function CreditWarningDialog({
   useEffect(() => {
     if (isOpen) {
       setDontShowAgain(false);
-      // Disable body scroll when dialog is open
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
     }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
   }, [isOpen]);
+
+  useScrollLock(isOpen);
 
   const handleConfirm = () => {
     if (dontShowAgain) {

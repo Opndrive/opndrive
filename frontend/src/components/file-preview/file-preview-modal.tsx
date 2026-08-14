@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 
 import React, { useEffect, useCallback } from 'react';
 import { useFilePreview } from '@/context/file-preview-context';
@@ -47,18 +48,18 @@ export function FilePreviewModal() {
   useEffect(() => {
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = 'hidden';
     } else {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
     }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
     };
   }, [isOpen, handleKeyDown]);
+
+  // Tied to what actually renders, not just `isOpen`: locking while the modal
+  // bails out for a missing file would leave the page frozen behind nothing.
+  useScrollLock(isOpen && !!currentFile);
 
   if (!isOpen || !currentFile) {
     return null;

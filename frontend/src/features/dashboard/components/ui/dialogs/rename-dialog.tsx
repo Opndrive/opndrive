@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit3, X } from 'lucide-react';
-import { isValidFolderName } from '@/features/upload/utils/sanitize-folder-name';
+import { describeFolderNameError } from '@/features/upload/utils/folder-name';
 
 interface RenameDialogProps {
   isOpen: boolean;
@@ -58,8 +58,9 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
       return 'Please enter a different name';
     }
 
-    if (type === 'folder' && !isValidFolderName(name)) {
-      return 'Invalid folder name. Use only letters, numbers, spaces, hyphens, and underscores.';
+    if (type === 'folder') {
+      const nameError = describeFolderNameError(name);
+      if (nameError) return nameError;
     }
 
     if (type === 'file') {

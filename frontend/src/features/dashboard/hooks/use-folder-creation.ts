@@ -4,10 +4,7 @@ import { useState, useCallback } from 'react';
 import { generateUniqueFolderName } from '@/features/upload/utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
-import {
-  sanitizeFolderName,
-  isValidFolderName,
-} from '@/features/upload/utils/sanitize-folder-name';
+import { describeFolderNameError } from '@/features/upload/utils/folder-name';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 
@@ -62,33 +59,35 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
     async (folderName: string): Promise<void> => {
       if (!apiS3) throw new Error('S3 API is not available yet.');
 
-      // Validate and sanitize folder name
-      if (!isValidFolderName(folderName)) {
-        throw new Error(
-          'Invalid folder name. Please use only letters, numbers, spaces, hyphens, and underscores.'
-        );
+      const nameError = describeFolderNameError(folderName);
+      if (nameError) {
+        throw new Error(nameError);
       }
 
-      const sanitizedName = sanitizeFolderName(folderName);
-
-      // Create the folder using the proper S3 createFolder method
-      const folderKey = generateS3Key(`${sanitizedName}/`, currentPath);
+      // Written exactly as typed. This used to create a sanitized name instead,
+      // which also meant the duplicate check above ran against a different key
+      // than the one being created.
+      const name = folderName.trim();
+      const folderKey = generateS3Key(`${name}/`, currentPath);
 
       await apiS3.createFolder(folderKey);
 
       // Refresh the current directory to show the new folder
       await fetchData({ sync: true });
 
-      // Use the sanitized name for the success callback
-      onFolderCreated?.(sanitizedName);
+      onFolderCreated?.(name);
     },
     [currentPath, fetchData, onFolderCreated, apiS3]
   );
 
   // Handle folder creation with duplicate checking
   const handleFolderCreation = useCallback(
-    async (folderName: string): Promise<void> => {
+    async (rawFolderName: string): Promise<void> => {
       if (!apiS3) throw new Error('S3 API is not available yet.');
+
+      // Normalise once so the existence check, the duplicate prompt and the
+      // key that gets written are all talking about the same name.
+      const folderName = rawFolderName.trim();
 
       const exists = await checkFolderExists(folderName);
 

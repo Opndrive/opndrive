@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 
 import { X } from 'lucide-react';
 import { useDetails } from '@/context/details-context';
@@ -6,7 +7,6 @@ import { useFileMetadata } from '@/features/dashboard/hooks/use-file-metadata';
 import { FileItem } from '@/features/dashboard/types/file';
 import { FaFolder } from 'react-icons/fa';
 import { createPortal } from 'react-dom';
-import { useEffect } from 'react';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 const isFileItem = (item: FileItem | null): item is FileItem => {
@@ -18,17 +18,11 @@ export const MobileDetailsDialog = () => {
   const { isOpen, selectedItem, close } = useDetails();
   const { metadata, isLoading } = useFileMetadata(isFileItem(selectedItem) ? selectedItem : null);
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  // Matches the render condition below rather than just `isOpen`. The context
+  // exposes a toggle() that flips isOpen without setting an item, so locking on
+  // isOpen alone can stop the page scrolling with no dialog on screen to
+  // explain why.
+  useScrollLock(isOpen && !!selectedItem);
 
   if (!isOpen || !selectedItem) return null;
 

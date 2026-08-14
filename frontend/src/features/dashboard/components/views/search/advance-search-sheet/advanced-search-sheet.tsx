@@ -72,7 +72,9 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  useScrollLock(isOpen);
+  // Kept in step with the render condition below, so the page is never held
+  // still before the sheet is actually on screen.
+  useScrollLock(mounted && isOpen);
 
   const [type, setType] = useState<string | null>(null);
   const [owner, setOwner] = useState<string | null>(null);
