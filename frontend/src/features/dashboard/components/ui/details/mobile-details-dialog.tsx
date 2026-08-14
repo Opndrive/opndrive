@@ -6,7 +6,13 @@ import { useFileMetadata } from '@/features/dashboard/hooks/use-file-metadata';
 import { FileItem } from '@/features/dashboard/types/file';
 import { FaFolder } from 'react-icons/fa';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
-import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/shared/components/ui/dialog';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 const isFileItem = (item: FileItem | null): item is FileItem => {
   if (!item) return false;
@@ -98,6 +104,12 @@ export const MobileDetailsDialog = () => {
             </DialogClose>
           </AriaLabel>
         </div>
+
+        {/* Radix warns without one, and a screen reader otherwise gets the
+            file name and then an unannounced wall of properties. */}
+        <DialogDescription className="sr-only">
+          Details for {isFile ? file?.name : 'this item'}.
+        </DialogDescription>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] custom-scrollbar">
           <div className="space-y-6">

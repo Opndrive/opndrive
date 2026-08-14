@@ -71,6 +71,11 @@ export function FilePreviewModal() {
    * the kind of thing that breaks a viewer in a way nobody notices for months.
    * The panel is full screen, so there is nothing visible behind it to tab to,
    * and `aria-modal` tells assistive tech the rest of the page is out of play.
+   *
+   * Keyed on `isOpen` alone, which relies on OPEN_PREVIEW setting the file in
+   * the same dispatch. If those ever split, the panel could mount after this
+   * has run and focus would stay outside. Navigating between files must not
+   * re-run it either, or focus would be yanked back off the header controls.
    */
   useEffect(() => {
     if (!isOpen) return;

@@ -101,8 +101,13 @@ function DialogContent({
         // the more reliable of the two techniques, and does not set this. Set
         // it as well so assistive tech that looks for the flag also gets it.
         aria-modal="true"
+        // No responsive width default here on purpose. It used to carry
+        // `sm:max-w-lg`, which survives a caller's plain `max-w-md` because
+        // tailwind-merge treats a different breakpoint as a different property.
+        // Every dialog then quietly widened to 32rem above 640px while looking
+        // correct in the class list. Each dialog sets its own width instead.
         className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
+          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200',
           className
         )}
         {...props}
