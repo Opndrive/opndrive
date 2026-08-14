@@ -57,6 +57,91 @@ type Store = {
   refreshAll: () => Promise<void>;
 };
 
+/**
+ * Requests currently open, keyed by the cache key they will write to.
+ *
+ * Module scope rather than store state on purpose: every store write re-renders
+ * subscribers, and a pending promise is not something any component renders.
+ * `clearAllData` resets them so a new session cannot join a request issued by
+ * the previous one.
+ */
+const inFlightFetches = new Map<string, Promise<void>>();
+const inFlightRecentFetches = new Map<string, Promise<void>>();
+const inFlightLoadMores = new Map<string, Promise<void>>();
+
+/**
+ * The newest request issued per cache key. A response is only written if it is
+ * still the newest, so a slow request cannot land on top of a faster one issued
+ * after it. Without this a refresh that overtakes an in-flight read gets undone
+ * by that read, putting back rows the refresh had just removed.
+ */
+const latestRequestId = new Map<string, number>();
+const latestRecentRequestId = new Map<string, number>();
+
+/**
+ * Global rather than per key, and never reset. Counting from zero per key meant
+ * clearAllData could hand a new session's first request the same id an old
+ * request was still holding, so the stale response read as current and wrote
+ * the previous bucket's listing into the new session.
+ */
+let requestCounter = 0;
+
+function claimRequestId(ids: Map<string, number>, key: string): number {
+  requestCounter += 1;
+  ids.set(key, requestCounter);
+  return requestCounter;
+}
+
+function isSuperseded(ids: Map<string, number>, key: string, id: number): boolean {
+  return ids.get(key) !== id;
+}
+
+/**
+ * Runs `work`, or joins the request already open for `key` when the caller is
+ * happy with an in-flight result. A forced sync passes `reuseInFlight: false`
+ * because the user asked for fresh data, not for whatever was already being
+ * read before they asked.
+ */
+function runDeduped(
+  inFlight: Map<string, Promise<void>>,
+  key: string,
+  reuseInFlight: boolean,
+  work: () => Promise<void>
+): Promise<void> {
+  if (reuseInFlight) {
+    const pending = inFlight.get(key);
+    if (pending) return pending;
+  }
+
+  const request = work().finally(() => {
+    // Only ever clear our own entry; a later request may have replaced it.
+    if (inFlight.get(key) === request) inFlight.delete(key);
+  });
+
+  inFlight.set(key, request);
+  return request;
+}
+
+/**
+ * Appends `incoming` to `existing`, skipping anything already present by id.
+ *
+ * S3 pages do not overlap, so a repeat here means the same page was appended
+ * twice. The visible symptom is every row of that page listed twice, with the
+ * item count doubled to match. Returns `existing` untouched when there is
+ * nothing to add, so an append that changes nothing does not re-render.
+ */
+function appendUnique<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const seen = new Set(existing.map((item) => item.id));
+
+  const additions = incoming.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+
+  return additions.length > 0 ? [...existing, ...additions] : existing;
+}
+
 function enrichFolder(obj: CommonPrefix): Folder {
   const temp = obj.Prefix?.split('/');
 
@@ -152,7 +237,16 @@ export const useDriveStore = create<Store>((set, get) => ({
 
   setCurrentPrefix: (prefix) => set({ currentPrefix: prefix }),
 
-  clearAllData: () =>
+  clearAllData: () => {
+    // Drop the request bookkeeping with the data it describes. A new session
+    // must not join a request issued by the previous one, and leaving the ids
+    // behind would let a response from the old session still count as current.
+    inFlightFetches.clear();
+    inFlightRecentFetches.clear();
+    inFlightLoadMores.clear();
+    latestRequestId.clear();
+    latestRecentRequestId.clear();
+
     set({
       apiS3: null,
       cache: {},
@@ -162,7 +256,8 @@ export const useDriveStore = create<Store>((set, get) => ({
       loadMoreStatus: {},
       currentPrefix: null,
       rootPrefix: null,
-    }),
+    });
+  },
 
   fetchData: async (opts = { sync: false }) => {
     const { apiS3, currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();
@@ -184,49 +279,49 @@ export const useDriveStore = create<Store>((set, get) => ({
 
     const currentData = cache[keyPrefix];
 
-    // Decide whether we should fetch
-    // Only fetch if: no data exists, forced sync, or we need to load more (and user explicitly requested it)
-    // Don't auto-refetch just because isTruncated is true - let user decide with "Show More" button
-    if (!currentData || opts.sync) {
+    // Data already present and nobody asked for fresh; just reflect it.
+    // Don't auto-refetch just because isTruncated is true - let the user decide
+    // with the "Show More" button.
+    if (currentData && !opts.sync) {
+      if (currStatus !== 'ready') setStatus(keyPrefix, 'ready');
+      return;
+    }
+
+    // Join a request already open for this key rather than issuing a second
+    // identical one. Navigating A -> B -> A did exactly that: A's first request
+    // is still 'loading' rather than 'ready', so the status check above let it
+    // through, and cache[A] was still empty, so the data check did too.
+    return runDeduped(inFlightFetches, keyPrefix, !opts.sync, async () => {
+      const requestId = claimRequestId(latestRequestId, keyPrefix);
+
       try {
         setStatus(keyPrefix, 'loading');
 
-        const data = await apiS3.fetchDirectoryStructure(
-          formattedPrefix,
-          1000,
-          currentData?.nextToken
-        );
+        // Always read from the top. This branch only runs when there is no data
+        // yet or a sync was forced, and either way the result replaces the cache
+        // wholesale - so passing the stored continuation token would have
+        // replaced a fully paged folder with nothing but its last page.
+        const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
+
+        if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
 
         data.folders = data.folders.filter((obj) => obj.Prefix != '');
         data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
-        const folders = data.folders.map((obj) => enrichFolder(obj));
-        const files = data.files.map((obj) => enrichFile(obj));
 
-        const nextData =
-          currentData && !opts.sync
-            ? {
-                files: [...currentData.files, ...files],
-                folders: [...currentData.folders, ...folders],
-                nextToken: data.nextToken,
-                isTruncated: data.isTruncated,
-              }
-            : {
-                files: [...files],
-                folders: [...folders],
-                nextToken: data.nextToken,
-                isTruncated: data.isTruncated,
-              };
-        // Data loaded successfully
-        setPrefixData(keyPrefix, nextData);
+        setPrefixData(keyPrefix, {
+          files: data.files.map((obj) => enrichFile(obj)),
+          folders: data.folders.map((obj) => enrichFolder(obj)),
+          nextToken: data.nextToken,
+          isTruncated: data.isTruncated,
+        });
         setStatus(keyPrefix, 'ready');
       } catch {
-        // Handle fetch error
+        // A superseded request must not report an error over a newer request's
+        // result, or a folder that loaded fine renders as failed.
+        if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
         setStatus(keyPrefix, 'error');
       }
-    } else {
-      // Data already present; ensure status reflects it
-      if (currStatus !== 'ready') setStatus(keyPrefix, 'ready');
-    }
+    });
   },
 
   refreshCurrentData: async () => {
@@ -285,55 +380,65 @@ export const useDriveStore = create<Store>((set, get) => ({
     // Ensure itemsPerType has a default value
     const itemsPerType = opts.itemsPerType ?? 10;
 
-    try {
-      setRecentStatus(keyPrefix, 'loading');
+    // Same A -> B -> A race as fetchData: 'loading' is not 'ready', so
+    // returning to a folder whose recent-items request is still open used to
+    // fire a second identical one.
+    return runDeduped(inFlightRecentFetches, keyPrefix, !opts.sync, async () => {
+      const requestId = claimRequestId(latestRecentRequestId, keyPrefix);
 
-      // Fetch up to 1000 items from current directory
-      const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
+      try {
+        setRecentStatus(keyPrefix, 'loading');
 
-      data.folders = data.folders.filter((obj) => obj.Prefix != '');
-      data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
+        // Fetch up to 1000 items from current directory
+        const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
 
-      const folders = data.folders.map((obj) => enrichFolder(obj));
-      const files = data.files.map((obj) => enrichFile(obj));
+        if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
 
-      // Sort by lastModified in descending order (most recent first)
-      // Note: Folders from CommonPrefix don't have LastModified, so we'll use creation time as fallback
-      const sortedFolders = folders.sort((a, b) => {
-        const aTime = a.lastModified ? new Date(a.lastModified).getTime() : 0;
-        const bTime = b.lastModified ? new Date(b.lastModified).getTime() : 0;
-        return bTime - aTime;
-      });
+        data.folders = data.folders.filter((obj) => obj.Prefix != '');
+        data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
 
-      const sortedFiles = files.sort((a, b) => {
-        const aTime = a.lastModified ? new Date(a.lastModified).getTime() : 0;
-        const bTime = b.lastModified ? new Date(b.lastModified).getTime() : 0;
-        return bTime - aTime;
-      });
+        const folders = data.folders.map((obj) => enrichFolder(obj));
+        const files = data.files.map((obj) => enrichFile(obj));
 
-      // Take only the requested number initially
-      const recentData: RecentDataWithCache = {
-        files: sortedFiles.slice(0, itemsPerType),
-        folders: sortedFolders.slice(0, itemsPerType),
-        hasMoreFiles: sortedFiles.length > itemsPerType,
-        hasMoreFolders: sortedFolders.length > itemsPerType,
-        fileOffset: itemsPerType,
-        folderOffset: itemsPerType,
-      };
+        // Sort by lastModified in descending order (most recent first)
+        // Note: Folders from CommonPrefix don't have LastModified, so we'll use creation time as fallback
+        const sortedFolders = folders.sort((a, b) => {
+          const aTime = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+          const bTime = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+          return bTime - aTime;
+        });
 
-      // Store all sorted data for pagination (keeping full sorted arrays in memory temporarily)
-      const existingCache = recentCache[keyPrefix];
-      if (!existingCache || opts.sync) {
-        // Store full sorted arrays for pagination access
-        recentData._allFiles = sortedFiles;
-        recentData._allFolders = sortedFolders;
+        const sortedFiles = files.sort((a, b) => {
+          const aTime = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+          const bTime = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+          return bTime - aTime;
+        });
+
+        // Take only the requested number initially
+        const recentData: RecentDataWithCache = {
+          files: sortedFiles.slice(0, itemsPerType),
+          folders: sortedFolders.slice(0, itemsPerType),
+          hasMoreFiles: sortedFiles.length > itemsPerType,
+          hasMoreFolders: sortedFolders.length > itemsPerType,
+          fileOffset: itemsPerType,
+          folderOffset: itemsPerType,
+        };
+
+        // Store all sorted data for pagination (keeping full sorted arrays in memory temporarily)
+        const existingCache = recentCache[keyPrefix];
+        if (!existingCache || opts.sync) {
+          // Store full sorted arrays for pagination access
+          recentData._allFiles = sortedFiles;
+          recentData._allFolders = sortedFolders;
+        }
+
+        setRecentData(keyPrefix, recentData);
+        setRecentStatus(keyPrefix, 'ready');
+      } catch {
+        if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
+        setRecentStatus(keyPrefix, 'error');
       }
-
-      setRecentData(keyPrefix, recentData);
-      setRecentStatus(keyPrefix, 'ready');
-    } catch {
-      setRecentStatus(keyPrefix, 'error');
-    }
+    });
   },
 
   loadMoreRecentFiles: async () => {
@@ -411,33 +516,47 @@ export const useDriveStore = create<Store>((set, get) => ({
     // Don't load if already loading
     if (loadMoreStatus[keyPrefix] === 'loading') return;
 
-    try {
-      setLoadMoreStatus(keyPrefix, 'loading');
+    // The status check above only holds because nothing awaits between reading
+    // it and setting it below. Joining an open request keeps two clicks landing
+    // on the same page from both fetching it even if that ever changes.
+    return runDeduped(inFlightLoadMores, keyPrefix, true, async () => {
+      const token = currentData.nextToken;
 
-      const data = await apiS3.fetchDirectoryStructure(
-        formattedPrefix,
-        1000,
-        currentData.nextToken
-      );
+      try {
+        setLoadMoreStatus(keyPrefix, 'loading');
 
-      data.folders = data.folders.filter((obj) => obj.Prefix != '');
-      data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
-      const folders = data.folders.map((obj) => enrichFolder(obj));
-      const files = data.files.map((obj) => enrichFile(obj));
+        const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000, token);
 
-      // Append new data to existing data
-      const nextData = {
-        files: [...currentData.files, ...files],
-        folders: [...currentData.folders, ...folders],
-        nextToken: data.nextToken,
-        isTruncated: data.isTruncated,
-      };
+        data.folders = data.folders.filter((obj) => obj.Prefix != '');
+        data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
 
-      setPrefixData(keyPrefix, nextData);
-      setLoadMoreStatus(keyPrefix, 'ready');
-    } catch (error) {
-      setLoadMoreStatus(keyPrefix, 'error');
-      console.error('Failed to load more data:', error);
-    }
+        // Append to what the cache holds now, not to the snapshot taken before
+        // the await. A refresh landing meanwhile replaces the cache, and
+        // appending to the stale copy would put back whatever it removed.
+        const latest = get().cache[keyPrefix];
+        if (!latest) {
+          // Logout or a folder change wiped it while this was open.
+          setLoadMoreStatus(keyPrefix, 'ready');
+          return;
+        }
+
+        setPrefixData(keyPrefix, {
+          files: appendUnique(
+            latest.files,
+            data.files.map((obj) => enrichFile(obj))
+          ),
+          folders: appendUnique(
+            latest.folders,
+            data.folders.map((obj) => enrichFolder(obj))
+          ),
+          nextToken: data.nextToken,
+          isTruncated: data.isTruncated,
+        });
+        setLoadMoreStatus(keyPrefix, 'ready');
+      } catch (error) {
+        setLoadMoreStatus(keyPrefix, 'error');
+        console.error('Failed to load more data:', error);
+      }
+    });
   },
 }));
