@@ -203,8 +203,20 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
         triggerNode
       )}
 
+      {/* Beside the button rather than under it, since dropping below covers
+          the rows underneath along with their own menu buttons.
+
+          Asks for the right and lets Radix flip it to the left when there is no
+          room, which is what the hand-rolled version worked out by hand: it
+          tried `rect.right + padding` first and only used
+          `rect.left - menuWidth - padding` when that ran off screen.
+          `align="start"` lines the top up with the button, and Radix nudges it
+          up or down to keep it in view. */}
       <DropdownMenuContent
+        side="right"
         align="start"
+        sideOffset={8}
+        collisionPadding={8}
         className={`${menuContentClass} ${className}`}
         aria-label={`Actions for ${file.name}`}
       >
