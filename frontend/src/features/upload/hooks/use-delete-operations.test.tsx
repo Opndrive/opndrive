@@ -254,6 +254,18 @@ describe('after the folder is gone', () => {
     expect(routerReplace).toHaveBeenCalledWith('/dashboard');
   });
 
+  it('stays put when the user is in a folder that only starts the same', async () => {
+    drive.currentPrefix = 'docs-old/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(refreshCurrentData).toHaveBeenCalled();
+  });
+
   it('does not throw the user out of their search results', async () => {
     // Search lists folders from anywhere in the bucket, while the store still
     // points at the last folder browsed

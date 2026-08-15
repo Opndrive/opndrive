@@ -262,9 +262,11 @@ export const useDriveStore = create<Store>((set, get) => ({
       return { cache, recentCache, status, recentStatus, loadMoreStatus };
     });
 
-    // Search results still holding the deleted keys would put them back on
-    // screen the moment the same query is typed again.
-    useSearchStore.getState().clearCache();
+    // The search cache is deliberately left alone. clearCache also drops the
+    // query being viewed, and the results list is derived from it, so a delete
+    // started from a search result would blank the whole page the user is
+    // reading. A cached query that still lists the folder goes stale on its own
+    // TTL, which is the smaller problem of the two.
   },
 
   fetchData: async (opts = { sync: false }) => {

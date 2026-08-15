@@ -354,6 +354,39 @@ describe('recovering from inside the folder', () => {
     expect(useDriveStore.getState().cache['/'].folders).toEqual([]);
   });
 
+  // Records are read back from localStorage, so a prefix can be anything
+  it('ignores a record that points at the root', async () => {
+    seed({ prefix: '/', name: 'everything' });
+    useDriveStore.setState({
+      rootPrefix: '/',
+      currentPrefix: '/',
+      cache: {
+        '/': {
+          folders: [
+            {
+              Prefix: 'docs/',
+              id: 'docs/',
+              name: 'docs',
+              location: { type: 'my-drive', label: 'My Drive' },
+            },
+          ],
+          files: [],
+          isTruncated: false,
+        },
+      },
+      status: { '/': 'ready' },
+    });
+    listFromPrefix.mockResolvedValue(['a.txt']);
+    render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+    await click(/Delete 1 item/);
+
+    await waitFor(() => expect(batchDeleteByKeys).toHaveBeenCalled());
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(useDriveStore.getState().cache['/'].folders).toHaveLength(1);
+  });
+
   it('stays put when the delete fails, since the folder is still there', async () => {
     seed();
     standingIn('docs/2024/');

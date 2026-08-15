@@ -34,6 +34,10 @@ export function useDeletedFolderCleanup() {
       const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
       const { currentPrefix, rootPrefix } = useDriveStore.getState();
 
+      // The root is not a folder anyone can delete, and a recovery record is
+      // read back from localStorage, where it can be anything at all.
+      if (normalized === '/') return false;
+
       removeDeletedFolder(normalized);
 
       // startsWith covers standing in the folder itself as well as any depth

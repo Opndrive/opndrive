@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useDriveStore } from './data-context';
+import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 
@@ -186,5 +187,30 @@ describe('the recents on the home page', () => {
 
     expect(store().recentCache['docs/']).toBeUndefined();
     expect(store().recentStatus).toEqual({ '/': 'ready' });
+  });
+});
+
+/**
+ * A folder can be deleted straight from a search result, so this runs while the
+ * user is reading that list. clearCache would drop the query it is derived from
+ * and empty the page out from under them, which is worse than the stale row it
+ * would have removed.
+ */
+describe('an active search', () => {
+  it('survives the delete', () => {
+    useSearchStore.getState().setSearchResults('report', '', {
+      files: [{ Key: 'docs/report.xlsx' } as never],
+      folders: [],
+      totalFiles: 1,
+      totalFolders: 0,
+      totalKeys: 1,
+      isTruncated: false,
+    });
+    useSearchStore.getState().setCurrentQuery('report', '');
+
+    store().removeDeletedFolder('docs/');
+
+    expect(useSearchStore.getState().currentQuery).toBe('report');
+    expect(useSearchStore.getState().getCachedOrNull('report', '')).not.toBeNull();
   });
 });
