@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/ui';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useNotification } from '@/context/notification-context';
 import { useDeleteOperations } from '../hooks/use-delete-operations';
+import { useDeletedFolderCleanup } from '../hooks/use-deleted-folder-cleanup';
 import { markerLast } from '../utils/delete-key-order';
 import {
   useDeleteRecoveryStore,
@@ -58,6 +59,7 @@ function RecoveryPrompt({
   const { success: notifySuccess, error: notifyError } = useNotification();
   const { batchDeleteByKeys } = useDeleteOperations();
   const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
+  const cleanUpDeletedFolder = useDeletedFolderCleanup();
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
 
   const check = async () => {
@@ -69,6 +71,9 @@ function RecoveryPrompt({
       if (remaining.length === 0) {
         notifySuccess(`"${record.name}" was fully deleted, nothing was left behind.`);
         clearRecord(record.id);
+        // The delete did land before the tab went away, so the folder can still
+        // be sitting in listings loaded since, or under the user's feet.
+        cleanUpDeletedFolder(record.prefix);
         setStage({ kind: 'idle' });
         return;
       }
@@ -87,6 +92,9 @@ function RecoveryPrompt({
     try {
       await batchDeleteByKeys(markerLast(remaining, record.prefix));
       clearRecord(record.id);
+      // Recovery usually runs from wherever the reload landed, which can be
+      // inside the folder it is deleting.
+      cleanUpDeletedFolder(record.prefix);
       notifySuccess(`Finished deleting "${record.name}".`);
     } catch {
       // batchDeleteByKeys reports its own failures, and the record stays so the

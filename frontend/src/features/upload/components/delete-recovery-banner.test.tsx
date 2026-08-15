@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { DeleteRecoveryBanner } from './delete-recovery-banner';
+import { useDriveStore } from '@/context/data-context';
 import {
   useDeleteRecoveryStore,
   type InterruptedDelete,
@@ -19,6 +20,7 @@ const listFromPrefix = vi.fn();
 const batchDeleteByKeys = vi.fn();
 const notifySuccess = vi.fn();
 const notifyError = vi.fn();
+const routerReplace = vi.fn();
 let currentBucket = 'bucket-a';
 
 vi.mock('@/hooks/use-auth-guard', () => ({
@@ -40,6 +42,11 @@ vi.mock('../hooks/use-delete-operations', () => ({
   useDeleteOperations: () => ({ batchDeleteByKeys }),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
+  usePathname: () => '/dashboard/browse',
+}));
+
 function seed(overrides: Partial<InterruptedDelete> = {}) {
   const record: InterruptedDelete = {
     id: 'op-1',
@@ -56,6 +63,30 @@ function seed(overrides: Partial<InterruptedDelete> = {}) {
 
 const records = () => useDeleteRecoveryStore.getState().records;
 
+/** Puts the user at `prefix`, with the listings they would have loaded to get there. */
+function standingIn(prefix: string) {
+  useDriveStore.setState({
+    rootPrefix: '/',
+    currentPrefix: prefix,
+    cache: {
+      '/': {
+        folders: [
+          {
+            Prefix: 'docs/',
+            id: 'docs/',
+            name: 'docs',
+            location: { type: 'my-drive', label: 'My Drive' },
+          },
+        ],
+        files: [],
+        isTruncated: false,
+      },
+      [prefix]: { folders: [], files: [], isTruncated: false },
+    },
+    status: { '/': 'ready', [prefix]: 'ready' },
+  });
+}
+
 /** Clicks and lets the handler's promises settle before asserting. */
 async function click(name: string | RegExp) {
   await act(async () => {
@@ -70,6 +101,7 @@ beforeEach(() => {
   batchDeleteByKeys.mockReset().mockResolvedValue(undefined);
   notifySuccess.mockReset();
   notifyError.mockReset();
+  routerReplace.mockReset();
 });
 
 describe('what it shows', () => {
@@ -264,5 +296,76 @@ describe('dismissing', () => {
     expect(records()).toEqual({});
     expect(batchDeleteByKeys).not.toHaveBeenCalled();
     expect(listFromPrefix).not.toHaveBeenCalled();
+  });
+
+  it('leaves the user where they are, since the folder may still be there', async () => {
+    seed();
+    standingIn('docs/2024/');
+    render(<DeleteRecoveryBanner />);
+
+    await click('Dismiss');
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(useDriveStore.getState().cache['docs/2024/']).toBeDefined();
+  });
+});
+
+/**
+ * The banner shows wherever the reload landed, which can be deep inside the
+ * folder it is offering to delete. Finishing the delete from there used to
+ * leave the breadcrumb spelling out a path that no longer existed, with the
+ * folder still listed at the top until the page was reloaded by hand.
+ */
+describe('recovering from inside the folder', () => {
+  it('steps out to the parent once the delete finishes', async () => {
+    seed();
+    standingIn('docs/2024/');
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt']);
+    render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+    await click(/Delete 2 items/);
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('forgets the listings the folder left behind', async () => {
+    seed();
+    standingIn('docs/2024/');
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt']);
+    render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+    await click(/Delete 2 items/);
+
+    await waitFor(() => expect(useDriveStore.getState().cache['docs/2024/']).toBeUndefined());
+    expect(useDriveStore.getState().cache['/'].folders).toEqual([]);
+  });
+
+  it('cleans up even when the delete had already gone through', async () => {
+    seed();
+    standingIn('docs/2024/');
+    listFromPrefix.mockResolvedValue([]);
+    render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/dashboard'));
+    expect(useDriveStore.getState().cache['/'].folders).toEqual([]);
+  });
+
+  it('stays put when the delete fails, since the folder is still there', async () => {
+    seed();
+    standingIn('docs/2024/');
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt']);
+    batchDeleteByKeys.mockRejectedValue(new Error('denied'));
+    render(<DeleteRecoveryBanner />);
+
+    await click(/Check what is left/);
+    await click(/Delete 2 items/);
+
+    await waitFor(() => expect(batchDeleteByKeys).toHaveBeenCalled());
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(useDriveStore.getState().cache['docs/2024/']).toBeDefined();
   });
 });

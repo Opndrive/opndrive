@@ -24,7 +24,19 @@ const listFromPrefix = vi.fn();
 const deleteBatch = vi.fn();
 const deleteFile = vi.fn();
 const refreshCurrentData = vi.fn();
+const removeDeletedFolder = vi.fn();
+const routerReplace = vi.fn();
 const notifyError = vi.fn();
+
+/** Where the user is standing, which is what decides whether a delete moves them. */
+const drive = {
+  currentPrefix: '/' as string | null,
+  rootPrefix: '/' as string | null,
+  refreshCurrentData,
+  removeDeletedFolder,
+};
+
+const route = { pathname: '/dashboard/browse' };
 
 vi.mock('@/hooks/use-auth-guard', () => ({
   useAuthGuard: () => ({
@@ -33,7 +45,16 @@ vi.mock('@/hooks/use-auth-guard', () => ({
 }));
 
 vi.mock('@/context/data-context', () => ({
-  useDriveStore: () => ({ refreshCurrentData }),
+  // Selector and getState both read the same object, the way the real store does
+  useDriveStore: Object.assign(
+    (selector?: (state: typeof drive) => unknown) => (selector ? selector(drive) : drive),
+    { getState: () => drive }
+  ),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
+  usePathname: () => route.pathname,
 }));
 
 vi.mock('@/context/notification-context', () => ({
@@ -67,7 +88,12 @@ beforeEach(() => {
   deleteBatch.mockReset().mockResolvedValue({ requested: 0, deleted: 0, errors: [] });
   deleteFile.mockReset().mockResolvedValue(undefined);
   refreshCurrentData.mockReset();
+  removeDeletedFolder.mockReset();
+  routerReplace.mockReset();
   notifyError.mockReset();
+  drive.currentPrefix = '/';
+  drive.rootPrefix = '/';
+  route.pathname = '/dashboard/browse';
   useDeleteRecoveryStore.setState({ records: {} });
 });
 
@@ -143,6 +169,121 @@ describe('folder marker ordering', () => {
 
     expect(listFromPrefix).toHaveBeenCalledWith('docs/');
     expect(batchedKeys()).toEqual([['docs/a.txt', 'docs/']]);
+  });
+});
+
+/**
+ * A delete leaves every cached listing that mentioned the folder wrong, not
+ * just the one on screen, and the user can be standing inside the folder while
+ * it goes. Both are the same cleanup step.
+ */
+describe('after the folder is gone', () => {
+  beforeEach(() => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+  });
+
+  it('forgets the folder wherever it was cached', async () => {
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(removeDeletedFolder).toHaveBeenCalledWith('docs/');
+  });
+
+  it('refreshes in place when the user was somewhere else', async () => {
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(refreshCurrentData).toHaveBeenCalled();
+  });
+
+  it('steps out to the parent when the user was inside it', async () => {
+    drive.currentPrefix = 'docs/2024/raw/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+    // Nothing left at that prefix, so refetching it would only prove it is empty
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('steps out of the folder itself, not only from below it', async () => {
+    drive.currentPrefix = 'docs/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('lands on the nearest surviving folder, not the root', async () => {
+    listFromPrefix.mockResolvedValue(['photos/2024/a.jpg']);
+    drive.currentPrefix = 'photos/2024/raw/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(
+        folder({ id: 'photos/2024/', name: '2024', Prefix: 'photos/2024/' })
+      );
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard/browse?prefix=photos%2F');
+  });
+
+  it('keeps the URL relative to the bucket prefix the session is pinned to', async () => {
+    listFromPrefix.mockResolvedValue(['team/docs/a.txt']);
+    drive.rootPrefix = 'team/';
+    drive.currentPrefix = 'team/docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(
+        folder({ id: 'team/docs/', Prefix: 'team/docs/' })
+      );
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('does not throw the user out of their search results', async () => {
+    // Search lists folders from anywhere in the bucket, while the store still
+    // points at the last folder browsed
+    route.pathname = '/dashboard/search';
+    drive.currentPrefix = 'docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(removeDeletedFolder).toHaveBeenCalledWith('docs/');
+  });
+
+  it('leaves everything alone when S3 refused part of the delete', async () => {
+    deleteBatch.mockResolvedValue({
+      requested: 2,
+      deleted: 1,
+      errors: [{ key: 'docs/a.txt', code: 'AccessDenied', message: 'nope' }],
+    });
+    drive.currentPrefix = 'docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await expect(result.current.deleteFolderWithProgress(folder())).rejects.toThrow();
+    });
+
+    expect(removeDeletedFolder).not.toHaveBeenCalled();
+    expect(routerReplace).not.toHaveBeenCalled();
   });
 });
 

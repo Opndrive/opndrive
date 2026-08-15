@@ -4,6 +4,7 @@ import { DataUnits, FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 
 type PrefixData = {
   files: FileItem[];
@@ -47,6 +48,7 @@ type Store = {
   setLoadMoreStatus: (prefix: string, s: Status) => void;
   setRootPrefix: (prefix: string) => void;
   clearAllData: () => void;
+  removeDeletedFolder: (prefix: string) => void;
 
   fetchData: (opts?: { sync?: boolean }) => Promise<void>;
   fetchRecentItems: (opts?: { sync?: boolean; itemsPerType?: number }) => Promise<void>;
@@ -118,6 +120,50 @@ function enrichFile(obj: _Object): FileItem {
   };
 }
 
+/** The store keys the root listing as '/', everything else by its own prefix. */
+function toCacheKey(prefix: string): string {
+  return prefix === '' ? '/' : prefix;
+}
+
+function isUnder(key: string | undefined, prefix: string): boolean {
+  return typeof key === 'string' && key.startsWith(prefix);
+}
+
+/**
+ * A listing with everything under `prefix` taken out. Used on the parent of a
+ * deleted folder, so walking back up shows what is really there without
+ * waiting for a refetch that may not happen at all.
+ */
+function withoutPrefix(data: PrefixData, prefix: string): PrefixData {
+  return {
+    ...data,
+    folders: data.folders.filter((folder) => !isUnder(folder.Prefix, prefix)),
+    files: data.files.filter((file) => !isUnder(file.Key, prefix)),
+  };
+}
+
+function recentWithoutPrefix(data: RecentDataWithCache, prefix: string): RecentDataWithCache {
+  const files = data.files.filter((file) => !isUnder(file.Key, prefix));
+  const folders = data.folders.filter((folder) => !isUnder(folder.Prefix, prefix));
+  const allFiles = data._allFiles?.filter((file) => !isUnder(file.Key, prefix));
+  const allFolders = data._allFolders?.filter((folder) => !isUnder(folder.Prefix, prefix));
+
+  return {
+    ...data,
+    files,
+    folders,
+    _allFiles: allFiles,
+    _allFolders: allFolders,
+    // The offsets mark how far into the sorted list the visible slice reaches,
+    // so they move with it. Left alone, "View more" would skip an item for
+    // every one removed ahead of them.
+    fileOffset: files.length,
+    folderOffset: folders.length,
+    hasMoreFiles: (allFiles?.length ?? files.length) > files.length,
+    hasMoreFolders: (allFolders?.length ?? folders.length) > folders.length,
+  };
+}
+
 export const useDriveStore = create<Store>((set, get) => ({
   apiS3: null,
   cache: {},
@@ -163,6 +209,63 @@ export const useDriveStore = create<Store>((set, get) => ({
       currentPrefix: null,
       rootPrefix: null,
     }),
+
+  /**
+   * Forgets a folder that no longer exists in the bucket.
+   *
+   * refreshCurrentData only ever refetches the folder the user is standing in,
+   * so every other cached listing keeps describing the bucket as it was. Delete
+   * a folder from somewhere deep inside it and the listings above stay behind,
+   * still offering a folder that is gone until the page is reloaded.
+   */
+  removeDeletedFolder: (prefix) => {
+    const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
+
+    // '/' is the root. A folder delete never means "drop the whole bucket".
+    if (normalized === '/' || normalized === '') return;
+
+    set((state) => {
+      const cache = { ...state.cache };
+      const recentCache = { ...state.recentCache };
+      const status = { ...state.status };
+      const recentStatus = { ...state.recentStatus };
+      const loadMoreStatus = { ...state.loadMoreStatus };
+
+      // The folder and everything it held. These listings describe objects that
+      // are not there any more, so they cannot be shown again.
+      for (const key of Object.keys(cache)) {
+        if (isUnder(key, normalized)) delete cache[key];
+      }
+      for (const key of Object.keys(recentCache)) {
+        if (isUnder(key, normalized)) delete recentCache[key];
+      }
+      for (const key of Object.keys(status)) {
+        if (isUnder(key, normalized)) delete status[key];
+      }
+      for (const key of Object.keys(recentStatus)) {
+        if (isUnder(key, normalized)) delete recentStatus[key];
+      }
+      for (const key of Object.keys(loadMoreStatus)) {
+        if (isUnder(key, normalized)) delete loadMoreStatus[key];
+      }
+
+      // The parent keeps its listing, minus the folder that just went away.
+      // Dropping it outright would leave whoever is looking at it staring at a
+      // skeleton, since a fetch only fires when the prefix changes.
+      const parentKey = toCacheKey(getParentPrefix(normalized));
+      const parent = cache[parentKey];
+      if (parent) cache[parentKey] = withoutPrefix(parent, normalized);
+
+      const parentRecent = recentCache[parentKey];
+      if (parentRecent) recentCache[parentKey] = recentWithoutPrefix(parentRecent, normalized);
+
+      return { cache, recentCache, status, recentStatus, loadMoreStatus };
+    });
+
+    // Search results still holding the deleted keys would put them back on
+    // screen the moment the same query is typed again.
+    useSearchStore.getState().clearCache();
+  },
 
   fetchData: async (opts = { sync: false }) => {
     const { apiS3, currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();

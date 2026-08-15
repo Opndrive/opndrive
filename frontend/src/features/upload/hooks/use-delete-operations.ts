@@ -5,6 +5,7 @@ import { useDriveStore } from '@/context/data-context';
 import { useUploadStore } from '../stores/use-upload-store';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
+import { useDeletedFolderCleanup } from './use-deleted-folder-cleanup';
 import { markerLast } from '../utils/delete-key-order';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
@@ -155,6 +156,7 @@ export function useDeleteOperations() {
   // re-render problem tracked in #106.
   const recordStarted = useDeleteRecoveryStore((state) => state.recordStarted);
   const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
+  const cleanUpDeletedFolder = useDeletedFolderCleanup();
 
   // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
   const getAllS3ObjectsWithPrefix = useCallback(
@@ -357,7 +359,11 @@ export function useDeleteOperations() {
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
 
-        await refreshCurrentData();
+        // Every listing that mentioned this folder is now wrong, not just the
+        // one on screen. When the folder we were pointing at is one of them,
+        // the cleanup has moved us out and there is nothing left to refetch.
+        const prefixGone = cleanUpDeletedFolder(normalizedKey);
+        if (!prefixGone) await refreshCurrentData();
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
@@ -389,6 +395,7 @@ export function useDeleteOperations() {
       failDeleteOperation,
       recordStarted,
       clearRecord,
+      cleanUpDeletedFolder,
     ]
   );
 
