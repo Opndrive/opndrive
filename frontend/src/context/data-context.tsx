@@ -390,6 +390,21 @@ export const useDriveStore = create<Store>((set, get) => ({
       const parentRecent = recentCache[parentKey];
       if (parentRecent) recentCache[parentKey] = recentWithoutPrefix(parentRecent, normalized);
 
+      // A request retired above never writes, which includes the status it set
+      // on its way out. Anything the parent had in flight would sit on
+      // 'loading' for good: a listing stuck behind its skeleton, and a "Show
+      // more" that refuses to run again because it thinks one is still going.
+      // What is already cached is what there is to show, so say so.
+      if (status[parentKey] === 'loading') {
+        if (cache[parentKey]) status[parentKey] = 'ready';
+        else delete status[parentKey];
+      }
+      if (recentStatus[parentKey] === 'loading') {
+        if (recentCache[parentKey]) recentStatus[parentKey] = 'ready';
+        else delete recentStatus[parentKey];
+      }
+      if (loadMoreStatus[parentKey] === 'loading') delete loadMoreStatus[parentKey];
+
       return { cache, recentCache, status, recentStatus, loadMoreStatus };
     });
 

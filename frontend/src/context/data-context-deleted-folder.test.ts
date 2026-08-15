@@ -232,6 +232,56 @@ describe('a read still in the air', () => {
     expect(store().cache['/']?.folders ?? []).toEqual([]);
   });
 
+  it('leaves the parent able to page again, not stuck mid load', async () => {
+    const page = deferredPage();
+    const fetchDirectoryStructure = vi.fn().mockReturnValue(page.promise);
+
+    useDriveStore.setState({
+      apiS3: { fetchDirectoryStructure } as never,
+      rootPrefix: '/',
+      currentPrefix: '/',
+      cache: { '/': { ...listing(['docs/']), isTruncated: true, nextToken: 'page-2' } },
+      status: { '/': 'ready' },
+    });
+
+    // "Show more" is already running when the delete lands
+    const paging = store().loadMoreData();
+    expect(store().loadMoreStatus['/']).toBe('loading');
+
+    store().removeDeletedFolder('docs/');
+
+    page.resolve({ files: [], folders: [] });
+    await paging;
+
+    // loadMoreData refuses to run at all while it reads as loading, so a stuck
+    // one disables the button for the rest of the session
+    expect(store().loadMoreStatus['/']).not.toBe('loading');
+  });
+
+  it('leaves the parent listing showing, not stuck behind its skeleton', async () => {
+    const page = deferredPage();
+    const fetchDirectoryStructure = vi.fn().mockReturnValue(page.promise);
+
+    useDriveStore.setState({
+      apiS3: { fetchDirectoryStructure } as never,
+      rootPrefix: '/',
+      currentPrefix: '/',
+      cache: { '/': listing(['docs/', 'photos/']) },
+      status: { '/': 'ready' },
+    });
+
+    const reading = store().fetchData({ sync: true });
+    expect(store().status['/']).toBe('loading');
+
+    store().removeDeletedFolder('docs/');
+
+    page.resolve({ files: [], folders: [{ Prefix: 'docs/' }] });
+    await reading;
+
+    expect(store().status['/']).toBe('ready');
+    expect(store().cache['/'].folders.map((f) => f.Prefix)).toEqual(['photos/']);
+  });
+
   it('cannot bring the deleted folder listing back to life', async () => {
     const page = deferredPage();
     const fetchDirectoryStructure = vi.fn().mockReturnValue(page.promise);
