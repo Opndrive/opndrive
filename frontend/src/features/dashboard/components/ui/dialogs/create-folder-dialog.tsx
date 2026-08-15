@@ -1,9 +1,15 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { FolderPlus, X } from 'lucide-react';
-import { isValidFolderName } from '@/features/upload/utils/sanitize-folder-name';
+import { describeFolderNameError } from '@/features/upload/utils/folder-name';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 interface CreateFolderDialogProps {
   isOpen: boolean;
@@ -26,33 +32,27 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFolderName(defaultName);
-      setIsCreating(false);
-      setValidationError('');
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-        }
-      }, 100);
-    } else {
-      setIsCreating(false);
-      setValidationError('');
     }
+    setIsCreating(false);
+    setValidationError('');
   }, [isOpen, defaultName]);
+
+  // Radix focuses the first focusable element on open, which would be the close
+  // button. Take it over so the name lands selected and ready to overtype, the
+  // way the old setTimeout was reaching for.
+  const focusName = (event: Event) => {
+    event.preventDefault();
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  };
 
   const handleFolderNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setFolderName(value);
 
-    if (validationError) {
-      setValidationError('');
-    }
-
-    if (value.trim() && !isValidFolderName(value)) {
-      setValidationError(
-        'Folder name contains invalid characters. Use only letters, numbers, spaces, hyphens, and underscores.'
-      );
-    }
+    // Report the actual reason rather than a fixed sentence about letters and
+    // numbers, which described rules none of the validation ever applied.
+    setValidationError(value.trim() ? (describeFolderNameError(value) ?? '') : '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,10 +60,9 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
 
     if (!folderName.trim() || isCreating || validationError) return;
 
-    if (!isValidFolderName(folderName)) {
-      setValidationError(
-        'Invalid folder name. Please use only letters, numbers, spaces, hyphens, and underscores.'
-      );
+    const nameError = describeFolderNameError(folderName);
+    if (nameError) {
+      setValidationError(nameError);
       return;
     }
 
@@ -81,36 +80,33 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      handleCancel();
-    }
-  };
-
-  if (!isOpen) return null;
-
-  const dialogContent = (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && handleCancel()}
-    >
-      <div
-        className="relative w-full max-w-md mx-4 bg-card rounded-lg shadow-xl"
-        onKeyDown={handleKeyDown}
+  return (
+    // Escape used to be handled by an inner div, so it only worked while focus
+    // happened to be inside it. Radix listens at the document and also traps
+    // focus, restores it to whatever opened the dialog, and supplies the
+    // role/aria-modal wiring this had none of.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={focusName}
+        // border-0: the shared content styling carries a border, but this card
+        // never had one and it reads as a hard outline against the backdrop.
+        className="w-full max-w-md gap-0 rounded-lg border-0 bg-card p-0 shadow-xl"
       >
         <div className="flex items-center justify-between p-6 pb-4">
           <div className="flex items-center gap-3">
             <FolderPlus className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-medium text-foreground">New folder</h2>
+            <DialogTitle className="text-lg font-medium text-foreground">New folder</DialogTitle>
           </div>
-          <button
-            onClick={handleCancel}
+          <DialogClose
             className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Cancel create folder"
           >
             <X className="h-4 w-4" />
-          </button>
+          </DialogClose>
         </div>
+
+        <DialogDescription className="sr-only">Enter a name for the new folder.</DialogDescription>
 
         <form onSubmit={handleSubmit} className="px-6 pb-6">
           <div className="space-y-4">
@@ -149,9 +145,7 @@ export const CreateFolderDialog: React.FC<CreateFolderDialogProps> = ({
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return typeof window !== 'undefined' ? createPortal(dialogContent, document.body) : null;
 };

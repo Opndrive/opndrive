@@ -5,9 +5,14 @@ import { useDetails } from '@/context/details-context';
 import { useFileMetadata } from '@/features/dashboard/hooks/use-file-metadata';
 import { FileItem } from '@/features/dashboard/types/file';
 import { FaFolder } from 'react-icons/fa';
-import { createPortal } from 'react-dom';
-import { useEffect } from 'react';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 const isFileItem = (item: FileItem | null): item is FileItem => {
   if (!item) return false;
@@ -18,19 +23,7 @@ export const MobileDetailsDialog = () => {
   const { isOpen, selectedItem, close } = useDetails();
   const { metadata, isLoading } = useFileMetadata(isFileItem(selectedItem) ? selectedItem : null);
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  if (!isOpen || !selectedItem) return null;
+  if (!selectedItem) return null;
 
   const isFile = isFileItem(selectedItem);
   const file = isFile ? (selectedItem as FileItem) : null;
@@ -91,33 +84,32 @@ export const MobileDetailsDialog = () => {
     return 'File';
   };
 
-  const dialogContent = (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="details-title"
-    >
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={close}
-        aria-hidden="true"
-      />
-
-      <div className="relative w-full max-w-md bg-background border border-border rounded-2xl shadow-xl max-h-[90vh] overflow-hidden">
+  return (
+    // Had the dialog role and aria-modal already, but nothing trapped focus or
+    // gave it back on close. Radix supplies both, plus Escape and the scroll
+    // lock, so the hand-rolled backdrop and portal go with it.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-md gap-0 rounded-2xl border border-border bg-background p-0 shadow-xl max-h-[90vh] overflow-hidden"
+      >
         <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 id="details-title" className="text-lg font-semibold text-foreground">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {isFile ? file?.name : 'Unknown'}
-          </h2>
+          </DialogTitle>
           <AriaLabel label="Close details panel" position="top">
-            <button
-              onClick={close}
-              className="p-2 rounded-full cursor-pointer hover:bg-muted transition-colors"
-            >
+            <DialogClose className="p-2 rounded-full cursor-pointer hover:bg-muted transition-colors">
               <X className="h-5 w-5 text-foreground" />
-            </button>
+            </DialogClose>
           </AriaLabel>
         </div>
+
+        {/* Radix warns without one, and a screen reader otherwise gets the
+            file name and then an unannounced wall of properties. */}
+        <DialogDescription className="sr-only">
+          Details for {isFile ? file?.name : 'this item'}.
+        </DialogDescription>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] custom-scrollbar">
           <div className="space-y-6">
@@ -198,9 +190,7 @@ export const MobileDetailsDialog = () => {
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return typeof window !== 'undefined' ? createPortal(dialogContent, document.body) : null;
 };

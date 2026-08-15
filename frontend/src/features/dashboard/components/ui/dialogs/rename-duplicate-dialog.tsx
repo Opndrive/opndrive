@@ -1,8 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { File, Folder, AlertTriangle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 interface RenameDuplicateDialogProps {
   isOpen: boolean;
@@ -24,8 +29,6 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
 }) => {
   const [selectedAction, setSelectedAction] = useState<'replace' | 'keep-both'>('keep-both');
 
-  if (!isOpen) return null;
-
   const handleContinue = () => {
     if (selectedAction === 'keep-both') {
       onKeepBoth();
@@ -39,16 +42,15 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
     onClose();
   };
 
-  const dialogContent = (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div
-        className="absolute inset-0 backdrop-blur-sm"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
-        onClick={handleCancel}
-      />
-
-      <div
-        className="relative rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden"
+  return (
+    // Stacks on top of the rename dialog, so it keeps the higher layer the
+    // hand-rolled version had. Radix moves the focus trap to whichever dialog
+    // opened last, so the one on top owns the keyboard.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-[60] bg-black/30 backdrop-blur-sm"
+        className="z-[60] max-w-md w-full gap-0 overflow-hidden rounded-lg p-0 shadow-xl"
         style={{
           backgroundColor: 'var(--card)',
           border: '1px solid var(--border)',
@@ -57,13 +59,13 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
         <div className="px-6 py-4">
           <div className="flex items-center gap-3 mb-3">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            <h2 className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
+            <DialogTitle className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
               {type === 'file' ? 'File' : 'Folder'} already exists
-            </h2>
+            </DialogTitle>
           </div>
-          <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          <DialogDescription className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
             A {type} named "{newName}" already exists in this location. What would you like to do?
-          </p>
+          </DialogDescription>
         </div>
 
         <div className="px-6 pb-4">
@@ -197,9 +199,7 @@ export const RenameDuplicateDialog: React.FC<RenameDuplicateDialogProps> = ({
             Continue
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return typeof window !== 'undefined' ? createPortal(dialogContent, document.body) : null;
 };

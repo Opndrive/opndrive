@@ -1,11 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Share, Clock, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react';
 import type { FileItem } from '../../types/file';
 import { useSettings } from '@/features/settings/hooks/use-settings';
 import { getDurationInSeconds, formatDurationLabel } from '@/features/settings/constants';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 interface MultiShareDialogProps {
   isOpen: boolean;
@@ -40,6 +45,11 @@ export const MultiShareDialog: React.FC<MultiShareDialogProps> = ({
     if (isOpen && files.length > 0) {
       handleGenerateLinks();
     }
+    // handleGenerateLinks is left out on purpose. It is rebuilt every render and
+    // closes over a `generateShareLinks` prop that is not memoised, so listing
+    // it would re-run this on every render - a fresh round of signed URLs each
+    // time. Opening, or a different set of files, is the intended trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, files]);
 
   const handleGenerateLinks = async () => {
@@ -102,29 +112,21 @@ export const MultiShareDialog: React.FC<MultiShareDialogProps> = ({
     onClose();
   };
 
-  if (!isOpen) return null;
-
   const successCount = shareResults.filter((result) => result.url && !result.error).length;
   const errorCount = shareResults.filter((result) => result.error).length;
 
   // Get current duration label using the formatter
   const currentDurationLabel = formatDurationLabel(settings.general.bulkShareDuration);
 
-  const dialogContent = (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center"
-      style={{ isolation: 'isolate' }}
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 backdrop-blur-sm"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
-        onClick={handleClose}
-      />
-
-      {/* Dialog */}
-      <div
-        className="relative rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col overflow-hidden"
+  return (
+    // Radix brings the focus trap, focus restore, Escape and the dialog role
+    // this had none of. Keeps its own z-index so it still sits above whatever
+    // opened it.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-[60] bg-black/30 backdrop-blur-sm"
+        className="z-[60] max-w-2xl w-full gap-0 max-h-[85vh] flex flex-col overflow-hidden rounded-lg p-0 shadow-xl"
         style={{
           backgroundColor: 'var(--card)',
           border: '1px solid var(--border)',
@@ -138,14 +140,18 @@ export const MultiShareDialog: React.FC<MultiShareDialogProps> = ({
           <div className="flex items-center gap-3">
             <Share className="h-5 w-5" style={{ color: 'var(--primary)' }} />
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+              <DialogTitle className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
                 Share {files.length} {files.length === 1 ? 'file' : 'files'}
-              </h2>
-              {shareResults.length > 0 && (
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              </DialogTitle>
+              {shareResults.length > 0 ? (
+                <DialogDescription className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                   {successCount} successful
                   {errorCount > 0 && `, ${errorCount} failed`}
-                </p>
+                </DialogDescription>
+              ) : (
+                <DialogDescription className="sr-only">
+                  Create share links for the selected files.
+                </DialogDescription>
               )}
             </div>
           </div>
@@ -315,9 +321,7 @@ export const MultiShareDialog: React.FC<MultiShareDialogProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return typeof window !== 'undefined' ? createPortal(dialogContent, document.body) : null;
 };

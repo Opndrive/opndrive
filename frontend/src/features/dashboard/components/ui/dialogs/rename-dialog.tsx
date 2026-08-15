@@ -1,9 +1,15 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { Edit3, X } from 'lucide-react';
-import { isValidFolderName } from '@/features/upload/utils/sanitize-folder-name';
+import { describeFolderNameError } from '@/features/upload/utils/folder-name';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 
 interface RenameDialogProps {
   isOpen: boolean;
@@ -30,24 +36,25 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
     if (isOpen) {
       setNewName(currentName);
       setValidationError('');
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-
-          if (type === 'file') {
-            const lastDotIndex = currentName.lastIndexOf('.');
-            if (lastDotIndex > 0) {
-              inputRef.current.setSelectionRange(0, lastDotIndex);
-            } else {
-              inputRef.current.select();
-            }
-          } else {
-            inputRef.current.select();
-          }
-        }
-      }, 100);
     }
   }, [isOpen, currentName, type]);
+
+  // Radix would focus the close button first. Take it over so the name is
+  // selected and ready to overtype, with a file's extension left out of the
+  // selection the way the old setTimeout did it.
+  const focusName = (event: Event) => {
+    event.preventDefault();
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.focus();
+    const lastDotIndex = currentName.lastIndexOf('.');
+    if (type === 'file' && lastDotIndex > 0) {
+      input.setSelectionRange(0, lastDotIndex);
+    } else {
+      input.select();
+    }
+  };
 
   const validateName = (name: string): string | null => {
     if (!name.trim()) {
@@ -58,8 +65,9 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
       return 'Please enter a different name';
     }
 
-    if (type === 'folder' && !isValidFolderName(name)) {
-      return 'Invalid folder name. Use only letters, numbers, spaces, hyphens, and underscores.';
+    if (type === 'folder') {
+      const nameError = describeFolderNameError(name);
+      if (nameError) return nameError;
     }
 
     if (type === 'file') {
@@ -104,38 +112,32 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      handleCancel();
-    }
-  };
-
-  if (!isOpen) {
-    return null;
-  }
-
-  const dialogContent = (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && handleCancel()}
-    >
-      <div
-        className="relative w-full max-w-md mx-4 bg-card rounded-lg shadow-xl"
-        onKeyDown={handleKeyDown}
+  return (
+    // Escape was handled by an inner div, so it only worked while focus was
+    // inside it. Radix listens at the document, traps focus, restores it on
+    // close, and supplies the dialog role and aria-modal this never had.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={focusName}
+        // border-0: the shared content styling carries a border, but this card
+        // never had one and it reads as a hard outline against the backdrop.
+        className="w-full max-w-md gap-0 rounded-lg border-0 bg-card p-0 shadow-xl"
       >
         <div className="flex items-center justify-between p-6 pb-4">
           <div className="flex items-center gap-3">
             <Edit3 className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-medium text-foreground">Rename {type}</h2>
+            <DialogTitle className="text-lg font-medium text-foreground">Rename {type}</DialogTitle>
           </div>
-          <button
-            onClick={handleCancel}
+          <DialogClose
             className="rounded-md p-1 text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Cancel rename"
           >
             <X className="h-4 w-4" />
-          </button>
+          </DialogClose>
         </div>
+
+        <DialogDescription className="sr-only">Enter a new name for this {type}.</DialogDescription>
 
         <form onSubmit={handleSubmit} className="px-6 pb-6">
           <div className="space-y-4">
@@ -176,9 +178,7 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return typeof window !== 'undefined' ? createPortal(dialogContent, document.body) : null;
 };
