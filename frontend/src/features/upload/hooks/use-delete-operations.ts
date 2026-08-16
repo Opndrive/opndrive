@@ -3,7 +3,10 @@
 import { useCallback } from 'react';
 import { useDriveStore } from '@/context/data-context';
 import { useUploadStore } from '../stores/use-upload-store';
+import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
+import { useDeletedFolderCleanup } from './use-deleted-folder-cleanup';
+import { markerLast } from '../utils/delete-key-order';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
@@ -148,6 +151,12 @@ export function useDeleteOperations() {
     failDeleteOperation,
     cancelDeleteOperation,
   } = useUploadStore();
+  // Selected one at a time on purpose. A bare useDeleteRecoveryStore() would
+  // subscribe every consumer of this hook to every record change, which is the
+  // re-render problem tracked in #106.
+  const recordStarted = useDeleteRecoveryStore((state) => state.recordStarted);
+  const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
+  const cleanUpDeletedFolder = useDeletedFolderCleanup();
 
   // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
   const getAllS3ObjectsWithPrefix = useCallback(
@@ -275,13 +284,21 @@ export function useDeleteOperations() {
           throw abortError();
         }
 
-        // Get all keys (files and folders) to delete
-        const allKeys = folderContents.allKeys;
+        // The folder's own marker object goes last, always. See markerLast.
+        const allKeys = markerLast(folderContents.allKeys, normalizedKey);
 
-        // Add the main folder if it's not already in the list
-        if (!allKeys.includes(normalizedKey)) {
-          allKeys.push(normalizedKey);
-        }
+        // Write down that this folder is being deleted before the first batch
+        // goes out. The finally below clears it as soon as we report anything,
+        // so a record that is still here on the next load can only mean the
+        // run was cut off without telling anyone.
+        recordStarted({
+          id: itemId,
+          bucket: apiS3.getBucketName(),
+          prefix: normalizedKey,
+          name: folder.name,
+          totalItems: allKeys.length,
+          startedAt: Date.now(),
+        });
 
         if (allKeys.length > 0) {
           // Use batch delete for better performance (S3 allows up to 1000 objects per batch)
@@ -342,7 +359,11 @@ export function useDeleteOperations() {
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
 
-        await refreshCurrentData();
+        // Every listing that mentioned this folder is now wrong, not just the
+        // one on screen. When the folder we were pointing at is one of them,
+        // the cleanup has moved us out and there is nothing left to refetch.
+        const prefixGone = cleanUpDeletedFolder(normalizedKey);
+        if (!prefixGone) await refreshCurrentData();
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
@@ -355,6 +376,10 @@ export function useDeleteOperations() {
         failDeleteOperation(itemId, errorMessage);
         errorFunction(`Failed to delete "${folder.name}": ${errorMessage}`);
         throw error;
+      } finally {
+        // Finished, failed or cancelled all count as reported. Only a run that
+        // never gets here, because the tab went away, leaves its record behind.
+        clearRecord(itemId);
       }
     },
     [
@@ -368,6 +393,9 @@ export function useDeleteOperations() {
       updateSize,
       completeDeleteOperation,
       failDeleteOperation,
+      recordStarted,
+      clearRecord,
+      cleanUpDeletedFolder,
     ]
   );
 
@@ -509,11 +537,11 @@ export function useDeleteOperations() {
         throw error;
       }
     },
+    // batchDelete works from keys it already has, so it never lists a prefix
     [
       apiS3,
       refreshCurrentData,
       errorFunction,
-      getAllS3ObjectsWithPrefix,
       addDeleteOperation,
       setCalculatingSize,
       updateDeleteProgress,

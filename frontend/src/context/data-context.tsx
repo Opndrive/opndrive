@@ -4,6 +4,7 @@ import { DataUnits, FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 
 type PrefixData = {
   files: FileItem[];
@@ -47,6 +48,7 @@ type Store = {
   setLoadMoreStatus: (prefix: string, s: Status) => void;
   setRootPrefix: (prefix: string) => void;
   clearAllData: () => void;
+  removeDeletedFolder: (prefix: string) => void;
 
   fetchData: (opts?: { sync?: boolean }) => Promise<void>;
   fetchRecentItems: (opts?: { sync?: boolean; itemsPerType?: number }) => Promise<void>;
@@ -95,6 +97,25 @@ function claimRequestId(ids: Map<string, number>, key: string): number {
 
 function isSuperseded(ids: Map<string, number>, key: string, id: number): boolean {
   return ids.get(key) !== id;
+}
+
+/**
+ * Retires every request open for `key`, used when a delete has just made the
+ * bucket disagree with whatever those requests are about to return.
+ *
+ * Claiming a fresh id supersedes the responses still on their way, so they land
+ * as no-ops instead of writing a listing read before the delete. Dropping the
+ * in-flight entries then stops a later caller joining a request that will
+ * deliberately write nothing.
+ */
+function discardOpenRequests(key: string): void {
+  claimRequestId(latestRequestId, key);
+  claimRequestId(latestRecentRequestId, key);
+  claimRequestId(latestLoadMoreRequestId, key);
+
+  inFlightFetches.delete(key);
+  inFlightRecentFetches.delete(key);
+  inFlightLoadMores.delete(key);
 }
 
 /**
@@ -204,6 +225,50 @@ function enrichFile(obj: _Object): FileItem {
   };
 }
 
+/** The store keys the root listing as '/', everything else by its own prefix. */
+function toCacheKey(prefix: string): string {
+  return prefix === '' ? '/' : prefix;
+}
+
+function isUnder(key: string | undefined, prefix: string): boolean {
+  return typeof key === 'string' && key.startsWith(prefix);
+}
+
+/**
+ * A listing with everything under `prefix` taken out. Used on the parent of a
+ * deleted folder, so walking back up shows what is really there without
+ * waiting for a refetch that may not happen at all.
+ */
+function withoutPrefix(data: PrefixData, prefix: string): PrefixData {
+  return {
+    ...data,
+    folders: data.folders.filter((folder) => !isUnder(folder.Prefix, prefix)),
+    files: data.files.filter((file) => !isUnder(file.Key, prefix)),
+  };
+}
+
+function recentWithoutPrefix(data: RecentDataWithCache, prefix: string): RecentDataWithCache {
+  const files = data.files.filter((file) => !isUnder(file.Key, prefix));
+  const folders = data.folders.filter((folder) => !isUnder(folder.Prefix, prefix));
+  const allFiles = data._allFiles?.filter((file) => !isUnder(file.Key, prefix));
+  const allFolders = data._allFolders?.filter((folder) => !isUnder(folder.Prefix, prefix));
+
+  return {
+    ...data,
+    files,
+    folders,
+    _allFiles: allFiles,
+    _allFolders: allFolders,
+    // The offsets mark how far into the sorted list the visible slice reaches,
+    // so they move with it. Left alone, "View more" would skip an item for
+    // every one removed ahead of them.
+    fileOffset: files.length,
+    folderOffset: folders.length,
+    hasMoreFiles: (allFiles?.length ?? files.length) > files.length,
+    hasMoreFolders: (allFolders?.length ?? folders.length) > folders.length,
+  };
+}
+
 export const useDriveStore = create<Store>((set, get) => ({
   apiS3: null,
   cache: {},
@@ -259,6 +324,95 @@ export const useDriveStore = create<Store>((set, get) => ({
       currentPrefix: null,
       rootPrefix: null,
     });
+  },
+
+  /**
+   * Forgets a folder that no longer exists in the bucket.
+   *
+   * refreshCurrentData only ever refetches the folder the user is standing in,
+   * so every other cached listing keeps describing the bucket as it was. Delete
+   * a folder from somewhere deep inside it and the listings above stay behind,
+   * still offering a folder that is gone until the page is reloaded.
+   */
+  removeDeletedFolder: (prefix) => {
+    const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
+
+    // '/' is the root. A folder delete never means "drop the whole bucket".
+    if (normalized === '/' || normalized === '') return;
+
+    const parentKey = toCacheKey(getParentPrefix(normalized));
+    const current = get();
+
+    // The folder and everything it held, across every map that is keyed by
+    // prefix. These listings describe objects that are not there any more, so
+    // they cannot be shown again.
+    const gone = new Set<string>();
+    for (const map of [
+      current.cache,
+      current.recentCache,
+      current.status,
+      current.recentStatus,
+      current.loadMoreStatus,
+    ]) {
+      for (const key of Object.keys(map)) {
+        if (isUnder(key, normalized)) gone.add(key);
+      }
+    }
+
+    // A read issued before the delete is still on its way, and it would write
+    // the folder back: over the parent it was just pruned from, and over the
+    // prefix itself, where a resurrected entry reads as ready and gets served
+    // to whoever walks back into it.
+    for (const key of gone) discardOpenRequests(key);
+    discardOpenRequests(parentKey);
+
+    set((state) => {
+      const cache = { ...state.cache };
+      const recentCache = { ...state.recentCache };
+      const status = { ...state.status };
+      const recentStatus = { ...state.recentStatus };
+      const loadMoreStatus = { ...state.loadMoreStatus };
+
+      for (const key of gone) {
+        delete cache[key];
+        delete recentCache[key];
+        delete status[key];
+        delete recentStatus[key];
+        delete loadMoreStatus[key];
+      }
+
+      // The parent keeps its listing, minus the folder that just went away.
+      // Dropping it outright would leave whoever is looking at it staring at a
+      // skeleton, since a fetch only fires when the prefix changes.
+      const parent = cache[parentKey];
+      if (parent) cache[parentKey] = withoutPrefix(parent, normalized);
+
+      const parentRecent = recentCache[parentKey];
+      if (parentRecent) recentCache[parentKey] = recentWithoutPrefix(parentRecent, normalized);
+
+      // A request retired above never writes, which includes the status it set
+      // on its way out. Anything the parent had in flight would sit on
+      // 'loading' for good: a listing stuck behind its skeleton, and a "Show
+      // more" that refuses to run again because it thinks one is still going.
+      // What is already cached is what there is to show, so say so.
+      if (status[parentKey] === 'loading') {
+        if (cache[parentKey]) status[parentKey] = 'ready';
+        else delete status[parentKey];
+      }
+      if (recentStatus[parentKey] === 'loading') {
+        if (recentCache[parentKey]) recentStatus[parentKey] = 'ready';
+        else delete recentStatus[parentKey];
+      }
+      if (loadMoreStatus[parentKey] === 'loading') delete loadMoreStatus[parentKey];
+
+      return { cache, recentCache, status, recentStatus, loadMoreStatus };
+    });
+
+    // The search cache is deliberately left alone. clearCache also drops the
+    // query being viewed, and the results list is derived from it, so a delete
+    // started from a search result would blank the whole page the user is
+    // reading. A cached query that still lists the folder goes stale on its own
+    // TTL, which is the smaller problem of the two.
   },
 
   fetchData: async (opts = { sync: false }) => {
