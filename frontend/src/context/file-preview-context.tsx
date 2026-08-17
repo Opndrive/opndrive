@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   FilePreviewState,
   FilePreviewActions,
@@ -8,24 +9,13 @@ import {
   PreviewConfig,
 } from '@/types/file-preview';
 
-type FilePreviewAction =
-  | {
-      type: 'OPEN_PREVIEW';
-      payload: { file: PreviewableFile; files: PreviewableFile[]; index: number };
-    }
-  | { type: 'CLOSE_PREVIEW' }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'NAVIGATE_TO_FILE'; payload: number };
+/** Query parameter naming the file currently on screen. */
+export const PREVIEW_PARAM = 'preview';
 
-const initialState: FilePreviewState = {
-  isOpen: false,
-  file: null,
-  files: [],
-  currentIndex: 0,
-  loading: false,
-  error: null,
-};
+/** The S3 key of a file, whichever of the two casings it arrived with. */
+export function previewKeyOf(file: PreviewableFile): string {
+  return file.key || file.Key || file.name;
+}
 
 const defaultConfig: PreviewConfig = {
   maxFileSizes: {
@@ -37,54 +27,6 @@ const defaultConfig: PreviewConfig = {
     audio: 50 * 1024 * 1024, // 50MB
   },
 };
-
-function filePreviewReducer(state: FilePreviewState, action: FilePreviewAction): FilePreviewState {
-  switch (action.type) {
-    case 'OPEN_PREVIEW':
-      return {
-        ...state,
-        isOpen: true,
-        file: action.payload.file,
-        files: action.payload.files,
-        currentIndex: action.payload.index,
-        loading: true,
-        error: null,
-      };
-
-    case 'CLOSE_PREVIEW':
-      return {
-        ...initialState,
-      };
-
-    case 'SET_LOADING':
-      return {
-        ...state,
-        loading: action.payload,
-      };
-
-    case 'SET_ERROR':
-      return {
-        ...state,
-        error: action.payload,
-        loading: false,
-      };
-
-    case 'NAVIGATE_TO_FILE': {
-      const newIndex = action.payload;
-      const newFile = state.files[newIndex];
-      return {
-        ...state,
-        currentIndex: newIndex,
-        file: newFile || null,
-        loading: true,
-        error: null,
-      };
-    }
-
-    default:
-      return state;
-  }
-}
 
 interface FilePreviewContextType extends FilePreviewState, FilePreviewActions {
   config: PreviewConfig;
@@ -98,52 +40,116 @@ interface FilePreviewProviderProps {
 }
 
 export function FilePreviewProvider({ children, config = {} }: FilePreviewProviderProps) {
-  const [state, dispatch] = useReducer(filePreviewReducer, initialState);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const mergedConfig: PreviewConfig = {
-    maxFileSizes: {
-      ...defaultConfig.maxFileSizes,
-      ...config.maxFileSizes,
+  /** The files the preview can arrow through, handed over by whoever opened it. */
+  const [files, setFiles] = useState<PreviewableFile[]>([]);
+
+  /**
+   * The URL is the only record of whether a preview is open.
+   *
+   * It used to live in component state, which is why Back did not close the
+   * preview - it left the folder instead, since folder navigation does push
+   * URLs and the preview did not. With the parameter being the state, Back and
+   * Forward work on their own and there is no second copy to keep in step.
+   */
+  const previewKey = searchParams.get(PREVIEW_PARAM);
+  const isOpen = previewKey !== null;
+
+  const indexOfKey = useMemo(
+    () => (previewKey === null ? -1 : files.findIndex((f) => previewKeyOf(f) === previewKey)),
+    [files, previewKey]
+  );
+
+  const file = indexOfKey >= 0 ? (files[indexOfKey] ?? null) : null;
+
+  const urlWith = useCallback(
+    (key: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (key === null) {
+        params.delete(PREVIEW_PARAM);
+      } else {
+        params.set(PREVIEW_PARAM, key);
+      }
+      const query = params.toString();
+      return query ? `${pathname}?${query}` : pathname;
     },
-  };
+    [pathname, searchParams]
+  );
 
-  const openPreview = useCallback((file: PreviewableFile, files: PreviewableFile[] = [file]) => {
-    const fileIndex = files.findIndex((f) => f.id === file.id);
-    const index = fileIndex >= 0 ? fileIndex : 0;
+  /**
+   * Whether opening added the history entry that closing can step back to.
+   *
+   * A preview reached by following a link or reloading did not add one, so
+   * going back there would take the user out of the app entirely. That case
+   * rewrites the URL instead.
+   */
+  const pushedRef = useRef(false);
 
-    dispatch({
-      type: 'OPEN_PREVIEW',
-      payload: { file, files, index },
-    });
-  }, []);
+  const openPreview = useCallback(
+    (target: PreviewableFile, list: PreviewableFile[] = [target]) => {
+      setFiles(list);
+      pushedRef.current = true;
+      router.push(urlWith(previewKeyOf(target)), { scroll: false });
+    },
+    [router, urlWith]
+  );
 
   const closePreview = useCallback(() => {
-    dispatch({ type: 'CLOSE_PREVIEW' });
-  }, []);
+    if (pushedRef.current) {
+      pushedRef.current = false;
+      // Back rather than a new entry, so opening and closing a few previews
+      // does not bury the folder behind history the user has to walk out of.
+      router.back();
+      return;
+    }
+    router.replace(urlWith(null), { scroll: false });
+  }, [router, urlWith]);
 
   const navigateToFile = useCallback(
     (index: number) => {
-      if (index >= 0 && index < state.files.length) {
-        dispatch({ type: 'NAVIGATE_TO_FILE', payload: index });
-      }
+      const next = files[index];
+      if (!next) return;
+      // replace, not push: arrowing through twenty files must not put twenty
+      // entries between the user and the folder they started in.
+      router.replace(urlWith(previewKeyOf(next)), { scroll: false });
     },
-    [state.files.length]
+    [files, router, urlWith]
   );
 
+  const currentIndex = Math.max(indexOfKey, 0);
+
   const navigateNext = useCallback(() => {
-    if (state.currentIndex < state.files.length - 1) {
-      navigateToFile(state.currentIndex + 1);
+    if (indexOfKey >= 0 && indexOfKey < files.length - 1) {
+      navigateToFile(indexOfKey + 1);
     }
-  }, [state.currentIndex, state.files.length, navigateToFile]);
+  }, [indexOfKey, files.length, navigateToFile]);
 
   const navigatePrevious = useCallback(() => {
-    if (state.currentIndex > 0) {
-      navigateToFile(state.currentIndex - 1);
+    if (indexOfKey > 0) {
+      navigateToFile(indexOfKey - 1);
     }
-  }, [state.currentIndex, navigateToFile]);
+  }, [indexOfKey, navigateToFile]);
+
+  const mergedConfig: PreviewConfig = useMemo(
+    () => ({
+      maxFileSizes: {
+        ...defaultConfig.maxFileSizes,
+        ...config.maxFileSizes,
+      },
+    }),
+    [config.maxFileSizes]
+  );
 
   const value: FilePreviewContextType = {
-    ...state,
+    isOpen,
+    file,
+    files,
+    currentIndex,
+    loading: false,
+    error: null,
     config: mergedConfig,
     openPreview,
     closePreview,
