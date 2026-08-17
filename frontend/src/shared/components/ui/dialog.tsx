@@ -47,7 +47,7 @@ function DialogOverlay({
  * on the body - the exact thing a keyboard user notices, since they end up back
  * at the top of the page.
  */
-function useFocusRestore() {
+export function useFocusRestore() {
   const previouslyFocused = React.useRef<HTMLElement | null>(null);
 
   const rememberFocus = (event: Event) => {
