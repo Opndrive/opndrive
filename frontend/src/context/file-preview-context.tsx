@@ -37,24 +37,38 @@ interface FileMetadata {
 }
 
 /**
- * Builds a previewable file from a key and its metadata.
+ * Everything a preview needs that can be read straight off the key.
  *
- * Used when a preview is restored from the URL, where the key is all we have:
- * a reload or a shared link arrives with no listing behind it.
+ * A link or a reload carries nothing but the key, and this is enough to render
+ * from: the viewers ask for their own signed URL, which needs the key alone.
+ *
+ * Deliberately not gated on a metadata call. Doing that made the preview depend
+ * on HeadObject succeeding, which is a different permission from listing and,
+ * from a browser, a different CORS method - so a bucket that lists fine and
+ * serves images fine could still open to nothing at all.
  */
-function fileFromMetadata(key: string, metadata: FileMetadata): PreviewableFile {
-  const filename = key.split('/').pop() || 'unknown';
-  const extension = filename.split('.').pop()?.toLowerCase() || '';
+function fileFromKey(key: string): PreviewableFile {
+  const name = key.split('/').pop() || 'unknown';
+  const extension = name.split('.').pop()?.toLowerCase() || '';
 
   return {
     id: key,
-    name: filename,
+    name,
     key,
     Key: key,
-    size: metadata.ContentLength || 0,
-    Size: metadata.ContentLength || 0,
+    size: 0,
+    Size: 0,
     type: extension,
     extension,
+  };
+}
+
+/** Fills in what only S3 knows. Enrichment, never a gate. */
+function withMetadata(file: PreviewableFile, metadata: FileMetadata): PreviewableFile {
+  return {
+    ...file,
+    size: metadata.ContentLength || 0,
+    Size: metadata.ContentLength || 0,
     lastModified: metadata.LastModified ? new Date(metadata.LastModified) : undefined,
     LastModified: metadata.LastModified?.toISOString(),
     ETag: metadata.ETag,
@@ -116,12 +130,22 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The file a link or reload points at, known from the key alone so the
+   * preview opens immediately. `restored` replaces it once S3 has filled in
+   * the size, and stands in for it if that never arrives.
+   */
+  const fromKey = useMemo(
+    () => (previewKey === null ? null : fileFromKey(previewKey)),
+    [previewKey]
+  );
+
   const file =
     indexOfKey >= 0
       ? (files[indexOfKey] ?? null)
       : restored && previewKeyOf(restored) === previewKey
         ? restored
-        : null;
+        : fromKey;
 
   const { apiS3 } = useAuth();
 
@@ -133,12 +157,12 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
   );
 
   /**
-   * Fetches the one file a restored preview points at.
+   * Fills in the size of a file the preview only knows by key.
    *
-   * Only the key survives in a URL, so a reload has nothing to render until
-   * this lands. Deliberately does not wait for the folder listing: the file
-   * the user linked to should paint as soon as it can, and the arrows arrive
-   * with the listing below.
+   * The preview is already on screen by the time this runs - it exists to make
+   * the size limit check meaningful, not to decide whether anything renders.
+   * A bucket that refuses HeadObject still previews, it just does so without
+   * the size gate, which beats showing nothing.
    */
   useEffect(() => {
     if (previewKey === null) {
@@ -158,15 +182,12 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
     apiS3
       .fetchMetadata(previewKey)
       .then((metadata) => {
-        if (cancelled) return;
-        if (!metadata) {
-          setError('File not found');
-          return;
-        }
-        setRestored(fileFromMetadata(previewKey, metadata));
+        if (cancelled || !metadata) return;
+        setRestored(withMetadata(fileFromKey(previewKey), metadata));
       })
       .catch(() => {
-        if (!cancelled) setError('Failed to load file');
+        // Left to the viewer, which fetches the object itself and can say
+        // something more useful about why it did not load.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

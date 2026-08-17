@@ -245,16 +245,70 @@ describe('a preview reached by link or reload', () => {
     expect(preview.currentIndex).toBe(0);
   });
 
-  it('says so when the file is gone', async () => {
+  it('still opens when the bucket refuses the metadata call', async () => {
     landOnPreview();
+    // What a bucket that allows GET but not HEAD looks like from here: the
+    // client swallows it and hands back null. Listing and the viewer's signed
+    // URL are both fine, so refusing to open would be wrong.
     fetchMetadata.mockResolvedValue(null);
 
     await act(async () => {
       mount();
     });
 
-    // A shared link outliving the file it points at must not sit on a spinner.
-    expect(preview.error).toBe('File not found');
+    expect(preview.isOpen).toBe(true);
+    expect(preview.file?.name).toBe('report.pdf');
+    expect(preview.file?.key).toBe('docs/report.pdf');
+  });
+
+  it('still opens when the metadata call throws', async () => {
+    landOnPreview();
+    fetchMetadata.mockRejectedValue(new Error('CORS'));
+
+    await act(async () => {
+      mount();
+    });
+
+    expect(preview.isOpen).toBe(true);
+    expect(preview.file?.name).toBe('report.pdf');
+  });
+
+  it('opens before the metadata call has answered', async () => {
+    landOnPreview();
+    // Never settles, standing in for a slow or hanging request.
+    fetchMetadata.mockReturnValue(new Promise(() => {}));
+
+    await act(async () => {
+      mount();
+    });
+
+    // The file has to be on screen already, not behind a spinner waiting on a
+    // call that only supplies its size.
+    expect(preview.file?.name).toBe('report.pdf');
+  });
+
+  it('opens even with no S3 client yet', async () => {
+    url.query = `prefix=docs%2F&${PREVIEW_PARAM}=docs%2Freport.pdf`;
+    auth.apiS3 = null;
+
+    await act(async () => {
+      mount();
+    });
+
+    expect(preview.isOpen).toBe(true);
+    expect(preview.file?.name).toBe('report.pdf');
+  });
+
+  it('takes the real size once metadata arrives', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(metadata);
+
+    await act(async () => {
+      mount();
+    });
+
+    // Which is what makes the size limit check mean anything.
+    expect(preview.file?.size).toBe(4096);
   });
 
   it('does not fetch when the listing already covers the file', async () => {
