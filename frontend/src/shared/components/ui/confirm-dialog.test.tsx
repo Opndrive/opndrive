@@ -109,6 +109,40 @@ describe('confirmAction', () => {
     expect(error).toHaveBeenCalled();
   });
 
+  it('settles the first question if a second one replaces it', async () => {
+    render(<ConfirmDialogHost />);
+
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    await act(async () => {
+      first = confirmAction({ ...options, title: 'First' });
+      second = confirmAction({ ...options, title: 'Second' });
+    });
+
+    // Only the second is on screen, so the first can never be answered by the
+    // user. Its caller is awaiting it, and would sit there forever.
+    expect(await first).toBe(false);
+
+    await screen.findByRole('alertdialog');
+    await click('Cancel');
+    expect(await second).toBe(false);
+  });
+
+  it('ignores a second click on the confirm button', async () => {
+    render(<ConfirmDialogHost />);
+    const { answer } = await ask();
+
+    // Double-click, or Enter landing twice on a slow machine.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+    });
+    expect(await answer).toBe(true);
+
+    // The dialog is gone, so the second click has nothing to hit and must not
+    // start or answer anything new.
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
   it('closes again after answering, so the next call gets a fresh dialog', async () => {
     render(<ConfirmDialogHost />);
     const { answer: first } = await ask();

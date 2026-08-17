@@ -63,28 +63,41 @@ export function confirmAction(options: ConfirmOptions): Promise<boolean> {
 export function ConfirmDialogHost() {
   const [pending, setPending] = React.useState<PendingConfirm | null>(null);
 
-  // Held in a ref as well so unmount can settle a promise that is still open,
-  // without making the effect depend on `pending` and re-register every time.
+  /**
+   * The live question, tracked here rather than read off `pending`.
+   *
+   * State is a render behind: two calls landing in the same tick would both
+   * see `pending` as null, and the second would replace the first before it
+   * ever reached the screen. The ref updates at call time, so whoever is being
+   * replaced can still be answered.
+   */
   const pendingRef = React.useRef<PendingConfirm | null>(null);
-  pendingRef.current = pending;
+
+  const settle = React.useCallback((confirmed: boolean) => {
+    pendingRef.current?.resolve(confirmed);
+    pendingRef.current = null;
+    setPending(null);
+  }, []);
 
   React.useEffect(() => {
     openConfirm = (options) =>
       new Promise<boolean>((resolve) => {
-        setPending({ options, resolve });
+        // A question that never made it to the screen cannot be answered by
+        // the user, so it is declined rather than left hanging.
+        pendingRef.current?.resolve(false);
+
+        const next = { options, resolve };
+        pendingRef.current = next;
+        setPending(next);
       });
 
     return () => {
       openConfirm = null;
       // An unmount with a question still on screen is a decline, not a hang.
       pendingRef.current?.resolve(false);
+      pendingRef.current = null;
     };
   }, []);
-
-  const settle = (confirmed: boolean) => {
-    pending?.resolve(confirmed);
-    setPending(null);
-  };
 
   const options = pending?.options;
 
