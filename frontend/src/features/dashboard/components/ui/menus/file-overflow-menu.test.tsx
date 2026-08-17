@@ -140,7 +140,6 @@ describe('reaching the submenu with a keyboard', () => {
 
     await waitFor(() =>
       expect(openPreviewInNewTab).toHaveBeenCalledWith({
-        etag: 'etag-1',
         key: 'q3.pdf',
       })
     );
