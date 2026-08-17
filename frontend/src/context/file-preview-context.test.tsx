@@ -99,7 +99,7 @@ describe('what the preview writes to the URL', () => {
   });
 
   it('goes back on close, consuming the entry it added', async () => {
-    url.query = `prefix=docs%2F&${PREVIEW_PARAM}=docs%2Freport.pdf`;
+    // Starts closed, the way a user opening a preview from a folder does.
     mount();
     await act(async () => {
       preview.openPreview(report, [report, notes]);
@@ -326,4 +326,17 @@ describe('a preview reached by link or reload', () => {
 
     expect(fetchMetadata).not.toHaveBeenCalled();
   });
+});
+
+describe('edges that would leave the preview stuck or bogus', () => {
+  it('treats an empty parameter as no preview', () => {
+    // Reachable by hand-editing the URL, or by anything that builds the link
+    // from a key it never got. Opening a file called "unknown" is worse than
+    // not opening at all.
+    url.query = 'prefix=docs%2F&preview=';
+    mount();
+
+    expect(screen.getByTestId('open').textContent).toBe('false');
+  });
+
 });

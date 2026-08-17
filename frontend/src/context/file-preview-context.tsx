@@ -114,7 +114,9 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
    * URLs and the preview did not. With the parameter being the state, Back and
    * Forward work on their own and there is no second copy to keep in step.
    */
-  const previewKey = searchParams.get(PREVIEW_PARAM);
+  // `|| null` so an empty `?preview=` counts as no preview. Left as an empty
+  // string it opens a file with no name, which is worse than not opening.
+  const previewKey = searchParams.get(PREVIEW_PARAM) || null;
   const isOpen = previewKey !== null;
 
   const indexOfKey = useMemo(
