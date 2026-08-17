@@ -1,6 +1,7 @@
 {
   "name": "opndrive",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "**Your Secure, Open-Source Cloud Storage** Opndrive offers a powerful, AI-enhanced platform for seamless file sharing and collaboration, giving you full control over your data.",
   "main": "index.js",
@@ -23,7 +24,9 @@
     "format:frontend": "prettier --write \"frontend/**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html}\"",
     "format:frontend:check": "prettier --check \"frontend/**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,scss,html}\"",
     "check": "pnpm run lint && pnpm run format:check",
-    "check:frontend": "pnpm run lint:frontend && pnpm run format:frontend:check"
+    "check:frontend": "pnpm run lint:frontend && pnpm run format:frontend:check",
+    "changeset": "changeset",
+    "version-packages": "changeset version"
   },
   "repository": {
     "type": "git",
@@ -43,6 +46,7 @@
   },
   "homepage": "https://github.com/Opndrive/opndrive#readme",
   "devDependencies": {
+    "@changesets/cli": "^3.0.0",
     "@eslint/js": "^9.39.5",
     "@typescript-eslint/eslint-plugin": "^8.66.0",
     "@typescript-eslint/parser": "^8.66.0",

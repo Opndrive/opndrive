@@ -1,4 +1,5 @@
 packages:
+  - .
   - frontend
   - s3-api
   - docs
