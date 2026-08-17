@@ -339,4 +339,18 @@ describe('edges that would leave the preview stuck or bogus', () => {
     expect(screen.getByTestId('open').textContent).toBe('false');
   });
 
+  it('does not stack history when the same file is opened twice', async () => {
+    mount();
+
+    // Preview opens on double click, so a second one landing before the modal
+    // covers the row is an ordinary thing to do.
+    await act(async () => {
+      preview.openPreview(report, [report, notes]);
+      preview.openPreview(report, [report, notes]);
+    });
+
+    // Two entries for one preview means the first close just re-shows it, and
+    // the user has to close twice.
+    expect(router.push).toHaveBeenCalledTimes(1);
+  });
 });

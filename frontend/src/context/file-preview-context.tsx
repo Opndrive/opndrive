@@ -234,11 +234,28 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
    */
   const pushedRef = useRef(false);
 
+  /**
+   * The key already showing, tracked ahead of the URL catching up.
+   *
+   * Two opens of the same file landing in one tick both read the old
+   * parameter, so both would push. That leaves two entries for one preview,
+   * and closing once only puts the same preview back on screen.
+   */
+  const shownRef = useRef<string | null>(null);
+  useEffect(() => {
+    shownRef.current = previewKey;
+  }, [previewKey]);
+
   const openPreview = useCallback(
     (target: PreviewableFile, list: PreviewableFile[] = [target]) => {
+      const key = previewKeyOf(target);
       setFiles(list);
+
+      if (shownRef.current === key) return;
+
+      shownRef.current = key;
       pushedRef.current = true;
-      router.push(urlWith(previewKeyOf(target)), { scroll: false });
+      router.push(urlWith(key), { scroll: false });
     },
     [router, urlWith]
   );
