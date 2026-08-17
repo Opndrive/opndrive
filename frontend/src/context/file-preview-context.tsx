@@ -1,12 +1,23 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
+import { useDriveStore } from '@/context/data-context';
 import {
   FilePreviewState,
   FilePreviewActions,
   PreviewableFile,
   PreviewConfig,
+  toPreviewableFile,
 } from '@/types/file-preview';
 
 /** Query parameter naming the file currently on screen. */
@@ -15,6 +26,40 @@ export const PREVIEW_PARAM = 'preview';
 /** The S3 key of a file, whichever of the two casings it arrived with. */
 export function previewKeyOf(file: PreviewableFile): string {
   return file.key || file.Key || file.name;
+}
+
+/** Metadata the preview needs, as S3 hands it back. */
+interface FileMetadata {
+  ContentLength?: number;
+  LastModified?: Date;
+  ETag?: string;
+  StorageClass?: string;
+}
+
+/**
+ * Builds a previewable file from a key and its metadata.
+ *
+ * Used when a preview is restored from the URL, where the key is all we have:
+ * a reload or a shared link arrives with no listing behind it.
+ */
+function fileFromMetadata(key: string, metadata: FileMetadata): PreviewableFile {
+  const filename = key.split('/').pop() || 'unknown';
+  const extension = filename.split('.').pop()?.toLowerCase() || '';
+
+  return {
+    id: key,
+    name: filename,
+    key,
+    Key: key,
+    size: metadata.ContentLength || 0,
+    Size: metadata.ContentLength || 0,
+    type: extension,
+    extension,
+    lastModified: metadata.LastModified ? new Date(metadata.LastModified) : undefined,
+    LastModified: metadata.LastModified?.toISOString(),
+    ETag: metadata.ETag,
+    StorageClass: metadata.StorageClass,
+  };
 }
 
 const defaultConfig: PreviewConfig = {
@@ -63,7 +108,85 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
     [files, previewKey]
   );
 
-  const file = indexOfKey >= 0 ? (files[indexOfKey] ?? null) : null;
+  /**
+   * The file behind a preview that arrived by link or reload, where there is
+   * no listing to look it up in. Dropped as soon as a listing covers the key.
+   */
+  const [restored, setRestored] = useState<PreviewableFile | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const file =
+    indexOfKey >= 0
+      ? (files[indexOfKey] ?? null)
+      : restored && previewKeyOf(restored) === previewKey
+        ? restored
+        : null;
+
+  const { apiS3 } = useAuth();
+
+  // Selected one at a time, so this provider does not re-render on every
+  // unrelated change in the drive store.
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const folderFiles = useDriveStore((state) =>
+    state.currentPrefix ? state.cache[state.currentPrefix]?.files : undefined
+  );
+
+  /**
+   * Fetches the one file a restored preview points at.
+   *
+   * Only the key survives in a URL, so a reload has nothing to render until
+   * this lands. Deliberately does not wait for the folder listing: the file
+   * the user linked to should paint as soon as it can, and the arrows arrive
+   * with the listing below.
+   */
+  useEffect(() => {
+    if (previewKey === null) {
+      setRestored(null);
+      setError(null);
+      return;
+    }
+    // Already covered by a listing, or already fetched.
+    if (indexOfKey >= 0) return;
+    if (restored && previewKeyOf(restored) === previewKey) return;
+    if (!apiS3) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    apiS3
+      .fetchMetadata(previewKey)
+      .then((metadata) => {
+        if (cancelled) return;
+        if (!metadata) {
+          setError('File not found');
+          return;
+        }
+        setRestored(fileFromMetadata(previewKey, metadata));
+      })
+      .catch(() => {
+        if (!cancelled) setError('Failed to load file');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKey, indexOfKey, restored, apiS3]);
+
+  /**
+   * Hands the restored preview its neighbours once the folder listing lands,
+   * so prev/next start working on a preview that was opened from a link.
+   */
+  useEffect(() => {
+    if (previewKey === null || indexOfKey >= 0 || !folderFiles?.length) return;
+    if (!folderFiles.some((f) => (f.Key || f.name) === previewKey)) return;
+
+    setFiles(folderFiles.map(toPreviewableFile));
+  }, [previewKey, indexOfKey, folderFiles, currentPrefix]);
 
   const urlWith = useCallback(
     (key: string | null) => {
@@ -148,8 +271,8 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
     file,
     files,
     currentIndex,
-    loading: false,
-    error: null,
+    loading,
+    error,
     config: mergedConfig,
     openPreview,
     closePreview,

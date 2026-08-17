@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { FilePreviewProvider, useFilePreview, PREVIEW_PARAM } from './file-preview-context';
+import { useDriveStore } from './data-context';
 import type { PreviewableFile } from '@/types/file-preview';
 
 const router = vi.hoisted(() => ({
@@ -29,6 +30,11 @@ vi.mock('next/navigation', () => ({
   usePathname: () => url.pathname,
   useSearchParams: () => new URLSearchParams(url.query),
 }));
+
+const fetchMetadata = vi.hoisted(() => vi.fn());
+const auth = vi.hoisted(() => ({ apiS3: null as unknown }));
+
+vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth }));
 
 const report: PreviewableFile = { id: 'a', name: 'report.pdf', key: 'docs/report.pdf', size: 1 };
 const notes: PreviewableFile = { id: 'b', name: 'notes.txt', key: 'docs/notes.txt', size: 2 };
@@ -52,6 +58,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   url.pathname = '/dashboard/browse';
   url.query = 'prefix=docs%2F';
+  auth.apiS3 = null;
+  useDriveStore.setState({ currentPrefix: null, cache: {} });
 });
 
 describe('what the preview writes to the URL', () => {
@@ -171,5 +179,97 @@ describe('what the preview reads back out of the URL', () => {
 
     expect(preview.file?.name).toBe('notes.txt');
     expect(preview.currentIndex).toBe(1);
+  });
+});
+
+describe('a preview reached by link or reload', () => {
+  const metadata = { ContentLength: 4096, ETag: '"abc"', LastModified: new Date('2026-01-01') };
+
+  function landOnPreview() {
+    url.query = `prefix=docs%2F&${PREVIEW_PARAM}=docs%2Freport.pdf`;
+    auth.apiS3 = { fetchMetadata };
+  }
+
+  it('fetches the one file it points at, without waiting for the listing', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(metadata);
+
+    await act(async () => {
+      mount();
+    });
+
+    // The listing has not arrived, and the user still sees their file.
+    expect(fetchMetadata).toHaveBeenCalledWith('docs/report.pdf');
+    expect(preview.file?.name).toBe('report.pdf');
+    expect(preview.file?.size).toBe(4096);
+    expect(preview.isOpen).toBe(true);
+  });
+
+  it('has no neighbours to arrow through until the listing lands', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(metadata);
+
+    await act(async () => {
+      mount();
+    });
+
+    expect(preview.files).toHaveLength(0);
+  });
+
+  it('picks up its neighbours once the folder listing arrives', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(metadata);
+
+    await act(async () => {
+      mount();
+    });
+
+    // What the browse page does a moment later.
+    await act(async () => {
+      useDriveStore.setState({
+        currentPrefix: 'docs/',
+        cache: {
+          'docs/': {
+            files: [
+              { id: 'a', name: 'report.pdf', Key: 'docs/report.pdf', extension: 'pdf' },
+              { id: 'b', name: 'notes.txt', Key: 'docs/notes.txt', extension: 'txt' },
+            ],
+            folders: [],
+            isTruncated: false,
+          },
+        },
+      } as never);
+    });
+
+    expect(preview.files).toHaveLength(2);
+    expect(preview.currentIndex).toBe(0);
+  });
+
+  it('says so when the file is gone', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(null);
+
+    await act(async () => {
+      mount();
+    });
+
+    // A shared link outliving the file it points at must not sit on a spinner.
+    expect(preview.error).toBe('File not found');
+  });
+
+  it('does not fetch when the listing already covers the file', async () => {
+    landOnPreview();
+    fetchMetadata.mockResolvedValue(metadata);
+
+    await act(async () => {
+      mount();
+    });
+    fetchMetadata.mockClear();
+
+    await act(async () => {
+      preview.openPreview(report, [report, notes]);
+    });
+
+    expect(fetchMetadata).not.toHaveBeenCalled();
   });
 });
