@@ -1,6 +1,46 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-08-02
+### Changed
+- **BREAKING:** `MultipartUploadParams.partSizeMB` and `MultipartUploadConfig.partSizeMB` are
+  renamed to `partSizeBytes`. The field was named MB but was always compared against a byte
+  threshold, so passing `10` for "10 MB" silently gave 5 MiB parts instead. Renamed rather than
+  reinterpreted, so anyone already passing bytes isn't silently affected.
+  (`UploadManagerConfig.partSizeMB` is untouched and still means megabytes.)
+
+## [2.8.0] - 2026-08-01
+### Fixed
+- Downloads: presigned GetObject URLs now set `ResponseContentDisposition` (RFC 6266, with a
+  UTF-8 filename fallback) so downloaded files keep their real filename instead of the bare S3
+  key basename.
+- Download progress now reflects real streamed byte counts instead of a fake timed animation.
+- Download cancellation now actually aborts the in-flight fetch instead of being a no-op after
+  the browser had already taken over the transfer.
+- Files over 2 GB skip in-memory streaming and hand off to the browser instead of risking a
+  crashed tab from buffering into a `Blob`.
+- Multi-select downloads are capped at 3 concurrent transfers instead of an unbounded fan-out.
+
+## [2.7.0] - 2026-07-26
+### Fixed
+- `renameFolder` is now safe to retry after a partial failure. It previously copied and deleted
+  one key at a time and threw on first error, which could leave a folder split across both
+  prefixes with no record of where it stopped. It now does copy-all (concurrent, with retries)
+  → verify → delete-all, so an interruption leaves the source intact and retryable.
+
+## [2.6.0] - 2026-07-26
+### Fixed
+- Upload managers are now disposed on session/bucket change. `getInstance()` previously
+  returned the first instance ever built and ignored later config, so switching buckets kept
+  uploading to the previous bucket. Upload/delete history is also cleared on logout.
+
+## [2.5.0] - 2026-07-26
+### Fixed
+- `deleteBatch` now reports per-object failures instead of discarding them. `DeleteObjects`
+  returns 200 with a per-key `Errors` array, which was previously ignored, so partial deletes
+  were reported as fully successful. `deleteBatch` now returns a `DeleteBatchResult` reflecting
+  what actually survived.
+
 ## [2.4.0] - 2025-10-19
 ### Added
 - Add singed url upload manager

@@ -1,42 +1,66 @@
 # Release Process
 
-Opndrive ships two different things on two different cadences: the
-`@opndrive/s3-api` npm package, and the frontend app itself. Neither has an
-automated release workflow today - both are manual, and this page documents what
-that manual process actually involves.
+Opndrive uses one version number for the whole monorepo: the root app, the
+frontend, the docs site, and the `@opndrive/s3-api` npm package all move
+together. That number is what gets git-tagged (`vX.Y.Z`) and is also what
+`@opndrive/s3-api` publishes under on npm — there is no separate "app version"
+and "package version" to reconcile anymore.
+
+This is enforced with [Changesets](https://github.com/changesets/changesets) in
+`fixed` mode (see `.changeset/config.json`): any changeset that touches any
+package in the fixed group bumps _all_ of them to the same resulting version.
+Versioning is scripted; publishing is still manual, and this page documents what
+that manual process involves.
 
 ```mermaid
 flowchart LR
-    A[Bump version<br/>in package.json] --> B[pnpm check]
-    B --> C[pnpm build]
-    C --> D[npm publish --access public]
-    D --> E[Update s3-api/CHANGELOG.MD]
-    E --> F["Keep frontend on workspace:*"]
-    F --> G[pnpm typecheck && pnpm build:frontend]
+    A[pnpm changeset] --> B[pnpm version-packages]
+    B --> C[Review & commit bump]
+    C --> D[pnpm check && pnpm build]
+    D --> E[npm publish --access public]
+    E --> F[git tag vX.Y.Z && push]
 ```
 
-## Publishing `@opndrive/s3-api`
+## Adding a changeset
 
-`s3-api/package.json` is set up as a real publishable package (`main`, `types`,
-`exports`, and `files: ["dist"]` all point at the built output), but there is no
-CI step that runs `npm publish` - check `.github/workflows/` and you'll only
-find `ci.yml` and `codeql.yml`, neither of which publishes anything. A release
-today means, from `s3-api/`:
+Whenever you make a change worth calling out in a changelog, run:
 
 ```bash
-# 1. Bump the version
-#    (edit "version" in s3-api/package.json, following semver)
-
-# 2. Verify it
-pnpm check      # typecheck + test
-pnpm build      # tsc, writes to dist/
-
-# 3. Publish
-npm publish --access public
+pnpm changeset
 ```
 
-`s3-api/CHANGELOG.MD` should be updated alongside the version bump so consumers
-can see what changed.
+Pick the package(s) you touched and a bump type (patch/minor/major). Because the
+fixed group covers `opndrive`, `frontend`, `docs`, and `@opndrive/s3-api`, the
+actual version bump applied at release time is the _highest_ bump type requested
+across all pending changesets — the group always ends up on one shared number.
+Commit the generated file in `.changeset/` with your PR.
+
+Adding a changeset does **not** change any `version` field by itself. Nothing
+moves until a maintainer deliberately runs the version step below — so day to
+day development doesn't force a release.
+
+## Cutting a release
+
+When it's actually time to release:
+
+1. **Bump versions**: `pnpm version-packages` (`changeset version`). This
+   consumes all pending changesets, bumps `package.json` in all four packages to
+   the same new version, and writes/updates each package's `CHANGELOG.md`
+   (`s3-api/CHANGELOG.MD` for `@opndrive/s3-api`) from the accumulated
+   changesets.
+2. Review the diff and commit the version bump.
+3. **Publish `@opndrive/s3-api`** — from `s3-api/`:
+   ```bash
+   pnpm check      # typecheck + test
+   pnpm build      # tsc, writes to dist/
+   npm publish --access public
+   ```
+4. **Tag the release**: create and push a `git tag vX.Y.Z` matching the new
+   shared version. This triggers `.github/workflows/release.yml`, which builds
+   and pushes the Docker image to `ghcr.io/opndrive/opndrive` (see
+   [Deployment](../getting-started/deployment.md)). The frontend itself isn't
+   published to a package registry — it's deployed directly (Vercel/Netlify) and
+   otherwise ships via that same Docker image.
 
 ## Frontend Workspace Dependency
 
@@ -55,38 +79,25 @@ pnpm typecheck
 pnpm build:frontend
 ```
 
-## Frontend Releases
-
-The frontend (`frontend/package.json`, currently `2.0.0`) isn't published to a
-package registry, but pushing a `v*` git tag triggers
-`.github/workflows/release.yml`, which builds and pushes a Docker image to
-`ghcr.io/opndrive/opndrive` (see
-[Deployment](../getting-started/deployment.md)). It's otherwise deployed
-directly (Vercel/Netlify). Notable frontend changes go in the root
-`CHANGELOG.md`, which follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and starts from the
-point it was added rather than backfilling history. `s3-api` keeps its own
-`s3-api/CHANGELOG.MD` because it's versioned and published separately.
-
 ## A Note on Version Numbers
 
-The root `package.json` (`1.0.0`), `frontend/package.json` (`2.0.0`), and
-`s3-api/package.json` (independently versioned, published to npm) are three
-separate version numbers that don't move together. That's expected in this
-workspace, but it's worth knowing so a "v2.0.0" mentioned in one context isn't
-assumed to mean the same thing in another.
+There is exactly one version number in this repo. `package.json` (root),
+`frontend/package.json`, `docs/package.json`, and `s3-api/package.json` always
+carry the same `version`, and the git tag for a release always matches it. This
+is enforced structurally by the Changesets `fixed` group in
+`.changeset/config.json`, not by convention — don't hand-edit a `version` field
+directly; add a changeset instead and let `changeset version` apply the bump
+everywhere at once.
+
+The number only changes when a maintainer deliberately runs
+`pnpm version-packages` — never automatically on merge — so accumulating
+changesets during regular development doesn't force an unwanted release.
 
 ## Open Improvement
 
-The Docker image is now released automatically: pushing a `v*` tag runs
-`.github/workflows/release.yml`, which builds the root `Dockerfile` and pushes
-it to GHCR tagged with the version, the minor version, and `latest`. A
-build-only check also runs in `ci.yml` on pull requests that touch the
-`Dockerfile`, `.dockerignore`, or a `package.json`/lockfile, so a broken
-Dockerfile is caught before merge instead of at release time.
-
-There's still no scripted or CI-driven release for `s3-api`. If publish
-frequency increases, extending `release.yml` (or a separate workflow) triggered
-on a version tag, running build + `npm publish`, would remove the manual steps
-above and the risk of forgetting one. This needs its own npm token and is
-tracked separately so it doesn't block the Docker release.
+There's still no scripted or CI-driven publish step for `@opndrive/s3-api` or
+automated tagging — `changeset version`, `npm publish`, and `git tag` are all
+run by hand today. A natural next step is a Changesets GitHub Action that opens
+a "Version Packages" PR automatically and publishes on merge, but that needs its
+own npm token and CI wiring, and is tracked separately so it doesn't block this
+change.
