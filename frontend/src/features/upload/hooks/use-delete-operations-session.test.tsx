@@ -88,6 +88,7 @@ vi.mock('@/hooks/use-auth-guard', () => ({
 }));
 
 const store = () => useUploadStore.getState();
+const records = () => useDeleteRecoveryStore.getState().records;
 
 const folder = { name: 'docs', Prefix: 'docs/' } as never;
 
@@ -247,6 +248,49 @@ describe('a delete must not survive its session', () => {
     // Cancel took the card off screen and the delete carried on to the end.
     expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
     expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('leaves the recovery record behind so the next session can finish the job', async () => {
+    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
+    apiS3.deleteBatch.mockImplementation(async (batch) => {
+      if (apiS3.deleteBatch.mock.calls.length === 1) {
+        store().clearSessionData();
+      }
+      return { requested: batch.length, deleted: batch.length, errors: [] };
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder);
+    });
+
+    // 1000 of 2500 keys gone and the marker still there, so the folder is on
+    // screen next session missing most of its contents. Nothing told the user
+    // that happened, which is precisely what the record is for - clearing it
+    // here would leave the banner with nothing to offer.
+    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(Object.values(records())).toMatchObject([{ name: 'docs', prefix: 'docs/' }]);
+  });
+
+  it('clears the record when the user is the one who cancelled', async () => {
+    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
+    apiS3.deleteBatch.mockImplementation(async (batch) => {
+      if (apiS3.deleteBatch.mock.calls.length === 1) {
+        store().removeDeleteOperation(onlyOperationId());
+      }
+      return { requested: batch.length, deleted: batch.length, errors: [] };
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder);
+    });
+
+    // The other side of the same coin: a user who hit Cancel already knows the
+    // delete stopped, so offering to resume it next session would be noise.
+    expect(records()).toEqual({});
   });
 
   it('stops a multi select delete too', async () => {

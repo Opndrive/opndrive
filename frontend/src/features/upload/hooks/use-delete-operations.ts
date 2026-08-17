@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useDriveStore } from '@/context/data-context';
-import { useUploadStore } from '../stores/use-upload-store';
+import { SESSION_ENDED, useUploadStore } from '../stores/use-upload-store';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
 import { useDeletedFolderCleanup } from './use-deleted-folder-cleanup';
@@ -387,9 +387,15 @@ export function useDeleteOperations() {
         errorFunction(`Failed to delete "${folder.name}": ${errorMessage}`);
         throw error;
       } finally {
-        // Finished, failed or cancelled all count as reported. Only a run that
-        // never gets here, because the tab went away, leaves its record behind.
-        clearRecord(itemId);
+        // Finished, failed or cancelled by the user all count as reported, so
+        // the record goes. Two things are not reported: a run that never gets
+        // here because the tab went away, and one the session ended underneath.
+        // The second returns silently - no toast, no failed card - and still
+        // leaves the folder with some of its contents gone, so it needs the
+        // record just as much as the first.
+        if (signal.reason !== SESSION_ENDED) {
+          clearRecord(itemId);
+        }
       }
     },
     [

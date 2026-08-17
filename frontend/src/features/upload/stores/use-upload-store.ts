@@ -75,6 +75,19 @@ interface DeleteProgress {
 /** A delete in one of these states has already stopped; nothing left to abort. */
 const FINISHED_DELETE_STATUSES: DeleteProgress['status'][] = ['completed', 'failed', 'cancelled'];
 
+/**
+ * Why a delete was aborted, when the reason was the session ending rather than
+ * the user asking.
+ *
+ * The two are not interchangeable to anything downstream. A user who cancels
+ * has been told the delete stopped - the card goes, and they did it. A session
+ * that ends underneath a running delete tells them nothing at all, and leaves a
+ * folder with some of its contents gone. Passing this as the abort reason is
+ * what lets the delete recovery record survive the second case and not the
+ * first. See the `finally` in `deleteFolderWithProgress`.
+ */
+export const SESSION_ENDED = Symbol('delete aborted: session ended');
+
 interface UploadStore {
   uploadManager: UploadManager | SignedUrlUploadManager | null;
   uploads: Record<string, UploadProgress>;
@@ -283,7 +296,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     if (running.length === 0) return;
 
     for (const [, operation] of running) {
-      operation.abortController?.abort();
+      operation.abortController?.abort(SESSION_ENDED);
     }
 
     set((state) => ({
