@@ -36,6 +36,14 @@ interface AdvancedSearchSheetProps {
 /** Ties the panel to its heading, so screen readers announce what opened. */
 const TITLE_ID = 'advanced-search-title';
 
+/**
+ * Deliberately not filtered by visibility. Nothing in this sheet is hidden
+ * while it is open, and the usual `offsetParent` check reports everything as
+ * hidden under jsdom, which would quietly disable the trap in its own tests.
+ */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProps) => {
   const typeOptions: Option[] = [
     { value: 'any', label: 'Any' },
@@ -83,7 +91,40 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
     if (!isOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      // Tab would otherwise walk out of the panel and into the page behind,
+      // which the backdrop still blocks the mouse from reaching - so a keyboard
+      // user ends up somewhere they cannot see or click.
+      if (event.key !== 'Tab') return;
+
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      const active = document.activeElement;
+      // Focus sitting on the panel itself is the just-opened case: the next Tab
+      // should enter the sheet rather than leave it.
+      const outside = !panel.contains(active) || active === panel;
+
+      if (event.shiftKey && (outside || active === first)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (outside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);

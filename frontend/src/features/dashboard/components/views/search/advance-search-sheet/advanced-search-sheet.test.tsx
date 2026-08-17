@@ -69,6 +69,42 @@ describe('advanced search sheet', () => {
     trigger.remove();
   });
 
+  it('keeps Tab inside the sheet', async () => {
+    const { panel } = await open();
+    const items = Array.from(panel.querySelectorAll<HTMLElement>('button, input'));
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+
+    // Forward off the end wraps to the top rather than landing on the page
+    // behind, which the backdrop still blocks the mouse from reaching.
+    last.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Tab' });
+    });
+    expect(document.activeElement).toBe(first);
+
+    // And backwards off the top wraps to the bottom.
+    first.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('sends the first Tab after opening into the sheet, not out of it', async () => {
+    const { panel } = await open();
+    const first = panel.querySelector<HTMLElement>('button, input')!;
+
+    // Focus starts on the panel itself, which is not a tab stop, so without the
+    // trap the browser would move on to whatever follows the portal.
+    await waitFor(() => expect(document.activeElement).toBe(panel));
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Tab' });
+    });
+
+    expect(document.activeElement).toBe(first);
+  });
+
   it('keeps the backdrop out of the accessibility tree', async () => {
     await open();
 
