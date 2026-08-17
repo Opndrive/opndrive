@@ -8,7 +8,6 @@ import { FaRegCircle } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
-import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent } from './item-keyboard';
 
@@ -40,8 +39,6 @@ export const FolderItem: React.FC<FolderItemProps> = ({
   additionalActions,
   insertAdditionalActionsAfter,
 }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
   const selected = isSelected(folder);
@@ -146,15 +143,24 @@ export const FolderItem: React.FC<FolderItemProps> = ({
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
+    // The menu opens itself. This only keeps the row underneath from
+    // reading the same click as opening the item.
     event.stopPropagation();
-    setMenuAnchor(event.currentTarget as HTMLElement);
-    setIsMenuOpen(true);
-    onMenuClick?.(folder, event);
-  };
 
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
-    setMenuAnchor(null);
+    // Opening the menu selects the item, the same way a plain click on the
+    // row does: no ctrl or shift, so it replaces whatever was selected
+    // before. Multi-select stays a keyboard gesture.
+    //
+    // Not on touch. There a tap opens an item and selection sits behind a
+    // long press, and once anything is selected a tap selects instead of
+    // opening - so selecting here would quietly change what every later
+    // tap does.
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) {
+      selectItem(folder, 'folder', index, false, false, allFolders);
+    }
+
+    onMenuClick?.(folder, event);
   };
 
   const timeInfo = formatTimeWithTooltip(folder.lastModified);
@@ -212,29 +218,26 @@ export const FolderItem: React.FC<FolderItemProps> = ({
           )}
         </div>
 
-        <AriaLabel label={`More actions`} position="top">
-          <button
-            className="
-              flex-shrink-0 p-1 rounded-full cursor-pointer
-              hover:bg-accent transition-all duration-200
-              text-muted-foreground hover:text-foreground
-            "
-            aria-label={`More actions for ${folder.name}`}
-            onClick={handleMenuClick}
-          >
-            <MoreVerticalIcon size={16} />
-          </button>
-        </AriaLabel>
+        <FolderOverflowMenu
+          folder={folder}
+          triggerLabel="More actions"
+          additionalActions={additionalActions}
+          insertAdditionalActionsAfter={insertAdditionalActionsAfter}
+          trigger={
+            <button
+              className="
+                flex-shrink-0 p-1 rounded-full cursor-pointer
+                hover:bg-accent transition-all duration-200
+                text-muted-foreground hover:text-foreground
+              "
+              aria-label={`More actions for ${folder.name}`}
+              onClick={handleMenuClick}
+            >
+              <MoreVerticalIcon size={16} />
+            </button>
+          }
+        />
       </div>
-
-      <FolderOverflowMenu
-        folder={folder}
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorElement={menuAnchor}
-        additionalActions={additionalActions}
-        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
-      />
     </>
   );
 };

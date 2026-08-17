@@ -1,235 +1,380 @@
 /**
- * Delete lifetime: what stops a running delete, and what must not.
+ * useDeleteOperations - folder delete ordering and the recovery record.
  *
- * The loop captures the S3 client it started with in a closure, so nothing
- * that happens to the provider afterwards reaches it. The abort signal is the
- * only handle on a delete once it is moving, which makes the two halves of
- * this suite a matched pair:
+ * S3 returns keys in lexicographic order, so a folder's own marker object
+ * ("docs/") sorts ahead of everything inside it and used to be deleted in the
+ * first batch. An interrupted delete then left the folder invisible while its
+ * contents were still in the bucket and still billed. The marker now goes last,
+ * and these tests pin that against the real batching loop rather than trusting
+ * the order the lister happened to return.
  *
- *   - ending the session MUST stop it, or objects keep being deleted under
- *     credentials the user has already signed out of;
- *   - unmounting the component MUST NOT, or every route change silently
- *     abandons a large delete halfway through.
- *
- * S3 is mocked at the module boundary. Nothing here depends on real bucket
- * behaviour - what is being tested is who can stop the loop and when.
+ * The second half covers the record that makes an interruption noticeable at
+ * all. A tab close cannot be simulated, so the test samples the store from
+ * inside the batch loop: whatever is there mid-run is exactly what would be
+ * left behind.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useDeleteOperations } from './use-delete-operations';
-import { useUploadStore } from '../stores/use-upload-store';
+import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
+import type { Folder } from '@/features/dashboard/types/folder';
 
-const { refreshCurrentData, notifyError } = vi.hoisted(() => ({
-  refreshCurrentData: vi.fn(async () => {}),
-  notifyError: vi.fn(),
-}));
+const listFromPrefix = vi.fn();
+const deleteBatch = vi.fn();
+const deleteFile = vi.fn();
+const refreshCurrentData = vi.fn();
+const removeDeletedFolder = vi.fn();
+const routerReplace = vi.fn();
+const notifyError = vi.fn();
 
-vi.mock('@opndrive/s3-api', () => ({
-  UploadManager: class {},
-  SignedUrlUploadManager: class {},
-  BYOS3ApiProvider: class {},
-}));
-
-vi.mock('@/context/data-context', () => {
-  const state = { refreshCurrentData };
-  // Used as a hook by the delete hook and as `.getState()` by the store.
-  const useDriveStore = Object.assign(() => state, { getState: () => state });
-  return { useDriveStore };
-});
-
-vi.mock('@/context/notification-context', () => ({
-  useNotification: () => ({ error: notifyError }),
-}));
-
-const apiS3 = {
-  listFromPrefix: vi.fn(async (_prefix: string) => [] as string[]),
-  deleteBatch: vi.fn(async (_batch: { Key: string }[]) => ({
-    requested: 0,
-    deleted: 0,
-    errors: [],
-  })),
-  deleteFile: vi.fn(async (_key: string) => {}),
+/** Where the user is standing, which is what decides whether a delete moves them. */
+const drive = {
+  currentPrefix: '/' as string | null,
+  rootPrefix: '/' as string | null,
+  refreshCurrentData,
+  removeDeletedFolder,
 };
 
+const route = { pathname: '/dashboard/browse' };
+
 vi.mock('@/hooks/use-auth-guard', () => ({
-  useAuthGuard: () => ({ apiS3 }),
+  useAuthGuard: () => ({
+    apiS3: { listFromPrefix, deleteBatch, deleteFile, getBucketName: () => 'test-bucket' },
+  }),
 }));
 
-const store = () => useUploadStore.getState();
+vi.mock('@/context/data-context', () => ({
+  // Selector and getState both read the same object, the way the real store does
+  useDriveStore: Object.assign(
+    (selector?: (state: typeof drive) => unknown) => (selector ? selector(drive) : drive),
+    { getState: () => drive }
+  ),
+}));
 
-const folder = { name: 'docs', Prefix: 'docs/' } as never;
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
+  usePathname: () => route.pathname,
+}));
 
-/** Keys for a folder big enough to need `count / 1000` batches. */
-function keys(count: number): string[] {
-  return Array.from({ length: count }, (_, i) => `docs/file-${i}.txt`);
+vi.mock('@/context/notification-context', () => ({
+  useNotification: () => ({
+    error: notifyError,
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+  }),
+}));
+
+function folder(overrides: Partial<Folder> = {}): Folder {
+  return {
+    id: 'docs',
+    name: 'docs',
+    Prefix: 'docs/',
+    location: { type: 'my-drive', label: 'My Drive' },
+    ...overrides,
+  };
 }
 
-/** The id of the single operation the hook just registered. */
-function onlyOperationId(): string {
-  const ids = Object.keys(store().deletes);
-  expect(ids).toHaveLength(1);
-  return ids[0]!;
+/** The keys handed to deleteBatch, call by call, flattened back to plain keys. */
+function batchedKeys(): string[][] {
+  return deleteBatch.mock.calls.map((call) => (call[0] as { Key: string }[]).map((o) => o.Key));
 }
+
+const records = () => useDeleteRecoveryStore.getState().records;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  apiS3.listFromPrefix.mockResolvedValue([]);
-  apiS3.deleteBatch.mockResolvedValue({ requested: 0, deleted: 0, errors: [] });
-  apiS3.deleteFile.mockResolvedValue(undefined);
+  listFromPrefix.mockReset();
+  deleteBatch.mockReset().mockResolvedValue({ requested: 0, deleted: 0, errors: [] });
+  deleteFile.mockReset().mockResolvedValue(undefined);
+  refreshCurrentData.mockReset();
+  removeDeletedFolder.mockReset();
+  routerReplace.mockReset();
+  notifyError.mockReset();
+  drive.currentPrefix = '/';
+  drive.rootPrefix = '/';
+  route.pathname = '/dashboard/browse';
+  useDeleteRecoveryStore.setState({ records: {} });
 });
 
-describe('a delete must survive its component', () => {
-  it('does not abort when the route that started it unmounts', async () => {
-    // Park the delete on the listing so it is genuinely mid-flight at unmount.
-    let releaseListing!: (value: string[]) => void;
-    apiS3.listFromPrefix.mockReturnValue(
-      new Promise<string[]>((resolve) => {
-        releaseListing = resolve;
-      })
-    );
+describe('folder marker ordering', () => {
+  it('deletes the marker after everything it contains', async () => {
+    // Lexicographic order, which is what S3 actually returns
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt', 'docs/b.txt']);
 
-    const { result, unmount } = renderHook(() => useDeleteOperations());
-
-    let deleting!: Promise<void>;
-    act(() => {
-      deleting = result.current.deleteFolderWithProgress(folder);
-    });
-
-    const id = onlyOperationId();
-    const signal = store().getDeleteAbortController(id)!.signal;
-
-    unmount();
-
-    // Navigating from Browse to Search must not abandon a 10,000 object delete
-    // halfway through, leaving the folder half deleted with no record.
-    expect(signal.aborted).toBe(false);
-
-    releaseListing(keys(3));
+    const { result } = renderHook(() => useDeleteOperations());
     await act(async () => {
-      await deleting;
+      await result.current.deleteFolderWithProgress(folder());
     });
 
-    // And it still finishes, with the component long gone.
-    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
-    expect(store().deletes[id]!.status).toBe('completed');
+    expect(batchedKeys()).toEqual([['docs/a.txt', 'docs/b.txt', 'docs/']]);
+  });
+
+  it('puts the marker in the final batch when the folder spans several', async () => {
+    const contents = Array.from({ length: 1001 }, (_, i) => `docs/file-${i}.txt`);
+    listFromPrefix.mockResolvedValue(['docs/', ...contents]);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    const batches = batchedKeys();
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).not.toContain('docs/');
+    expect(batches[1].at(-1)).toBe('docs/');
+  });
+
+  it('still deletes the marker when the lister does not return one', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(batchedKeys()).toEqual([['docs/a.txt', 'docs/']]);
+  });
+
+  it('never sends the marker twice', async () => {
+    listFromPrefix.mockResolvedValue(['docs/', 'docs/a.txt']);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    const sent = batchedKeys().flat();
+    expect(sent.filter((key) => key === 'docs/')).toHaveLength(1);
+  });
+
+  it('handles an empty folder that only has a marker', async () => {
+    listFromPrefix.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(batchedKeys()).toEqual([['docs/']]);
+  });
+
+  it('normalizes a prefix that arrives without a trailing slash', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder({ Prefix: 'docs' }));
+    });
+
+    expect(listFromPrefix).toHaveBeenCalledWith('docs/');
+    expect(batchedKeys()).toEqual([['docs/a.txt', 'docs/']]);
   });
 });
 
-describe('a delete must not survive its session', () => {
-  it('stops issuing batches once the session ends', async () => {
-    // Three chunks of 1000. Ending the session during the first one must stop
-    // the other two from ever being requested.
-    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
-    apiS3.deleteBatch.mockImplementation(async (batch) => {
-      // Exactly what logout does, landing while a batch is in flight.
-      if (apiS3.deleteBatch.mock.calls.length === 1) {
-        store().clearSessionData();
-      }
-      return { requested: batch.length, deleted: batch.length, errors: [] };
-    });
-
-    const { result } = renderHook(() => useDeleteOperations());
-
-    await act(async () => {
-      await result.current.deleteFolderWithProgress(folder);
-    });
-
-    // The whole point: the remaining 1500 keys are never requested with the
-    // credentials of a session the user has already left.
-    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
+/**
+ * A delete leaves every cached listing that mentioned the folder wrong, not
+ * just the one on screen, and the user can be standing inside the folder while
+ * it goes. Both are the same cleanup step.
+ */
+describe('after the folder is gone', () => {
+  beforeEach(() => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
   });
 
-  it('reports nothing and refreshes nothing after the session ends', async () => {
-    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
-    apiS3.deleteBatch.mockImplementation(async (batch) => {
-      if (apiS3.deleteBatch.mock.calls.length === 1) {
-        store().clearSessionData();
-      }
-      return { requested: batch.length, deleted: batch.length, errors: [] };
-    });
-
+  it('forgets the folder wherever it was cached', async () => {
     const { result } = renderHook(() => useDeleteOperations());
-
     await act(async () => {
-      await result.current.deleteFolderWithProgress(folder);
+      await result.current.deleteFolderWithProgress(folder());
     });
 
-    // An abort is not a failure, so no error toast - and no progress written
-    // back, which would resurrect the operation as a nameless card in whichever
-    // session came next.
-    expect(notifyError).not.toHaveBeenCalled();
-    expect(refreshCurrentData).not.toHaveBeenCalled();
-    expect(store().deletes).toEqual({});
+    expect(removeDeletedFolder).toHaveBeenCalledWith('docs/');
   });
 
-  it('does not report a single file delete that the session outlived', async () => {
-    let releaseDelete!: () => void;
-    apiS3.deleteFile.mockReturnValue(
-      new Promise<void>((resolve) => {
-        releaseDelete = resolve;
-      })
-    );
-
+  it('refreshes in place when the user was somewhere else', async () => {
     const { result } = renderHook(() => useDeleteOperations());
-
-    let deleting!: Promise<void>;
-    act(() => {
-      deleting = result.current.deleteFileWithProgress({ name: 'a.pdf', Key: 'a.pdf' } as never);
-    });
-
-    await waitFor(() => expect(apiS3.deleteFile).toHaveBeenCalled());
-
     await act(async () => {
-      store().clearSessionData();
-      releaseDelete();
-      await deleting;
+      await result.current.deleteFolderWithProgress(folder());
     });
 
-    // The request was already in flight and cannot be recalled, but the UI must
-    // not claim success for a session that no longer exists.
-    expect(refreshCurrentData).not.toHaveBeenCalled();
-    expect(store().deletes).toEqual({});
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(refreshCurrentData).toHaveBeenCalled();
   });
 
-  it('stops when the operations modal cancels it', async () => {
-    apiS3.listFromPrefix.mockResolvedValue(keys(2500));
-    apiS3.deleteBatch.mockImplementation(async (batch) => {
-      if (apiS3.deleteBatch.mock.calls.length === 1) {
-        // Exactly what the modal's Cancel does: it removes the operation
-        // rather than calling cancelDeleteOperation.
-        store().removeDeleteOperation(onlyOperationId());
-      }
-      return { requested: batch.length, deleted: batch.length, errors: [] };
-    });
+  it('steps out to the parent when the user was inside it', async () => {
+    drive.currentPrefix = 'docs/2024/raw/';
 
     const { result } = renderHook(() => useDeleteOperations());
-
     await act(async () => {
-      await result.current.deleteFolderWithProgress(folder);
+      await result.current.deleteFolderWithProgress(folder());
     });
 
-    // Removing the entry used to drop the only reference to the controller, so
-    // Cancel took the card off screen and the delete carried on to the end.
-    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+    // Nothing left at that prefix, so refetching it would only prove it is empty
     expect(refreshCurrentData).not.toHaveBeenCalled();
   });
 
-  it('stops a multi select delete too', async () => {
-    apiS3.deleteBatch.mockImplementation(async (batch) => {
-      if (apiS3.deleteBatch.mock.calls.length === 1) {
-        store().clearSessionData();
-      }
-      return { requested: batch.length, deleted: batch.length, errors: [] };
+  it('steps out of the folder itself, not only from below it', async () => {
+    drive.currentPrefix = 'docs/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('lands on the nearest surviving folder, not the root', async () => {
+    listFromPrefix.mockResolvedValue(['photos/2024/a.jpg']);
+    drive.currentPrefix = 'photos/2024/raw/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(
+        folder({ id: 'photos/2024/', name: '2024', Prefix: 'photos/2024/' })
+      );
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard/browse?prefix=photos%2F');
+  });
+
+  it('keeps the URL relative to the bucket prefix the session is pinned to', async () => {
+    listFromPrefix.mockResolvedValue(['team/docs/a.txt']);
+    drive.rootPrefix = 'team/';
+    drive.currentPrefix = 'team/docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(
+        folder({ id: 'team/docs/', Prefix: 'team/docs/' })
+      );
+    });
+
+    expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('stays put when the user is in a folder that only starts the same', async () => {
+    drive.currentPrefix = 'docs-old/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(refreshCurrentData).toHaveBeenCalled();
+  });
+
+  it('does not throw the user out of their search results', async () => {
+    // Search lists folders from anywhere in the bucket, while the store still
+    // points at the last folder browsed
+    route.pathname = '/dashboard/search';
+    drive.currentPrefix = 'docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(removeDeletedFolder).toHaveBeenCalledWith('docs/');
+  });
+
+  it('leaves everything alone when S3 refused part of the delete', async () => {
+    deleteBatch.mockResolvedValue({
+      requested: 2,
+      deleted: 1,
+      errors: [{ key: 'docs/a.txt', code: 'AccessDenied', message: 'nope' }],
+    });
+    drive.currentPrefix = 'docs/2024/';
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await expect(result.current.deleteFolderWithProgress(folder())).rejects.toThrow();
+    });
+
+    expect(removeDeletedFolder).not.toHaveBeenCalled();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe('recovery record', () => {
+  it('exists while the batches are going out, which is the interrupted case', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+
+    // Sampled from inside the loop: this is what a tab close would leave behind
+    let recordDuringRun: unknown;
+    deleteBatch.mockImplementation(async () => {
+      recordDuringRun = Object.values(records())[0];
+      return { requested: 1, deleted: 1, errors: [] };
     });
 
     const { result } = renderHook(() => useDeleteOperations());
-
     await act(async () => {
-      await result.current.batchDeleteByKeys(keys(2500));
+      await result.current.deleteFolderWithProgress(folder());
     });
 
-    expect(apiS3.deleteBatch).toHaveBeenCalledTimes(1);
-    expect(store().deletes).toEqual({});
+    expect(recordDuringRun).toMatchObject({
+      bucket: 'test-bucket',
+      prefix: 'docs/',
+      name: 'docs',
+    });
+  });
+
+  it('is cleared once the delete finishes', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(records()).toEqual({});
+  });
+
+  it('is cleared when the delete throws, since the user was told', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+    deleteBatch.mockRejectedValue(new Error('access denied'));
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await expect(result.current.deleteFolderWithProgress(folder())).rejects.toThrow();
+    });
+
+    expect(records()).toEqual({});
+  });
+
+  it('is cleared when S3 refuses some of the objects', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+    deleteBatch.mockResolvedValue({
+      requested: 2,
+      deleted: 1,
+      errors: [{ key: 'docs/a.txt', code: 'AccessDenied', message: 'nope' }],
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await expect(result.current.deleteFolderWithProgress(folder())).rejects.toThrow();
+    });
+
+    expect(records()).toEqual({});
+  });
+
+  it('pins the bucket the delete was aimed at', async () => {
+    listFromPrefix.mockResolvedValue(['docs/a.txt']);
+
+    let bucketDuringRun: unknown;
+    deleteBatch.mockImplementation(async () => {
+      bucketDuringRun = (Object.values(records())[0] as { bucket: string }).bucket;
+      return { requested: 1, deleted: 1, errors: [] };
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(bucketDuringRun).toBe('test-bucket');
   });
 });

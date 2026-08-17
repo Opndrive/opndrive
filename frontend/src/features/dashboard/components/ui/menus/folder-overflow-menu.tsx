@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useMemo, useState } from 'react';
 import type { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { Edit3, Trash2 } from 'lucide-react';
 import { useDeleteWithProgress } from '@/features/dashboard/hooks/use-delete-with-progress';
@@ -15,32 +14,40 @@ import {
 } from '@/shared/components/ui/credit-warning-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { FaFolderOpen } from 'react-icons/fa';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/shared/components/ui/dropdown-menu';
+import { menuContentClass, menuItemClass } from './menu-styles';
 
 interface OverflowMenuProps {
   folder: Folder;
-  isOpen: boolean;
-  onClose: () => void;
-  anchorElement: HTMLElement | null;
+  /**
+   * The button that opens the menu, rendered as the trigger itself rather than
+   * placed beside it. The menu used to be positioned by hand against an
+   * `anchorElement` prop, which is what Radix does for us now.
+   */
+  trigger: React.ReactNode;
+  /** Tooltip for the trigger. Omit to render the trigger without one. */
+  triggerLabel?: string;
   className?: string;
   additionalActions?: FolderMenuAction[]; // Additional menu actions
   insertAdditionalActionsAfter?: string; // Where to insert additional actions (default: 'open')
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   folder,
-  isOpen,
-  onClose,
-  anchorElement,
+  trigger,
+  triggerLabel,
   className = '',
   additionalActions = [],
   insertAdditionalActionsAfter = 'open',
+  onOpenChange,
 }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const [originPosition, setOriginPosition] = useState<
-    'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  >('top-left');
-  const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingAction, setPendingAction] = useState<'rename' | 'delete' | null>(null);
 
   const { deleteFolder, isDeleting } = useDeleteWithProgress();
@@ -48,53 +55,11 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   const { currentPrefix } = useDriveStore();
   const router = useRouter();
 
-  // Reset credit warning state when menu closes or component unmounts
-  useEffect(() => {
-    if (!isOpen) {
-      setShowCreditWarning(false);
-      setPendingAction(null);
-    }
-  }, [isOpen]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      setShowCreditWarning(false);
-      setPendingAction(null);
-    };
-  }, []);
-
-  // Handle rename with credit warning
-  const handleRename = () => {
-    if (shouldShowCreditWarning('folder-rename')) {
-      setPendingAction('rename');
-      setShowCreditWarning(true);
-      // Don't close menu yet - let credit warning show first
-    } else {
-      executeRename();
-      handleMenuClose();
-    }
-  };
-
   const executeRename = () => {
     openRenameDialog(folder, 'folder', currentPrefix || '');
-    handleMenuClose(); // Close menu only after opening rename dialog
-  };
-
-  // Handle delete with credit warning
-  const handleDelete = () => {
-    if (shouldShowCreditWarning('folder-delete')) {
-      setPendingAction('delete');
-      setShowCreditWarning(true);
-      // Don't close menu yet - let credit warning show first
-    } else {
-      executeDelete();
-      handleMenuClose();
-    }
   };
 
   const executeDelete = async () => {
-    handleMenuClose(); // Close menu before showing confirmation
     const confirmDelete = window.confirm(
       `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
     );
@@ -108,68 +73,66 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
     }
   };
 
-  // Handle credit warning confirmation
+  // Selecting an item closes the menu on its own now, so these only decide
+  // whether the credit warning stands between the click and the work.
+  const handleRename = () => {
+    if (shouldShowCreditWarning('folder-rename')) {
+      setPendingAction('rename');
+    } else {
+      executeRename();
+    }
+  };
+
+  const handleDelete = () => {
+    if (shouldShowCreditWarning('folder-delete')) {
+      setPendingAction('delete');
+    } else {
+      void executeDelete();
+    }
+  };
+
   const handleCreditWarningConfirm = () => {
     if (pendingAction === 'rename') {
       executeRename();
     } else if (pendingAction === 'delete') {
-      executeDelete();
+      void executeDelete();
     }
-    setShowCreditWarning(false);
     setPendingAction(null);
   };
 
-  const handleCreditWarningClose = () => {
-    setShowCreditWarning(false);
-    setPendingAction(null);
-    onClose(); // Close menu when credit warning is cancelled
-  };
-
-  // Reset credit warning state and close menu
-  const handleMenuClose = () => {
-    // Reset credit warning state when menu closes
-    setShowCreditWarning(false);
-    setPendingAction(null);
-    onClose();
-  };
-
-  const getDefaultMenuActions = (folder: Folder): FolderMenuAction[] => [
-    {
-      id: 'open',
-      label: 'Open',
-      icon: <FaFolderOpen className="flex-shrink-0 h-4 w-4" />,
-      onClick: (_folder) => {
-        const folderUrl = generateFolderUrl({ prefix: folder.Prefix });
-        router.push(folderUrl);
-        handleMenuClose();
-      },
-    },
-    {
-      id: 'rename',
-      label: 'Rename',
-      icon: <Edit3 className="flex-shrink-0 h-4 w-4" />,
-      disabled: isRenaming(folder.id || folder.Prefix || folder.name),
-      onClick: handleRename,
-    },
-    {
-      id: 'delete',
-      label: isDeleting(folder.id || folder.Prefix || folder.name)
-        ? 'Deleting...'
-        : 'Delete forever',
-      icon: <Trash2 className="flex-shrink-0 h-4 w-4" />,
-      variant: 'destructive' as const,
-      disabled: isDeleting(folder.id || folder.Prefix || folder.name),
-      onClick: handleDelete,
-    },
-  ];
-
-  // Merge additional actions with default actions
   const actions = useMemo(() => {
+    const defaultActions: FolderMenuAction[] = [
+      {
+        id: 'open',
+        label: 'Open',
+        icon: <FaFolderOpen className="h-4 w-4 shrink-0" />,
+        onClick: () => {
+          router.push(generateFolderUrl({ prefix: folder.Prefix }));
+        },
+      },
+      {
+        id: 'rename',
+        label: 'Rename',
+        icon: <Edit3 className="h-4 w-4 shrink-0" />,
+        disabled: isRenaming(folder.id || folder.Prefix || folder.name),
+        onClick: handleRename,
+      },
+      {
+        id: 'delete',
+        label: isDeleting(folder.id || folder.Prefix || folder.name)
+          ? 'Deleting...'
+          : 'Delete forever',
+        icon: <Trash2 className="h-4 w-4 shrink-0" />,
+        variant: 'destructive' as const,
+        disabled: isDeleting(folder.id || folder.Prefix || folder.name),
+        onClick: handleDelete,
+      },
+    ];
+
     if (additionalActions.length === 0) {
-      return getDefaultMenuActions(folder);
+      return defaultActions;
     }
 
-    const defaultActions = getDefaultMenuActions(folder);
     const insertIndex = defaultActions.findIndex(
       (action) => action.id === insertAdditionalActionsAfter
     );
@@ -179,181 +142,71 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
       return [...additionalActions, ...defaultActions];
     }
 
-    // Insert after the specified action
-    const result = [
+    return [
       ...defaultActions.slice(0, insertIndex + 1),
       ...additionalActions,
       ...defaultActions.slice(insertIndex + 1),
     ];
+    // handleRename/handleDelete are redefined every render and only read state
+    // through the hooks above, so listing them would rebuild this every time
+    // without changing what it produces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder, additionalActions, insertAdditionalActionsAfter, isRenaming, isDeleting, router]);
 
-    return result;
-  }, [folder, additionalActions, insertAdditionalActionsAfter]);
-
-  // Prevent body scroll when menu is open
-  useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && anchorElement) {
-      const rect = anchorElement.getBoundingClientRect();
-      const menuWidth = 200;
-      const menuHeight = actions.length * 44 + 16;
-      const padding = 8;
-
-      let left = rect.right + padding;
-      let top = rect.top;
-      let origin: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-left';
-
-      // Horizontal positioning with boundary check
-      if (left + menuWidth > window.innerWidth - padding) {
-        left = rect.left - menuWidth - padding;
-        origin = 'top-right';
-      }
-
-      // Ensure menu doesn't go off left edge
-      if (left < padding) {
-        left = padding;
-      }
-
-      // Ensure menu doesn't go off right edge
-      if (left + menuWidth > window.innerWidth - padding) {
-        left = window.innerWidth - menuWidth - padding;
-      }
-
-      // Vertical positioning with boundary check
-      if (top + menuHeight > window.innerHeight - padding) {
-        top = rect.bottom - menuHeight;
-        origin = origin === 'top-right' ? 'bottom-right' : 'bottom-left';
-      }
-
-      // Ensure menu doesn't go off top edge
-      if (top < padding) {
-        top = padding;
-      }
-
-      // Final check: ensure menu fits within viewport height
-      if (top + menuHeight > window.innerHeight - padding) {
-        top = window.innerHeight - menuHeight - padding;
-      }
-
-      // Clamp to ensure menu is always visible
-      top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
-      left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
-
-      setPosition({ top, left });
-      setOriginPosition(origin);
-    } else {
-      setPosition(null);
-    }
-  }, [isOpen, anchorElement, actions.length]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen || !position) return null;
-
-  const getTransformOrigin = () => {
-    switch (originPosition) {
-      case 'top-right':
-        return 'top right';
-      case 'bottom-left':
-        return 'bottom left';
-      case 'bottom-right':
-        return 'bottom right';
-      default:
-        return 'top left';
-    }
-  };
-
-  const menuContent = (
-    <AriaLabel label={`Actions for ${folder.name}`} position="top">
-      <div
-        ref={menuRef}
-        className={`
-          fixed z-50 min-w-[200px] max-h-[calc(100vh-16px)] overflow-y-auto p-2
-          bg-secondary border border-border rounded-lg shadow-xl
-          transition-all duration-200 ease-out
-          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-          ${className}
-        `}
-        style={{
-          top: position.top,
-          left: position.left,
-          transformOrigin: getTransformOrigin(),
-        }}
-        role="menu"
-      >
-        {actions.map((action, index) => (
-          <React.Fragment key={action.id}>
-            {index === actions.length - 1 && <div className="my-1 h-px bg-border" />}
-            <button
-              className={`
-              w-full flex items-center gap-3 px-3 cursor-pointer py-2.5 text-sm rounded-md
-              text-left transition-colors duration-150
-              ${
-                action.variant === 'destructive'
-                  ? 'text-[#d93025] hover:bg-[#fce8e6] dark:text-[#f28b82] dark:hover:bg-[#5f2120]/20'
-                  : 'text-foreground hover:bg-card'
-              }
-              ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
-              onClick={() => {
-                if (!action.disabled) {
-                  action.onClick?.(folder);
-                }
-              }}
-              disabled={action.disabled}
-              role="menuitem"
-            >
-              <span className="flex-shrink-0">{action.icon}</span>
-              <span className="flex-1">{action.label}</span>
-            </button>
-          </React.Fragment>
-        ))}
-      </div>
-    </AriaLabel>
-  );
+  const triggerNode = <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>;
 
   return (
     <>
-      {/* Only render menu if credit warning is not showing */}
-      {!showCreditWarning && typeof window !== 'undefined'
-        ? createPortal(menuContent, document.body)
-        : null}
+      {/* modal={false}: a dropdown should not freeze the whole page. Each menu
+          used to set document.body.style.overflow itself, which is half of the
+          scroll locking mess in #86. */}
+      <DropdownMenu modal={false} onOpenChange={onOpenChange}>
+        {triggerLabel ? (
+          <AriaLabel label={triggerLabel} position="top">
+            {triggerNode}
+          </AriaLabel>
+        ) : (
+          triggerNode
+        )}
 
-      {/* Credit Warning Dialog - rendered outside portal to avoid conflicts */}
-      {showCreditWarning && (
+        {/* Beside the button rather than under it, since dropping below covers
+            the rows underneath along with their own menu buttons.
+
+            Asks for the right and lets Radix flip it to the left when there is
+            no room, which is what the hand-rolled version worked out by hand:
+            it tried `rect.right + padding` first and only used
+            `rect.left - menuWidth - padding` when that ran off screen.
+            `align="start"` lines the top up with the button, and Radix nudges
+            it up or down to keep it in view. */}
+        <DropdownMenuContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          collisionPadding={8}
+          className={`${menuContentClass} ${className}`}
+          aria-label={`Actions for ${folder.name}`}
+        >
+          {actions.map((action, index) => (
+            <React.Fragment key={action.id}>
+              {index === actions.length - 1 && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                className={menuItemClass}
+                variant={action.variant === 'destructive' ? 'destructive' : 'default'}
+                disabled={action.disabled}
+                onSelect={() => action.onClick?.(folder)}
+              >
+                <span className="shrink-0">{action.icon}</span>
+                <span className="flex-1">{action.label}</span>
+              </DropdownMenuItem>
+            </React.Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {pendingAction && (
         <CreditWarningDialog
-          isOpen={showCreditWarning}
-          onClose={handleCreditWarningClose}
+          isOpen
+          onClose={() => setPendingAction(null)}
           onConfirm={handleCreditWarningConfirm}
           operationType={pendingAction === 'rename' ? 'folder-rename' : 'folder-delete'}
         />

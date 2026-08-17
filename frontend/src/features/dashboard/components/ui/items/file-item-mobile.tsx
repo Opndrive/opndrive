@@ -6,7 +6,6 @@ import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file-extensions';
-import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { useFilePreview } from '@/context/file-preview-context';
 import { getItemKeyIntent } from './item-keyboard';
@@ -30,8 +29,6 @@ export function FileItemMobile({
   additionalActions,
   insertAdditionalActionsAfter,
 }: FileItemMobileProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openPreview } = useFilePreview();
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
@@ -44,14 +41,22 @@ export function FileItemMobile({
   const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleMenuClick = (event: React.MouseEvent) => {
+    // The menu opens itself. This only keeps the row underneath from
+    // reading the same click as opening the item.
     event.stopPropagation();
-    setMenuAnchor(event.currentTarget as HTMLElement);
-    setIsMenuOpen(true);
-  };
 
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
-    setMenuAnchor(null);
+    // Opening the menu selects the item, the same way a plain click on the
+    // row does: no ctrl or shift, so it replaces whatever was selected
+    // before. Multi-select stays a keyboard gesture.
+    //
+    // Not on touch. There a tap opens an item and selection sits behind a
+    // long press, and once anything is selected a tap selects instead of
+    // opening - so selecting here would quietly change what every later
+    // tap does.
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) {
+      selectItem(file, 'file', index, false, false, allFiles);
+    }
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -229,24 +234,21 @@ export function FileItemMobile({
       </div>
 
       {/* Menu Button */}
-      <AriaLabel label={`More actions`} position="top">
-        <button
-          className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
-          aria-label={`More actions for ${file.name}`}
-          onClick={handleMenuClick}
-        >
-          <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
-        </button>
-      </AriaLabel>
-
       <FileOverflowMenu
         file={file}
         allFiles={allFiles}
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorElement={menuAnchor}
         additionalActions={additionalActions}
         insertAdditionalActionsAfter={insertAdditionalActionsAfter}
+        triggerLabel="More actions"
+        trigger={
+          <button
+            className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
+            aria-label={`More actions for ${file.name}`}
+            onClick={handleMenuClick}
+          >
+            <HiOutlineDotsVertical size={20} className="text-muted-foreground" />
+          </button>
+        }
       />
     </div>
   );

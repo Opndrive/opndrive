@@ -76,8 +76,11 @@ function SessionControls() {
   );
 }
 
+/** Mirrors the key AuthProvider persists the session under. */
+const STORAGE_KEY = 's3_user_session';
+
 async function renderProvider() {
-  render(
+  const result = render(
     <AuthProvider>
       <SessionControls />
     </AuthProvider>
@@ -85,20 +88,86 @@ async function renderProvider() {
   // AuthProvider swaps children for a placeholder until its restore pass
   // settles, so wait for the controls to actually exist.
   await waitFor(() => expect(screen.getByText('logout')).toBeDefined());
+  return result;
 }
 
 /**
- * Waits out the nested timers clearSession uses to defer nulling the provider
- * until navigation has unmounted the authenticated routes. Without this the
- * timers fire into an already torn down environment once the whole suite runs
+ * Waits out the gate timer clearSession uses to defer lifting `isLoading` until
+ * navigation has unmounted the authenticated routes. Without this the timer
+ * fires into an already torn down environment once the whole suite runs
  * together, which surfaces as an unhandled error rather than a failure.
  */
 async function settleLogout() {
   // Not wrapped in act(): waitFor already does that, and nesting the two stops
-  // the timers ever being advanced. The controls coming back means isLoading
+  // the timer ever being advanced. The controls coming back means isLoading
   // has flipped false again, which is the last of the deferred updates.
   await waitFor(() => expect(screen.getByText('logout')).toBeDefined());
 }
+
+/**
+ * Logout used to defer its work behind two nested timers that nothing
+ * cancelled. They fired into whatever was left of the tree - harmless in a
+ * browser, where this provider only unmounts with the page, but in tests they
+ * landed after the DOM had gone and threw `window is not defined`, which showed
+ * up as an unhandled error attributed to whichever file was unlucky.
+ *
+ * The session is cleared synchronously now, because `setIsLoading(true)` has
+ * already swapped every child for the placeholder in the same update. Only
+ * lifting that gate is still deferred, and that timer is cancelled on unmount.
+ */
+describe('logout leaves no timer running', () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    localStorage.clear();
+  });
+
+  it('clears the session without waiting for a timer', async () => {
+    await renderProvider();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ accessKeyId: 'a' }));
+
+    await act(async () => {
+      screen.getByText('logout').click();
+    });
+
+    // Everything except the gate is done by the time the click returns.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(pushMock).toHaveBeenCalledWith('/');
+    // Children stay behind the placeholder until the route change commits.
+    expect(screen.queryByText('logout')).toBeNull();
+  });
+
+  it('cancels the pending timer if the provider unmounts first', async () => {
+    const { unmount } = await renderProvider();
+
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        screen.getByText('logout').click();
+      });
+
+      // Exactly one timer: the gate. It used to be two, nested.
+      expect(vi.getTimerCount()).toBe(1);
+
+      unmount();
+
+      // Left pending, this is the one that fires into a torn down environment.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lifts the gate once the wait is over', async () => {
+    await renderProvider();
+
+    await act(async () => {
+      screen.getByText('logout').click();
+    });
+    expect(screen.queryByText('logout')).toBeNull();
+
+    await waitFor(() => expect(screen.getByText('logout')).toBeDefined());
+  });
+});
 
 describe('session changes must not leak the search cache', () => {
   beforeEach(() => {

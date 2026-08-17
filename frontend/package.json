@@ -36,6 +36,7 @@
     "@supabase/supabase-js": "^2.112.2",
     "@types/css-modules": "^1.0.5",
     "@use-gesture/react": "^10.3.1",
+    "@vercel/analytics": "^2.0.1",
     "axios": "^1.18.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

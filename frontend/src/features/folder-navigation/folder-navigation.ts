@@ -65,6 +65,19 @@ export function getFolderNameFromPrefix(prefix: string): string {
 }
 
 /**
+ * Prefix of the folder holding this one, always ending in a slash.
+ *
+ * Empty for a top level folder, which is the root's own prefix. Works on full
+ * S3 prefixes too, so "team/photos/2024/" gives back "team/photos/".
+ */
+export function getParentPrefix(prefix: string): string {
+  const trimmed = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+  const lastSlash = trimmed.lastIndexOf('/');
+
+  return lastSlash === -1 ? '' : trimmed.slice(0, lastSlash + 1);
+}
+
+/**
  * Build navigation URL for folder click
  */
 export function buildFolderClickUrl(

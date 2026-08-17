@@ -8,7 +8,6 @@ import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
-import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent } from './item-keyboard';
 
@@ -29,8 +28,6 @@ export function FileItemGrid({
   additionalActions,
   insertAdditionalActionsAfter,
 }: FileItemGridProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { openFilePreview } = useFilePreviewActions();
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
@@ -42,14 +39,22 @@ export function FileItemGrid({
   const [isLongPress, setIsLongPress] = useState(false);
 
   const handleMenuClick = (event: React.MouseEvent) => {
+    // The menu opens itself. This only keeps the row underneath from
+    // reading the same click as opening the item.
     event.stopPropagation();
-    setMenuAnchor(event.currentTarget as HTMLElement);
-    setIsMenuOpen(true);
-  };
 
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
-    setMenuAnchor(null);
+    // Opening the menu selects the item, the same way a plain click on the
+    // row does: no ctrl or shift, so it replaces whatever was selected
+    // before. Multi-select stays a keyboard gesture.
+    //
+    // Not on touch. There a tap opens an item and selection sits behind a
+    // long press, and once anything is selected a tap selects instead of
+    // opening - so selecting here would quietly change what every later
+    // tap does.
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) {
+      selectItem(file, 'file', index, false, false, allFiles);
+    }
   };
 
   const handleTouchStart = () => {
@@ -197,15 +202,22 @@ export function FileItemGrid({
             <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
           </div>
 
-          <AriaLabel label={`More actions`} position="top">
-            <button
-              className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
-              aria-label={`More actions for ${file.name}`}
-              onClick={handleMenuClick}
-            >
-              <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
-            </button>
-          </AriaLabel>
+          <FileOverflowMenu
+            file={file}
+            allFiles={allFiles}
+            additionalActions={additionalActions}
+            insertAdditionalActionsAfter={insertAdditionalActionsAfter}
+            triggerLabel="More actions"
+            trigger={
+              <button
+                className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
+                aria-label={`More actions for ${file.name}`}
+                onClick={handleMenuClick}
+              >
+                <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
+              </button>
+            }
+          />
         </div>
 
         <div className="space-y-1">
@@ -230,16 +242,6 @@ export function FileItemGrid({
           </div>
         </div>
       </div>
-
-      <FileOverflowMenu
-        file={file}
-        allFiles={allFiles}
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorElement={menuAnchor}
-        additionalActions={additionalActions}
-        insertAdditionalActionsAfter={insertAdditionalActionsAfter}
-      />
     </div>
   );
 }

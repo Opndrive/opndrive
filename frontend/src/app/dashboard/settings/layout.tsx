@@ -1,4 +1,5 @@
 'use client';
+import { useScrollLock } from '@/hooks/use-scroll-lock';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
@@ -44,16 +45,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     }
   }, [isSmallScreen, lsKey]);
 
-  useEffect(() => {
-    if (isSidebarOpen && isSmallScreen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isSidebarOpen, isSmallScreen]);
+  useScrollLock(isSidebarOpen && isSmallScreen);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => {

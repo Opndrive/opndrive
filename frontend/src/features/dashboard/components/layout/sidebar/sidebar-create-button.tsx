@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
 import { CreateMenu } from '../../ui';
@@ -14,9 +14,7 @@ interface SidebarCreateButtonProps {
 }
 
 export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClick, className }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const { currentPrefix } = useDriveStore();
   const { success, error } = useNotification();
 
@@ -29,21 +27,13 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
     },
   });
 
+  // The menu opens itself now; this only forwards the caller's callback.
   const handleClick = () => {
-    setIsMenuOpen(true);
-
-    if (onClick) {
-      onClick();
-    }
-  };
-
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
+    onClick?.();
   };
 
   const handleNewFolderClick = () => {
-    setIsMenuOpen(false); // Close menu
-    setShowCreateFolderDialog(true); // Open dialog
+    setShowCreateFolderDialog(true);
   };
 
   const handleCreateFolder = async (folderName: string) => {
@@ -76,28 +66,25 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
 
   return (
     <>
-      <button
-        ref={buttonRef}
-        onClick={handleClick}
-        className={cn(
-          'flex items-center w-full cursor-pointer px-6 py-4 mb-4 text-base font-medium',
-          'bg-card text-card-foreground border border-border',
-          'rounded-2xl shadow-sm hover:shadow-md transition-all duration-200',
-          'hover:bg-accent hover:text-foreground',
-          className
-        )}
-        aria-label="Create new file or folder"
-      >
-        <Plus className="w-6 h-6 mr-3 flex-shrink-0" />
-        <span>New</span>
-      </button>
-
       <CreateMenu
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
         onNewFolderClick={handleNewFolderClick}
-        anchorElement={buttonRef.current}
         currentPath={currentPrefix || ''}
+        trigger={
+          <button
+            onClick={handleClick}
+            className={cn(
+              'flex items-center w-full cursor-pointer px-6 py-4 mb-4 text-base font-medium',
+              'bg-card text-card-foreground border border-border',
+              'rounded-2xl shadow-sm hover:shadow-md transition-all duration-200',
+              'hover:bg-accent hover:text-foreground',
+              className
+            )}
+            aria-label="Create new file or folder"
+          >
+            <Plus className="w-6 h-6 mr-3 flex-shrink-0" />
+            <span>New</span>
+          </button>
+        }
       />
 
       {/* Folder creation dialog - managed at this level */}

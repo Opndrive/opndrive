@@ -26,8 +26,15 @@ import type { FileItem } from '@/features/dashboard/types/file';
 // The overflow menus pull in the rename, drive and router contexts, and the
 // grid thumbnail wants an authenticated S3 client. None of that is what this
 // file is about.
-vi.mock('../menus/folder-overflow-menu', () => ({ FolderOverflowMenu: () => null }));
-vi.mock('../menus/file-overflow-menu', () => ({ FileOverflowMenu: () => null }));
+//
+// The menus own their trigger button now, so these render it rather than
+// nothing - otherwise the button these tests fire keys at would not exist.
+vi.mock('../menus/folder-overflow-menu', () => ({
+  FolderOverflowMenu: ({ trigger }: { trigger: React.ReactNode }) => trigger,
+}));
+vi.mock('../menus/file-overflow-menu', () => ({
+  FileOverflowMenu: ({ trigger }: { trigger: React.ReactNode }) => trigger,
+}));
 vi.mock('./file-thumbnail-with-image', () => ({ FileThumbnailWithImage: () => null }));
 
 const { openFilePreview, openPreview } = vi.hoisted(() => ({
