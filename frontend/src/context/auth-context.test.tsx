@@ -3,6 +3,7 @@ import { useContext } from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { AuthContext, AuthProvider } from './auth-context';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import type { SearchResult } from '@opndrive/s3-api';
 
 /**
@@ -88,6 +89,19 @@ async function renderProvider() {
   // settles, so wait for the controls to actually exist.
   await waitFor(() => expect(screen.getByText('logout')).toBeDefined());
   return result;
+}
+
+/**
+ * Waits out the gate timer clearSession uses to defer lifting `isLoading` until
+ * navigation has unmounted the authenticated routes. Without this the timer
+ * fires into an already torn down environment once the whole suite runs
+ * together, which surfaces as an unhandled error rather than a failure.
+ */
+async function settleLogout() {
+  // Not wrapped in act(): waitFor already does that, and nesting the two stops
+  // the timer ever being advanced. The controls coming back means isLoading
+  // has flipped false again, which is the last of the deferred updates.
+  await waitFor(() => expect(screen.getByText('logout')).toBeDefined());
 }
 
 /**
@@ -179,6 +193,8 @@ describe('session changes must not leak the search cache', () => {
     expect(useSearchStore.getState().getCachedOrNull('payroll', '')).toBeNull();
     expect(useSearchStore.getState().searchCache.size).toBe(0);
     expect(useSearchStore.getState().currentQuery).toBeNull();
+
+    await settleLogout();
   });
 
   it('clears cached search results when a new session starts', async () => {
@@ -197,5 +213,98 @@ describe('session changes must not leak the search cache', () => {
       expect(useSearchStore.getState().getCachedOrNull('payroll', '')).toBeNull()
     );
     expect(useSearchStore.getState().searchCache.size).toBe(0);
+  });
+});
+
+/**
+ * Regression test for a delete outliving the session that authorised it.
+ *
+ * A folder delete walks its keys in a loop holding the apiS3 it started with,
+ * so clearSession() nulling the provider does not reach it - it kept deleting
+ * with the credentials of the account the user had just signed out of. The
+ * abort signal is the only thing the loop checks, so logout has to trip it.
+ *
+ * Mounting the real AuthProvider is the point. Asserting on the store alone
+ * would pass whether or not clearSession ever calls abortAllDeleteOperations,
+ * and that call being absent is exactly what the bug was.
+ */
+describe('logout must stop deletes it authorised', () => {
+  const deletion = (id: string, status: 'queued' | 'deleting' | 'completed') => ({
+    id,
+    name: `${id}.pdf`,
+    status,
+    progress: 0,
+    type: 'file' as const,
+  });
+
+  beforeEach(() => {
+    pushMock.mockClear();
+    localStorage.clear();
+  });
+
+  it('aborts a delete that is still running', async () => {
+    await renderProvider();
+
+    const signal = useUploadStore.getState().startDeleteOperation('d1', deletion('d1', 'deleting'));
+    expect(signal.aborted).toBe(false);
+
+    await act(async () => {
+      screen.getByText('logout').click();
+    });
+
+    // Without this the loop runs to completion against the previous session's
+    // client, deleting objects nobody is authorised for any more.
+    expect(signal.aborted).toBe(true);
+
+    await settleLogout();
+  });
+
+  it('aborts before the delete history is wiped', async () => {
+    await renderProvider();
+
+    const signal = useUploadStore.getState().startDeleteOperation('d1', deletion('d1', 'queued'));
+
+    await act(async () => {
+      screen.getByText('logout').click();
+    });
+
+    // `deletes` holds the only reference to each controller. Clearing it first
+    // would strand the loop with nothing left that could stop it, so both have
+    // to be true at the end: aborted, and gone.
+    expect(signal.aborted).toBe(true);
+    expect(useUploadStore.getState().deletes).toEqual({});
+
+    await settleLogout();
+  });
+
+  it('leaves a delete that already finished alone', async () => {
+    await renderProvider();
+
+    const signal = useUploadStore
+      .getState()
+      .startDeleteOperation('d1', deletion('d1', 'completed'));
+
+    await act(async () => {
+      screen.getByText('logout').click();
+    });
+
+    expect(signal.aborted).toBe(false);
+
+    await settleLogout();
+  });
+
+  it('aborts when a new session starts without a logout first', async () => {
+    await renderProvider();
+
+    const signal = useUploadStore.getState().startDeleteOperation('d1', deletion('d1', 'deleting'));
+
+    // /connect is reachable client-side without logging out, so a delete
+    // authorised for the previous bucket would otherwise keep running against
+    // it while the UI already shows the new one.
+    await act(async () => {
+      screen.getByText('connect').click();
+    });
+
+    await waitFor(() => expect(signal.aborted).toBe(true));
   });
 });
