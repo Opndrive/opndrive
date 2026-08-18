@@ -64,9 +64,29 @@ interface DeleteProgress {
   operationLabel?: string;
   extension?: string;
   isCalculatingSize?: boolean;
+  /**
+   * Created and owned by the store, never by a component. See
+   * `startDeleteOperation` for why.
+   */
   abortController?: AbortController;
   error?: string;
 }
+
+/** A delete in one of these states has already stopped; nothing left to abort. */
+const FINISHED_DELETE_STATUSES: DeleteProgress['status'][] = ['completed', 'failed', 'cancelled'];
+
+/**
+ * Why a delete was aborted, when the reason was the session ending rather than
+ * the user asking.
+ *
+ * The two are not interchangeable to anything downstream. A user who cancels
+ * has been told the delete stopped - the card goes, and they did it. A session
+ * that ends underneath a running delete tells them nothing at all, and leaves a
+ * folder with some of its contents gone. Passing this as the abort reason is
+ * what lets the delete recovery record survive the second case and not the
+ * first. See the `finally` in `deleteFolderWithProgress`.
+ */
+export const SESSION_ENDED = Symbol('delete aborted: session ended');
 
 interface UploadStore {
   uploadManager: UploadManager | SignedUrlUploadManager | null;
@@ -87,9 +107,36 @@ interface UploadStore {
    * so records from one bucket cannot surface in the next session - disposing
    * the upload managers emits a 'cancelled' event per in-flight item, and
    * those land here before the provider unmounts.
+   *
+   * Aborts running deletes before wiping: the map holds the only reference to
+   * each abort controller, so dropping it first would leave a delete running
+   * with no way left to stop it.
    */
   clearSessionData: () => void;
-  addDeleteOperation: (id: string, operation: DeleteProgress) => void;
+  /**
+   * Registers a delete and returns the signal that stops it.
+   *
+   * The controller is built and held here rather than inside the calling hook
+   * so its lifetime follows the session instead of whichever route happens to
+   * be mounted. A hook-owned controller becomes unreachable the moment the
+   * component unmounts, which left logout with no way to stop a delete already
+   * running against the previous session's credentials.
+   */
+  startDeleteOperation: (
+    id: string,
+    operation: Omit<DeleteProgress, 'abortController'>
+  ) => AbortSignal;
+  /**
+   * Stops every delete still in flight and marks it cancelled.
+   *
+   * Called on logout. The delete loop captured the old session's S3 client in
+   * a closure, so without this a delete started before logout keeps deleting
+   * with credentials the user has already signed out of.
+   *
+   * Deliberately NOT wired to component unmount - navigating from Browse to
+   * Search must not abandon a 10,000 object delete halfway through.
+   */
+  abortAllDeleteOperations: () => void;
   updateDeleteProgress: (
     id: string,
     progress: number,
@@ -215,28 +262,65 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   clearAll: () => set({ uploads: {} }),
 
-  clearSessionData: () =>
+  clearSessionData: () => {
+    // Order matters. Wiping `deletes` drops the only reference to each abort
+    // controller, so anything still running has to be stopped first or it can
+    // never be stopped at all.
+    get().abortAllDeleteOperations();
+
     set({
       uploads: {},
       deletes: {},
       duplicateQueue: [],
-    }),
+    });
+  },
 
   // Delete operation methods
-  addDeleteOperation: (id: string, operation: DeleteProgress) =>
+  startDeleteOperation: (id: string, operation: Omit<DeleteProgress, 'abortController'>) => {
+    const abortController = new AbortController();
+
     set((state) => ({
       deletes: {
         ...state.deletes,
-        [id]: operation,
+        [id]: { ...operation, abortController },
       },
-    })),
+    }));
+
+    return abortController.signal;
+  },
+
+  abortAllDeleteOperations: () => {
+    const running = Object.entries(get().deletes).filter(
+      ([, operation]) => !FINISHED_DELETE_STATUSES.includes(operation.status)
+    );
+    if (running.length === 0) return;
+
+    for (const [, operation] of running) {
+      operation.abortController?.abort(SESSION_ENDED);
+    }
+
+    set((state) => ({
+      deletes: {
+        ...state.deletes,
+        ...Object.fromEntries(
+          running.map(([id, operation]) => [id, { ...operation, status: 'cancelled' as const }])
+        ),
+      },
+    }));
+  },
 
   updateDeleteProgress: (
     id: string,
     progress: number,
     completedFiles?: number,
     totalFiles?: number
-  ) =>
+  ) => {
+    // A delete aborted on logout keeps running until its in-flight batch
+    // resolves, and then reports progress for an operation that has already
+    // been wiped. Spreading onto a missing entry would resurrect it as a card
+    // with no name or status, in whichever session came next.
+    if (!get().deletes[id]) return;
+
     set((state) => ({
       deletes: {
         ...state.deletes,
@@ -247,9 +331,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           ...(totalFiles !== undefined && { totalFiles }),
         },
       },
-    })),
+    }));
+  },
 
-  setCalculatingSize: (id: string, isCalculating: boolean) =>
+  setCalculatingSize: (id: string, isCalculating: boolean) => {
+    if (!get().deletes[id]) return;
+
     set((state) => ({
       deletes: {
         ...state.deletes,
@@ -258,9 +345,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           isCalculatingSize: isCalculating,
         },
       },
-    })),
+    }));
+  },
 
-  updateSize: (id: string, size: number, totalFiles?: number) =>
+  updateSize: (id: string, size: number, totalFiles?: number) => {
+    if (!get().deletes[id]) return;
+
     set((state) => ({
       deletes: {
         ...state.deletes,
@@ -270,9 +360,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           ...(totalFiles !== undefined && { totalFiles }),
         },
       },
-    })),
+    }));
+  },
 
-  completeDeleteOperation: (id: string) =>
+  completeDeleteOperation: (id: string) => {
+    if (!get().deletes[id]) return;
+
     set((state) => ({
       deletes: {
         ...state.deletes,
@@ -282,9 +375,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           progress: 100,
         },
       },
-    })),
+    }));
+  },
 
-  failDeleteOperation: (id: string, error: string) =>
+  failDeleteOperation: (id: string, error: string) => {
+    if (!get().deletes[id]) return;
+
     set((state) => ({
       deletes: {
         ...state.deletes,
@@ -294,9 +390,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           error,
         },
       },
-    })),
+    }));
+  },
 
-  cancelDeleteOperation: (id: string) =>
+  cancelDeleteOperation: (id: string) => {
+    if (!get().deletes[id]) return;
+
     set((state) => {
       const deleteOp = state.deletes[id];
       if (deleteOp?.abortController) {
@@ -311,12 +410,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           },
         },
       };
-    }),
+    });
+  },
 
   isDeleteOperationActive: (id: string) => {
     const { deletes } = get();
     const deleteOp = deletes[id];
-    return deleteOp && !['completed', 'failed', 'cancelled'].includes(deleteOp.status);
+    return deleteOp && !FINISHED_DELETE_STATUSES.includes(deleteOp.status);
   },
 
   getDeleteAbortController: (id: string) => {
@@ -324,10 +424,20 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     return deletes[id]?.abortController;
   },
 
-  removeDeleteOperation: (id: string) =>
+  removeDeleteOperation: (id: string) => {
+    // Same invariant as clearSessionData, for the same reason: this entry holds
+    // the only reference to the controller. The operations modal removes a
+    // delete to cancel it, so without this the card disappears and the loop
+    // carries on deleting with nothing left that could stop it.
+    const operation = get().deletes[id];
+    if (operation && !FINISHED_DELETE_STATUSES.includes(operation.status)) {
+      operation.abortController?.abort();
+    }
+
     set((state) => ({
       deletes: Object.fromEntries(Object.entries(state.deletes).filter(([key]) => key !== id)),
-    })),
+    }));
+  },
 
   // Duplicate dialog methods
   showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth) =>

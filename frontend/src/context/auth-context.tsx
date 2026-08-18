@@ -97,6 +97,11 @@ async function initializeUploadManagers(
   // managers on both edges rather than only on logout.
   useSearchStore.getState().clearCache();
 
+  // And on the same reasoning, a delete authorised for the previous bucket
+  // must not still be running against it once a new session has begun. A no-op
+  // on the restore-at-startup path, where nothing is in flight yet.
+  useUploadStore.getState().abortAllDeleteOperations();
+
   // This is the ONE place upload concurrency is set. The executor deliberately
   // has no pool of its own - two components each believing they control how
   // many uploads are in flight is how "3 at a time" becomes six.
@@ -265,6 +270,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // Set loading state to prevent components from using context values
       setIsLoading(true);
+
+      // Stop destructive work first. A folder delete walks its keys in a loop
+      // holding the apiS3 it started with, so nulling the provider below does
+      // nothing to it - it keeps deleting with the credentials of the session
+      // being signed out of. Aborting is the only thing that reaches it.
+      //
+      // Note this is deliberately tied to the session and not to component
+      // unmount: a route change from Browse to Search must not abandon a
+      // 10,000 object delete halfway through.
+      useUploadStore.getState().abortAllDeleteOperations();
 
       // Dispose the upload manager singletons so a new session cannot resume
       // uploading to this bucket. disposeUploadManagers() never throws, and
