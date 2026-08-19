@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { PRIVATE_PARAM_QUERY, pushPrivateParams } from '@/lib/privacy/private-params';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
@@ -324,8 +325,6 @@ export function SearchBar({
   };
 
   const navigateToSearchResults = (searchQuery: string) => {
-    const searchParams = new URLSearchParams({ q: searchQuery });
-
     // Clear any existing timeout
     if (navigationTimeoutRef.current) {
       clearTimeout(navigationTimeoutRef.current);
@@ -333,7 +332,11 @@ export function SearchBar({
 
     // Navigation to search page will use cached results automatically
     // No duplicate API call will be made - the search page checks cache first
-    router.push(`/dashboard/search?${searchParams.toString()}`);
+    //
+    // The term rides in the hash so it is never transmitted. This bar also
+    // renders on the search page itself, where a hash-only router.push would
+    // not notify anything - pushPrivateParams handles that case.
+    pushPrivateParams(router, '/dashboard/search', { [PRIVATE_PARAM_QUERY]: searchQuery });
 
     // Keep dropdown visible during navigation for smooth UX
     // Close after a delay to allow search page to mount and render

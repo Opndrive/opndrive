@@ -1,6 +1,5 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Fragment, useMemo } from 'react';
 import { Search, ArrowLeft, X, FolderOpen, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -23,6 +22,7 @@ import {
 import { useDriveStore } from '@/context/data-context';
 import { SearchBreadcrumb } from '@/features/dashboard/components/views/search/search-breadcrumb';
 import { useMultiSelectStore } from '@/features/dashboard/stores/use-multi-select-store';
+import { PRIVATE_PARAM_QUERY, usePrivateParam } from '@/lib/privacy/private-params';
 import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-select-toolbar';
 import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
 import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
@@ -53,9 +53,11 @@ function formatBytes(bytes: number | undefined): { value: number; unit: string }
 }
 
 export default function SearchPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const query = searchParams.get('q') || '';
+  // The term lives in the URL hash so it is never transmitted. The server
+  // cannot see a hash, so `queryReady` stays false until the first client
+  // effect has read it - see the loading branch below.
+  const { value: query, isHydrated: queryReady } = usePrivateParam(PRIVATE_PARAM_QUERY);
   const { layout: viewMode } = useCurrentLayout();
   const { currentPrefix } = useDriveStore();
   const [showCreditWarning, setShowCreditWarning] = useState(false);
@@ -326,6 +328,38 @@ export default function SearchPage() {
       },
     [createFolderShowInParentAction]
   );
+
+  // Until the hash has been read there is no way to tell an empty search from
+  // one that is about to load, and rendering the prompt below would flash it
+  // on every visit to a real result set.
+  if (!queryReady) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="p-6 border-b border-border">
+          <div className="flex items-center gap-4 mb-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBackClick}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </div>
+          <SearchInput placeholder="Search files and folders..." />
+        </div>
+
+        <div className="flex-1 flex items-center justify-center">
+          <div
+            className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+            role="status"
+            aria-label="Loading search"
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (!query) {
     return (

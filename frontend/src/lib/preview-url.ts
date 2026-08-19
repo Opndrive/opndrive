@@ -10,11 +10,17 @@
  *
  * 2. **Route-based Preview** (new tab): Full-page preview with shareable URL
  *    - Use: Functions from this module
- *    - URL format: `/dashboard/preview/{etag}?key={encodedKey}`
+ *    - URL format: `/dashboard/preview/{etag}#key={encodedKey}`
  *    - Features: Shareable, bookmarkable, browser back/forward support
+ *
+ * The key sits in the hash rather than the query string because it is the full
+ * path to one of the user's own files. A hash is never sent to a server, so it
+ * stays out of access logs and analytics. See lib/privacy/private-params.ts.
  *
  * @module preview-url
  */
+
+import { PRIVATE_PARAM_KEY, buildPrivateHash } from '@/lib/privacy/private-params';
 
 interface PreviewUrlParams {
   etag: string;
@@ -24,9 +30,9 @@ interface PreviewUrlParams {
 /**
  * Generates a preview URL for opening files in a new tab
  *
- * The URL structure is: `/dashboard/preview/{etag}?key={encodedKey}`
+ * The URL structure is: `/dashboard/preview/{etag}#key={encodedKey}`
  * - ETag: Unique identifier for the file version (from S3)
- * - Key: S3 object key (full path to the file)
+ * - Key: S3 object key (full path to the file), kept in the hash
  *
  * @param etag - The ETag of the file (quotes will be automatically cleaned)
  * @param key - The S3 key of the file (will be URL encoded)
@@ -38,17 +44,14 @@ interface PreviewUrlParams {
  *   etag: '"5d41402abc4b2a76b9719d911017c592"',
  *   key: 'documents/2024/report.pdf'
  * });
- * // Returns: '/dashboard/preview/5d41402abc4b2a76b9719d911017c592?key=documents%2F2024%2Freport.pdf'
+ * // Returns: '/dashboard/preview/5d41402abc4b2a76b9719d911017c592#key=documents%2F2024%2Freport.pdf'
  * ```
  */
 export function generatePreviewUrl({ etag, key }: PreviewUrlParams): string {
   // Clean ETag if it has quotes
   const cleanETag = etag.replace(/"/g, '');
 
-  // Encode the key to handle special characters
-  const encodedKey = encodeURIComponent(key);
-
-  return `/dashboard/preview/${cleanETag}?key=${encodedKey}`;
+  return `/dashboard/preview/${cleanETag}${buildPrivateHash({ [PRIVATE_PARAM_KEY]: key })}`;
 }
 
 /**
@@ -86,12 +89,12 @@ export function parsePreviewUrl(url: string): { etag: string; key: string } | nu
   try {
     const urlObj = new URL(url, window.location.origin);
     const pathname = urlObj.pathname;
-    const searchParams = urlObj.searchParams;
+    const hashParams = new URLSearchParams(urlObj.hash.replace(/^#/, ''));
 
     // Extract etag from path: /dashboard/preview/[etag]
     const match = pathname.match(/\/dashboard\/preview\/([^/]+)/);
     const etag = match?.[1];
-    const key = searchParams.get('key');
+    const key = hashParams.get(PRIVATE_PARAM_KEY);
 
     if (!etag || !key) {
       return null;

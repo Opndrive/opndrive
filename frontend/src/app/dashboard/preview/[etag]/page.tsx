@@ -17,14 +17,15 @@
  *
  * @route /dashboard/preview/[etag]
  * @param etag - S3 ETag identifier (unique file version)
- * @param key - S3 object key (from query params)
+ * @param key - S3 object key (from the URL hash, so it is never transmitted)
  */
 
 'use client';
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useParams, useSearchParams, notFound } from 'next/navigation';
+import { useParams, notFound } from 'next/navigation';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { PRIVATE_PARAM_KEY, usePrivateParam } from '@/lib/privacy/private-params';
 import { PreviewableFile } from '@/types/file-preview';
 import { PreviewHeader } from '@/components/file-preview/preview-header';
 import { PreviewContent } from '@/components/file-preview/preview-content';
@@ -33,7 +34,6 @@ import { PreviewError } from '@/components/file-preview/preview-error';
 
 function PreviewPageContent() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const { apiS3, isAuthenticated, isLoading: authLoading } = useAuthGuard();
 
   const [file, setFile] = useState<PreviewableFile | null>(null);
@@ -41,7 +41,9 @@ function PreviewPageContent() {
   const [error, setError] = useState<string | null>(null);
 
   const etag = params.etag as string;
-  const key = searchParams.get('key');
+  // The key lives in the URL hash, which the server never sees, so it is not
+  // readable until the first client effect has run.
+  const { value: key, isHydrated: keyReady } = usePrivateParam(PRIVATE_PARAM_KEY);
 
   // Fetch file metadata
   const fetchFileData = useCallback(async () => {
@@ -105,13 +107,15 @@ function PreviewPageContent() {
   }, [apiS3, key, etag]);
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    // Waits for the hash: firing before it is readable would fail on a key
+    // that is merely not visible yet.
+    if (!authLoading && isAuthenticated && keyReady) {
       fetchFileData();
     }
-  }, [authLoading, isAuthenticated, fetchFileData]);
+  }, [authLoading, isAuthenticated, keyReady, fetchFileData]);
 
   // Handle authentication
-  if (authLoading) {
+  if (authLoading || !keyReady) {
     return <PreviewLoading />;
   }
 
