@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalHighlight, LegalLayout, LegalSection } from '@/components/legal/legal-layout';
+import { AnalyticsOptOut } from '@/components/privacy/analytics-opt-out';
 import {
   HOSTED_APP_DOMAIN,
   HOSTED_DOCS_DOMAIN,
@@ -196,10 +197,8 @@ export default function PrivacyPolicyPage() {
           The landing page asks GitHub for our public star count, so GitHub sees the request. That
           is the only third party contacted by a page you have not chosen to visit.
         </p>
-        <p>
-          You can turn analytics off at any time from the footer of any page, or in{' '}
-          <strong>Settings &rarr; Privacy</strong> in the app.
-        </p>
+        <p>You can turn it off here, and the choice applies to both sites:</p>
+        <AnalyticsOptOut />
       </LegalSection>
 
       <LegalSection id="third-parties" heading="7. Third-party services">

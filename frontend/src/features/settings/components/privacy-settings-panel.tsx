@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Shield, Server, Key, Lock, BarChart3 } from 'lucide-react';
+import { AnalyticsOptOut } from '@/components/privacy/analytics-opt-out';
 
 /**
  * What this panel says has to match what the app actually does.
@@ -102,6 +103,16 @@ export function PrivacySettingsPanel() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-b border-border pb-4">
+          <h3 className="text-lg font-medium text-foreground">Your Choice</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Applies to this app and the documentation site
+          </p>
+        </div>
+        <AnalyticsOptOut />
       </div>
 
       <div className="space-y-6">
