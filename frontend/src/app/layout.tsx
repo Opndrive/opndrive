@@ -5,6 +5,7 @@ import { ZustandBridge } from '@/context/zustand-bridge';
 import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { AnalyticsGate } from '@/components/analytics/analytics-gate';
+import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -157,7 +158,12 @@ export default function RootLayout({
           <ZustandBridge />
           <ThemeProvider defaultTheme="system" storageKey="ui-theme">
             <UploadProvider>
-              <NotificationProvider>{children}</NotificationProvider>
+              <NotificationProvider>
+                {children}
+                {/* One shared confirmation dialog. Mounted here so anything
+                    below can call confirmAction() without rendering its own. */}
+                <ConfirmDialogHost />
+              </NotificationProvider>
             </UploadProvider>
           </ThemeProvider>
         </AuthProvider>

@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '@/hooks/use-scroll-lock';
 import { Dropdown, Option } from '../dropdown';
@@ -32,6 +32,17 @@ interface AdvancedSearchSheetProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+/** Ties the panel to its heading, so screen readers announce what opened. */
+const TITLE_ID = 'advanced-search-title';
+
+/**
+ * Deliberately not filtered by visibility. Nothing in this sheet is hidden
+ * while it is open, and the usual `offsetParent` check reports everything as
+ * hidden under jsdom, which would quietly disable the trap in its own tests.
+ */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProps) => {
   const typeOptions: Option[] = [
@@ -71,6 +82,77 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // On the document rather than the panel: an element-scoped handler only fires
+  // while focus happens to be inside, which is the bug the other dialogs had.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      // Tab would otherwise walk out of the panel and into the page behind,
+      // which the backdrop still blocks the mouse from reaching - so a keyboard
+      // user ends up somewhere they cannot see or click.
+      if (event.key !== 'Tab') return;
+
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      const active = document.activeElement;
+      // Focus sitting on the panel itself is the just-opened case: the next Tab
+      // should enter the sheet rather than leave it.
+      const outside = !panel.contains(active) || active === panel;
+
+      if (event.shiftKey && (outside || active === first)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (outside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  /**
+   * Focus went nowhere when this opened, leaving a keyboard user on the search
+   * bar behind it. Moving it to the panel puts them inside, and putting it back
+   * on close returns them to where they came from rather than the top of the
+   * document.
+   *
+   * Kept separate from the Escape effect and deliberately not keyed on
+   * `onClose`: that is a prop, and an inline one would re-run this on every
+   * render, yanking focus out of whichever field was being typed in.
+   *
+   * `mounted` is in the deps because the first render returns null - the panel
+   * does not exist yet, so a run keyed on `isOpen` alone finds a null ref and
+   * never fires again.
+   */
+  useEffect(() => {
+    if (!mounted || !isOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+
+    return () => previouslyFocused?.focus?.();
+  }, [isOpen, mounted]);
 
   // Kept in step with the render condition below, so the page is never held
   // still before the sheet is actually on screen.
@@ -117,16 +199,26 @@ export const AdvancedSearchSheet = ({ isOpen, onClose }: AdvancedSearchSheetProp
   if (!mounted || !isOpen) return null;
 
   const dialog: ReactNode = (
-    <div className="fixed inset-0 z-50 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Backdrop. Hidden from assistive tech and left out of the tab order on
+          purpose: it is a click shortcut, and Escape and the close button are
+          the keyboard paths to the same thing. */}
+      <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
       <div className="flex min-h-full items-start lg:items-center justify-center p-4">
         <div
-          onClick={(e) => e.stopPropagation()}
-          className="relative z-10 flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-card shadow-2xl"
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={TITLE_ID}
+          tabIndex={-1}
+          className="relative z-10 flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-card shadow-2xl outline-none"
         >
           <div
             className={`sticky top-0 z-10 flex items-center justify-between px-8 py-6 transition-colors duration-200 ${isScrolled ? 'bg-accent' : 'bg-card'}`}
           >
-            <h2 className="text-xl font-cansemibold text-foreground">Advanced search</h2>
+            <h2 id={TITLE_ID} className="text-xl font-cansemibold text-foreground">
+              Advanced search
+            </h2>
             <button
               type="button"
               onClick={onClose}
