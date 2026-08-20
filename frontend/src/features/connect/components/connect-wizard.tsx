@@ -1,19 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck } from 'lucide-react';
 import type { Credentials } from '@opndrive/s3-api';
 import { useAuth } from '@/hooks/use-auth';
 import { Button, Combobox, SecretInput } from '@/shared/components/ui';
 import { type S3Provider, resolveEndpoint } from '@/config/providers';
-import { ProviderMark } from './provider-mark';
-import { SetupGuide } from './setup-guide';
 
 interface ConnectWizardProps {
   provider: S3Provider;
-  corsConfig: string;
 }
 
 export interface ConnectFormState {
@@ -58,11 +54,13 @@ export function buildCredentials(provider: S3Provider, form: ConnectFormState): 
 }
 
 const FIELD =
-  'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary';
+  'w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary';
 
-const LABEL = 'text-sm font-medium text-foreground';
+const LABEL = 'block text-sm font-medium text-foreground';
 
-export function ConnectWizard({ provider, corsConfig }: ConnectWizardProps) {
+const HINT = 'text-xs leading-relaxed text-muted-foreground';
+
+export function ConnectWizard({ provider }: ConnectWizardProps) {
   const router = useRouter();
   const { createSession } = useAuth();
 
@@ -110,24 +108,11 @@ export function ConnectWizard({ provider, corsConfig }: ConnectWizardProps) {
   const derivedEndpoint = resolveEndpoint(provider, form.region);
 
   return (
-    <div className="mx-auto max-w-xl space-y-4">
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-border bg-card shadow-sm">
-        {/* Which provider this card is for, and a way back to the picker. */}
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <ProviderMark provider={provider} size={38} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-foreground">{provider.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{provider.tagline}</p>
-          </div>
-          <Link
-            href="/connect"
-            className="flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Change
-          </Link>
-        </div>
-
-        <div className="space-y-4 px-5 py-5">
+    <form onSubmit={handleSubmit}>
+      <div className="space-y-4">
+        {/* The two secrets sit together, above everything that merely locates
+            the bucket, because they are the part people arrive holding. */}
+        <div className="space-y-4 rounded-xl bg-surface-sunken p-4">
           <div className="space-y-1.5">
             <label htmlFor="access-key-id" className={LABEL}>
               Access key ID
@@ -156,7 +141,9 @@ export function ConnectWizard({ provider, corsConfig }: ConnectWizardProps) {
               onChange={(value) => update({ secretAccessKey: value })}
             />
           </div>
+        </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label htmlFor="bucket-name" className={LABEL}>
               Bucket name
@@ -188,92 +175,90 @@ export function ConnectWizard({ provider, corsConfig }: ConnectWizardProps) {
               disabled={isLoading}
             />
           </div>
+        </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="endpoint" className={LABEL}>
-              Endpoint{' '}
-              {!provider.requiresCustomEndpoint && (
-                <span className="font-normal text-muted-foreground">(optional)</span>
-              )}
-            </label>
-            <input
-              id="endpoint"
-              type="text"
-              required={provider.requiresCustomEndpoint}
-              spellCheck={false}
-              className={FIELD}
-              placeholder={provider.endpoint || 'https://storage.example.com'}
-              value={form.endpoint}
-              onChange={(event) => update({ endpoint: event.target.value })}
-            />
-            {!form.endpoint && derivedEndpoint && (
-              <p className="text-xs text-muted-foreground">
-                Defaults to <code className="text-foreground">{derivedEndpoint}</code>
-              </p>
+        <div className="space-y-1.5">
+          <label htmlFor="endpoint" className={LABEL}>
+            Endpoint{' '}
+            {!provider.requiresCustomEndpoint && (
+              <span className="font-normal text-muted-foreground">(optional)</span>
             )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="prefix" className={LABEL}>
-              Folder prefix <span className="font-normal text-muted-foreground">(optional)</span>
-            </label>
-            <input
-              id="prefix"
-              type="text"
-              spellCheck={false}
-              className={FIELD}
-              placeholder="projects documents"
-              value={form.prefix}
-              onChange={(event) => update({ prefix: event.target.value })}
-            />
-            {form.prefix && (
-              <p className="text-xs text-muted-foreground">
-                Opens at <code className="text-foreground">{formatPrefix(form.prefix)}</code>
-              </p>
-            )}
-          </div>
-
-          {error && (
-            // `text-destructive` is used elsewhere in the app but no such token
-            // is defined in globals.css, so those usages render in the
-            // inherited colour. Using the palette directly, as notification does.
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-              {error}
+          </label>
+          <input
+            id="endpoint"
+            type="text"
+            required={provider.requiresCustomEndpoint}
+            spellCheck={false}
+            className={FIELD}
+            placeholder={provider.endpoint || 'https://storage.example.com'}
+            value={form.endpoint}
+            onChange={(event) => update({ endpoint: event.target.value })}
+          />
+          {!form.endpoint && derivedEndpoint && (
+            <p className={HINT}>
+              Defaults to <code className="text-foreground">{derivedEndpoint}</code>
             </p>
           )}
         </div>
 
-        {/*
-          Sticky so the commit action is always reachable. The form is longer
-          than a phone viewport, and scrolling back up to find the button is the
-          main friction point on a form this size.
-
-          z-40 keeps it under the combobox panel at z-50, so an open region list
-          paints over the bar rather than being clipped behind it.
-        */}
-        <div className="sticky bottom-0 z-40 space-y-2.5 rounded-b-2xl border-t border-border bg-card/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-          <Button
-            type="submit"
-            className="h-11 w-full"
-            disabled={isLoading || Boolean(blockedReason)}
-          >
-            {isLoading ? 'Connecting...' : 'Connect to your S3 storage'}
-          </Button>
-
-          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-            {blockedReason ? (
-              blockedReason
-            ) : (
-              <>
-                <ShieldCheck className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                Your keys stay in this browser and are never sent to us
-              </>
-            )}
-          </p>
+        <div className="space-y-1.5">
+          <label htmlFor="prefix" className={LABEL}>
+            Folder prefix <span className="font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            id="prefix"
+            type="text"
+            spellCheck={false}
+            className={FIELD}
+            placeholder="projects documents"
+            value={form.prefix}
+            onChange={(event) => update({ prefix: event.target.value })}
+          />
+          {form.prefix && (
+            <p className={HINT}>
+              Opens at <code className="text-foreground">{formatPrefix(form.prefix)}</code>
+            </p>
+          )}
         </div>
-      </form>
 
-      <SetupGuide provider={provider} corsConfig={corsConfig} />
-    </div>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger"
+          >
+            {error}
+          </p>
+        )}
+      </div>
+
+      {/*
+        Sticky so the commit action is always reachable. The form is taller than
+        a phone viewport, and scrolling back up to find the button is the main
+        friction point at this length.
+
+        z-40 keeps it under the combobox panel at z-50, so an open region list
+        paints over the bar rather than being clipped behind it.
+      */}
+      <div className="sticky bottom-0 z-40 -mx-5 mt-5 border-t border-border bg-card/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:px-6">
+        <Button
+          type="submit"
+          className="h-11 w-full"
+          disabled={isLoading || Boolean(blockedReason)}
+        >
+          {isLoading ? 'Connecting...' : 'Connect to your S3 storage'}
+        </Button>
+
+        <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+          {blockedReason ? (
+            blockedReason
+          ) : (
+            <>
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Your keys stay in this browser and are never sent to us
+            </>
+          )}
+        </p>
+      </div>
+    </form>
   );
 }

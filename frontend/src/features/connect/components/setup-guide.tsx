@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, ExternalLink } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, Copy, ExternalLink } from 'lucide-react';
 import type { S3Provider } from '@/config/providers';
 
 interface SetupGuideProps {
@@ -35,15 +35,18 @@ export function SetupGuide({ provider, corsConfig }: SetupGuideProps) {
   };
 
   return (
-    <details className="group rounded-xl border border-border bg-card/60">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
-        <span>Setting up {provider.name}</span>
-        <span className="text-xs font-normal text-muted-foreground transition-transform group-open:rotate-180">
-          &#9662;
-        </span>
+    <details className="group rounded-2xl border border-border bg-card shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 text-sm font-medium text-foreground sm:px-6 [&::-webkit-details-marker]:hidden">
+        <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="flex-1">Setting up {provider.name}</span>
+        <span className="text-xs font-normal text-muted-foreground">Optional</span>
+        <ChevronDown
+          className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
       </summary>
 
-      <div className="space-y-4 border-t border-border px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+      <div className="space-y-5 border-t border-border px-5 py-5 text-sm leading-relaxed text-muted-foreground sm:px-6">
         <section>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
             1. Allow this site in CORS

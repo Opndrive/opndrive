@@ -39,13 +39,15 @@ import { AuthProvider } from '@/context/auth-context';
 import { getProviderBySlug } from '@/config/providers';
 import { getCorsConfig } from '@/config/cors';
 import { ConnectWizard } from './connect-wizard';
+import { SetupGuide } from './setup-guide';
 
 const wasabi = getProviderBySlug('wasabi')!;
 
 function tree() {
   return (
     <AuthProvider>
-      <ConnectWizard provider={wasabi} corsConfig={getCorsConfig(wasabi.id)} />
+      <ConnectWizard provider={wasabi} />
+      <SetupGuide provider={wasabi} corsConfig={getCorsConfig(wasabi.id)} />
     </AuthProvider>
   );
 }

@@ -28,8 +28,6 @@ export interface S3Provider {
   name: string;
   /** One line on the picker card. */
   tagline: string;
-  /** Brand-adjacent colour for the provider mark. */
-  accent: string;
   /** Endpoint template. `{{region}}` and `{{accountId}}` are substituted. */
   endpoint: string;
   defaultRegion: string;
@@ -83,7 +81,6 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     id: 'aws',
     name: 'Amazon S3',
     tagline: 'The original object store',
-    accent: '#E8912D',
     endpoint: '',
     defaultRegion: 'us-east-1',
     regions: AWS_REGIONS,
@@ -111,7 +108,6 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     id: 'cloudflare',
     name: 'Cloudflare R2',
     tagline: 'S3 API with no egress fees',
-    accent: '#F26B21',
     endpoint: 'https://{{accountId}}.r2.cloudflarestorage.com',
     defaultRegion: 'auto',
     regions: [
@@ -146,7 +142,6 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     id: 'wasabi',
     name: 'Wasabi',
     tagline: 'Flat-rate hot storage',
-    accent: '#00A651',
     endpoint: 'https://s3.{{region}}.wasabisys.com',
     defaultRegion: 'us-east-1',
     regions: [
@@ -188,7 +183,6 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     id: 'backblaze',
     name: 'Backblaze B2',
     tagline: 'Low-cost cloud storage',
-    accent: '#D8232F',
     endpoint: 'https://s3.{{region}}.backblazeb2.com',
     defaultRegion: 'us-west-002',
     regions: [
@@ -221,7 +215,6 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     id: 'minio',
     name: 'MinIO',
     tagline: 'Self-hosted object storage',
-    accent: '#C72E49',
     endpoint: '',
     defaultRegion: 'us-east-1',
     regions: [{ value: 'us-east-1', label: 'US East 1 - us-east-1' }],

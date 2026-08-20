@@ -1,105 +1,64 @@
+import type { IconType } from 'react-icons';
+import { FaAws } from 'react-icons/fa6';
+import { SiBackblaze, SiCloudflare, SiMinio, SiWasabi } from 'react-icons/si';
 import type { S3Provider } from '@/config/providers';
 
 /**
- * A tile mark for each provider.
+ * The provider's own logo on a tinted tile.
  *
- * These are original geometric marks, not the vendors' logos. Decision 8 of the
- * approved proposal was that our right to display the real brand assets needs
- * checking with each vendor first, so this ships something recognisable and
- * neutral in the meantime. Swapping in cleared SVGs later is a change to this
- * file and nothing else.
+ * Icons come from react-icons, which is already a dependency: Simple Icons for
+ * four of them and Font Awesome's brand set for AWS, whose marks Simple Icons
+ * dropped over Amazon's trademark policy. We show them to identify what
+ * Opndrive connects to, which is nominative use, but the marks belong to their
+ * owners and each vendor's brand guidelines still apply.
  *
- * The shapes are deliberately distinct from one another rather than decorative,
- * so the grid is scannable by silhouette before you read any labels.
+ * Colours come from `--provider-*` tokens in globals.css rather than from the
+ * registry, which holds no styling at all. The class strings are written out in
+ * full because Tailwind reads source text: a computed name like
+ * `text-provider-${slug}` produces no CSS.
  */
+
+interface ProviderVisual {
+  Icon: IconType;
+  /** Tile tint and glyph colour, as literal classes so Tailwind sees them. */
+  palette: string;
+}
+
+const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
+  'aws-s3': { Icon: FaAws, palette: 'bg-provider-aws-soft text-provider-aws' },
+  'cloudflare-r2': { Icon: SiCloudflare, palette: 'bg-provider-r2-soft text-provider-r2' },
+  wasabi: { Icon: SiWasabi, palette: 'bg-provider-wasabi-soft text-provider-wasabi' },
+  'backblaze-b2': { Icon: SiBackblaze, palette: 'bg-provider-b2-soft text-provider-b2' },
+  minio: { Icon: SiMinio, palette: 'bg-provider-minio-soft text-provider-minio' },
+};
+
+const SIZES = {
+  sm: { box: 'h-9 w-9 rounded-lg', glyph: 18 },
+  md: { box: 'h-11 w-11 rounded-xl', glyph: 22 },
+  lg: { box: 'h-14 w-14 rounded-2xl', glyph: 28 },
+} as const;
 
 interface ProviderMarkProps {
   provider: S3Provider;
-  size?: number;
+  size?: keyof typeof SIZES;
   className?: string;
 }
 
-function Glyph({ slug }: { slug: string }) {
-  switch (slug) {
-    case 'aws-s3':
-      // Stacked layers: object storage tiers.
-      return (
-        <>
-          <path d="M12 6 L20 10 L12 14 L4 10 Z" fill="currentColor" opacity="0.95" />
-          <path d="M12 17 L20 13 L20 14 L12 18 L4 14 L4 13 Z" fill="currentColor" opacity="0.55" />
-        </>
-      );
-    case 'cloudflare-r2':
-      // A wide arc: edge delivery.
-      return (
-        <>
-          <path
-            d="M5 15 a7 7 0 0 1 13.4 -2.6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-          />
-          <circle cx="17.5" cy="15.2" r="2.4" fill="currentColor" />
-        </>
-      );
-    case 'wasabi':
-      // Concentric rings: flat, uniform storage.
-      return (
-        <>
-          <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="2.2" />
-          <circle cx="12" cy="12" r="2.6" fill="currentColor" />
-        </>
-      );
-    case 'backblaze-b2':
-      // Two bars: the B2 pairing, and a drive shelf.
-      return (
-        <>
-          <rect x="5" y="6.5" width="14" height="4.4" rx="1.4" fill="currentColor" />
-          <rect x="5" y="13.1" width="9" height="4.4" rx="1.4" fill="currentColor" opacity="0.6" />
-        </>
-      );
-    case 'minio':
-      // An open container: self-hosted, your own box.
-      return (
-        <>
-          <path
-            d="M6 8 L6 17 L18 17 L18 8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinejoin="round"
-          />
-          <path d="M4 6.5 L20 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-        </>
-      );
-    default:
-      return <circle cx="12" cy="12" r="6" fill="currentColor" />;
-  }
-}
+export function ProviderMark({ provider, size = 'md', className = '' }: ProviderMarkProps) {
+  const dimensions = SIZES[size];
+  const visual = PROVIDER_VISUALS[provider.slug];
 
-export function ProviderMark({ provider, size = 40, className = '' }: ProviderMarkProps) {
+  if (!visual) return null;
+
+  const { Icon, palette } = visual;
+
   return (
     <span
-      className={`inline-flex flex-shrink-0 items-center justify-center rounded-xl ${className}`}
-      style={{
-        width: size,
-        height: size,
-        // Tinted tile rather than a flat brand fill, so the marks sit together
-        // as a set and survive both themes.
-        backgroundColor: `color-mix(in srgb, ${provider.accent} 16%, transparent)`,
-        color: provider.accent,
-      }}
+      className={`inline-flex shrink-0 items-center justify-center ${dimensions.box} ${palette} ${className}`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        width={size * 0.6}
-        height={size * 0.6}
-        aria-hidden="true"
-        focusable="false"
-      >
-        <Glyph slug={provider.slug} />
-      </svg>
+      {/* The provider name is always rendered next to this, so the logo is
+          decorative and should not be read out a second time. */}
+      <Icon size={dimensions.glyph} aria-hidden="true" focusable="false" />
     </span>
   );
 }
