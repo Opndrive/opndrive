@@ -13,6 +13,7 @@ import { useDriveStore } from '@/context/data-context';
 import { useShare } from '@/context/share-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { confirmAction } from '@/shared/components/ui/confirm-dialog';
 import { MdOpenWith } from 'react-icons/md';
 import {
   DropdownMenu,
@@ -136,9 +137,12 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
         variant: 'destructive' as const,
         disabled: isDeleting(file.id || file.Key || file.name),
         onClick: async () => {
-          const confirmDelete = window.confirm(
-            `Are you sure you want to delete "${file.name}" forever? This action cannot be undone.`
-          );
+          const confirmDelete = await confirmAction({
+            title: 'Delete forever?',
+            description: `"${file.name}" will be deleted forever. This action cannot be undone.`,
+            confirmLabel: 'Delete forever',
+            destructive: true,
+          });
 
           if (confirmDelete) {
             try {

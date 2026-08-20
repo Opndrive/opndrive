@@ -58,6 +58,13 @@
   --community-live: #1e8e3e;
   --community-diff-add: #1e8e3e;
   --community-diff-remove: #d93025;
+
+  /* The red the shadcn primitives (button, dropdown item, input) reach for.
+     They shipped referencing it, but the palette never defined it, so every
+     `bg-destructive` resolved to nothing and a delete button came out
+     white-on-white. */
+  --destructive: #d93025;
+  --destructive-foreground: #ffffff;
 }
 
 @theme inline {
@@ -83,6 +90,8 @@
   --color-community-live: var(--community-live);
   --color-community-diff-add: var(--community-diff-add);
   --color-community-diff-remove: var(--community-diff-remove);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -137,6 +146,11 @@
   --community-live: #81c995;
   --community-diff-add: #81c995;
   --community-diff-remove: #f28b82;
+
+  /* Pale enough that white text on it fails contrast, so the foreground flips
+     dark here the way --primary-foreground does. */
+  --destructive: #f28b82;
+  --destructive-foreground: #202124;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -190,6 +204,8 @@
     --community-live: #81c995;
     --community-diff-add: #81c995;
     --community-diff-remove: #f28b82;
+    --destructive: #f28b82;
+    --destructive-foreground: #202124;
   }
 }
 
