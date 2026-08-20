@@ -11,8 +11,22 @@ function directive(policy: string, name: string): string {
   return found;
 }
 
-const production = buildContentSecurityPolicy({ nonce: NONCE, isDevelopment: false });
-const development = buildContentSecurityPolicy({ nonce: NONCE, isDevelopment: true });
+const production = buildContentSecurityPolicy({
+  nonce: NONCE,
+  isDevelopment: false,
+  isSecureRequest: true,
+});
+const development = buildContentSecurityPolicy({
+  nonce: NONCE,
+  isDevelopment: true,
+  isSecureRequest: false,
+});
+/** A self-hosted deployment served over plain http. */
+const plaintext = buildContentSecurityPolicy({
+  nonce: NONCE,
+  isDevelopment: false,
+  isSecureRequest: false,
+});
 
 describe('script-src, which is where the XSS protection actually is', () => {
   it('carries the request nonce', () => {
@@ -77,6 +91,37 @@ describe('directives that must not break bring-your-own storage', () => {
   });
 });
 
+// The endpoint is whatever the user pastes in, and a self-hosted MinIO on
+// http://localhost:9000 is neither 'self' (different port) nor https:. Getting
+// this wrong silently breaks the app's entire reason to exist.
+describe('plaintext deployments, where the storage endpoint is also http', () => {
+  it.each(['connect-src', 'img-src', 'media-src', 'frame-src'])(
+    '%s allows http when the page itself is http',
+    (name) => {
+      expect(directive(plaintext, name)).toContain('http:');
+    }
+  );
+
+  it.each(['connect-src', 'img-src', 'media-src', 'frame-src'])(
+    '%s still refuses http when the page is https',
+    (name) => {
+      expect(directive(production, name).split(' ')).not.toContain('http:');
+    }
+  );
+
+  // It would rewrite the user's own http endpoint to a port nothing is
+  // listening on, and protects nothing on a page already served in the clear.
+  it('does not upgrade requests on a plaintext deployment', () => {
+    expect(plaintext).not.toContain('upgrade-insecure-requests');
+    expect(production).toContain('upgrade-insecure-requests');
+  });
+
+  it('keeps script-src strict either way', () => {
+    expect(directive(plaintext, 'script-src')).toContain(`'nonce-${NONCE}'`);
+    expect(directive(plaintext, 'script-src')).not.toContain("'unsafe-inline'");
+  });
+});
+
 describe('directives that lock things down', () => {
   it.each([
     ["object-src 'none'", 'blocks plugin content'],
@@ -99,8 +144,16 @@ describe('rollout', () => {
   });
 
   it('gives every request a different nonce', () => {
-    const first = buildContentSecurityPolicy({ nonce: 'one', isDevelopment: false });
-    const second = buildContentSecurityPolicy({ nonce: 'two', isDevelopment: false });
+    const first = buildContentSecurityPolicy({
+      nonce: 'one',
+      isDevelopment: false,
+      isSecureRequest: true,
+    });
+    const second = buildContentSecurityPolicy({
+      nonce: 'two',
+      isDevelopment: false,
+      isSecureRequest: true,
+    });
 
     expect(first).not.toBe(second);
   });

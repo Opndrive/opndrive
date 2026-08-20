@@ -23,7 +23,14 @@ export function middleware(request: NextRequest) {
   const isDevelopment = process.env.NODE_ENV === 'development';
   const reportOnly = process.env.CSP_REPORT_ONLY === 'true';
 
-  const policy = buildContentSecurityPolicy({ nonce, isDevelopment });
+  // Behind a proxy the connection to Next is plain http even when the browser
+  // is on https, so the forwarded header is what reflects what the user sees.
+  const forwardedProtocol = request.headers.get('x-forwarded-proto');
+  const isSecureRequest = forwardedProtocol
+    ? forwardedProtocol.split(',')[0].trim() === 'https'
+    : request.nextUrl.protocol === 'https:';
+
+  const policy = buildContentSecurityPolicy({ nonce, isDevelopment, isSecureRequest });
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);

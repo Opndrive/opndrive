@@ -16,11 +16,19 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS, isRegisteredStorageKey } from './storage-keys';
 
-const SRC_ROOT = join(process.cwd(), 'src');
+/**
+ * Resolved from this file rather than `process.cwd()`.
+ *
+ * A guard that silently scans the wrong directory finds nothing, and finding
+ * nothing is indistinguishable from finding no problems. This way the path is
+ * correct however the runner was invoked.
+ */
+const SRC_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /** The registry describes itself; scanning it would be circular. */
 const IGNORED_FILES = ['lib/privacy/storage-keys.ts'];
@@ -81,43 +89,55 @@ function readLiteral(text: string): ResolvedKey | null {
 }
 
 /**
- * Resolves the first argument of a storage write to the key it will use.
+ * Every key a storage write could be using.
  *
- * Covers every form this codebase actually uses: a literal, a const, a const
- * wrapped in useMemo, a default parameter value, and an object property. Each
- * of those was a real miss before it was handled.
+ * Returns a list rather than one value, and that is the important part.
+ * `credit-warning-dialog.tsx` writes `config.storageKey` where `config` comes
+ * from a map holding three different `storageKey` literals. Resolving only the
+ * first would mean a fourth warning could add an undisclosed key without this
+ * guard noticing, which is precisely the hole it exists to close.
+ *
+ * Covers every form this codebase uses: a literal, a const, a const wrapped in
+ * useMemo, a default parameter value, and an object property. Each of those
+ * was a real miss before it was handled.
  */
-function resolveKey(argument: string, source: string): ResolvedKey | null {
+function resolveKeys(argument: string, source: string): ResolvedKey[] {
   const direct = readLiteral(argument);
-  if (direct) return direct;
+  if (direct) return [direct];
 
   // `config.storageKey` resolves the same way as a bare `storageKey`.
   const name = argument
     .trim()
     .replace(/^.*[.?]/, '')
     .replace(/[^\w$]/g, '');
-  if (!name) return null;
+  if (!name) return [];
+
+  // `$` is legal in an identifier and also a regex anchor, so it has to be
+  // escaped before being interpolated into the patterns below.
+  const safeName = name.replace(/\$/g, '\\$');
 
   const patterns = [
     // const KEY = 'x'   /   const KEY = useMemo(() => 'x', [])
     new RegExp(
-      `(?:const|let|var)\\s+${name}\\s*(?::[^=]+)?=\\s*(?:useMemo\\(\\s*\\(\\)\\s*=>\\s*)?(['"\`])`
+      `(?:const|let|var)\\s+${safeName}\\s*(?::[^=]+)?=\\s*(?:useMemo\\(\\s*\\(\\)\\s*=>\\s*)?(['"\`])`,
+      'g'
     ),
     // storageKey = 'x' as a default parameter, or a plain reassignment
-    new RegExp(`\\b${name}\\s*=\\s*(['"\`])`),
+    new RegExp(`\\b${safeName}\\s*=\\s*(['"\`])`, 'g'),
     // storageKey: 'x' as an object property
-    new RegExp(`\\b${name}\\s*:\\s*(['"\`])`),
+    new RegExp(`\\b${safeName}\\s*:\\s*(['"\`])`, 'g'),
   ];
 
+  const found = new Map<string, ResolvedKey>();
+
   for (const pattern of patterns) {
-    const match = pattern.exec(source);
-    if (match) {
+    for (const match of source.matchAll(pattern)) {
       const resolved = readLiteral(source.slice(match.index + match[0].length - 1));
-      if (resolved) return resolved;
+      if (resolved) found.set(resolved.value, resolved);
     }
   }
 
-  return null;
+  return [...found.values()];
 }
 
 /** Zustand's persist middleware names its slice, and that name is the key. */
@@ -130,7 +150,7 @@ function persistNames(source: string): string[] {
 interface StorageWrite {
   file: string;
   raw: string;
-  resolved: ResolvedKey | null;
+  resolved: ResolvedKey[];
 }
 
 function scan() {
@@ -146,10 +166,10 @@ function scan() {
 
     // Any receiver, so `dismissStore()?.setItem(...)` is caught too.
     for (const match of source.matchAll(/\.setItem\s*\(\s*([^,]+),/g)) {
-      const resolved = resolveKey(match[1], source);
+      const resolved = resolveKeys(match[1], source);
 
       writes.push({ file: rel, raw: match[1].trim(), resolved });
-      if (resolved) written.add(resolved.value);
+      for (const key of resolved) written.add(key.value);
     }
 
     for (const name of persistNames(source)) {
@@ -158,15 +178,19 @@ function scan() {
 
     // The consent cookie goes through document.cookie, not setItem.
     for (const match of source.matchAll(/document\.cookie\s*=\s*`?\$?\{?([A-Z_][A-Z_0-9]*)\}?/g)) {
-      const resolved = resolveKey(match[1], source);
-      if (resolved) written.add(resolved.value);
+      for (const key of resolveKeys(match[1], source)) written.add(key.value);
     }
   }
 
-  return { writes, written, corpus: allSource.join('\n') };
+  return {
+    writes,
+    written,
+    corpus: allSource.join('\n'),
+    scannedFiles: allSource.length,
+  };
 }
 
-const { writes, written, corpus } = scan();
+const { writes, written, corpus, scannedFiles } = scan();
 
 function isGenericAdapter(write: StorageWrite): boolean {
   return GENERIC_ADAPTERS.some(
@@ -175,15 +199,36 @@ function isGenericAdapter(write: StorageWrite): boolean {
 }
 
 describe('the scan itself', () => {
+  // `it.each([])` generates no tests and reports success, so a scan that
+  // silently found nothing would look exactly like a scan that found no
+  // problems. These assertions are what stop this whole file going green
+  // while checking nothing at all.
+  it('actually reads the source tree', () => {
+    expect(scannedFiles, `no source files found under ${SRC_ROOT}`).toBeGreaterThan(50);
+  });
+
   it('finds the writes it is meant to be guarding', () => {
     expect(writes.length).toBeGreaterThan(8);
+  });
+
+  // If the scan ever stops reaching a key it used to reach, that is a hole
+  // opening up, not a harmless change.
+  it('reaches every key in the registry', () => {
+    const unreachable = STORAGE_KEYS.filter((entry) => !written.has(entry.key)).map(
+      (entry) => entry.key
+    );
+
+    expect(
+      unreachable,
+      'the scan can no longer see these being written, so it would not catch a sibling key going undisclosed'
+    ).toEqual([]);
   });
 
   // A key assembled at runtime cannot be checked, so it cannot be allowed
   // through. Make it a module constant and the scan will resolve it.
   it('resolves every key that gets written', () => {
     const unresolved = writes
-      .filter((write) => write.resolved === null && !isGenericAdapter(write))
+      .filter((write) => write.resolved.length === 0 && !isGenericAdapter(write))
       .map((write) => `${write.file}: setItem(${write.raw}, ...)`);
 
     expect(
