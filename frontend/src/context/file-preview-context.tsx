@@ -9,9 +9,14 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useDriveStore } from '@/context/data-context';
+import {
+  PRIVATE_PARAM_PREVIEW,
+  setPrivateParams,
+  usePrivateParams,
+} from '@/lib/privacy/private-params';
 import {
   FilePreviewState,
   FilePreviewActions,
@@ -20,8 +25,15 @@ import {
   toPreviewableFile,
 } from '@/types/file-preview';
 
-/** Query parameter naming the file currently on screen. */
-export const PREVIEW_PARAM = 'preview';
+/**
+ * Parameter naming the file currently on screen.
+ *
+ * It rides in the hash, not the query string. The value is an S3 object key -
+ * the full path to one of the user's own files - and a query string is sent to
+ * the server on every navigation, which put those keys in the edge logs and in
+ * analytics. A hash never leaves the browser. See lib/privacy/private-params.
+ */
+export const PREVIEW_PARAM = PRIVATE_PARAM_PREVIEW;
 
 /** The S3 key of a file, whichever of the two casings it arrived with. */
 export function previewKeyOf(file: PreviewableFile): string {
@@ -100,8 +112,6 @@ interface FilePreviewProviderProps {
 
 export function FilePreviewProvider({ children, config = {} }: FilePreviewProviderProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   /** The files the preview can arrow through, handed over by whoever opened it. */
   const [files, setFiles] = useState<PreviewableFile[]>([]);
@@ -114,9 +124,14 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
    * URLs and the preview did not. With the parameter being the state, Back and
    * Forward work on their own and there is no second copy to keep in step.
    */
-  // `|| null` so an empty `?preview=` counts as no preview. Left as an empty
+  // `|| null` so an empty `#preview=` counts as no preview. Left as an empty
   // string it opens a file with no name, which is worse than not opening.
-  const previewKey = searchParams.get(PREVIEW_PARAM) || null;
+  //
+  // Empty on the server and on the first client render, because the hash is
+  // not sent with the document. A linked preview therefore opens a beat after
+  // paint rather than in the initial HTML.
+  const { params: privateParams } = usePrivateParams();
+  const previewKey = privateParams.get(PREVIEW_PARAM) || null;
   const isOpen = previewKey !== null;
 
   const indexOfKey = useMemo(
@@ -211,19 +226,17 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
     setFiles(folderFiles.map(toPreviewableFile));
   }, [previewKey, indexOfKey, folderFiles, currentPrefix]);
 
-  const urlWith = useCallback(
-    (key: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (key === null) {
-        params.delete(PREVIEW_PARAM);
-      } else {
-        params.set(PREVIEW_PARAM, key);
-      }
-      const query = params.toString();
-      return query ? `${pathname}?${query}` : pathname;
-    },
-    [pathname, searchParams]
-  );
+  /**
+   * Moves the preview parameter, leaving the rest of the URL alone.
+   *
+   * Goes through the history API rather than the router because the change is
+   * hash-only, and Next treats those as the same URL - `router.push` would not
+   * add the entry that closing steps back to. `setPrivateParams` keeps the
+   * path and query string as they are, so the folder survives.
+   */
+  const showKey = useCallback((key: string | null, { replace = false } = {}) => {
+    setPrivateParams({ [PREVIEW_PARAM]: key ?? undefined }, { replace });
+  }, []);
 
   /**
    * Whether opening added the history entry that closing can step back to.
@@ -255,9 +268,9 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
 
       shownRef.current = key;
       pushedRef.current = true;
-      router.push(urlWith(key), { scroll: false });
+      showKey(key);
     },
-    [router, urlWith]
+    [showKey]
   );
 
   const closePreview = useCallback(() => {
@@ -268,8 +281,8 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
       router.back();
       return;
     }
-    router.replace(urlWith(null), { scroll: false });
-  }, [router, urlWith]);
+    showKey(null, { replace: true });
+  }, [router, showKey]);
 
   const navigateToFile = useCallback(
     (index: number) => {
@@ -277,9 +290,9 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
       if (!next) return;
       // replace, not push: arrowing through twenty files must not put twenty
       // entries between the user and the folder they started in.
-      router.replace(urlWith(previewKeyOf(next)), { scroll: false });
+      showKey(previewKeyOf(next), { replace: true });
     },
-    [files, router, urlWith]
+    [files, showKey]
   );
 
   const currentIndex = Math.max(indexOfKey, 0);

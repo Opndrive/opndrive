@@ -4,9 +4,8 @@ import { NotificationProvider } from '@/context/notification-context';
 import { ZustandBridge } from '@/context/zustand-bridge';
 import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
+import { AnalyticsGate } from '@/components/analytics/analytics-gate';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
-import { Analytics } from '@vercel/analytics/next';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -168,8 +167,7 @@ export default function RootLayout({
             </UploadProvider>
           </ThemeProvider>
         </AuthProvider>
-        <Analytics />
-        <SpeedInsights />
+        <AnalyticsGate />
       </body>
     </html>
   );

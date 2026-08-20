@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Search, X } from 'lucide-react';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { PRIVATE_PARAM_QUERY, setPrivateParams } from '@/lib/privacy/private-params';
 
 interface SearchInputProps {
   initialQuery?: string;
@@ -14,7 +14,12 @@ interface SearchInputProps {
 
 /**
  * Simplified search input for the dedicated search page
- * Updates URL params on search, no dropdown
+ * Updates the search term in the URL hash on search, no dropdown
+ *
+ * The term goes in the hash rather than the query string so it is never
+ * transmitted - see lib/privacy/private-params.ts. This component only ever
+ * renders on /dashboard/search, so it updates the current URL in place and
+ * never needs the router.
  */
 export function SearchInput({
   initialQuery = '',
@@ -22,7 +27,6 @@ export function SearchInput({
   className = '',
   autoFocus = false,
 }: SearchInputProps) {
-  const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,13 +64,7 @@ export function SearchInput({
 
     // Debounce URL update for 500ms
     debounceTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        // Update URL with new search query
-        router.push(`/dashboard/search?q=${encodeURIComponent(value.trim())}`);
-      } else {
-        // Clear search if empty
-        router.push('/dashboard/search');
-      }
+      setPrivateParams({ [PRIVATE_PARAM_QUERY]: value.trim() || undefined });
     }, 500);
   };
 
@@ -79,7 +77,7 @@ export function SearchInput({
       }
 
       if (query.trim()) {
-        router.push(`/dashboard/search?q=${encodeURIComponent(query.trim())}`);
+        setPrivateParams({ [PRIVATE_PARAM_QUERY]: query.trim() });
       }
     } else if (e.key === 'Escape') {
       inputRef.current?.blur();
@@ -93,7 +91,7 @@ export function SearchInput({
     }
 
     setQuery('');
-    router.push('/dashboard/search');
+    setPrivateParams({ [PRIVATE_PARAM_QUERY]: undefined });
     inputRef.current?.focus();
   };
 

@@ -1,8 +1,8 @@
 /**
  * File Preview URL Utilities
  *
- * There is one preview now, and one URL scheme for it: the `preview` query
- * parameter carrying an S3 key, read by `FilePreviewProvider`.
+ * There is one preview now, and one URL scheme for it: the `preview` param
+ * carrying an S3 key, read by `FilePreviewProvider`.
  *
  * It used to be two. A modal that put nothing in the address bar, and a
  * separate page at `/dashboard/preview/{etag}?key=` for opening in a new tab.
@@ -12,10 +12,15 @@
  * The key identifies the file, not the ETag. An ETag is a version, so a link
  * shared before the file was re-uploaded would stop resolving.
  *
+ * The param rides in the hash rather than the query string because the key is
+ * the full path to one of the user's own files. A hash is never sent to a
+ * server, so it stays out of edge logs and analytics, and the link is still
+ * shareable. See lib/privacy/private-params.ts.
+ *
  * @module preview-url
  */
 
-import { PREVIEW_PARAM } from '@/context/file-preview-context';
+import { PRIVATE_PARAM_PREVIEW, withPrivateParams } from '@/lib/privacy/private-params';
 
 interface PreviewUrlParams {
   key: string;
@@ -33,11 +38,11 @@ interface PreviewUrlParams {
  * @example
  * ```ts
  * generatePreviewUrl({ key: 'documents/2024/report.pdf' });
- * // '/dashboard/browse?preview=documents%2F2024%2Freport.pdf'
+ * // '/dashboard/browse#preview=documents%2F2024%2Freport.pdf'
  * ```
  */
 export function generatePreviewUrl({ key }: PreviewUrlParams): string {
-  return `/dashboard/browse?${PREVIEW_PARAM}=${encodeURIComponent(key)}`;
+  return withPrivateParams('/dashboard/browse', { [PRIVATE_PARAM_PREVIEW]: key });
 }
 
 /**

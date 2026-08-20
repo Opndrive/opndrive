@@ -11,6 +11,11 @@
  * file version, so a link shared before a re-upload stopped resolving. The key
  * alone is what identifies the file now.
  *
+ * Those existing links carry the key in the query string, which is what put it
+ * in the edge logs in the first place. Nothing can be done about a request that
+ * has already been made, but the redirect lands on the hash form, so the key
+ * stops being transmitted from the next navigation onward.
+ *
  * @route /dashboard/preview/[etag]?key={encodedKey}
  */
 
