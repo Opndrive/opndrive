@@ -11,7 +11,3 @@ panel on open and back to the trigger on close.
 Defines the `destructive` colour the shadcn primitives already referenced. It
 was never in the palette, so `bg-destructive` generated no rule at all and the
 confirm button rendered as white text on a white dialog.
-
-Defines `--ring` for the same reason: keyboard focus on buttons and inputs drew
-no ring at all, including inside this dialog. Set to the primary blue the
-hand-written list items already focus with.
