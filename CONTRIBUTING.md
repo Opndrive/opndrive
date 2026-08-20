@@ -8,7 +8,7 @@ so there's one place to keep it accurate.
 ## Code of Conduct
 
 This project follows the [Contributor Covenant](./CODE_OF_CONDUCT.md). Report
-unacceptable behavior to yashsangwan00@gmail.com.
+unacceptable behavior to contact@opndrive.app.
 
 ## Quick Start
 
