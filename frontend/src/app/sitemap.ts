@@ -1,9 +1,11 @@
 import { MetadataRoute } from 'next';
+import { SITE_URL } from '@/config/links';
 import { getAllPostSlugs } from '@/lib/wordpress/service';
 import { isBlogEnabled } from '@/config/features';
+import { PROVIDER_SLUGS } from '@/config/providers';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://opndrive.app';
+  const baseUrl = SITE_URL;
 
   // Get all blog post slugs only if blog is enabled
   let blogPosts: MetadataRoute.Sitemap = [];
@@ -36,6 +38,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    // Generated from the provider registry, so a new provider appears here
+    // without anyone remembering to add it. Ranked slightly above the hub
+    // because these carry the specific, high-intent queries.
+    ...PROVIDER_SLUGS.map((slug) => ({
+      url: `${baseUrl}/connect/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
     {
       url: `${baseUrl}/privacy`,
       lastModified: new Date(),
