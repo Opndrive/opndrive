@@ -5,7 +5,7 @@
  * It works alongside the modal preview system to offer two preview modes:
  *
  * **Route-based Preview (this page)**:
- * - URL: /dashboard/preview/{etag}?key={encodedKey}
+ * - URL: /dashboard/preview/{etag}#key={encodedKey}
  * - Use case: Opening files in new tabs, sharing links, bookmarking
  * - Features: Clean URL, browser navigation, shareable
  * - Single file focus (no prev/next navigation)
