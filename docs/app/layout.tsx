@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
-import { Analytics } from '@vercel/analytics/next';
 import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
 import { APP_URL, DISCORD_URL } from '@/lib/links';
+import { AnalyticsGate } from '@/components/analytics-gate';
 import 'nextra-theme-docs/style.css';
 
 export const metadata: Metadata = {
@@ -77,7 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           {children}
         </Layout>
-        <Analytics />
+        <AnalyticsGate />
       </body>
     </html>
   );
