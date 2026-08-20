@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalHighlight, LegalLayout, LegalSection } from '@/components/legal/legal-layout';
 import { AnalyticsOptOut } from '@/components/privacy/analytics-opt-out';
+import { storageKeysForPolicy } from '@/lib/privacy/storage-keys';
 import {
   HOSTED_APP_DOMAIN,
   HOSTED_DOCS_DOMAIN,
@@ -16,60 +17,6 @@ export const metadata: Metadata = {
     'What Opndrive collects, what it does not, and what is stored in your browser. No accounts, no trackers, and your files never reach our servers.',
   alternates: { canonical: '/privacy' },
 };
-
-/**
- * Every key the app writes to the browser, with why and for how long.
- *
- * This doubles as our cookie policy - there is no separate document to fall
- * out of step with it.
- */
-const DEVICE_STORAGE = [
-  {
-    key: 's3_user_session',
-    purpose: 'Your storage credentials, so a refresh does not sign you out',
-    lifetime: 'Until you disconnect',
-  },
-  {
-    key: 'ui-theme',
-    purpose: 'Light, dark or system appearance',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'opndrive_user_settings',
-    purpose: 'Start page, upload method and default sharing duration',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'opndrive-layout-preference',
-    purpose: 'Grid or list view',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'delete-recovery-storage',
-    purpose: 'Lets an interrupted delete be recovered. Holds the names of the affected files',
-    lifetime: 'Until the delete resolves',
-  },
-  {
-    key: 'upload-settings-storage',
-    purpose: 'Your upload preferences',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'sidebarOpen_global, sidebarOpen_settings',
-    purpose: 'Whether the sidebar is open',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'opndrive-folder-rename-warning-dismissed and two similar keys',
-    purpose: 'Remembers that you dismissed a confirmation notice',
-    lifetime: 'Until you clear it',
-  },
-  {
-    key: 'sidebar_discord_cta_dismissed',
-    purpose: 'Remembers that you dismissed the community prompt',
-    lifetime: 'Until you close the tab',
-  },
-];
 
 export default function PrivacyPolicyPage() {
   return (
@@ -143,25 +90,35 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection id="storage" heading="5. What is stored on your device">
         <p>
-          Opndrive sets <strong>no cookies</strong>. Everything below is first-party browser
-          storage, it stays on your device, and none of it is sent to us or used to identify you.
-          Every entry is needed for something you asked the app to do, which is why none of it
-          requires a consent banner.
+          Everything below is first-party, stays on your device, and is never sent to us or used to
+          identify you. Each entry exists to deliver something you asked the app to do, which is why
+          none of it requires a consent banner.
+        </p>
+        <p>
+          Only one of them is a cookie, and it is written <strong>only if you opt out</strong> of
+          analytics, to record that choice. Take no action and Opndrive sets no cookie at all.
         </p>
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
+          <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-border bg-card">
                 <th className="px-4 py-3 font-medium text-foreground">Name</th>
+                <th className="px-4 py-3 font-medium text-foreground">Kind</th>
                 <th className="px-4 py-3 font-medium text-foreground">What it is for</th>
                 <th className="px-4 py-3 font-medium text-foreground">How long it lasts</th>
               </tr>
             </thead>
             <tbody>
-              {DEVICE_STORAGE.map((entry) => (
+              {storageKeysForPolicy().map((entry) => (
                 <tr key={entry.key} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 align-top">
-                    <code className="text-xs text-foreground">{entry.key}</code>
+                    <code className="text-xs text-foreground">
+                      {entry.key}
+                      {entry.hasDynamicSuffix ? '...' : ''}
+                    </code>
+                  </td>
+                  <td className="px-4 py-3 align-top whitespace-nowrap">
+                    {entry.mechanisms.join(', ')}
                   </td>
                   <td className="px-4 py-3 align-top">{entry.purpose}</td>
                   <td className="px-4 py-3 align-top whitespace-nowrap">{entry.lifetime}</td>
@@ -172,12 +129,7 @@ export default function PrivacyPolicyPage() {
         </div>
         <p>
           Clearing site data for {HOSTED_APP_DOMAIN} in your browser removes all of it. The
-          documentation site stores one value, the light or dark theme you picked.
-        </p>
-        <p>
-          If you opt out of analytics we store one cookie, <code>opndrive_privacy</code>, recording
-          that choice so we can honour it across both sites. It is written only if you actually opt
-          out. Take no action and no cookie is ever set.
+          documentation site stores one value of its own, the light or dark theme you picked.
         </p>
       </LegalSection>
 
