@@ -13,6 +13,7 @@ import {
   shouldShowCreditWarning,
 } from '@/shared/components/ui/credit-warning-dialog';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
+import { confirmAction } from '@/shared/components/ui/confirm-dialog';
 import { FaFolderOpen } from 'react-icons/fa';
 import {
   DropdownMenu,
@@ -60,9 +61,12 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
   };
 
   const executeDelete = async () => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${folder.name}" forever? This will delete the folder and all its contents. This action cannot be undone.`
-    );
+    const confirmDelete = await confirmAction({
+      title: 'Delete folder forever?',
+      description: `"${folder.name}" and everything inside it will be deleted forever. This action cannot be undone.`,
+      confirmLabel: 'Delete forever',
+      destructive: true,
+    });
 
     if (confirmDelete) {
       try {

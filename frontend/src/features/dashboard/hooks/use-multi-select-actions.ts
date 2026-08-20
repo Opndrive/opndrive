@@ -6,6 +6,7 @@ import { useDeleteWithProgress } from './use-delete-with-progress';
 import { useFilePreview } from '@/context/file-preview-context';
 import { getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useMultiSelectStore } from '../stores/use-multi-select-store';
+import { confirmAction } from '@/shared/components/ui/confirm-dialog';
 
 interface UseMultiSelectActionsProps {
   openMultiShareDialog: (files: FileItem[]) => void;
@@ -95,10 +96,15 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
       const itemNames = items.map((item) => `"${item.name}"`).join(', ');
       const confirmMessage =
         items.length === 1
-          ? `Are you sure you want to delete ${itemNames} forever? This action cannot be undone.`
-          : `Are you sure you want to delete ${items.length} items forever? This action cannot be undone.\n\nItems: ${itemNames}`;
+          ? `${itemNames} will be deleted forever. This action cannot be undone.`
+          : `${items.length} items will be deleted forever. This action cannot be undone.\n\nItems: ${itemNames}`;
 
-      const confirmDelete = window.confirm(confirmMessage);
+      const confirmDelete = await confirmAction({
+        title: items.length === 1 ? 'Delete forever?' : `Delete ${items.length} items forever?`,
+        description: confirmMessage,
+        confirmLabel: 'Delete forever',
+        destructive: true,
+      });
 
       if (!confirmDelete) return;
 
