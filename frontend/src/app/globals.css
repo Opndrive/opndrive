@@ -18,6 +18,12 @@
   --border: #e8eaed;
   --input: #f1f3f4;
 
+  /* Focus ring. The shadcn primitives reference it, and it was missing from
+     the palette, so every `ring-ring` generated no rule and keyboard focus was
+     invisible. Matches the `ring-primary` the hand-written items already use,
+     so there is one focus colour across the app. */
+  --ring: #1a73e8;
+
   --muted: #f8f9fa;
   --muted-foreground: #5f6368;
   --geo-map: #000000;
@@ -82,6 +88,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-ring: var(--ring);
   --color-geo-map: var(--geo-map);
   --color-top-loading-bar-color: var(--top-loading-bar-color);
   --color-discord-brand: var(--discord-brand);
@@ -111,6 +118,7 @@
   --card-foreground: #e8eaed;
   --border: #3c4043;
   --input: #303134;
+  --ring: #8ab4f8;
   --geo-map: #5f6368;
   --top-loading-bar-color: #8ab4f8;
 
@@ -169,6 +177,7 @@
     --card-foreground: #e8eaed;
     --border: #3c4043;
     --input: #303134;
+    --ring: #8ab4f8;
     --geo-map: #5f6368;
     --top-loading-bar-color: #8ab4f8;
 
