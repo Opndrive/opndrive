@@ -82,15 +82,16 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   };
 
   const handleOpenInNewTab = () => {
-    const etag = file.ETag || '';
+    // The key is enough now. It used to need the ETag as well, for a preview
+    // route that pinned the file version and refused to load once it changed.
     const key = file.Key || '';
 
-    if (!etag || !key) {
-      console.error('Missing ETag or Key for file preview');
+    if (!key) {
+      console.error('Missing Key for file preview');
       return;
     }
 
-    openPreviewInNewTab({ etag, key });
+    openPreviewInNewTab({ key });
   };
 
   // Actions other than "Open with", which is a submenu rather than a row.
