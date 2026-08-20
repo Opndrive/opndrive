@@ -8,17 +8,23 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/dashboard/', '/connect/'],
+        // /connect and its provider pages are public landing pages and need to
+        // be crawlable. /dashboard is private and useless to a crawler.
+        disallow: ['/api/', '/dashboard/'],
       },
       {
         userAgent: 'Googlebot',
         allow: '/',
-        disallow: ['/api/', '/dashboard/', '/connect/'],
+        // /connect and its provider pages are public landing pages and need to
+        // be crawlable. /dashboard is private and useless to a crawler.
+        disallow: ['/api/', '/dashboard/'],
       },
       {
         userAgent: 'Bingbot',
         allow: '/',
-        disallow: ['/api/', '/dashboard/', '/connect/'],
+        // /connect and its provider pages are public landing pages and need to
+        // be crawlable. /dashboard is private and useless to a crawler.
+        disallow: ['/api/', '/dashboard/'],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,
