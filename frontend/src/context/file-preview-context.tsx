@@ -1,31 +1,80 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
+import { useDriveStore } from '@/context/data-context';
 import {
   FilePreviewState,
   FilePreviewActions,
   PreviewableFile,
   PreviewConfig,
+  toPreviewableFile,
 } from '@/types/file-preview';
 
-type FilePreviewAction =
-  | {
-      type: 'OPEN_PREVIEW';
-      payload: { file: PreviewableFile; files: PreviewableFile[]; index: number };
-    }
-  | { type: 'CLOSE_PREVIEW' }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'NAVIGATE_TO_FILE'; payload: number };
+/** Query parameter naming the file currently on screen. */
+export const PREVIEW_PARAM = 'preview';
 
-const initialState: FilePreviewState = {
-  isOpen: false,
-  file: null,
-  files: [],
-  currentIndex: 0,
-  loading: false,
-  error: null,
-};
+/** The S3 key of a file, whichever of the two casings it arrived with. */
+export function previewKeyOf(file: PreviewableFile): string {
+  return file.key || file.Key || file.name;
+}
+
+/** Metadata the preview needs, as S3 hands it back. */
+interface FileMetadata {
+  ContentLength?: number;
+  LastModified?: Date;
+  ETag?: string;
+  StorageClass?: string;
+}
+
+/**
+ * Everything a preview needs that can be read straight off the key.
+ *
+ * A link or a reload carries nothing but the key, and this is enough to render
+ * from: the viewers ask for their own signed URL, which needs the key alone.
+ *
+ * Deliberately not gated on a metadata call. Doing that made the preview depend
+ * on HeadObject succeeding, which is a different permission from listing and,
+ * from a browser, a different CORS method - so a bucket that lists fine and
+ * serves images fine could still open to nothing at all.
+ */
+function fileFromKey(key: string): PreviewableFile {
+  const name = key.split('/').pop() || 'unknown';
+  const extension = name.split('.').pop()?.toLowerCase() || '';
+
+  return {
+    id: key,
+    name,
+    key,
+    Key: key,
+    size: 0,
+    Size: 0,
+    type: extension,
+    extension,
+  };
+}
+
+/** Fills in what only S3 knows. Enrichment, never a gate. */
+function withMetadata(file: PreviewableFile, metadata: FileMetadata): PreviewableFile {
+  return {
+    ...file,
+    size: metadata.ContentLength || 0,
+    Size: metadata.ContentLength || 0,
+    lastModified: metadata.LastModified ? new Date(metadata.LastModified) : undefined,
+    LastModified: metadata.LastModified?.toISOString(),
+    ETag: metadata.ETag,
+    StorageClass: metadata.StorageClass,
+  };
+}
 
 const defaultConfig: PreviewConfig = {
   maxFileSizes: {
@@ -37,54 +86,6 @@ const defaultConfig: PreviewConfig = {
     audio: 50 * 1024 * 1024, // 50MB
   },
 };
-
-function filePreviewReducer(state: FilePreviewState, action: FilePreviewAction): FilePreviewState {
-  switch (action.type) {
-    case 'OPEN_PREVIEW':
-      return {
-        ...state,
-        isOpen: true,
-        file: action.payload.file,
-        files: action.payload.files,
-        currentIndex: action.payload.index,
-        loading: true,
-        error: null,
-      };
-
-    case 'CLOSE_PREVIEW':
-      return {
-        ...initialState,
-      };
-
-    case 'SET_LOADING':
-      return {
-        ...state,
-        loading: action.payload,
-      };
-
-    case 'SET_ERROR':
-      return {
-        ...state,
-        error: action.payload,
-        loading: false,
-      };
-
-    case 'NAVIGATE_TO_FILE': {
-      const newIndex = action.payload;
-      const newFile = state.files[newIndex];
-      return {
-        ...state,
-        currentIndex: newIndex,
-        file: newFile || null,
-        loading: true,
-        error: null,
-      };
-    }
-
-    default:
-      return state;
-  }
-}
 
 interface FilePreviewContextType extends FilePreviewState, FilePreviewActions {
   config: PreviewConfig;
@@ -98,52 +99,220 @@ interface FilePreviewProviderProps {
 }
 
 export function FilePreviewProvider({ children, config = {} }: FilePreviewProviderProps) {
-  const [state, dispatch] = useReducer(filePreviewReducer, initialState);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const mergedConfig: PreviewConfig = {
-    maxFileSizes: {
-      ...defaultConfig.maxFileSizes,
-      ...config.maxFileSizes,
+  /** The files the preview can arrow through, handed over by whoever opened it. */
+  const [files, setFiles] = useState<PreviewableFile[]>([]);
+
+  /**
+   * The URL is the only record of whether a preview is open.
+   *
+   * It used to live in component state, which is why Back did not close the
+   * preview - it left the folder instead, since folder navigation does push
+   * URLs and the preview did not. With the parameter being the state, Back and
+   * Forward work on their own and there is no second copy to keep in step.
+   */
+  // `|| null` so an empty `?preview=` counts as no preview. Left as an empty
+  // string it opens a file with no name, which is worse than not opening.
+  const previewKey = searchParams.get(PREVIEW_PARAM) || null;
+  const isOpen = previewKey !== null;
+
+  const indexOfKey = useMemo(
+    () => (previewKey === null ? -1 : files.findIndex((f) => previewKeyOf(f) === previewKey)),
+    [files, previewKey]
+  );
+
+  /**
+   * The file behind a preview that arrived by link or reload, where there is
+   * no listing to look it up in. Dropped as soon as a listing covers the key.
+   */
+  const [restored, setRestored] = useState<PreviewableFile | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * The file a link or reload points at, known from the key alone so the
+   * preview opens immediately. `restored` replaces it once S3 has filled in
+   * the size, and stands in for it if that never arrives.
+   */
+  const fromKey = useMemo(
+    () => (previewKey === null ? null : fileFromKey(previewKey)),
+    [previewKey]
+  );
+
+  const file =
+    indexOfKey >= 0
+      ? (files[indexOfKey] ?? null)
+      : restored && previewKeyOf(restored) === previewKey
+        ? restored
+        : fromKey;
+
+  const { apiS3 } = useAuth();
+
+  // Selected one at a time, so this provider does not re-render on every
+  // unrelated change in the drive store.
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const folderFiles = useDriveStore((state) =>
+    state.currentPrefix ? state.cache[state.currentPrefix]?.files : undefined
+  );
+
+  /**
+   * Fills in the size of a file the preview only knows by key.
+   *
+   * The preview is already on screen by the time this runs - it exists to make
+   * the size limit check meaningful, not to decide whether anything renders.
+   * A bucket that refuses HeadObject still previews, it just does so without
+   * the size gate, which beats showing nothing.
+   */
+  useEffect(() => {
+    if (previewKey === null) {
+      setRestored(null);
+      setError(null);
+      return;
+    }
+    // Already covered by a listing, or already fetched.
+    if (indexOfKey >= 0) return;
+    if (restored && previewKeyOf(restored) === previewKey) return;
+    if (!apiS3) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    apiS3
+      .fetchMetadata(previewKey)
+      .then((metadata) => {
+        if (cancelled || !metadata) return;
+        setRestored(withMetadata(fileFromKey(previewKey), metadata));
+      })
+      .catch(() => {
+        // Left to the viewer, which fetches the object itself and can say
+        // something more useful about why it did not load.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKey, indexOfKey, restored, apiS3]);
+
+  /**
+   * Hands the restored preview its neighbours once the folder listing lands,
+   * so prev/next start working on a preview that was opened from a link.
+   */
+  useEffect(() => {
+    if (previewKey === null || indexOfKey >= 0 || !folderFiles?.length) return;
+    if (!folderFiles.some((f) => (f.Key || f.name) === previewKey)) return;
+
+    setFiles(folderFiles.map(toPreviewableFile));
+  }, [previewKey, indexOfKey, folderFiles, currentPrefix]);
+
+  const urlWith = useCallback(
+    (key: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (key === null) {
+        params.delete(PREVIEW_PARAM);
+      } else {
+        params.set(PREVIEW_PARAM, key);
+      }
+      const query = params.toString();
+      return query ? `${pathname}?${query}` : pathname;
     },
-  };
+    [pathname, searchParams]
+  );
 
-  const openPreview = useCallback((file: PreviewableFile, files: PreviewableFile[] = [file]) => {
-    const fileIndex = files.findIndex((f) => f.id === file.id);
-    const index = fileIndex >= 0 ? fileIndex : 0;
+  /**
+   * Whether opening added the history entry that closing can step back to.
+   *
+   * A preview reached by following a link or reloading did not add one, so
+   * going back there would take the user out of the app entirely. That case
+   * rewrites the URL instead.
+   */
+  const pushedRef = useRef(false);
 
-    dispatch({
-      type: 'OPEN_PREVIEW',
-      payload: { file, files, index },
-    });
-  }, []);
+  /**
+   * The key already showing, tracked ahead of the URL catching up.
+   *
+   * Two opens of the same file landing in one tick both read the old
+   * parameter, so both would push. That leaves two entries for one preview,
+   * and closing once only puts the same preview back on screen.
+   */
+  const shownRef = useRef<string | null>(null);
+  useEffect(() => {
+    shownRef.current = previewKey;
+  }, [previewKey]);
+
+  const openPreview = useCallback(
+    (target: PreviewableFile, list: PreviewableFile[] = [target]) => {
+      const key = previewKeyOf(target);
+      setFiles(list);
+
+      if (shownRef.current === key) return;
+
+      shownRef.current = key;
+      pushedRef.current = true;
+      router.push(urlWith(key), { scroll: false });
+    },
+    [router, urlWith]
+  );
 
   const closePreview = useCallback(() => {
-    dispatch({ type: 'CLOSE_PREVIEW' });
-  }, []);
+    if (pushedRef.current) {
+      pushedRef.current = false;
+      // Back rather than a new entry, so opening and closing a few previews
+      // does not bury the folder behind history the user has to walk out of.
+      router.back();
+      return;
+    }
+    router.replace(urlWith(null), { scroll: false });
+  }, [router, urlWith]);
 
   const navigateToFile = useCallback(
     (index: number) => {
-      if (index >= 0 && index < state.files.length) {
-        dispatch({ type: 'NAVIGATE_TO_FILE', payload: index });
-      }
+      const next = files[index];
+      if (!next) return;
+      // replace, not push: arrowing through twenty files must not put twenty
+      // entries between the user and the folder they started in.
+      router.replace(urlWith(previewKeyOf(next)), { scroll: false });
     },
-    [state.files.length]
+    [files, router, urlWith]
   );
 
+  const currentIndex = Math.max(indexOfKey, 0);
+
   const navigateNext = useCallback(() => {
-    if (state.currentIndex < state.files.length - 1) {
-      navigateToFile(state.currentIndex + 1);
+    if (indexOfKey >= 0 && indexOfKey < files.length - 1) {
+      navigateToFile(indexOfKey + 1);
     }
-  }, [state.currentIndex, state.files.length, navigateToFile]);
+  }, [indexOfKey, files.length, navigateToFile]);
 
   const navigatePrevious = useCallback(() => {
-    if (state.currentIndex > 0) {
-      navigateToFile(state.currentIndex - 1);
+    if (indexOfKey > 0) {
+      navigateToFile(indexOfKey - 1);
     }
-  }, [state.currentIndex, navigateToFile]);
+  }, [indexOfKey, navigateToFile]);
+
+  const mergedConfig: PreviewConfig = useMemo(
+    () => ({
+      maxFileSizes: {
+        ...defaultConfig.maxFileSizes,
+        ...config.maxFileSizes,
+      },
+    }),
+    [config.maxFileSizes]
+  );
 
   const value: FilePreviewContextType = {
-    ...state,
+    isOpen,
+    file,
+    files,
+    currentIndex,
+    loading,
+    error,
     config: mergedConfig,
     openPreview,
     closePreview,
