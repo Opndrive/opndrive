@@ -12,6 +12,7 @@ import WorkSmarterSection from '@/features/landing-page/components/work-smarter-
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
+import { SiteFooter } from '@/shared/components/layout/site-footer';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
 import { DOCS_URL } from '@/config/links';
 
@@ -199,6 +200,7 @@ export default function LandingPage() {
         <WorkSmarterSection />
         <FAQSection />
         <CTASection handleGetStarted={handleGetStarted} isLoading={isLoading} />
+        <SiteFooter />
       </div>
     </main>
   );

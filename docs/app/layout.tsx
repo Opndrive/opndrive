@@ -4,7 +4,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
-import { DISCORD_URL } from '@/lib/links';
+import { APP_URL, DISCORD_URL } from '@/lib/links';
 import 'nextra-theme-docs/style.css';
 
 export const metadata: Metadata = {
@@ -38,15 +38,28 @@ const navbar = (
   />
 );
 
+/**
+ * The legal pages live once, on the main site, and docs links out to them.
+ * Restating the policy here in MDX would guarantee the two drift, and a stale
+ * privacy policy is worse than no second copy of it.
+ */
 const footer = (
   <Footer style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
-    <span>
-      AGPL-3.0 {new Date().getFullYear()} © Opndrive.
-      {' · '}
-      <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer">
-        Join our Discord
-      </a>
-    </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+      <span>
+        AGPL-3.0 {new Date().getFullYear()} © Opndrive.
+        {' · '}
+        <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer">
+          Join our Discord
+        </a>
+      </span>
+      <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1rem', fontSize: '0.85em' }}>
+        <a href={APP_URL}>Opndrive</a>
+        <a href={`${APP_URL}/privacy`}>Privacy Policy</a>
+        <a href={`${APP_URL}/terms`}>Terms of Service</a>
+        <a href={`${APP_URL}/privacy#storage`}>Cookies and storage</a>
+      </span>
+    </div>
   </Footer>
 );
 

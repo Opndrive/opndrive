@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getCorsConfig } from '@/config/cors';
+import { SiteFooter } from '@/shared/components/layout/site-footer';
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -503,6 +504,7 @@ export default function ConnectPage() {
           </div>
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }
