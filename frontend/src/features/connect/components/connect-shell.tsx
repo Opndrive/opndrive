@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft, Check } from 'lucide-react';
 import { ConnectNotice } from './connect-notice';
+import { SiteFooter } from '@/shared/components/layout/site-footer';
 
 /** The three things someone does, in order, to get into their bucket. */
 export const CONNECT_STEPS = ['Choose provider', 'Add credentials', 'Open your drive'] as const;
@@ -74,6 +75,11 @@ export function ConnectShell({
           {children}
         </main>
       </div>
+
+      {/* The legal links live here, same as every other public page. The old
+          connect page rendered them directly; this frame took its place, so it
+          carries them for the hub and all five provider pages. */}
+      <SiteFooter />
     </div>
   );
 }
