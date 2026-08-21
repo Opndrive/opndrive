@@ -95,6 +95,12 @@
   --provider-b2-soft: rgba(226, 30, 41, 0.14);
   --provider-minio: #c72e49;
   --provider-minio-soft: rgba(199, 46, 73, 0.14);
+  /* The red the shadcn primitives (button, dropdown item, input) reach for.
+     They shipped referencing it, but the palette never defined it, so every
+     `bg-destructive` resolved to nothing and a delete button came out
+     white-on-white. */
+  --destructive: #d93025;
+  --destructive-foreground: #ffffff;
 }
 
 @theme inline {
@@ -142,6 +148,8 @@
   --color-provider-b2-soft: var(--provider-b2-soft);
   --color-provider-minio: var(--provider-minio);
   --color-provider-minio-soft: var(--provider-minio-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -213,6 +221,11 @@
   --surface-sunken: #202124;
   --step-track: #3c4043;
   --step-pending-border: #5f6368;
+
+  /* Pale enough that white text on it fails contrast, so the foreground flips
+     dark here the way --primary-foreground does. */
+  --destructive: #f28b82;
+  --destructive-foreground: #202124;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -283,6 +296,8 @@
     --surface-sunken: #202124;
     --step-track: #3c4043;
     --step-pending-border: #5f6368;
+    --destructive: #f28b82;
+    --destructive-foreground: #202124;
   }
 }
 

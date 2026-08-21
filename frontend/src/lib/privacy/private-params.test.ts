@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  PRIVATE_PARAM_KEY,
+  PRIVATE_PARAM_PREVIEW,
   PRIVATE_PARAM_QUERY,
   buildPrivateHash,
   pushPrivateParams,
@@ -202,15 +202,15 @@ describe('usePrivateParams', () => {
 
 describe('usePrivateParam', () => {
   it('returns the named value', () => {
-    goTo('/dashboard/preview/abc#key=invoices%2Fq1.pdf');
-    const { result } = renderHook(() => usePrivateParam(PRIVATE_PARAM_KEY));
+    goTo('/dashboard/browse#preview=invoices%2Fq1.pdf');
+    const { result } = renderHook(() => usePrivateParam(PRIVATE_PARAM_PREVIEW));
 
     expect(result.current.value).toBe('invoices/q1.pdf');
   });
 
   it('returns an empty string for a param that is not there', () => {
-    goTo('/dashboard/preview/abc');
-    const { result } = renderHook(() => usePrivateParam(PRIVATE_PARAM_KEY));
+    goTo('/dashboard/browse');
+    const { result } = renderHook(() => usePrivateParam(PRIVATE_PARAM_PREVIEW));
 
     expect(result.current.value).toBe('');
     expect(result.current.isHydrated).toBe(true);

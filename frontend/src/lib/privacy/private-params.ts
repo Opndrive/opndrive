@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react';
  * view reports the route and nothing else.
  */
 export const PRIVATE_PARAM_QUERY = 'q';
-export const PRIVATE_PARAM_KEY = 'key';
+export const PRIVATE_PARAM_PREVIEW = 'preview';
 
 /**
  * `history.pushState` does not fire `hashchange`, so a programmatic update has

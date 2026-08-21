@@ -46,6 +46,26 @@ export interface PreviewConfig {
 }
 
 import { getFileCategory } from '@/config/file-extensions';
+import type { FileItem } from '@/features/dashboard/types/file';
+
+/**
+ * Shapes a listing entry for the preview.
+ *
+ * Pure and out here rather than inside `useFilePreviewActions`, because the
+ * preview provider needs the same conversion to adopt a folder listing after
+ * restoring a preview from the URL, and it cannot call that hook without
+ * depending on itself.
+ */
+export function toPreviewableFile(file: FileItem): PreviewableFile {
+  return {
+    id: file.id,
+    name: file.name,
+    key: file.Key || file.name, // Use Key from S3 or fallback to name
+    size: typeof file.Size === 'number' ? file.Size : 0,
+    type: file.extension || '',
+    lastModified: file.LastModified || file.lastModified,
+  };
+}
 
 // File type detection utilities - now using centralized config
 export function getFilePreviewType(fileName: string): FilePreviewType {

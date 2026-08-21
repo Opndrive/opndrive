@@ -126,8 +126,11 @@ function resolveKeys(argument: string, source: string): ResolvedKey[] {
   if (!name) return [];
 
   // `$` is legal in an identifier and also a regex anchor, so it has to be
-  // escaped before being interpolated into the patterns below.
-  const safeName = name.replace(/\$/g, '\\$');
+  // escaped before being interpolated into the patterns below. Escaping the
+  // whole metacharacter set rather than `$` alone, backslash included: an
+  // escaper that leaves its own escape character alone is one pass short of
+  // complete, which is what CodeQL flags it for.
+  const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const patterns = [
     // const KEY = 'x'   /   const KEY = useMemo(() => 'x', [])
