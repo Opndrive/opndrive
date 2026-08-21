@@ -196,6 +196,10 @@ export default function ConnectPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    // The previous attempt's reason is not the current one. Left on screen
+    // under a "Connecting..." button it reads as a live verdict on the attempt
+    // still in flight.
+    setFailure(null);
 
     try {
       // Get the endpoint from provider config or use custom endpoint

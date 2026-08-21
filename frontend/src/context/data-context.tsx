@@ -40,14 +40,22 @@ type Store = {
   recentStatus: Record<string, Status>;
   loadMoreStatus: Record<string, Status>;
   /**
-   * Why the last request for a key failed.
+   * Why the last request for a key failed, one map per request kind.
    *
    * The catch blocks below used to be bare `catch {}`, so the reason was gone
    * before anyone could render it - which is half of why a failed listing was
-   * indistinguishable from one still loading. Cleared whenever a key starts
-   * loading again, so a stale reason cannot outlive the failure it describes.
+   * indistinguishable from one still loading.
+   *
+   * Split the same way `status` and `recentStatus` are, and for a sharper
+   * reason: `refreshCurrentData` runs both requests against the same prefix at
+   * once. Sharing one map by prefix meant the directory listing succeeding
+   * erased why the recent list had just failed, and the recent list then fell
+   * back to a generic "something went wrong" - the exact vagueness this change
+   * exists to remove. Each status setter owns its own map, so a status and its
+   * reason cannot drift apart.
    */
   failures: Record<string, ConnectionFailure>;
+  recentFailures: Record<string, ConnectionFailure>;
   currentPrefix: string | null;
   rootPrefix: string | null;
 
@@ -58,6 +66,7 @@ type Store = {
   setRecentStatus: (prefix: string, s: Status) => void;
   setLoadMoreStatus: (prefix: string, s: Status) => void;
   setFailure: (prefix: string, failure: ConnectionFailure) => void;
+  setRecentFailure: (prefix: string, failure: ConnectionFailure) => void;
   setRootPrefix: (prefix: string) => void;
   clearAllData: () => void;
   removeDeletedFolder: (prefix: string) => void;
@@ -289,6 +298,7 @@ export const useDriveStore = create<Store>((set, get) => ({
   recentStatus: {},
   loadMoreStatus: {},
   failures: {},
+  recentFailures: {},
   rootPrefix: null,
   currentPrefix: null,
 
@@ -317,8 +327,16 @@ export const useDriveStore = create<Store>((set, get) => ({
   setFailure: (prefix, failure) =>
     set((state) => ({ failures: { ...state.failures, [prefix]: failure } })),
 
+  setRecentFailure: (prefix, failure) =>
+    set((state) => ({ recentFailures: { ...state.recentFailures, [prefix]: failure } })),
+
   setRecentStatus: (prefix, s) =>
-    set((state) => ({ recentStatus: { ...state.recentStatus, [prefix]: s } })),
+    set((state) => {
+      const recentFailures = { ...state.recentFailures };
+      if (s !== 'error') delete recentFailures[prefix];
+
+      return { recentStatus: { ...state.recentStatus, [prefix]: s }, recentFailures };
+    }),
 
   setLoadMoreStatus: (prefix, s) =>
     set((state) => ({ loadMoreStatus: { ...state.loadMoreStatus, [prefix]: s } })),
@@ -346,6 +364,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       recentStatus: {},
       loadMoreStatus: {},
       failures: {},
+      recentFailures: {},
       currentPrefix: null,
       rootPrefix: null,
     });
@@ -560,7 +579,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       recentCache,
       setRecentData,
       setRecentStatus,
-      setFailure,
+      setRecentFailure,
     } = get();
 
     if (!apiS3) return;
@@ -633,7 +652,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       } catch (error) {
         if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
 
-        setFailure(keyPrefix, classifyConnectionFailure(error));
+        setRecentFailure(keyPrefix, classifyConnectionFailure(error));
         setRecentStatus(keyPrefix, 'error');
       }
     });
@@ -798,7 +817,7 @@ export function useRecentState(): AsyncState<RecentDataWithCache> {
     currentPrefix ? state.recentCache[currentPrefix] : undefined
   );
   const failure = useDriveStore((state) =>
-    currentPrefix ? state.failures[currentPrefix] : undefined
+    currentPrefix ? state.recentFailures[currentPrefix] : undefined
   );
   const fetchRecentItems = useDriveStore((state) => state.fetchRecentItems);
 
