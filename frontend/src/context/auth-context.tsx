@@ -139,6 +139,25 @@ export const AuthContext = createContext<AuthContextType>({
 const STORAGE_KEY = 's3_user_session';
 
 /**
+ * Routes that must render before a session has been looked for.
+ *
+ * `isLoading` starts true, so the placeholder below is what the server renders
+ * for every route - meaning the whole app currently serves `Loading...` as its
+ * HTML and only shows real content once JavaScript has run.
+ *
+ * That is tolerable for the dashboard, which is useless without a session
+ * anyway. It is not tolerable for the legal pages: a privacy policy has to be
+ * readable and indexable on its own, and these have no session to wait for.
+ * Nothing on them reads auth state and no redirect targets them, so skipping
+ * the gate here changes nothing except that the content actually renders.
+ */
+const PUBLIC_ROUTES = ['/privacy', '/terms'];
+
+function isPublicRoute(pathname: string | null): boolean {
+  return pathname !== null && PUBLIC_ROUTES.includes(pathname);
+}
+
+/**
  * How long logout keeps the loading placeholder up before letting children
  * render again.
  *
@@ -338,7 +357,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         clearSession,
       }}
     >
-      {isLoading ? (
+      {isLoading && !isPublicRoute(pathname) ? (
         <div className="flex h-screen items-center justify-center">
           <p>Loading...</p>
         </div>

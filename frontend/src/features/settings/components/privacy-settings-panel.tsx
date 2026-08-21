@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { Shield, Server, Key, Lock, BarChart3 } from 'lucide-react';
+import { AnalyticsOptOut } from '@/components/privacy/analytics-opt-out';
 
 /**
  * What this panel says has to match what the app actually does.
@@ -100,6 +102,51 @@ export function PrivacySettingsPanel() {
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-b border-border pb-4">
+          <h3 className="text-lg font-medium text-foreground">Your Choice</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Applies to this app and the documentation site
+          </p>
+        </div>
+        <AnalyticsOptOut />
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-b border-border pb-4">
+          <h3 className="text-lg font-medium text-foreground">The Full Details</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everything above, written out properly
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <Link
+            href="/privacy"
+            className="text-sm text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Privacy Policy
+          </Link>
+          <Link
+            href="/privacy#storage"
+            className="text-sm text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            What is stored in your browser
+          </Link>
+          <Link
+            href="/terms"
+            className="text-sm text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Terms of Service
+          </Link>
         </div>
       </div>
     </div>

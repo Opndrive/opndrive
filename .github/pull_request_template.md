@@ -34,6 +34,8 @@ Brief description of the changes made in this pull request.
 - [ ] Self-review completed
 - [ ] Code is properly commented
 - [ ] Documentation updated (if needed)
+- [ ] This PR adds no new browser storage key or third-party script. If it does,
+      see [Privacy](../CONTRIBUTING.md#privacy-what-needs-a-second-look) first.
 
 ## Additional Notes
 

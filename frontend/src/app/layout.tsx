@@ -4,6 +4,7 @@ import { NotificationProvider } from '@/context/notification-context';
 import { ZustandBridge } from '@/context/zustand-bridge';
 import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
+import { headers } from 'next/headers';
 import { AnalyticsGate } from '@/components/analytics/analytics-gate';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { Metadata } from 'next';
@@ -79,16 +80,21 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Set by middleware. Every inline script below carries it, which is what
+  // lets script-src stay nonce-only instead of allowing 'unsafe-inline'.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* JSON-LD Structured Data for Google */}
         <script
+          nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
@@ -109,6 +115,7 @@ export default function RootLayout({
           }}
         />
         <script
+          nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
@@ -129,6 +136,7 @@ export default function RootLayout({
           }}
         />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
