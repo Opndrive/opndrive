@@ -8,11 +8,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildCredentials, formatPrefix } from './connect-wizard';
-import { getProviderBySlug } from '@/config/providers';
+import { getProviderBySlug, resolveEndpoint } from '@/config/providers';
 
 const aws = getProviderBySlug('aws-s3')!;
 const wasabi = getProviderBySlug('wasabi')!;
 const minio = getProviderBySlug('minio')!;
+const r2 = getProviderBySlug('cloudflare-r2')!;
 
 const baseForm = {
   accessKeyId: 'AKIA123',
@@ -89,5 +90,29 @@ describe('buildCredentials', () => {
     const credentials = buildCredentials(aws, { ...baseForm, prefix: 'team reports' });
 
     expect(credentials.prefix).toBe('team/reports/');
+  });
+
+  // R2's endpoint is keyed by an account id the form never asks for, so there
+  // is nothing to derive. Sending the unfilled template would be a broken URL.
+  it('sends no endpoint for a provider whose template it cannot fill', () => {
+    expect('endpoint' in buildCredentials(r2, baseForm)).toBe(false);
+  });
+});
+
+describe('resolveEndpoint', () => {
+  it('fills the region in', () => {
+    expect(resolveEndpoint(wasabi, 'eu-west-1')).toBe('https://s3.eu-west-1.wasabisys.com');
+  });
+
+  // The bug this guards: R2 came back as the literal template, and the wizard
+  // offered it to the user as "Defaults to
+  // https://{{accountId}}.r2.cloudflarestorage.com" on a field it had just
+  // made required.
+  it('is empty when a placeholder is left it cannot fill', () => {
+    expect(resolveEndpoint(r2, 'auto')).toBe('');
+  });
+
+  it('is empty for a provider with no template at all', () => {
+    expect(resolveEndpoint(minio, 'us-east-1')).toBe('');
   });
 });

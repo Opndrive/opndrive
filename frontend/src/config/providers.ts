@@ -28,7 +28,12 @@ export interface S3Provider {
   name: string;
   /** One line on the picker card. */
   tagline: string;
-  /** Endpoint template. `{{region}}` and `{{accountId}}` are substituted. */
+  /**
+   * Endpoint template. `{{region}}` is the only placeholder substituted.
+   * A template carrying any other one cannot be derived from what we ask
+   * the user for, so it must be supplied by hand - see
+   * `requiresCustomEndpoint`, which R2 sets for exactly that reason.
+   */
   endpoint: string;
   defaultRegion: string;
   regions: RegionOption[];
@@ -246,7 +251,17 @@ export function getProviderBySlug(slug: string): S3Provider | undefined {
   return S3_PROVIDERS.find((provider) => provider.slug === slug);
 }
 
-/** Resolves an endpoint template against the values a user has entered. */
+/**
+ * Resolves an endpoint template against the values a user has entered.
+ *
+ * Empty when the template still carries a placeholder this cannot fill. R2's
+ * endpoint is keyed by an account id we never ask for, so returning the raw
+ * `https://{{accountId}}.r2.cloudflarestorage.com` would put a literal
+ * `{{accountId}}` in front of the user and call it a default. Callers read
+ * empty as "nothing to derive", which is the truth for that provider.
+ */
 export function resolveEndpoint(provider: S3Provider, region: string): string {
-  return provider.endpoint.replace('{{region}}', region);
+  const resolved = provider.endpoint.replace('{{region}}', region);
+
+  return resolved.includes('{{') ? '' : resolved;
 }

@@ -126,15 +126,23 @@ export function Combobox({
   useEffect(() => {
     if (!isOpen) return;
 
-    const handlePointerDown = (event: MouseEvent) => {
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       if (!wrapperRef.current?.contains(event.target as Node)) {
         setIsOpen(false);
         setQuery('');
       }
     };
 
+    // touchstart as well as mousedown: a tap only produces an emulated
+    // mousedown once the browser has ruled out a gesture, so without it the
+    // list lingers under the finger. Same pairing as breadcrumb.tsx.
     document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
   }, [isOpen]);
 
   // Keep the active row in view as the user arrows through it.
