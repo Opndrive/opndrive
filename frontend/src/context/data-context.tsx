@@ -5,6 +5,8 @@ import { Folder } from '@/features/dashboard/types/folder';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
+import { classifyConnectionFailure, type ConnectionFailure } from '@/lib/s3/connection-failure';
+import type { AsyncState } from '@/shared/components/ui/async-boundary';
 
 type PrefixData = {
   files: FileItem[];
@@ -37,6 +39,15 @@ type Store = {
   status: Record<string, Status>;
   recentStatus: Record<string, Status>;
   loadMoreStatus: Record<string, Status>;
+  /**
+   * Why the last request for a key failed.
+   *
+   * The catch blocks below used to be bare `catch {}`, so the reason was gone
+   * before anyone could render it - which is half of why a failed listing was
+   * indistinguishable from one still loading. Cleared whenever a key starts
+   * loading again, so a stale reason cannot outlive the failure it describes.
+   */
+  failures: Record<string, ConnectionFailure>;
   currentPrefix: string | null;
   rootPrefix: string | null;
 
@@ -46,6 +57,7 @@ type Store = {
   setStatus: (prefix: string, s: Status) => void;
   setRecentStatus: (prefix: string, s: Status) => void;
   setLoadMoreStatus: (prefix: string, s: Status) => void;
+  setFailure: (prefix: string, failure: ConnectionFailure) => void;
   setRootPrefix: (prefix: string) => void;
   clearAllData: () => void;
   removeDeletedFolder: (prefix: string) => void;
@@ -276,6 +288,7 @@ export const useDriveStore = create<Store>((set, get) => ({
   status: {},
   recentStatus: {},
   loadMoreStatus: {},
+  failures: {},
   rootPrefix: null,
   currentPrefix: null,
 
@@ -291,7 +304,18 @@ export const useDriveStore = create<Store>((set, get) => ({
       recentCache: { ...state.recentCache, [prefix]: data },
     })),
 
-  setStatus: (prefix, s) => set((state) => ({ status: { ...state.status, [prefix]: s } })),
+  setStatus: (prefix, s) =>
+    set((state) => {
+      // A key that is loading or ready has no current failure. Leaving the old
+      // one behind would let a retry that succeeded still render its reason.
+      const failures = { ...state.failures };
+      if (s !== 'error') delete failures[prefix];
+
+      return { status: { ...state.status, [prefix]: s }, failures };
+    }),
+
+  setFailure: (prefix, failure) =>
+    set((state) => ({ failures: { ...state.failures, [prefix]: failure } })),
 
   setRecentStatus: (prefix, s) =>
     set((state) => ({ recentStatus: { ...state.recentStatus, [prefix]: s } })),
@@ -321,6 +345,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       status: {},
       recentStatus: {},
       loadMoreStatus: {},
+      failures: {},
       currentPrefix: null,
       rootPrefix: null,
     });
@@ -416,7 +441,16 @@ export const useDriveStore = create<Store>((set, get) => ({
   },
 
   fetchData: async (opts = { sync: false }) => {
-    const { apiS3, currentPrefix, rootPrefix, status, cache, setPrefixData, setStatus } = get();
+    const {
+      apiS3,
+      currentPrefix,
+      rootPrefix,
+      status,
+      cache,
+      setPrefixData,
+      setStatus,
+      setFailure,
+    } = get();
 
     if (!apiS3) return;
 
@@ -471,10 +505,15 @@ export const useDriveStore = create<Store>((set, get) => ({
           isTruncated: data.isTruncated,
         });
         setStatus(keyPrefix, 'ready');
-      } catch {
+      } catch (error) {
         // A superseded request must not report an error over a newer request's
         // result, or a folder that loaded fine renders as failed.
         if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
+
+        // Recorded before the status, because setStatus('error') is what a
+        // subscriber wakes on - setting it first would render one frame with
+        // no reason to show.
+        setFailure(keyPrefix, classifyConnectionFailure(error));
         setStatus(keyPrefix, 'error');
       }
     });
@@ -521,6 +560,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       recentCache,
       setRecentData,
       setRecentStatus,
+      setFailure,
     } = get();
 
     if (!apiS3) return;
@@ -590,8 +630,10 @@ export const useDriveStore = create<Store>((set, get) => ({
 
         setRecentData(keyPrefix, recentData);
         setRecentStatus(keyPrefix, 'ready');
-      } catch {
+      } catch (error) {
         if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
+
+        setFailure(keyPrefix, classifyConnectionFailure(error));
         setRecentStatus(keyPrefix, 'error');
       }
     });
@@ -721,3 +763,64 @@ export const useDriveStore = create<Store>((set, get) => ({
     });
   },
 }));
+
+/**
+ * The directory listing for the folder the user is standing in, as one value
+ * that cannot be read without deciding what a failure looks like.
+ *
+ * The store keeps status, data and failure in three separate maps, which is
+ * fine for writing but is exactly what let both dashboard pages write
+ * `status[prefix] === 'ready' ? rows : skeleton` and silently render a failed
+ * listing as a skeleton forever. Narrowing happens here once, so a page reaches
+ * `data` only through the branch that has any.
+ */
+export function useDirectoryState(): AsyncState<PrefixData> {
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const status = useDriveStore((state) =>
+    currentPrefix ? state.status[currentPrefix] : undefined
+  );
+  const data = useDriveStore((state) => (currentPrefix ? state.cache[currentPrefix] : undefined));
+  const failure = useDriveStore((state) =>
+    currentPrefix ? state.failures[currentPrefix] : undefined
+  );
+  const fetchData = useDriveStore((state) => state.fetchData);
+
+  return toAsyncState(status, data, failure, () => void fetchData({ sync: true }));
+}
+
+/** The same, for the recent-items list on the dashboard home. */
+export function useRecentState(): AsyncState<RecentDataWithCache> {
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const status = useDriveStore((state) =>
+    currentPrefix ? state.recentStatus[currentPrefix] : undefined
+  );
+  const data = useDriveStore((state) =>
+    currentPrefix ? state.recentCache[currentPrefix] : undefined
+  );
+  const failure = useDriveStore((state) =>
+    currentPrefix ? state.failures[currentPrefix] : undefined
+  );
+  const fetchRecentItems = useDriveStore((state) => state.fetchRecentItems);
+
+  return toAsyncState(status, data, failure, () => void fetchRecentItems({ sync: true }));
+}
+
+function toAsyncState<T>(
+  status: Status | undefined,
+  data: T | undefined,
+  failure: ConnectionFailure | undefined,
+  retry: () => void
+): AsyncState<T> {
+  if (status === 'error') {
+    // A key can be marked failed a frame before its reason is recorded, and an
+    // 'unknown' failure still tells the user more than a skeleton would.
+    return { state: 'error', failure: failure ?? classifyConnectionFailure(undefined), retry };
+  }
+
+  // Data without a ready status is a folder being re-synced: it has rows on
+  // screen already, and blanking them back to a skeleton mid-refresh would be
+  // a worse answer than showing what is there.
+  if (data !== undefined) return { state: 'ready', data };
+
+  return status === 'loading' ? { state: 'loading' } : { state: 'idle' };
+}

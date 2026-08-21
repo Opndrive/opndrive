@@ -10,8 +10,26 @@ import {
   SignedUrlUploadManager,
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
+import { ConnectionFailureError, classifyConnectionFailure } from '@/lib/s3/connection-failure';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+
+/**
+ * Proves the credentials work before a session is built on them.
+ *
+ * Constructing a `BYOS3ApiProvider` touches no network, so before this every
+ * set of credentials "connected" successfully and only failed later, on the
+ * dashboard's first listing - far from the form that could fix them.
+ *
+ * Lists one object rather than calling HeadBucket: some buckets allow GET but
+ * not HEAD, and rejecting those would lock out people whose credentials are
+ * perfectly good. Scoped to the configured prefix, because a key may be
+ * permitted to list `team/` without being permitted to list the bucket root.
+ * The point is to make exactly the request the app depends on.
+ */
+async function verifyCredentials(api: BYOS3ApiProvider, creds: Credentials): Promise<void> {
+  await api.fetchDirectoryStructure(creds.prefix ?? '', 1);
+}
 
 /**
  * How many files upload at once.
@@ -263,6 +281,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(true);
       const api = new BYOS3ApiProvider(creds, 'BYO');
 
+      await verifyCredentials(api, creds);
+
       const { manager, signedUrlManager } = await initializeUploadManagers(api, creds);
 
       // Persist to state and localStorage
@@ -278,7 +298,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     } catch (error) {
       console.error('Login failed', error);
-      throw new Error('Login failed');
+
+      // Rethrown as a classified failure so the form can name the actual
+      // problem. A wrong region, a missing CORS rule and a revoked key are
+      // fixed in three different places, and "Login failed" pointed at none
+      // of them.
+      throw new ConnectionFailureError(classifyConnectionFailure(error));
     } finally {
       setIsLoading(false);
     }

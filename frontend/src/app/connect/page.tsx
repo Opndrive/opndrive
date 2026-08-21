@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getCorsConfig } from '@/config/cors';
+import { failureFrom, type ConnectionFailure } from '@/lib/s3/connection-failure';
 import { SiteFooter } from '@/shared/components/layout/site-footer';
 
 export default function ConnectPage() {
@@ -33,6 +34,9 @@ export default function ConnectPage() {
     region: 'us-east-1',
   });
   const [isLoading, setIsLoading] = useState(false);
+  // Shown in the form rather than an alert(): the fix is a field on this
+  // page, and a native dialog covers the fields while it asks.
+  const [failure, setFailure] = useState<ConnectionFailure | null>(null);
   const [selectedProvider, setSelectedProvider] = useState('aws');
 
   // AWS Regions
@@ -217,7 +221,11 @@ export default function ConnectPage() {
       router.push('/dashboard');
     } catch (err) {
       console.error('Failed to create session:', err);
-      alert('Invalid credentials, please try again.');
+
+      // The old copy asserted "Invalid credentials" whatever had happened, so
+      // a missing CORS rule or a mistyped region sent people to re-check keys
+      // that were fine.
+      setFailure(failureFrom(err));
     } finally {
       setIsLoading(false);
     }
@@ -404,6 +412,18 @@ export default function ConnectPage() {
                       : currentProvider.endpoint
                         ? `Default: ${currentProvider.endpoint.replace('{{region}}', formCreds.region)}`
                         : 'Enter the endpoint URL for your storage service.'}
+                  </p>
+                </div>
+              )}
+
+              {failure && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5"
+                >
+                  <p className="text-sm font-medium text-foreground">{failure.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {failure.detail}
                   </p>
                 </div>
               )}
