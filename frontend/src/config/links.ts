@@ -22,3 +22,13 @@ export const DOCS_URL = process.env.NEXT_PUBLIC_DOCS_URL || 'https://docs.opndri
  * can be rotated without a code change.
  */
 export const DISCORD_URL = process.env.NEXT_PUBLIC_DISCORD_URL || 'https://discord.gg/sTVSZUumz';
+
+/**
+ * Where a request for a new provider goes.
+ *
+ * The connect page points people here rather than at a contact address on
+ * purpose: a provider we have not tried needs its endpoint shape, its region
+ * names and its CORS steps established before it can have a page, and an issue
+ * is where whoever knows those can supply them.
+ */
+export const ISSUES_URL = 'https://github.com/Opndrive/opndrive/issues';

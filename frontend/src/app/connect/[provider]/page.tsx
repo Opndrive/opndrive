@@ -14,7 +14,7 @@ interface ProviderPageProps {
 }
 
 /**
- * The five provider slugs, known at build time.
+ * Every provider slug, known at build time.
  *
  * Anything outside this list must 404 rather than falling back to the hub.
  * A soft fallback would turn every typo into an indexable near-duplicate of

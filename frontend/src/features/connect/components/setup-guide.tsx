@@ -18,7 +18,7 @@ interface SetupGuideProps {
  *
  * This content is also what makes these pages legitimate rather than doorway
  * pages. The CORS steps, permission names and gotchas genuinely differ per
- * provider, and that difference is the whole argument for having five pages.
+ * provider, and that difference is the whole argument for a page per provider.
  */
 export function SetupGuide({ provider, corsConfig }: SetupGuideProps) {
   const [copied, setCopied] = useState(false);

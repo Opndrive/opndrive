@@ -242,6 +242,49 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'Your browser has to be able to reach the endpoint. A MinIO server on a private network will not work from the hosted app, so self-host Opndrive alongside it.',
     },
   },
+  /**
+   * The catch-all, and the only entry here with no vendor behind it.
+   *
+   * It earns a page for the same reason the others do: what it has to teach is
+   * genuinely its own. Every provider above can name its CORS editor and list
+   * its regions. This one cannot, and that absence is the content - which of
+   * the several URLs a provider hands you is the S3 API one, why the region
+   * string still matters when the service ignores it, and what to do when the
+   * console has no CORS screen at all.
+   *
+   * Keep it last. The picker renders this list in order, and "anything else"
+   * only reads correctly after the named options.
+   */
+  {
+    slug: 'custom-endpoint',
+    id: 'custom',
+    name: 'Custom endpoint',
+    tagline: 'Any other S3-compatible service',
+    endpoint: '',
+    defaultRegion: 'us-east-1',
+    // One entry, because one is the honest number: us-east-1 is what most
+    // S3-compatible services accept when they have no regions of their own.
+    // The combobox takes a typed value, which is the real answer here.
+    regions: [{ value: 'us-east-1', label: 'Common default - us-east-1' }],
+    requiresCustomEndpoint: true,
+    seo: {
+      title: 'Connect Any S3-Compatible Storage by Custom Endpoint',
+      description:
+        'Point Opndrive at any S3-compatible endpoint - DigitalOcean Spaces, Scaleway, Storj, Hetzner, Ceph or a gateway you run yourself. Your keys stay in your browser.',
+      h1: 'Connect Opndrive to any S3-compatible storage',
+      intro:
+        'If a service speaks the S3 API, this is the way in. You supply the endpoint URL and the region string that service documents, and from there Opndrive treats it exactly as it treats Amazon S3.',
+    },
+    setup: {
+      corsInstructions:
+        'Look for CORS, cross-origin or allowed origins in the bucket settings on your provider. Most accept the same JSON policy S3 does; some expose it only through their CLI or API, and a few need a support request.',
+      permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+      docsUrl: 'https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html',
+      docsLabel: 'The S3 CORS API that compatible services implement',
+      gotcha:
+        'Use the S3 API endpoint, not the web console address or the public link to a file. A provider often serves all three from similar-looking domains and only one of them speaks S3. If the bucket lists but files will not open, that is CORS rather than the endpoint.',
+    },
+  },
 ];
 
 /** Every provider slug, for generateStaticParams and the sitemap. */

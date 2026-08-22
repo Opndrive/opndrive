@@ -78,7 +78,7 @@ export function ConnectShell({
 
       {/* The legal links live here, same as every other public page. The old
           connect page rendered them directly; this frame took its place, so it
-          carries them for the hub and all five provider pages. */}
+          carries them for the hub and every provider page. */}
       <SiteFooter />
     </div>
   );

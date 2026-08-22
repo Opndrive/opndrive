@@ -95,6 +95,13 @@
   --provider-b2-soft: rgba(226, 30, 41, 0.14);
   --provider-minio: #c72e49;
   --provider-minio-soft: rgba(199, 46, 73, 0.14);
+  /* The custom-endpoint tile. No vendor, so no brand colour, and unlike the
+     five above it does follow the theme - it should read as part of our UI
+     rather than as a sixth logo. The glyph tracks --muted-foreground, which
+     var() resolves per theme; the tint is a neutral alpha that lifts on a dark
+     card and darkens on a light one. */
+  --provider-custom: var(--muted-foreground);
+  --provider-custom-soft: rgba(128, 134, 139, 0.16);
   /* The red the shadcn primitives (button, dropdown item, input) reach for.
      They shipped referencing it, but the palette never defined it, so every
      `bg-destructive` resolved to nothing and a delete button came out
@@ -148,6 +155,8 @@
   --color-provider-b2-soft: var(--provider-b2-soft);
   --color-provider-minio: var(--provider-minio);
   --color-provider-minio-soft: var(--provider-minio-soft);
+  --color-provider-custom: var(--provider-custom);
+  --color-provider-custom-soft: var(--provider-custom-soft);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --font-sans: var(--font-geist-sans);

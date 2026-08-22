@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ISSUES_URL } from '@/config/links';
 import { S3_PROVIDERS } from '@/config/providers';
 import { ConnectShell } from '@/features/connect/components/connect-shell';
 import { ProviderPicker } from '@/features/connect/components/provider-picker';
@@ -16,7 +17,7 @@ import { WizardSection } from '@/features/connect/components/wizard-section';
 export const metadata: Metadata = {
   title: 'Connect Your S3 Bucket - Browser Client for S3 Storage',
   description:
-    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2 or MinIO. Your keys stay in your browser and your files never touch our servers.',
+    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, MinIO or any S3-compatible endpoint. Your keys stay in your browser and your files never touch our servers.',
   alternates: { canonical: '/connect' },
   openGraph: {
     title: 'Connect Your S3 Bucket - Opndrive',
@@ -39,12 +40,30 @@ export default function ConnectHubPage() {
         <WizardSection index={1} title="Choose a provider" state="active">
           <ProviderPicker providers={S3_PROVIDERS} />
 
+          {/*
+            This used to point at /connect/minio, which sent anyone on
+            DigitalOcean or Scaleway to a page about self-hosting MinIO. There
+            is a real catch-all provider now, and this links to it.
+          */}
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             Using something else? Any S3-compatible service works.{' '}
-            <Link href="/connect/minio" className="text-primary hover:underline">
+            <Link href="/connect/custom-endpoint" className="text-primary hover:underline">
               Set it up as a custom endpoint
             </Link>
             .
+          </p>
+
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            If you would like a provider listed here with its own setup guide,{' '}
+            <a
+              href={ISSUES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              open an issue on GitHub
+            </a>{' '}
+            and tell us which one.
           </p>
         </WizardSection>
 

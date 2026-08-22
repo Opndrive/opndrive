@@ -81,8 +81,11 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
   const incomplete =
     !form.accessKeyId.trim() || !form.secretAccessKey.trim() || !form.bucketName.trim();
 
+  // Not `${provider.name} needs an endpoint`, which the catch-all turned into
+  // "Custom endpoint needs an endpoint". Naming the provider was redundant
+  // anyway on a page that is already about one provider.
   const blockedReason = missingEndpoint
-    ? `${provider.name} needs an endpoint`
+    ? 'Add the endpoint URL above'
     : incomplete
       ? 'Fill in the key, secret and bucket'
       : null;

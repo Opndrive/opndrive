@@ -14,6 +14,7 @@ const aws = getProviderBySlug('aws-s3')!;
 const wasabi = getProviderBySlug('wasabi')!;
 const minio = getProviderBySlug('minio')!;
 const r2 = getProviderBySlug('cloudflare-r2')!;
+const custom = getProviderBySlug('custom-endpoint')!;
 
 const baseForm = {
   accessKeyId: 'AKIA123',
@@ -96,6 +97,33 @@ describe('buildCredentials', () => {
   // is nothing to derive. Sending the unfilled template would be a broken URL.
   it('sends no endpoint for a provider whose template it cannot fill', () => {
     expect('endpoint' in buildCredentials(r2, baseForm)).toBe(false);
+  });
+});
+
+// The catch-all exists because /connect used to send "using something else?"
+// to /connect/minio, so anyone on DigitalOcean or Scaleway landed on a page
+// about self-hosting MinIO. It has no template of its own by design: whatever
+// the user pastes is the endpoint, and there is nothing to derive it from.
+describe('the custom endpoint provider', () => {
+  it('has nothing to derive an endpoint from', () => {
+    expect(custom.endpoint).toBe('');
+    expect(resolveEndpoint(custom, 'us-east-1')).toBe('');
+  });
+
+  it('sends what the user pasted, and nothing when they paste nothing', () => {
+    const pasted = buildCredentials(custom, {
+      ...baseForm,
+      endpoint: 'https://nyc3.digitaloceanspaces.com',
+    });
+
+    expect(pasted.endpoint).toBe('https://nyc3.digitaloceanspaces.com');
+    expect('endpoint' in buildCredentials(custom, baseForm)).toBe(false);
+  });
+
+  // Without this the form would let someone submit with no endpoint at all,
+  // which is the one field the provider cannot supply for them.
+  it('marks the endpoint as required', () => {
+    expect(custom.requiresCustomEndpoint).toBe(true);
   });
 });
 

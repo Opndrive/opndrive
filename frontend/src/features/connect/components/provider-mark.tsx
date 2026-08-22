@@ -1,5 +1,6 @@
 import type { IconType } from 'react-icons';
 import { FaAws } from 'react-icons/fa6';
+import { LuSlidersHorizontal } from 'react-icons/lu';
 import { SiBackblaze, SiCloudflare, SiMinio, SiWasabi } from 'react-icons/si';
 import type { S3Provider } from '@/config/providers';
 
@@ -16,6 +17,11 @@ import type { S3Provider } from '@/config/providers';
  * registry, which holds no styling at all. The class strings are written out in
  * full because Tailwind reads source text: a computed name like
  * `text-provider-${slug}` produces no CSS.
+ *
+ * The custom-endpoint entry is the exception to all of the above: no vendor, so
+ * no logo to show and no brand colour to honour. It gets sliders on a neutral
+ * tile, which says "you fill this one in" rather than pretending to be a sixth
+ * company. A gear would read as app settings, which is a different promise.
  */
 
 interface ProviderVisual {
@@ -30,6 +36,10 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
   wasabi: { Icon: SiWasabi, palette: 'bg-provider-wasabi-soft text-provider-wasabi' },
   'backblaze-b2': { Icon: SiBackblaze, palette: 'bg-provider-b2-soft text-provider-b2' },
   minio: { Icon: SiMinio, palette: 'bg-provider-minio-soft text-provider-minio' },
+  'custom-endpoint': {
+    Icon: LuSlidersHorizontal,
+    palette: 'bg-provider-custom-soft text-provider-custom',
+  },
 };
 
 const SIZES = {
