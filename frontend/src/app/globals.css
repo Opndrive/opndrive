@@ -1,5 +1,11 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+/* Supplies animate-in / fade-in / zoom-in / slide-in-from-*. The Radix
+   primitives have always carried those classes, but Tailwind v4 takes its
+   plugins from here rather than a config file, and this one was never
+   imported - so every one of them compiled to nothing and menus, dialogs
+   and popovers all appeared instantly. */
+@import 'tw-animate-css';
 
 :root {
   --background: #ffffff;
@@ -924,4 +930,117 @@ body {
 .prose td {
   border: 1px solid var(--border);
   padding: 0.75rem 1rem;
+}
+
+/**
+ * Motion is a preference, and the OS already knows the answer.
+ *
+ * Enabling the animation utilities turned motion on across every menu, dialog
+ * and popover at once. For anyone who gets migraines or motion sickness from
+ * it, that is a regression rather than a polish pass, so honour the setting
+ * they have already expressed. Near-zero rather than `none`: animation and
+ * transition end events still fire, and Radix waits on those to unmount an
+ * exiting element - killing them outright leaves closed menus in the DOM.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/**
+ * Menus unfold downward instead of appearing whole.
+ *
+ * The shadcn default is `zoom-in-95`: the entire surface, text and all, scales
+ * up together, so the menu arrives fully formed and simply grows a little. It
+ * reads as a pop, not as an opening.
+ *
+ * This scales the surface on the Y axis only, from the edge Radix anchored it
+ * to - so a menu placed below its trigger unfolds top to bottom, and one that
+ * flipped above unfolds bottom to top, with no per-side rules needed.
+ *
+ * The content fades in on its own slightly behind the surface. Without that
+ * the text is visibly squashed while the box is still expanding; letting the
+ * surface lead means the eye reads a panel opening rather than letters
+ * stretching. `backwards` holds the content hidden through that lead-in rather
+ * than flashing it for the first frame.
+ */
+@keyframes menu-unfold-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes menu-unfold-out {
+  from {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  to {
+    opacity: 0;
+    transform: scaleY(0.95);
+  }
+}
+
+@keyframes menu-content-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.menu-unfold[data-state='open'] {
+  /* Decelerating: quick to commit, settling at the end, so it lands rather
+     than stopping dead. */
+  animation: menu-unfold-in 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.menu-unfold[data-state='closed'] {
+  /* Closing is shorter. A dismissal the user has already decided on should
+     get out of the way, not perform. */
+  animation: menu-unfold-out 120ms ease-in;
+}
+
+.menu-unfold[data-state='open'] > * {
+  animation: menu-content-in 150ms ease-out 70ms backwards;
+}
+
+/**
+ * The multi-select bar arriving.
+ *
+ * It is mounted, not toggled - the component returns null with nothing
+ * selected - so the `transition-all` it carried could never fire: a transition
+ * needs a previous value on an element already in the document, and on mount
+ * there is none. The bar simply appeared, fully drawn, part-way through the
+ * menu's own opening.
+ *
+ * Same curve and duration as the menu it usually appears alongside, so the two
+ * read as one response to one click rather than two things happening near each
+ * other.
+ */
+@keyframes select-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.select-bar-in {
+  animation: select-bar-in 200ms cubic-bezier(0.2, 0, 0, 1);
 }

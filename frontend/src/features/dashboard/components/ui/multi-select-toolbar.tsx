@@ -144,7 +144,7 @@ export function MultiSelectToolbar({
   return (
     <div
       data-multi-select-toolbar
-      className="w-full px-4 py-2 rounded-2xl shadow-md flex items-center justify-between transition-all duration-200"
+      className="select-bar-in w-full px-4 py-2 rounded-2xl shadow-md flex items-center justify-between transition-colors duration-200"
       style={{
         background: 'var(--card)',
         border: '1px solid var(--border)',

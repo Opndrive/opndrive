@@ -11,6 +11,10 @@
  * opening - so selecting from the menu button would quietly change what every
  * later tap does.
  *
+ * The selection runs on pointerdown rather than click, because that is when
+ * Radix opens the menu. On click the multi-select bar trailed the menu by the
+ * whole length of the press.
+ *
  * All five row components carry their own copy of the handler, so all five are
  * covered. They started as copies of each other and drift is how this regresses.
  */
@@ -66,6 +70,19 @@ const selection = () => useMultiSelectStore.getState().selectedItems;
 const menuButton = (name: string) =>
   screen.getByRole('button', { name: `More actions for ${name}` });
 
+/**
+ * Presses the menu button the way a mouse actually does.
+ *
+ * Selection hangs off pointerdown now, to fire at the same moment Radix opens
+ * the menu. `fireEvent.click` alone dispatches no pointerdown, so it models a
+ * press no real device performs - and would go on passing against code that had
+ * lost the handler entirely.
+ */
+function pressMenu(button: HTMLElement, init: Partial<PointerEventInit> = {}) {
+  fireEvent.pointerDown(button, { button: 0, ...init });
+  fireEvent.click(button, init);
+}
+
 /** Makes the environment look like a mouse-driven one, or a touchscreen. */
 function setPointer({ touch }: { touch: boolean }) {
   Object.defineProperty(navigator, 'maxTouchPoints', { value: touch ? 5 : 0, configurable: true });
@@ -89,7 +106,7 @@ describe('a mouse click on the menu button selects the row', () => {
   it('selects a folder row', () => {
     render(<FolderItem folder={folder()} allFolders={[folder()]} />);
 
-    fireEvent.click(menuButton('Reports'));
+    pressMenu(menuButton('Reports'));
 
     expect(selection()).toHaveLength(1);
     expect(useMultiSelectStore.getState().selectedType).toBe('folder');
@@ -98,7 +115,7 @@ describe('a mouse click on the menu button selects the row', () => {
   it('selects a folder row on mobile layout', () => {
     render(<FolderItemMobile folder={folder()} allFolders={[folder()]} />);
 
-    fireEvent.click(menuButton('Reports'));
+    pressMenu(menuButton('Reports'));
 
     expect(selection()).toHaveLength(1);
   });
@@ -110,7 +127,7 @@ describe('a mouse click on the menu button selects the row', () => {
   ])('selects a file row in the %s layout', (_label, Component) => {
     render(<Component file={file()} allFiles={[file()]} />);
 
-    fireEvent.click(menuButton('budget.xlsx'));
+    pressMenu(menuButton('budget.xlsx'));
 
     expect(selection()).toHaveLength(1);
     expect(useMultiSelectStore.getState().selectedType).toBe('file');
@@ -120,7 +137,7 @@ describe('a mouse click on the menu button selects the row', () => {
     const onClick = vi.fn();
     render(<FolderItem folder={folder()} onClick={onClick} allFolders={[folder()]} />);
 
-    fireEvent.click(menuButton('Reports'));
+    pressMenu(menuButton('Reports'));
 
     // The click must not reach the row underneath, or opening a menu would
     // navigate into the folder behind it.
@@ -154,7 +171,7 @@ describe('it replaces the selection rather than extending it', () => {
     });
     expect(selection()).toHaveLength(2);
 
-    fireEvent.click(menuButton('Photos'));
+    pressMenu(menuButton('Photos'));
 
     // Plain click semantics: the third replaces the other two.
     expect(selection()).toHaveLength(1);
@@ -167,7 +184,7 @@ describe('touch is left alone', () => {
     setPointer({ touch: true });
     render(<FolderItem folder={folder()} allFolders={[folder()]} />);
 
-    fireEvent.click(menuButton('Reports'));
+    pressMenu(menuButton('Reports'));
 
     // Selecting here would put the list into selection mode, where the next
     // tap on any row selects instead of opening it.
@@ -178,8 +195,41 @@ describe('touch is left alone', () => {
     setPointer({ touch: true });
     render(<FileItemMobile file={file()} allFiles={[file()]} />);
 
-    fireEvent.click(menuButton('budget.xlsx'));
+    pressMenu(menuButton('budget.xlsx'));
 
     expect(selection()).toHaveLength(0);
+  });
+});
+
+/**
+ * Moving selection onto pointerdown widened what could trigger it: click only
+ * ever fires for the primary button, pointerdown fires for all of them. These
+ * pin the guards that put the boundary back, and they mirror the ones Radix
+ * puts on its own trigger - a press that does not open the menu must not select
+ * either, or the row silently changes under a menu that never appeared.
+ */
+describe('presses that do not open the menu do not select', () => {
+  it('ignores a secondary click', () => {
+    render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    pressMenu(menuButton('Reports'), { button: 2 });
+
+    expect(selection()).toHaveLength(0);
+  });
+
+  it('ignores a ctrl-click, which is a secondary click on macOS', () => {
+    render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    pressMenu(menuButton('Reports'), { button: 0, ctrlKey: true });
+
+    expect(selection()).toHaveLength(0);
+  });
+
+  it('still selects on an ordinary press', () => {
+    render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    pressMenu(menuButton('Reports'));
+
+    expect(selection()).toHaveLength(1);
   });
 });
