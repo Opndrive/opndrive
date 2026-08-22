@@ -1,8 +1,7 @@
 'use client';
 
 import { useScroll } from '@/context/scroll-context';
-import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
-import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
+import { DriveList } from '@/features/dashboard/components/views/drive/drive-list';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
@@ -411,23 +410,15 @@ function BrowsePageContent() {
             {() => (
               <>
                 {/* Folders */}
-                <SuggestedFolders
+                <DriveList
                   folders={displayedFolders}
+                  files={displayedFiles}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                  className="mt-8"
-                  title="Folders"
-                />
-
-                {/* Files */}
-                <SuggestedFiles
-                  files={displayedFiles}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  className="mt-8"
-                  title="Files"
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                   sortDirection={sortDirection}
                   onToggleSort={toggleSort}
                   canSortDescending={sortableBothWays}

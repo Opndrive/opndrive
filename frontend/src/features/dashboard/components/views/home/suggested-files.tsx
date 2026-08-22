@@ -4,6 +4,7 @@ import { useState, Fragment, useRef, useEffect } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
+import type { Folder } from '@/features/dashboard/types/folder';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
@@ -40,6 +41,22 @@ interface SuggestedFilesProps {
    * suggestion. Home keeps the suggesting; browse passes its own plain label.
    */
   title?: string;
+  /**
+   * Rows rendered above the files, under the same header.
+   *
+   * How the list view shows one directory instead of two: DriveList hands the
+   * folder rows in here rather than stacking a second table above this one.
+   * Absent - on Home, and in grid layout - nothing changes.
+   */
+  leadingRows?: React.ReactNode;
+  /**
+   * How many rows precede the files, so a file's index describes its place in
+   * the table rather than in the files array. Shift-select slices `allItems` by
+   * these numbers, so being off by the folder count selects the wrong rows.
+   */
+  fileIndexOffset?: number;
+  /** Folders and files together, the range a shift-select can span. */
+  allItems?: (FileItem | Folder)[];
   sortDirection?: SortDirection;
   onToggleSort?: () => void;
   /** False while the folder still has pages the listing has not fetched. */
@@ -57,6 +74,9 @@ export function SuggestedFiles({
   hideTitle = false,
   onFilesDropped,
   title = 'Suggested files',
+  leadingRows,
+  fileIndexOffset = 0,
+  allItems,
   sortDirection,
   onToggleSort,
   canSortDescending = true,
@@ -244,7 +264,7 @@ export function SuggestedFiles({
           ) : (
             <div>
               <div className="hidden sm:block space-y-1">
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3.5 text-sm font-medium text-muted-foreground border-b border-border/50">
                   <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4">
                     {onToggleSort && sortDirection ? (
                       <SortByNameButton
@@ -264,13 +284,15 @@ export function SuggestedFiles({
                   <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                 </div>
 
+                {leadingRows}
+
                 {files.map((file, index) => (
                   <Fragment key={file.Key}>
                     <FileItemList
                       file={file}
-                      allFiles={files}
+                      allFiles={allItems ?? files}
                       _onAction={handleFileAction}
-                      index={index}
+                      index={index + fileIndexOffset}
                     />
                     {index < files.length - 1 && (
                       <div className="mx-4" aria-hidden="true">
@@ -363,7 +385,7 @@ function SortByNameButton({
         // w-full, not a negative-margin bleed: the hover surface should stop at
         // the column boundary, or it reaches under "Last modified" and the two
         // headings look like one control.
-        'group flex w-full items-center gap-1.5 rounded-t-lg px-2 py-1.5 -ml-2 text-left font-medium transition-colors',
+        'group flex w-full items-center gap-1.5 rounded-t-lg px-2 py-1 -ml-2 -my-1 text-left text-sm font-medium transition-colors',
         blocked
           ? 'cursor-not-allowed opacity-60'
           : 'cursor-pointer hover:bg-secondary/70 hover:text-foreground'

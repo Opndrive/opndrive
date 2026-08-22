@@ -15,7 +15,7 @@
  * Radix opens the menu. On click the multi-select bar trailed the menu by the
  * whole length of the press.
  *
- * All five row components carry their own copy of the handler, so all five are
+ * All six row components carry their own copy of the handler, so all six are
  * covered. They started as copies of each other and drift is how this regresses.
  */
 
@@ -23,6 +23,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FolderItem } from './folder-item';
 import { FolderItemMobile } from './folder-item-mobile';
+import { FolderItemList } from './folder-item-list';
 import { FileItemList } from './file-item-list';
 import { FileItemGrid } from './file-item-grid';
 import { FileItemMobile } from './file-item-mobile';
@@ -105,6 +106,17 @@ afterEach(() => {
 describe('a mouse click on the menu button selects the row', () => {
   it('selects a folder row', () => {
     render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    pressMenu(menuButton('Reports'));
+
+    expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('folder');
+  });
+
+  // The row form folders take in the unified list view. It carries its own copy
+  // of the handler like the others, which is exactly why it is covered here.
+  it('selects a folder row in the list layout', () => {
+    render(<FolderItemList folder={folder()} allItems={[folder()]} />);
 
     pressMenu(menuButton('Reports'));
 
