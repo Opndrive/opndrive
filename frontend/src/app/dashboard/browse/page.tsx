@@ -9,7 +9,9 @@ import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore, useDirectoryState } from '@/context/data-context';
 import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { useEffect, Suspense, useState, useCallback, useRef } from 'react';
+import { useEffect, Suspense, useState, useCallback, useRef, useMemo } from 'react';
+import { useSortPreference } from '@/hooks/use-sort-preference';
+import { sortByName, canSortDescending } from '@/features/dashboard/utils/sort-items';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { EnhancedFolderBreadcrumb } from '@/features/dashboard/components/layout/breadcrumb/enhanced-folder-breadcrumb';
 import {
@@ -53,6 +55,12 @@ function BrowsePageContent() {
   } = useDriveStore();
 
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
+
+  const { direction: sortDirection, setDirection: setSortDirection } = useSortPreference();
+
+  const toggleSort = useCallback(() => {
+    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  }, [sortDirection, setSortDirection]);
 
   const dispatchDrop = useUploadDispatch();
 
@@ -211,9 +219,23 @@ function BrowsePageContent() {
   const isLoadingMore = currentPrefix ? loadMoreStatus[currentPrefix] === 'loading' : false;
   const currentData = currentPrefix ? cache[currentPrefix] : null;
 
+  // Only meaningful once the folder is whole, so it is read off the same cache
+  // entry the rows come from rather than tracked separately.
+  const sortableBothWays = canSortDescending(currentData?.isTruncated);
+
   // Calculate item counts and chunked data
-  const allFolders = currentData?.folders || [];
-  const allFiles = currentData?.files || [];
+  // Sorted before the chunking below, not after. Slicing first would order
+  // only the rows already on screen, so "sort A to Z" would mean "sort the
+  // first hundred", and pressing Show More would append a second, separately
+  // ordered run underneath the first.
+  const allFolders = useMemo(
+    () => sortByName(currentData?.folders ?? [], sortDirection),
+    [currentData?.folders, sortDirection]
+  );
+  const allFiles = useMemo(
+    () => sortByName(currentData?.files ?? [], sortDirection),
+    [currentData?.files, sortDirection]
+  );
 
   // Calculate how many items to show based on chunks
   const maxVisibleFiles = visibleFileChunks * CHUNK_SIZE;
@@ -406,6 +428,9 @@ function BrowsePageContent() {
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   className="mt-8"
                   hideTitle={pathSegments.length > 0}
+                  sortDirection={sortDirection}
+                  onToggleSort={toggleSort}
+                  canSortDescending={sortableBothWays}
                 />
 
                 {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}

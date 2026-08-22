@@ -10,6 +10,8 @@ import { FolderStructureProcessor } from '@/features/upload/utils/folder-structu
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { ArrowDown, ArrowUp } from 'lucide-react';
+import type { SortDirection } from '@/features/dashboard/utils/sort-items';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -21,6 +23,18 @@ interface SuggestedFilesProps {
   className?: string;
   hideTitle?: boolean;
   onFilesDropped?: (processedData: ProcessedDragData) => void;
+  /**
+   * Sorting, supplied only by the browse view.
+   *
+   * Home lists recent activity and is already ordered by when things were
+   * touched; offering to re-order it by name would be offering to throw away
+   * the one thing that page is for. Absent these props the heading is plain
+   * text, exactly as it was.
+   */
+  sortDirection?: SortDirection;
+  onToggleSort?: () => void;
+  /** False while the folder still has pages the listing has not fetched. */
+  canSortDescending?: boolean;
 }
 
 export function SuggestedFiles({
@@ -33,6 +47,9 @@ export function SuggestedFiles({
   className = '',
   hideTitle = false,
   onFilesDropped,
+  sortDirection,
+  onToggleSort,
+  canSortDescending = true,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -219,7 +236,15 @@ export function SuggestedFiles({
               <div className="hidden sm:block space-y-1">
                 <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
                   <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4">
-                    Name
+                    {onToggleSort && sortDirection ? (
+                      <SortByNameButton
+                        direction={sortDirection}
+                        canSortDescending={canSortDescending}
+                        onToggle={onToggleSort}
+                      />
+                    ) : (
+                      'Name'
+                    )}
                   </div>
                   <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
                     Last Opened
@@ -280,5 +305,54 @@ export function SuggestedFiles({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The Name heading, when the view offers sorting.
+ *
+ * Descending is refused while the folder is still truncated. S3 pages in key
+ * order, so a partial listing is a truthful beginning of the ascending answer
+ * but says nothing about the end - the last object in the bucket could belong
+ * at the top, and no amount of reordering what has arrived would reveal it.
+ * Disabled and explained rather than hidden, so the control does not appear to
+ * come and go as folders load.
+ */
+function SortByNameButton({
+  direction,
+  canSortDescending,
+  onToggle,
+}: {
+  direction: SortDirection;
+  canSortDescending: boolean;
+  onToggle: () => void;
+}) {
+  const ascending = direction === 'asc';
+  // Only descending needs the whole folder, so the control locks solely when
+  // the next press would ask for it.
+  const blocked = ascending && !canSortDescending;
+  const Arrow = ascending ? ArrowUp : ArrowDown;
+
+  return (
+    <button
+      type="button"
+      onClick={blocked ? undefined : onToggle}
+      disabled={blocked}
+      aria-label={
+        blocked
+          ? 'Sorted A to Z. Z to A needs the whole folder loaded.'
+          : `Sorted ${ascending ? 'A to Z' : 'Z to A'}. Sort ${ascending ? 'Z to A' : 'A to Z'}.`
+      }
+      title={
+        blocked ? 'This folder has more to load, so it cannot be sorted Z to A yet.' : undefined
+      }
+      className={cn(
+        'group -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium transition-colors',
+        blocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:text-foreground'
+      )}
+    >
+      Name
+      <Arrow className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
   );
 }

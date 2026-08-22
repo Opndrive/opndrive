@@ -70,6 +70,13 @@ export const STORAGE_KEYS: readonly StorageKeyEntry[] = [
     lifetime: 'Until you clear it',
   },
   {
+    key: 'opndrive-sort-preference',
+    mechanisms: ['localStorage'],
+    category: 'necessary',
+    purpose: 'Whether the file list is sorted A to Z or Z to A',
+    lifetime: 'Until you clear it',
+  },
+  {
     key: 'delete-recovery-storage',
     mechanisms: ['localStorage'],
     category: 'necessary',
