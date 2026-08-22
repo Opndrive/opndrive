@@ -385,7 +385,10 @@ function SortByNameButton({
         // w-full, not a negative-margin bleed: the hover surface should stop at
         // the column boundary, or it reaches under "Last modified" and the two
         // headings look like one control.
-        'group flex w-full items-center gap-1.5 rounded-t-lg px-2 py-1 -ml-2 -my-1 text-left text-sm font-medium transition-colors',
+        // -ml matches px so "Name" still lines up with the rows beneath it; the
+        // hover surface just starts further left. No negative -my here: it used to
+        // cancel the vertical padding outright, which is why the cell felt cramped.
+        'group flex w-full items-center gap-1.5 rounded-t-lg px-4 py-2 -ml-4 text-left text-sm font-medium transition-colors',
         blocked
           ? 'cursor-not-allowed opacity-60'
           : 'cursor-pointer hover:bg-secondary/70 hover:text-foreground'
