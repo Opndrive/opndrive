@@ -6,7 +6,8 @@ import { SuggestedFiles } from '@/features/dashboard/components/views/home/sugge
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
-import { useDriveStore } from '@/context/data-context';
+import { useDriveStore, useDirectoryState } from '@/context/data-context';
+import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, Suspense, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -43,7 +44,6 @@ function BrowsePageContent() {
   const {
     currentPrefix,
     cache,
-    status,
     loadMoreStatus,
     fetchData,
     loadMoreData,
@@ -204,7 +204,10 @@ function BrowsePageContent() {
     }
   };
 
-  const isReady = currentPrefix ? status[currentPrefix] === 'ready' : false;
+  // A union rather than an isReady flag. The flag collapsed 'error' into
+  // 'not ready yet', so a listing that had failed drew the loading skeleton and
+  // sat there for good.
+  const directory = useDirectoryState();
   const isLoadingMore = currentPrefix ? loadMoreStatus[currentPrefix] === 'loading' : false;
   const currentData = currentPrefix ? cache[currentPrefix] : null;
 
@@ -375,115 +378,125 @@ function BrowsePageContent() {
 
         <div className="relative z-0 pt-2">
           {/* Show loading state or actual content */}
-          {currentPrefix && isReady ? (
-            <>
-              {/* Folders */}
-              <SuggestedFolders
-                folders={displayedFolders}
-                onFolderClick={handleFolderClick}
-                onFolderMenuClick={handleFolderMenuClick}
-                onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                className="mt-8"
-                hideTitle={pathSegments.length > 0}
-              />
-
-              {/* Files */}
-              <SuggestedFiles
-                files={displayedFiles}
-                onFileClick={handleFileClick}
-                onFileAction={handleFileAction}
-                onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                className="mt-8"
-                hideTitle={pathSegments.length > 0}
-              />
-
-              {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}
-              {canLoadMoreChunks && (
-                <div
-                  ref={sentinelRef}
-                  className="h-1 w-full"
-                  style={{ visibility: 'hidden' }}
-                  aria-hidden="true"
+          <AsyncBoundary
+            state={directory}
+            pending={
+              <div className="mt-8">
+                <DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />
+              </div>
+            }
+          >
+            {() => (
+              <>
+                {/* Folders */}
+                <SuggestedFolders
+                  folders={displayedFolders}
+                  onFolderClick={handleFolderClick}
+                  onFolderMenuClick={handleFolderMenuClick}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
+                  className="mt-8"
+                  hideTitle={pathSegments.length > 0}
                 />
-              )}
 
-              {/* Chunk loading indicator */}
-              {isLoadingMoreChunks && (
-                <div className="flex justify-center py-6">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
-                    <span className="text-sm">Loading more items...</span>
+                {/* Files */}
+                <SuggestedFiles
+                  files={displayedFiles}
+                  onFileClick={handleFileClick}
+                  onFileAction={handleFileAction}
+                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                  className="mt-8"
+                  hideTitle={pathSegments.length > 0}
+                />
+
+                {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}
+                {canLoadMoreChunks && (
+                  <div
+                    ref={sentinelRef}
+                    className="h-1 w-full"
+                    style={{ visibility: 'hidden' }}
+                    aria-hidden="true"
+                  />
+                )}
+
+                {/* Chunk loading indicator */}
+                {isLoadingMoreChunks && (
+                  <div className="flex justify-center py-6">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
+                      <span className="text-sm">Loading more items...</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Load More Chunks Button (backup for scroll detection) */}
-              {!isLoadingMoreChunks && canLoadMoreChunks && (
-                <div className="flex justify-center py-6">
-                  <button
-                    onClick={loadMoreChunks}
-                    className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                    Load More Items (
-                    {Math.min(
-                      CHUNK_SIZE,
-                      (canLoadMoreFileChunks ? allFiles.length - maxVisibleFiles : 0) +
-                        (canLoadMoreFolderChunks ? allFolders.length - maxVisibleFolders : 0)
-                    )}{' '}
-                    more)
-                  </button>
-                </div>
-              )}
+                {/* Load More Chunks Button (backup for scroll detection) */}
+                {!isLoadingMoreChunks && canLoadMoreChunks && (
+                  <div className="flex justify-center py-6">
+                    <button
+                      onClick={loadMoreChunks}
+                      className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                      Load More Items (
+                      {Math.min(
+                        CHUNK_SIZE,
+                        (canLoadMoreFileChunks ? allFiles.length - maxVisibleFiles : 0) +
+                          (canLoadMoreFolderChunks ? allFolders.length - maxVisibleFolders : 0)
+                      )}{' '}
+                      more)
+                    </button>
+                  </div>
+                )}
 
-              {/* Show More S3 Items Button (only when all cached chunks are displayed) */}
-              {hasMoreItems && !canLoadMoreChunks && (
-                <div className="flex justify-center mt-8 mb-8">
-                  <button
-                    onClick={loadMoreData}
-                    disabled={isLoadingMore}
-                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                  >
-                    {isLoadingMore ? (
-                      <>
-                        <div className="spinner"></div>
-                        Loading more items...
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                          />
-                        </svg>
-                        Show More Items
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="mt-8">
-              <DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />
-            </div>
-          )}
+                {/* Show More S3 Items Button (only when all cached chunks are displayed) */}
+                {hasMoreItems && !canLoadMoreChunks && (
+                  <div className="flex justify-center mt-8 mb-8">
+                    <button
+                      onClick={loadMoreData}
+                      disabled={isLoadingMore}
+                      className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <div className="spinner"></div>
+                          Loading more items...
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                            />
+                          </svg>
+                          Show More Items
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </AsyncBoundary>
         </div>
       </div>
 

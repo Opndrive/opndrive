@@ -28,6 +28,18 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
 }));
 
+/**
+ * The one listing `createSession` makes to prove the credentials work, exposed
+ * so a test can decide whether the bucket accepts it. Defaults to accepting,
+ * which is what every test here other than the connection ones assumes.
+ */
+const s3 = vi.hoisted(() => ({
+  fetchDirectoryStructure: vi.fn(async (_prefix: string, _maxKeys?: number) => ({
+    files: [] as unknown[],
+    folders: [] as unknown[],
+  })),
+}));
+
 vi.mock('@opndrive/s3-api', () => ({
   BYOS3ApiProvider: class {
     getS3Client() {
@@ -35,6 +47,9 @@ vi.mock('@opndrive/s3-api', () => ({
     }
     getBucketName() {
       return 'test-bucket';
+    }
+    fetchDirectoryStructure(prefix: string, maxKeys?: number) {
+      return s3.fetchDirectoryStructure(prefix, maxKeys);
     }
   },
   UploadManager: {
@@ -306,5 +321,80 @@ describe('logout must stop deletes it authorised', () => {
     });
 
     await waitFor(() => expect(signal.aborted).toBe(true));
+  });
+});
+
+/**
+ * Constructing a provider touches no network, so before this any credentials
+ * at all "connected" successfully. The failure surfaced later, on the
+ * dashboard's first listing, a page away from the form that could fix it.
+ */
+describe('credentials are proved before a session is built on them', () => {
+  function ConnectOnly() {
+    const { createSession } = useContext(AuthContext);
+    return (
+      <button
+        onClick={() =>
+          void createSession({
+            accessKeyId: 'AKIA_B',
+            secretAccessKey: 'secret-b',
+            region: 'us-east-1',
+            bucketName: 'b',
+            prefix: '',
+          } as never).catch(() => {})
+        }
+      >
+        connect
+      </button>
+    );
+  }
+
+  /** Same wait as renderProvider: children are a placeholder until restore settles. */
+  async function renderConnect() {
+    render(
+      <AuthProvider>
+        <ConnectOnly />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('connect')).toBeDefined());
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+  });
+
+  it('lists once against the bucket before persisting anything', async () => {
+    const listed = s3.fetchDirectoryStructure;
+
+    await renderConnect();
+
+    await act(async () => {
+      screen.getByText('connect').click();
+    });
+
+    await waitFor(() => expect(listed).toHaveBeenCalled());
+    // One object is enough to prove the call is allowed, and a bucket with a
+    // million keys should not pay for a full page to find that out.
+    expect(listed.mock.calls[0]?.[1]).toBe(1);
+  });
+
+  it('does not persist credentials the bucket rejected', async () => {
+    const denied = Object.assign(new Error('AccessDenied'), {
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+    s3.fetchDirectoryStructure.mockRejectedValue(denied);
+
+    await renderConnect();
+
+    await act(async () => {
+      screen.getByText('connect').click();
+    });
+
+    // A stored session that cannot list is a dashboard that cannot load, and
+    // the user is no longer on the page that could fix it.
+    await waitFor(() => expect(localStorage.getItem('s3_user_session')).toBeNull());
   });
 });
