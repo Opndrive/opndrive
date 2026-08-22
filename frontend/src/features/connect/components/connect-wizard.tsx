@@ -7,6 +7,7 @@ import type { Credentials } from '@opndrive/s3-api';
 import { useAuth } from '@/hooks/use-auth';
 import { Button, Combobox, SecretInput } from '@/shared/components/ui';
 import { type S3Provider, resolveEndpoint } from '@/config/providers';
+import { failureFrom, type ConnectionFailure } from '@/lib/s3/connection-failure';
 
 interface ConnectWizardProps {
   provider: S3Provider;
@@ -73,7 +74,7 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     endpoint: '',
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<ConnectionFailure | null>(null);
 
   const update = (patch: Partial<ConnectFormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -95,14 +96,18 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     if (blockedReason) return;
 
     setIsLoading(true);
-    setError(null);
+    setFailure(null);
 
     try {
       await createSession(buildCredentials(provider, form));
       router.push('/dashboard');
     } catch (caught) {
       console.error('Failed to create session:', caught);
-      setError('Those credentials did not work. Check the key, bucket and region, then try again.');
+
+      // Named rather than assumed. This said "those credentials did not work"
+      // whatever had happened, so a missing CORS rule or a mistyped region sent
+      // people back to re-check keys that were fine.
+      setFailure(failureFrom(caught));
     } finally {
       setIsLoading(false);
     }
@@ -224,13 +229,14 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
           )}
         </div>
 
-        {error && (
-          <p
+        {failure && (
+          <div
             role="alert"
-            className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger"
+            className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5"
           >
-            {error}
-          </p>
+            <p className="text-sm font-medium text-danger">{failure.title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{failure.detail}</p>
+          </div>
         )}
       </div>
 

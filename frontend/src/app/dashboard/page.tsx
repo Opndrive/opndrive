@@ -6,7 +6,8 @@ import { SuggestedFolders } from '@/features/dashboard/components/views/home/sug
 import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
-import { useDriveStore } from '@/context/data-context';
+import { useDriveStore, useRecentState } from '@/context/data-context';
+import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,8 +28,6 @@ export default function HomePage() {
   const router = useRouter();
   const {
     currentPrefix,
-    recentCache,
-    recentStatus,
     fetchRecentItems,
     loadMoreRecentFiles,
     loadMoreRecentFolders,
@@ -46,6 +45,10 @@ export default function HomePage() {
   const { isOpen, currentFiles, openMultiShareDialog, closeMultiShareDialog, generateShareLinks } =
     useMultiShareDialog();
   const { clearSelection, getSelectionCount } = useMultiSelectStore();
+
+  // Was the same collapsed flag the browse page had, written out a second
+  // time, with the same consequence: a failed fetch drew the skeleton.
+  const recent = useRecentState();
 
   // Every hook lives above the early returns below. They used to sit after
   // them, so React saw a different number of hooks depending on whether the
@@ -173,9 +176,6 @@ export default function HomePage() {
     }
   };
 
-  const isReady = currentPrefix ? recentStatus[currentPrefix] === 'ready' : false;
-  const recentData = currentPrefix ? recentCache[currentPrefix] : null;
-
   return (
     <>
       <DriveHero />
@@ -225,45 +225,50 @@ export default function HomePage() {
 
         <div className="relative z-0">
           {/* Show loading state or actual content */}
-          {currentPrefix && isReady && recentData ? (
-            <>
-              {/* Folders Section */}
-              {recentData.folders && recentData.folders.length > 0 && (
-                <SuggestedFolders
-                  folders={recentData.folders}
-                  onFolderClick={handleFolderClick}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                  onViewMore={handleLoadMoreFolders}
-                  hasMore={recentData.hasMoreFolders}
-                  isLoadingMore={isLoadingMoreFolders}
-                  className="mt-8"
-                />
-              )}
+          <AsyncBoundary
+            state={recent}
+            pending={
+              <div className="mt-8">
+                <DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />
+              </div>
+            }
+          >
+            {(recentData) => (
+              <>
+                {/* Folders Section */}
+                {recentData.folders && recentData.folders.length > 0 && (
+                  <SuggestedFolders
+                    folders={recentData.folders}
+                    onFolderClick={handleFolderClick}
+                    onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
+                    onViewMore={handleLoadMoreFolders}
+                    hasMore={recentData.hasMoreFolders}
+                    isLoadingMore={isLoadingMoreFolders}
+                    className="mt-8"
+                  />
+                )}
 
-              {/* Files Section - Always show to provide drop zone */}
-              {(recentData.folders && recentData.folders.length > 0) ||
-              (recentData.files && recentData.files.length > 0) ? (
-                <SuggestedFiles
-                  files={recentData.files || []}
-                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  onViewMore={handleLoadMoreFiles}
-                  hasMore={recentData.hasMoreFiles}
-                  isLoadingMore={isLoadingMoreFiles}
-                  className="mt-8"
-                />
-              ) : (
-                /* Empty state only when both folders and files are empty */
-                <EmptyStateDropzone
-                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  className="mt-8"
-                />
-              )}
-            </>
-          ) : (
-            <div className="mt-8">
-              <DashboardLoading showFolders={true} showFiles={true} fileLayout="grid" />
-            </div>
-          )}
+                {/* Files Section - Always show to provide drop zone */}
+                {(recentData.folders && recentData.folders.length > 0) ||
+                (recentData.files && recentData.files.length > 0) ? (
+                  <SuggestedFiles
+                    files={recentData.files || []}
+                    onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                    onViewMore={handleLoadMoreFiles}
+                    hasMore={recentData.hasMoreFiles}
+                    isLoadingMore={isLoadingMoreFiles}
+                    className="mt-8"
+                  />
+                ) : (
+                  /* Empty state only when both folders and files are empty */
+                  <EmptyStateDropzone
+                    onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                    className="mt-8"
+                  />
+                )}
+              </>
+            )}
+          </AsyncBoundary>
         </div>
       </div>
 

@@ -419,3 +419,127 @@ describe('ending the session', () => {
     expect(cachedKeys()).toEqual(['new-bucket.txt']);
   });
 });
+
+/**
+ * A failed listing used to be indistinguishable from one still in flight: the
+ * catch threw the error away and set a status that both dashboard pages read
+ * through `=== 'ready'`, so the "not ready" branch drew a loading skeleton that
+ * nothing would ever replace.
+ */
+describe('a listing that fails', () => {
+  function sdkError(name: string, httpStatusCode?: number) {
+    const error = new Error(name);
+    error.name = name;
+
+    return Object.assign(error, { $metadata: { httpStatusCode } });
+  }
+
+  it('records why, rather than discarding it', async () => {
+    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
+
+    await store().fetchData({ sync: false });
+
+    expect(useDriveStore.getState().status['/']).toBe('error');
+    expect(useDriveStore.getState().failures['/']?.kind).toBe('permissions');
+  });
+
+  it('keeps the reason specific enough to act on', async () => {
+    fetchDirectoryStructure.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await store().fetchData({ sync: false });
+
+    // A blocked CORS preflight and a wrong secret key are different problems
+    // fixed in different places, so they must not arrive as the same message.
+    expect(useDriveStore.getState().failures['/']?.kind).toBe('network');
+  });
+
+  it('forgets the reason once the folder loads', async () => {
+    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
+    await store().fetchData({ sync: false });
+    expect(useDriveStore.getState().failures['/']).toBeDefined();
+
+    // What Retry does. A stale reason left behind would render over a folder
+    // that had just come back fine.
+    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
+    await store().fetchData({ sync: true });
+
+    expect(useDriveStore.getState().status['/']).toBe('ready');
+    expect(useDriveStore.getState().failures['/']).toBeUndefined();
+  });
+
+  it('does not carry a failure into the next session', async () => {
+    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
+    await store().fetchData({ sync: false });
+
+    store().clearAllData();
+
+    expect(useDriveStore.getState().failures).toEqual({});
+  });
+
+  // The superseding rule already covered the status; the reason has to follow
+  // it, or a folder that loaded fine renders someone else's failure.
+  it('does not report a superseded failure over a newer result', async () => {
+    const slowFailure = deferred();
+    fetchDirectoryStructure.mockReturnValueOnce(slowFailure.promise);
+    const first = store().fetchData({ sync: true });
+
+    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
+    await store().fetchData({ sync: true });
+
+    slowFailure.reject(sdkError('AccessDenied', 403));
+    await first;
+
+    expect(useDriveStore.getState().status['/']).toBe('ready');
+    expect(useDriveStore.getState().failures['/']).toBeUndefined();
+  });
+});
+
+/**
+ * The directory listing and the recent-items list are two different requests
+ * against the same prefix, and refreshCurrentData runs them together. Their
+ * outcomes have to stay apart: one succeeding must not erase why the other
+ * failed, or the page that failed loses the specific reason it exists to show
+ * and falls back to "something went wrong".
+ */
+describe('two requests for one prefix', () => {
+  function sdkError(name: string, httpStatusCode?: number) {
+    const error = new Error(name);
+    error.name = name;
+
+    return Object.assign(error, { $metadata: { httpStatusCode } });
+  }
+
+  it('keeps the recent failure when the directory listing succeeds', async () => {
+    // What refreshCurrentData does: both in flight at once, same prefix.
+    fetchDirectoryStructure
+      .mockRejectedValueOnce(sdkError('AccessDenied', 403))
+      .mockResolvedValueOnce(page(['a.txt']));
+
+    await Promise.all([
+      store().fetchRecentItems({ sync: true, itemsPerType: 10 }),
+      store().fetchData({ sync: true }),
+    ]);
+
+    const state = useDriveStore.getState();
+
+    expect(state.recentStatus['/']).toBe('error');
+    // Not 'unknown': the recent list still has to be able to say it was denied.
+    expect(state.recentFailures['/']?.kind).toBe('permissions');
+  });
+
+  it('keeps the directory failure when the recent listing succeeds', async () => {
+    fetchDirectoryStructure
+      .mockResolvedValueOnce(page(['a.txt']))
+      .mockRejectedValueOnce(sdkError('NoSuchBucket', 404));
+
+    await Promise.all([
+      store().fetchRecentItems({ sync: true, itemsPerType: 10 }),
+      store().fetchData({ sync: true }),
+    ]);
+
+    const state = useDriveStore.getState();
+
+    expect(state.status['/']).toBe('error');
+    expect(state.failures['/']?.kind).toBe('bucket');
+  });
+});
