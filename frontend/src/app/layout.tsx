@@ -6,6 +6,7 @@ import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { headers } from 'next/headers';
 import { AnalyticsGate } from '@/components/analytics/analytics-gate';
+import { SITE_URL } from '@/config/links';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { Metadata } from 'next';
 
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
   authors: [{ name: 'Opndrive' }],
   creator: 'Opndrive',
   publisher: 'Opndrive',
-  metadataBase: new URL('https://www.opndrive.app'),
+  metadataBase: new URL(SITE_URL),
   alternates: {
     canonical: '/',
   },
@@ -43,7 +44,7 @@ export const metadata: Metadata = {
     title: 'Opndrive - Open-source S3 Compatible Storage Interface',
     description:
       'Open-source web interface for S3 compatible storage. Connect your own bucket and manage files with complete control over your data.',
-    url: 'https://www.opndrive.app',
+    url: SITE_URL,
     siteName: 'Opndrive',
     images: [
       {
@@ -101,8 +102,8 @@ export default async function RootLayout({
               '@context': 'https://schema.org',
               '@type': 'Organization',
               name: 'Opndrive',
-              url: 'https://www.opndrive.app',
-              logo: 'https://www.opndrive.app/logo.png',
+              url: SITE_URL,
+              logo: `${SITE_URL}/logo.png`,
               sameAs: ['https://github.com/opndrive/opndrive'],
               description: 'Open-source web interface for S3 compatible storage',
               foundingDate: '2024',
@@ -122,7 +123,7 @@ export default async function RootLayout({
               '@context': 'https://schema.org',
               '@type': 'WebApplication',
               name: 'Opndrive',
-              url: 'https://www.opndrive.app',
+              url: SITE_URL,
               applicationCategory: 'DeveloperApplication',
               operatingSystem: 'Web',
               offers: {

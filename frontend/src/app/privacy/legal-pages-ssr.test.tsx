@@ -83,11 +83,25 @@ describe('terms through the provider tree', () => {
   });
 });
 
+// /connect is a landing page we want ranked, so it has to server-render like
+// the legal pages do. Its provider children matter just as much, since those
+// are the pages carrying the high-intent keywords.
+describe('connect pages render for crawlers', () => {
+  it.each(['/connect', '/connect/cloudflare-r2', '/connect/minio', '/connect/aws-s3'])(
+    'renders real content on %s',
+    (pathname) => {
+      const html = renderThroughProviders(pathname, <div>connect content</div>);
+
+      expect(html).not.toContain('Loading...');
+      expect(html).toContain('connect content');
+    }
+  );
+});
+
 describe('every other route keeps the gate it had', () => {
   // The placeholder exists so the dashboard never renders without a session.
-  // Only the legal pages are exempt, and only because nothing on them reads
-  // auth state.
-  it.each(['/dashboard', '/dashboard/search', '/connect', '/'])(
+  // Only pages that must be readable before anyone has a session are exempt.
+  it.each(['/dashboard', '/dashboard/search', '/dashboard/settings', '/'])(
     'still shows the placeholder on %s',
     (pathname) => {
       const html = renderThroughProviders(pathname, <div>protected content</div>);
@@ -96,4 +110,11 @@ describe('every other route keeps the gate it had', () => {
       expect(html).not.toContain('protected content');
     }
   );
+
+  // A path that merely starts with the same letters is not a child route.
+  it('does not treat /connections as a connect route', () => {
+    const html = renderThroughProviders('/connections', <div>protected content</div>);
+
+    expect(html).toContain('Loading...');
+  });
 });

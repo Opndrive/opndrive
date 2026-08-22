@@ -65,6 +65,49 @@
   --community-diff-add: #1e8e3e;
   --community-diff-remove: #d93025;
 
+  /* Status colours used by the connect wizard stepper and badges */
+  --success: #1e8e3e;
+  --success-foreground: #ffffff;
+  --success-surface: #e6f4ea;
+
+  /* Error state for form validation and failed connections */
+  --danger: #d93025;
+  --danger-surface: #fce8e6;
+  --danger-border: #f6aea9;
+
+  /* Informational banner, softer than a warning and calmer than primary */
+  --info-surface: #e8f0fe;
+  --info-border: #d2e3fc;
+  --info-foreground: #174ea6;
+
+  /* A row resting inside a card. Needed because --muted and --card are the
+     same value in dark mode, so a muted row on a card is invisible there. */
+  --surface-sunken: #f8f9fa;
+
+  /* Wizard chrome: the step rail dots and connectors */
+  --step-track: #e8eaed;
+  --step-pending-border: #dadce0;
+
+  /* Storage provider brand marks. Fixed across themes, like --discord-brand,
+     because a brand colour is not a theme colour. The -soft variants are
+     alpha tints so they sit correctly on either background. */
+  --provider-aws: #ff9900;
+  --provider-aws-soft: rgba(255, 153, 0, 0.14);
+  --provider-r2: #f6821f;
+  --provider-r2-soft: rgba(246, 130, 31, 0.14);
+  --provider-wasabi: #00a651;
+  --provider-wasabi-soft: rgba(0, 166, 81, 0.14);
+  --provider-b2: #e21e29;
+  --provider-b2-soft: rgba(226, 30, 41, 0.14);
+  --provider-minio: #c72e49;
+  --provider-minio-soft: rgba(199, 46, 73, 0.14);
+  /* The custom-endpoint tile. No vendor, so no brand colour, and unlike the
+     five above it does follow the theme - it should read as part of our UI
+     rather than as a sixth logo. The glyph tracks --muted-foreground, which
+     var() resolves per theme; the tint is a neutral alpha that lifts on a dark
+     card and darkens on a light one. */
+  --provider-custom: var(--muted-foreground);
+  --provider-custom-soft: rgba(128, 134, 139, 0.16);
   /* The red the shadcn primitives (button, dropdown item, input) reach for.
      They shipped referencing it, but the palette never defined it, so every
      `bg-destructive` resolved to nothing and a delete button came out
@@ -96,6 +139,30 @@
   --color-community-live: var(--community-live);
   --color-community-diff-add: var(--community-diff-add);
   --color-community-diff-remove: var(--community-diff-remove);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-surface: var(--success-surface);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-border: var(--danger-border);
+  --color-info-surface: var(--info-surface);
+  --color-info-border: var(--info-border);
+  --color-info-foreground: var(--info-foreground);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-step-track: var(--step-track);
+  --color-step-pending-border: var(--step-pending-border);
+  --color-provider-aws: var(--provider-aws);
+  --color-provider-aws-soft: var(--provider-aws-soft);
+  --color-provider-r2: var(--provider-r2);
+  --color-provider-r2-soft: var(--provider-r2-soft);
+  --color-provider-wasabi: var(--provider-wasabi);
+  --color-provider-wasabi-soft: var(--provider-wasabi-soft);
+  --color-provider-b2: var(--provider-b2);
+  --color-provider-b2-soft: var(--provider-b2-soft);
+  --color-provider-minio: var(--provider-minio);
+  --color-provider-minio-soft: var(--provider-minio-soft);
+  --color-provider-custom: var(--provider-custom);
+  --color-provider-custom-soft: var(--provider-custom-soft);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --font-sans: var(--font-geist-sans);
@@ -152,6 +219,23 @@
   --community-live: #81c995;
   --community-diff-add: #81c995;
   --community-diff-remove: #f28b82;
+  /* Status, info and wizard chrome tuned for dark surfaces. Provider brand
+     marks are deliberately absent here: they stay fixed across themes. */
+  --success: #81c995;
+  --success-foreground: #202124;
+  --success-surface: rgba(129, 201, 149, 0.16);
+
+  --danger: #f28b82;
+  --danger-surface: rgba(242, 139, 130, 0.14);
+  --danger-border: rgba(242, 139, 130, 0.32);
+
+  --info-surface: rgba(138, 180, 248, 0.12);
+  --info-border: rgba(138, 180, 248, 0.28);
+  --info-foreground: #aecbfa;
+
+  --surface-sunken: #202124;
+  --step-track: #3c4043;
+  --step-pending-border: #5f6368;
 
   /* Pale enough that white text on it fails contrast, so the foreground flips
      dark here the way --primary-foreground does. */
@@ -210,6 +294,23 @@
     --community-live: #81c995;
     --community-diff-add: #81c995;
     --community-diff-remove: #f28b82;
+    /* Status, info and wizard chrome tuned for dark surfaces. Provider brand
+       marks are deliberately absent here: they stay fixed across themes. */
+    --success: #81c995;
+    --success-foreground: #202124;
+    --success-surface: rgba(129, 201, 149, 0.16);
+
+    --danger: #f28b82;
+    --danger-surface: rgba(242, 139, 130, 0.14);
+    --danger-border: rgba(242, 139, 130, 0.32);
+
+    --info-surface: rgba(138, 180, 248, 0.12);
+    --info-border: rgba(138, 180, 248, 0.28);
+    --info-foreground: #aecbfa;
+
+    --surface-sunken: #202124;
+    --step-track: #3c4043;
+    --step-pending-border: #5f6368;
     --destructive: #f28b82;
     --destructive-foreground: #202124;
   }
