@@ -8,7 +8,7 @@ import { FaRegCircle, FaUserAlt } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
-import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { formatTimeWithTooltip, NO_DATE } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent } from './item-keyboard';
 
@@ -189,7 +189,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
 
         <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
           <span className="text-xs sm:text-sm text-muted-foreground" title={timeInfo.tooltip}>
-            {timeInfo.display}
+            {timeInfo.display || NO_DATE}
           </span>
         </div>
 

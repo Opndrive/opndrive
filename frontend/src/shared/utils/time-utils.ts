@@ -70,3 +70,18 @@ export function formatTimeWithTooltip(date: Date | undefined): {
 
   return { display, tooltip };
 }
+
+/**
+ * What a row shows in a date column when the listing carries no date.
+ *
+ * S3 has no creation date to fall back on - objects carry `LastModified` and
+ * nothing else - and folders are not objects at all. A delimited listing
+ * returns them as `CommonPrefixes`, which hold the prefix string and no
+ * metadata whatsoever, so there is nothing to read even when a folder marker
+ * object exists in the bucket.
+ *
+ * So the rule is the same for both kinds: print the date when the listing
+ * actually has one, and say "not applicable" when it does not, the way the size
+ * column already does for folders. A blank cell just looks broken.
+ */
+export const NO_DATE = '—';
