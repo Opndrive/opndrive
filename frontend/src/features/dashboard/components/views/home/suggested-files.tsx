@@ -31,6 +31,15 @@ interface SuggestedFilesProps {
    * the one thing that page is for. Absent these props the heading is plain
    * text, exactly as it was.
    */
+  /**
+   * What this section is called.
+   *
+   * These components were written for Home and then reused wholesale by My
+   * Drive, heading and all - so the browse tree announced the literal contents
+   * of a bucket as "Suggested files". Nothing about a folder listing is a
+   * suggestion. Home keeps the suggesting; browse passes its own plain label.
+   */
+  title?: string;
   sortDirection?: SortDirection;
   onToggleSort?: () => void;
   /** False while the folder still has pages the listing has not fetched. */
@@ -47,6 +56,7 @@ export function SuggestedFiles({
   className = '',
   hideTitle = false,
   onFilesDropped,
+  title = 'Suggested files',
   sortDirection,
   onToggleSort,
   canSortDescending = true,
@@ -180,7 +190,7 @@ export function SuggestedFiles({
       )}
       {!hideTitle ? (
         <div className="flex items-center justify-between mb-3">
-          <AriaLabel label="Suggested files - Click to expand/collapse" position="top">
+          <AriaLabel label={`${title} - Click to expand/collapse`} position="top">
             <button
               className="
                 flex items-center cursor-pointer gap-2 p-2
@@ -205,7 +215,7 @@ export function SuggestedFiles({
                   d="M9 5l7 7-7 7"
                 />
               </svg>
-              Suggested files
+              {title}
             </button>
           </AriaLabel>
 
@@ -247,7 +257,7 @@ export function SuggestedFiles({
                     )}
                   </div>
                   <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
-                    Last Opened
+                    Last modified
                   </div>
                   <div className="hidden lg:block lg:col-span-2 xl:col-span-2">Owner</div>
                   <div className="hidden xl:block xl:col-span-2">Size</div>
@@ -347,12 +357,32 @@ function SortByNameButton({
         blocked ? 'This folder has more to load, so it cannot be sorted Z to A yet.' : undefined
       }
       className={cn(
-        'group -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium transition-colors',
-        blocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:text-foreground'
+        // Fills the column rather than wrapping the word. A target the size of
+        // the label is a target you have to aim at; the whole cell lighting up
+        // is what tells you the heading is pressable at all.
+        // w-full, not a negative-margin bleed: the hover surface should stop at
+        // the column boundary, or it reaches under "Last modified" and the two
+        // headings look like one control.
+        'group flex w-full items-center gap-1.5 rounded-t-lg px-2 py-1.5 -ml-2 text-left font-medium transition-colors',
+        blocked
+          ? 'cursor-not-allowed opacity-60'
+          : 'cursor-pointer hover:bg-secondary/70 hover:text-foreground'
       )}
     >
       Name
-      <Arrow className="h-3.5 w-3.5" aria-hidden="true" />
+      {/* A filled disc, not a bare glyph. At this size a 1px stroke on a muted
+          foreground is nearly invisible against the header, which is how the
+          sort state ends up unreadable at a glance. */}
+      <span
+        className={cn(
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors',
+          blocked
+            ? 'bg-muted-foreground/30 text-background'
+            : 'bg-muted-foreground/70 text-background group-hover:bg-primary group-hover:text-primary-foreground'
+        )}
+      >
+        <Arrow className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+      </span>
     </button>
   );
 }

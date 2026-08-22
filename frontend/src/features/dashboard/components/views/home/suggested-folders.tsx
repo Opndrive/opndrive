@@ -19,6 +19,8 @@ interface SuggestedFoldersProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
+  /** See the note on SuggestedFiles: browse is not showing suggestions. */
+  title?: string;
   onFilesDroppedToFolder?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
@@ -31,6 +33,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   isLoadingMore = false,
   className = '',
   hideTitle = false,
+  title = 'Suggested folders',
   onFilesDroppedToFolder,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -93,7 +96,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
                   />
                 </svg>
               </div>
-              <span className="text-muted-foreground">Suggested Folders</span>
+              <span className="text-muted-foreground">{title}</span>
             </div>
           </button>
         </AriaLabel>

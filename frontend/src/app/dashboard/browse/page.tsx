@@ -417,7 +417,7 @@ function BrowsePageContent() {
                   onFolderMenuClick={handleFolderMenuClick}
                   onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                   className="mt-8"
-                  hideTitle={pathSegments.length > 0}
+                  title="Folders"
                 />
 
                 {/* Files */}
@@ -427,7 +427,7 @@ function BrowsePageContent() {
                   onFileAction={handleFileAction}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                   className="mt-8"
-                  hideTitle={pathSegments.length > 0}
+                  title="Files"
                   sortDirection={sortDirection}
                   onToggleSort={toggleSort}
                   canSortDescending={sortableBothWays}
