@@ -164,15 +164,19 @@ const STORAGE_KEY = 's3_user_session';
  * HTML and only shows real content once JavaScript has run.
  *
  * That is tolerable for the dashboard, which is useless without a session
- * anyway. It is not tolerable for the legal pages: a privacy policy has to be
- * readable and indexable on its own, and these have no session to wait for.
- * Nothing on them reads auth state and no redirect targets them, so skipping
- * the gate here changes nothing except that the content actually renders.
+ * anyway. It is not tolerable for a page that has to be read before anyone has
+ * a session: a privacy policy has to be readable and indexable on its own, and
+ * /connect is a landing page we actively want ranked. A crawler that is served
+ * `Loading...` indexes `Loading...`.
+ *
+ * Matching covers children, so /connect/cloudflare-r2 is public too.
  */
-const PUBLIC_ROUTES = ['/privacy', '/terms'];
+const PUBLIC_ROUTES = ['/privacy', '/terms', '/connect'];
 
 function isPublicRoute(pathname: string | null): boolean {
-  return pathname !== null && PUBLIC_ROUTES.includes(pathname);
+  if (pathname === null) return false;
+
+  return PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 }
 
 /**
@@ -252,7 +256,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             // Only redirect to dashboard if user is on home page/connect page
             // Otherwise, stay on current route (preserve the URL after refresh)
-            if (pathname === '/' || pathname === '/connect') {
+            // Provider pages count as /connect here. Landing on
+            // /connect/cloudflare-r2 with a live session should behave the same
+            // as landing on /connect with one.
+            if (pathname === '/' || pathname === '/connect' || pathname.startsWith('/connect/')) {
               router.push('/dashboard');
             }
           } else {
