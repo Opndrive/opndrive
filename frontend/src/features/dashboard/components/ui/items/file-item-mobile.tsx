@@ -40,23 +40,32 @@ export function FileItemMobile({
   const [isLongPress, setIsLongPress] = useState(false);
   const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
-  const handleMenuClick = (event: React.MouseEvent) => {
-    // The menu opens itself. This only keeps the row underneath from
-    // reading the same click as opening the item.
-    event.stopPropagation();
+  /**
+   * Selecting runs on pointer down rather than click, because that is when the
+   * menu itself opens: Radix's trigger calls onOpenToggle from onPointerDown.
+   * Selecting on click left the multi-select bar trailing the menu by the whole
+   * length of the press - the menu was already unfolding while the row was
+   * still unselected.
+   *
+   * Not on touch. There a tap opens an item and selection sits behind a long
+   * press, and once anything is selected a tap selects instead of opening - so
+   * selecting here would quietly change what every later tap does.
+   */
+  const handleMenuPointerDown = (event: React.PointerEvent) => {
+    // The same guard Radix puts on its own trigger. A secondary click, or a
+    // macOS ctrl-click, does not open the menu, so it must not select either.
+    if (event.button !== 0 || event.ctrlKey) return;
 
-    // Opening the menu selects the item, the same way a plain click on the
-    // row does: no ctrl or shift, so it replaces whatever was selected
-    // before. Multi-select stays a keyboard gesture.
-    //
-    // Not on touch. There a tap opens an item and selection sits behind a
-    // long press, and once anything is selected a tap selects instead of
-    // opening - so selecting here would quietly change what every later
-    // tap does.
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
       selectItem(file, 'file', index, false, false, allFiles);
     }
+  };
+
+  const handleMenuClick = (event: React.MouseEvent) => {
+    // Still load-bearing after the selection moved off it: the row opens the
+    // item on click, so the click that opened the menu must not reach it.
+    event.stopPropagation();
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -244,6 +253,7 @@ export function FileItemMobile({
           <button
             className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
             aria-label={`More actions for ${file.name}`}
+            onPointerDown={handleMenuPointerDown}
             onClick={handleMenuClick}
           >
             <HiOutlineDotsVertical size={20} className="text-muted-foreground" />

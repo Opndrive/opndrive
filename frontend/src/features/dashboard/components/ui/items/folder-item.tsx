@@ -142,24 +142,32 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     onClick?.(folder);
   };
 
-  const handleMenuClick = (event: React.MouseEvent) => {
-    // The menu opens itself. This only keeps the row underneath from
-    // reading the same click as opening the item.
-    event.stopPropagation();
+  /**
+   * Selecting runs on pointer down rather than click, because that is when the
+   * menu itself opens: Radix's trigger calls onOpenToggle from onPointerDown.
+   * Selecting on click left the multi-select bar trailing the menu by the whole
+   * length of the press - the menu was already unfolding while the row was
+   * still unselected.
+   *
+   * Not on touch. There a tap opens an item and selection sits behind a long
+   * press, and once anything is selected a tap selects instead of opening - so
+   * selecting here would quietly change what every later tap does.
+   */
+  const handleMenuPointerDown = (event: React.PointerEvent) => {
+    // The same guard Radix puts on its own trigger. A secondary click, or a
+    // macOS ctrl-click, does not open the menu, so it must not select either.
+    if (event.button !== 0 || event.ctrlKey) return;
 
-    // Opening the menu selects the item, the same way a plain click on the
-    // row does: no ctrl or shift, so it replaces whatever was selected
-    // before. Multi-select stays a keyboard gesture.
-    //
-    // Not on touch. There a tap opens an item and selection sits behind a
-    // long press, and once anything is selected a tap selects instead of
-    // opening - so selecting here would quietly change what every later
-    // tap does.
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
       selectItem(folder, 'folder', index, false, false, allFolders);
     }
+  };
 
+  const handleMenuClick = (event: React.MouseEvent) => {
+    // Still load-bearing after the selection moved off it: the row opens the
+    // item on click, so the click that opened the menu must not reach it.
+    event.stopPropagation();
     onMenuClick?.(folder, event);
   };
 
@@ -231,6 +239,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
                 text-muted-foreground hover:text-foreground
               "
               aria-label={`More actions for ${folder.name}`}
+              onPointerDown={handleMenuPointerDown}
               onClick={handleMenuClick}
             >
               <MoreVerticalIcon size={16} />

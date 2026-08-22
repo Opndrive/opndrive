@@ -7,6 +7,18 @@ export interface CustomAriaLabelProps {
   label: string;
   children: ReactNode;
   position?: 'top' | 'bottom' | 'left' | 'right';
+  /**
+   * How long the pointer has to rest before the tooltip appears.
+   *
+   * 700ms rather than the 500 it was: at 500 the tooltip arrived while the
+   * user was still travelling to the button they had already decided to
+   * click, so it read as the UI interrupting rather than helping. Long
+   * enough now that resting on a control is a deliberate act.
+   *
+   * Keyboard focus deliberately ignores this and shows at once - for
+   * someone tabbing through, the label is the only thing identifying where
+   * they have landed.
+   */
   delay?: number;
   multiline?: boolean;
   disabled?: boolean;
@@ -15,11 +27,64 @@ export interface CustomAriaLabelProps {
   focusableWrapper?: boolean;
 }
 
+/**
+ * Module scope, not a closure over `position`.
+ *
+ * As an inner function it was rebuilt every render, so the effect that
+ * repositions on scroll could not list it as a dependency without
+ * resubscribing on every render either. It reads nothing but its arguments,
+ * so hoisting it out makes it stable and the dependency question disappears.
+ */
+function calculateOptimalPosition(
+  triggerRect: DOMRect,
+  tooltipRect: DOMRect,
+  viewport: { width: number; height: number },
+  position: 'top' | 'bottom' | 'left' | 'right'
+) {
+  const spacing = 8;
+  const positions = [
+    {
+      name: 'top' as const,
+      x: triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2,
+      y: triggerRect.top - tooltipRect.height - spacing,
+      fits: triggerRect.top - tooltipRect.height - spacing >= spacing,
+    },
+    {
+      name: 'bottom' as const,
+      x: triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2,
+      y: triggerRect.bottom + spacing,
+      fits: triggerRect.bottom + tooltipRect.height + spacing <= viewport.height - spacing,
+    },
+    {
+      name: 'left' as const,
+      x: triggerRect.left - tooltipRect.width - spacing,
+      y: triggerRect.top + triggerRect.height / 2 - tooltipRect.height / 2,
+      fits: triggerRect.left - tooltipRect.width - spacing >= spacing,
+    },
+    {
+      name: 'right' as const,
+      x: triggerRect.right + spacing,
+      y: triggerRect.top + triggerRect.height / 2 - tooltipRect.height / 2,
+      fits: triggerRect.right + tooltipRect.width + spacing <= viewport.width - spacing,
+    },
+  ];
+
+  const requested = positions.find((p) => p.name === position && p.fits);
+  if (requested) return requested;
+
+  const fallback = positions.find((p) => p.fits) ?? positions[0];
+  return {
+    ...fallback,
+    x: Math.max(spacing, Math.min(fallback.x, viewport.width - tooltipRect.width - spacing)),
+    y: Math.max(spacing, Math.min(fallback.y, viewport.height - tooltipRect.height - spacing)),
+  };
+}
+
 export function CustomAriaLabel({
   label,
   children,
   position = 'top',
-  delay = 500,
+  delay = 700,
   multiline = false,
   disabled = false,
   className = '',
@@ -63,7 +128,7 @@ export function CustomAriaLabel({
       const triggerRect = triggerRef.current.getBoundingClientRect();
       const tooltipRect = temp.getBoundingClientRect();
       const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
+      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport, position);
       document.body.removeChild(temp);
       setTooltipPosition({ x, y });
     }
@@ -120,7 +185,7 @@ export function CustomAriaLabel({
       const triggerRect = triggerRef.current.getBoundingClientRect();
       const tooltipRect = tooltipRef.current.getBoundingClientRect();
       const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport);
+      const { x, y } = calculateOptimalPosition(triggerRect, tooltipRect, viewport, position);
       setTooltipPosition({ x, y });
     };
     window.addEventListener('scroll', update, true);
@@ -184,49 +249,6 @@ export function CustomAriaLabel({
   );
 
   // ---- positioning helper (unchanged from your approach) ----
-  function calculateOptimalPosition(
-    triggerRect: DOMRect,
-    tooltipRect: DOMRect,
-    viewport: { width: number; height: number }
-  ) {
-    const spacing = 8;
-    const positions = [
-      {
-        name: 'top' as const,
-        x: triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2,
-        y: triggerRect.top - tooltipRect.height - spacing,
-        fits: triggerRect.top - tooltipRect.height - spacing >= spacing,
-      },
-      {
-        name: 'bottom' as const,
-        x: triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2,
-        y: triggerRect.bottom + spacing,
-        fits: triggerRect.bottom + tooltipRect.height + spacing <= viewport.height - spacing,
-      },
-      {
-        name: 'left' as const,
-        x: triggerRect.left - tooltipRect.width - spacing,
-        y: triggerRect.top + triggerRect.height / 2 - tooltipRect.height / 2,
-        fits: triggerRect.left - tooltipRect.width - spacing >= spacing,
-      },
-      {
-        name: 'right' as const,
-        x: triggerRect.right + spacing,
-        y: triggerRect.top + triggerRect.height / 2 - tooltipRect.height / 2,
-        fits: triggerRect.right + tooltipRect.width + spacing <= viewport.width - spacing,
-      },
-    ];
-
-    const requested = positions.find((p) => p.name === position && p.fits);
-    if (requested) return requested;
-
-    const fallback = positions.find((p) => p.fits) ?? positions[0];
-    return {
-      ...fallback,
-      x: Math.max(spacing, Math.min(fallback.x, viewport.width - tooltipRect.width - spacing)),
-      y: Math.max(spacing, Math.min(fallback.y, viewport.height - tooltipRect.height - spacing)),
-    };
-  }
 }
 
 // Convenience wrapper
