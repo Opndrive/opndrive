@@ -13,7 +13,7 @@
     "@vercel/analytics": "^2.0.1",
     "estree-util-value-to-estree": "^3.5.0",
     "lucide-react": "^1.27.0",
-    "mermaid": "^11.16.1",
+    "mermaid": "^11.17.0",
     "next": "15.5.23",
     "nextra": "^4.6.1",
     "nextra-theme-docs": "^4.6.1",
