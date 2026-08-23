@@ -1,22 +1,24 @@
 export interface FolderNavigationParams {
   prefix?: string;
-  key?: string;
   maxKeys?: number;
   continuationToken?: string;
 }
 
 /**
  * Generate URL for folder navigation with query parameters
+ *
+ * There used to be a `key` parameter alongside `prefix`, carrying the folder's
+ * own name. It was never read for its value - the breadcrumb only tested
+ * whether it existed - and every value it could hold is the last segment of the
+ * prefix sitting beside it. So it duplicated data that is transmitted on every
+ * navigation, for nothing, in an app whose whole privacy story is about keeping
+ * user paths out of query strings.
  */
 export function generateFolderUrl(params: FolderNavigationParams): string {
   const urlParams = new URLSearchParams();
 
   if (params.prefix) {
     urlParams.set('prefix', params.prefix);
-  }
-
-  if (params.key) {
-    urlParams.set('key', params.key);
   }
 
   if (params.maxKeys) {
@@ -36,7 +38,6 @@ export function generateFolderUrl(params: FolderNavigationParams): string {
 export function parseFolderParams(searchParams: URLSearchParams): FolderNavigationParams {
   return {
     prefix: searchParams.get('prefix') || undefined,
-    key: searchParams.get('key') || undefined,
     maxKeys: searchParams.get('maxKeys') ? parseInt(searchParams.get('maxKeys')!) : undefined,
     continuationToken: searchParams.get('token') || undefined,
   };
@@ -90,10 +91,7 @@ export function buildFolderClickUrl(
       ? `${folderName}/`
       : `${currentPrefix}${folderName}/`;
 
-  return generateFolderUrl({
-    prefix: newPrefix,
-    key: folderName, // Use folder name as key as per backend requirement
-  });
+  return generateFolderUrl({ prefix: newPrefix });
 }
 
 /**
@@ -102,7 +100,6 @@ export function buildFolderClickUrl(
 export function buildBreadcrumbClickUrl(pathSegments: string[], targetIndex: number): string {
   const targetSegments = pathSegments.slice(0, targetIndex + 1);
   const prefix = pathSegmentsToPrefix(targetSegments);
-  const key = targetSegments.length > 0 ? targetSegments[targetSegments.length - 1] : undefined;
 
-  return generateFolderUrl({ prefix, key });
+  return generateFolderUrl({ prefix });
 }

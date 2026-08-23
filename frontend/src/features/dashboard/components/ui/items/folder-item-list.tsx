@@ -143,6 +143,21 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
     }
   };
 
+  /**
+   * The keyboard's way in.
+   *
+   * Radix opens the menu from onKeyDown and calls preventDefault, which stops
+   * the browser synthesising the click the mouse path selects on - so tabbing
+   * to the button and pressing Enter opened a menu over an unselected row, and
+   * the toolbar never appeared to say what it would act on. Same keys Radix
+   * itself opens on.
+   */
+  const handleMenuKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowDown') return;
+
+    selectItem(folder, 'folder', index, false, false, allItems);
+  };
+
   const handleMenuClick = (event: React.MouseEvent) => {
     // The row opens the folder on click, so the click that opened the menu must
     // not reach it.
@@ -218,6 +233,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
                 className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
                 aria-label={`More actions for ${folder.name}`}
                 onPointerDown={handleMenuPointerDown}
+                onKeyDown={handleMenuKeyDown}
                 onClick={handleMenuClick}
               >
                 <MoreVerticalIcon size={16} className="text-muted-foreground" />

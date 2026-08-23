@@ -256,10 +256,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             // Only redirect to dashboard if user is on home page/connect page
             // Otherwise, stay on current route (preserve the URL after refresh)
-            // Provider pages count as /connect here. Landing on
-            // /connect/cloudflare-r2 with a live session should behave the same
-            // as landing on /connect with one.
-            if (pathname === '/' || pathname === '/connect' || pathname.startsWith('/connect/')) {
+            // The provider pages are deliberately NOT in here. They exist to
+            // be found in search, and bouncing a visitor who happens to have a
+            // session means the page Google indexed is the one page they never
+            // see. It also left someone with a bucket already connected unable
+            // to reach the form for a second one.
+            //
+            // `/` and a bare `/connect` still redirect: those are entry points
+            // with nothing to read, so sending a signed-in user onward is the
+            // helpful thing rather than the disruptive one.
+            if (pathname === '/' || pathname === '/connect') {
               router.push('/dashboard');
             }
           } else {

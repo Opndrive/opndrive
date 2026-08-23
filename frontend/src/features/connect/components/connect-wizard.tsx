@@ -198,7 +198,9 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
             required={provider.requiresCustomEndpoint}
             spellCheck={false}
             className={FIELD}
-            placeholder={provider.endpoint || 'https://storage.example.com'}
+            placeholder={
+              provider.endpointPlaceholder ?? provider.endpoint ?? 'https://storage.example.com'
+            }
             value={form.endpoint}
             onChange={(event) => update({ endpoint: event.target.value })}
           />
@@ -232,9 +234,9 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
         {failure && (
           <div
             role="alert"
-            className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5"
+            className="rounded-lg border border-destructive-border bg-destructive-surface px-3 py-2.5"
           >
-            <p className="text-sm font-medium text-danger">{failure.title}</p>
+            <p className="text-sm font-medium text-destructive">{failure.title}</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{failure.detail}</p>
           </div>
         )}

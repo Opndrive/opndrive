@@ -137,10 +137,7 @@ export default function HomePage() {
   const handleFolderClick = (folder: Folder) => {
     if (folder.Prefix && folder.name) {
       // Navigate to the folder using the enhanced browse route
-      const url = generateFolderUrl({
-        prefix: `${folder.name}/`,
-        key: folder.name,
-      });
+      const url = generateFolderUrl({ prefix: `${folder.name}/` });
       router.push(url);
     }
   };

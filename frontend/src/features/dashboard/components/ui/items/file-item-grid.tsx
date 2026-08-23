@@ -60,6 +60,21 @@ export function FileItemGrid({
     }
   };
 
+  /**
+   * The keyboard's way in.
+   *
+   * Radix opens the menu from onKeyDown and calls preventDefault, which stops
+   * the browser synthesising the click the mouse path selects on - so tabbing
+   * to the button and pressing Enter opened a menu over an unselected row, and
+   * the toolbar never appeared to say what it would act on. Same keys Radix
+   * itself opens on.
+   */
+  const handleMenuKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowDown') return;
+
+    selectItem(file, 'file', index, false, false, allFiles);
+  };
+
   const handleMenuClick = (event: React.MouseEvent) => {
     // Still load-bearing after the selection moved off it: the row opens the
     // item on click, so the click that opened the menu must not reach it.
@@ -222,6 +237,7 @@ export function FileItemGrid({
                 className="p-1 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
                 aria-label={`More actions for ${file.name}`}
                 onPointerDown={handleMenuPointerDown}
+                onKeyDown={handleMenuKeyDown}
                 onClick={handleMenuClick}
               >
                 <HiOutlineDotsVertical size={18} className=" text-muted-foreground" />
