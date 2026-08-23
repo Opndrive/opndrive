@@ -31,42 +31,44 @@ type RecentDataWithCache = RecentData & {
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * One request's outcome, held as a single value.
+ *
+ * Status and reason used to live in separate maps keyed by the same prefix, and
+ * nothing forced them to agree. That is not theoretical: with one shared
+ * failures map, the directory listing finishing erased why the recent list had
+ * failed, and the recent list fell back to a generic "something went wrong".
+ * Splitting the map per request kind fixed that instance without fixing the
+ * shape - four maps that must stay in step are still four maps that can fall
+ * out of step.
+ *
+ * Together they cannot drift: a reason is only ever written with the status it
+ * explains, and replacing the status replaces the reason with it.
+ */
+type RequestState = {
+  status: Status;
+  /** Only meaningful with status 'error'. Cleared by any other status. */
+  failure?: ConnectionFailure;
+};
+
 type Store = {
   apiS3: BYOS3ApiProvider | null;
   setApiS3: (api: BYOS3ApiProvider) => void;
   cache: Record<string, PrefixData>;
   recentCache: Record<string, RecentDataWithCache>;
-  status: Record<string, Status>;
-  recentStatus: Record<string, Status>;
+  directory: Record<string, RequestState>;
+  recent: Record<string, RequestState>;
   loadMoreStatus: Record<string, Status>;
-  /**
-   * Why the last request for a key failed, one map per request kind.
-   *
-   * The catch blocks below used to be bare `catch {}`, so the reason was gone
-   * before anyone could render it - which is half of why a failed listing was
-   * indistinguishable from one still loading.
-   *
-   * Split the same way `status` and `recentStatus` are, and for a sharper
-   * reason: `refreshCurrentData` runs both requests against the same prefix at
-   * once. Sharing one map by prefix meant the directory listing succeeding
-   * erased why the recent list had just failed, and the recent list then fell
-   * back to a generic "something went wrong" - the exact vagueness this change
-   * exists to remove. Each status setter owns its own map, so a status and its
-   * reason cannot drift apart.
-   */
-  failures: Record<string, ConnectionFailure>;
-  recentFailures: Record<string, ConnectionFailure>;
   currentPrefix: string | null;
   rootPrefix: string | null;
 
   setPrefixData: (prefix: string, data: PrefixData) => void;
   setRecentData: (prefix: string, data: RecentDataWithCache) => void;
   setCurrentPrefix: (prefix: string) => void;
-  setStatus: (prefix: string, s: Status) => void;
-  setRecentStatus: (prefix: string, s: Status) => void;
+  /** Writes a status and its reason as one value. */
+  setDirectoryState: (prefix: string, status: Status, failure?: ConnectionFailure) => void;
+  setRecentState: (prefix: string, status: Status, failure?: ConnectionFailure) => void;
   setLoadMoreStatus: (prefix: string, s: Status) => void;
-  setFailure: (prefix: string, failure: ConnectionFailure) => void;
-  setRecentFailure: (prefix: string, failure: ConnectionFailure) => void;
   setRootPrefix: (prefix: string) => void;
   clearAllData: () => void;
   removeDeletedFolder: (prefix: string) => void;
@@ -294,11 +296,9 @@ export const useDriveStore = create<Store>((set, get) => ({
   apiS3: null,
   cache: {},
   recentCache: {},
-  status: {},
-  recentStatus: {},
+  directory: {},
+  recent: {},
   loadMoreStatus: {},
-  failures: {},
-  recentFailures: {},
   rootPrefix: null,
   currentPrefix: null,
 
@@ -314,29 +314,17 @@ export const useDriveStore = create<Store>((set, get) => ({
       recentCache: { ...state.recentCache, [prefix]: data },
     })),
 
-  setStatus: (prefix, s) =>
-    set((state) => {
-      // A key that is loading or ready has no current failure. Leaving the old
-      // one behind would let a retry that succeeded still render its reason.
-      const failures = { ...state.failures };
-      if (s !== 'error') delete failures[prefix];
+  setDirectoryState: (prefix, status, failure) =>
+    set((state) => ({
+      // The reason travels with the status, so a stale one cannot outlive the
+      // failure it describes - a retry that succeeded used to keep rendering it.
+      directory: { ...state.directory, [prefix]: { status, failure } },
+    })),
 
-      return { status: { ...state.status, [prefix]: s }, failures };
-    }),
-
-  setFailure: (prefix, failure) =>
-    set((state) => ({ failures: { ...state.failures, [prefix]: failure } })),
-
-  setRecentFailure: (prefix, failure) =>
-    set((state) => ({ recentFailures: { ...state.recentFailures, [prefix]: failure } })),
-
-  setRecentStatus: (prefix, s) =>
-    set((state) => {
-      const recentFailures = { ...state.recentFailures };
-      if (s !== 'error') delete recentFailures[prefix];
-
-      return { recentStatus: { ...state.recentStatus, [prefix]: s }, recentFailures };
-    }),
+  setRecentState: (prefix, status, failure) =>
+    set((state) => ({
+      recent: { ...state.recent, [prefix]: { status, failure } },
+    })),
 
   setLoadMoreStatus: (prefix, s) =>
     set((state) => ({ loadMoreStatus: { ...state.loadMoreStatus, [prefix]: s } })),
@@ -360,11 +348,9 @@ export const useDriveStore = create<Store>((set, get) => ({
       apiS3: null,
       cache: {},
       recentCache: {},
-      status: {},
-      recentStatus: {},
+      directory: {},
+      recent: {},
       loadMoreStatus: {},
-      failures: {},
-      recentFailures: {},
       currentPrefix: null,
       rootPrefix: null,
     });
@@ -394,8 +380,8 @@ export const useDriveStore = create<Store>((set, get) => ({
     for (const map of [
       current.cache,
       current.recentCache,
-      current.status,
-      current.recentStatus,
+      current.directory,
+      current.recent,
       current.loadMoreStatus,
     ]) {
       for (const key of Object.keys(map)) {
@@ -413,15 +399,15 @@ export const useDriveStore = create<Store>((set, get) => ({
     set((state) => {
       const cache = { ...state.cache };
       const recentCache = { ...state.recentCache };
-      const status = { ...state.status };
-      const recentStatus = { ...state.recentStatus };
+      const directory = { ...state.directory };
+      const recent = { ...state.recent };
       const loadMoreStatus = { ...state.loadMoreStatus };
 
       for (const key of gone) {
         delete cache[key];
         delete recentCache[key];
-        delete status[key];
-        delete recentStatus[key];
+        delete directory[key];
+        delete recent[key];
         delete loadMoreStatus[key];
       }
 
@@ -439,17 +425,17 @@ export const useDriveStore = create<Store>((set, get) => ({
       // 'loading' for good: a listing stuck behind its skeleton, and a "Show
       // more" that refuses to run again because it thinks one is still going.
       // What is already cached is what there is to show, so say so.
-      if (status[parentKey] === 'loading') {
-        if (cache[parentKey]) status[parentKey] = 'ready';
-        else delete status[parentKey];
+      if (directory[parentKey]?.status === 'loading') {
+        if (cache[parentKey]) directory[parentKey] = { status: 'ready' };
+        else delete directory[parentKey];
       }
-      if (recentStatus[parentKey] === 'loading') {
-        if (recentCache[parentKey]) recentStatus[parentKey] = 'ready';
-        else delete recentStatus[parentKey];
+      if (recent[parentKey]?.status === 'loading') {
+        if (recentCache[parentKey]) recent[parentKey] = { status: 'ready' };
+        else delete recent[parentKey];
       }
       if (loadMoreStatus[parentKey] === 'loading') delete loadMoreStatus[parentKey];
 
-      return { cache, recentCache, status, recentStatus, loadMoreStatus };
+      return { cache, recentCache, directory, recent, loadMoreStatus };
     });
 
     // The search cache is deliberately left alone. clearCache also drops the
@@ -460,16 +446,8 @@ export const useDriveStore = create<Store>((set, get) => ({
   },
 
   fetchData: async (opts = { sync: false }) => {
-    const {
-      apiS3,
-      currentPrefix,
-      rootPrefix,
-      status,
-      cache,
-      setPrefixData,
-      setStatus,
-      setFailure,
-    } = get();
+    const { apiS3, currentPrefix, rootPrefix, directory, cache, setPrefixData, setDirectoryState } =
+      get();
 
     if (!apiS3) return;
 
@@ -482,7 +460,7 @@ export const useDriveStore = create<Store>((set, get) => ({
     const keyPrefix = formattedPrefix === '' ? '/' : formattedPrefix;
 
     // Avoid duplicate concurrent fetches unless forced by sync
-    const currStatus = status[keyPrefix];
+    const currStatus = directory[keyPrefix]?.status;
 
     if (currStatus === 'ready' && !opts.sync) return;
 
@@ -492,7 +470,7 @@ export const useDriveStore = create<Store>((set, get) => ({
     // Don't auto-refetch just because isTruncated is true - let the user decide
     // with the "Show More" button.
     if (currentData && !opts.sync) {
-      if (currStatus !== 'ready') setStatus(keyPrefix, 'ready');
+      if (currStatus !== 'ready') setDirectoryState(keyPrefix, 'ready');
       return;
     }
 
@@ -504,7 +482,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       const requestId = claimRequestId(latestRequestId, keyPrefix);
 
       try {
-        setStatus(keyPrefix, 'loading');
+        setDirectoryState(keyPrefix, 'loading');
 
         // Always read from the top. This branch only runs when there is no data
         // yet or a sync was forced, and either way the result replaces the cache
@@ -523,17 +501,15 @@ export const useDriveStore = create<Store>((set, get) => ({
           nextToken: data.nextToken,
           isTruncated: data.isTruncated,
         });
-        setStatus(keyPrefix, 'ready');
+        setDirectoryState(keyPrefix, 'ready');
       } catch (error) {
         // A superseded request must not report an error over a newer request's
         // result, or a folder that loaded fine renders as failed.
         if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
 
-        // Recorded before the status, because setStatus('error') is what a
-        // subscriber wakes on - setting it first would render one frame with
-        // no reason to show.
-        setFailure(keyPrefix, classifyConnectionFailure(error));
-        setStatus(keyPrefix, 'error');
+        // One write, so there is no frame in which the row knows it failed
+        // but not why.
+        setDirectoryState(keyPrefix, 'error', classifyConnectionFailure(error));
       }
     });
   },
@@ -571,16 +547,8 @@ export const useDriveStore = create<Store>((set, get) => ({
   },
 
   fetchRecentItems: async (opts = { sync: false, itemsPerType: 10 }) => {
-    const {
-      apiS3,
-      currentPrefix,
-      rootPrefix,
-      recentStatus,
-      recentCache,
-      setRecentData,
-      setRecentStatus,
-      setRecentFailure,
-    } = get();
+    const { apiS3, currentPrefix, rootPrefix, recent, recentCache, setRecentData, setRecentState } =
+      get();
 
     if (!apiS3) return;
 
@@ -589,7 +557,7 @@ export const useDriveStore = create<Store>((set, get) => ({
     const formattedPrefix = rootPrefix === '/' && currentPrefix === '/' ? '' : currentPrefix;
     const keyPrefix = formattedPrefix === '' ? '/' : formattedPrefix;
 
-    const currStatus = recentStatus[keyPrefix];
+    const currStatus = recent[keyPrefix]?.status;
     if (currStatus === 'ready' && !opts.sync) return;
 
     // Ensure itemsPerType has a default value
@@ -602,7 +570,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       const requestId = claimRequestId(latestRecentRequestId, keyPrefix);
 
       try {
-        setRecentStatus(keyPrefix, 'loading');
+        setRecentState(keyPrefix, 'loading');
 
         // Fetch up to 1000 items from current directory
         const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
@@ -648,12 +616,11 @@ export const useDriveStore = create<Store>((set, get) => ({
         }
 
         setRecentData(keyPrefix, recentData);
-        setRecentStatus(keyPrefix, 'ready');
+        setRecentState(keyPrefix, 'ready');
       } catch (error) {
         if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
 
-        setRecentFailure(keyPrefix, classifyConnectionFailure(error));
-        setRecentStatus(keyPrefix, 'error');
+        setRecentState(keyPrefix, 'error', classifyConnectionFailure(error));
       }
     });
   },
@@ -795,45 +762,40 @@ export const useDriveStore = create<Store>((set, get) => ({
  */
 export function useDirectoryState(): AsyncState<PrefixData> {
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
-  const status = useDriveStore((state) =>
-    currentPrefix ? state.status[currentPrefix] : undefined
+  const entry = useDriveStore((state) =>
+    currentPrefix ? state.directory[currentPrefix] : undefined
   );
   const data = useDriveStore((state) => (currentPrefix ? state.cache[currentPrefix] : undefined));
-  const failure = useDriveStore((state) =>
-    currentPrefix ? state.failures[currentPrefix] : undefined
-  );
   const fetchData = useDriveStore((state) => state.fetchData);
 
-  return toAsyncState(status, data, failure, () => void fetchData({ sync: true }));
+  return toAsyncState(entry, data, () => void fetchData({ sync: true }));
 }
 
 /** The same, for the recent-items list on the dashboard home. */
 export function useRecentState(): AsyncState<RecentDataWithCache> {
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
-  const status = useDriveStore((state) =>
-    currentPrefix ? state.recentStatus[currentPrefix] : undefined
-  );
+  const entry = useDriveStore((state) => (currentPrefix ? state.recent[currentPrefix] : undefined));
   const data = useDriveStore((state) =>
     currentPrefix ? state.recentCache[currentPrefix] : undefined
   );
-  const failure = useDriveStore((state) =>
-    currentPrefix ? state.recentFailures[currentPrefix] : undefined
-  );
   const fetchRecentItems = useDriveStore((state) => state.fetchRecentItems);
 
-  return toAsyncState(status, data, failure, () => void fetchRecentItems({ sync: true }));
+  return toAsyncState(entry, data, () => void fetchRecentItems({ sync: true }));
 }
 
 function toAsyncState<T>(
-  status: Status | undefined,
+  entry: RequestState | undefined,
   data: T | undefined,
-  failure: ConnectionFailure | undefined,
   retry: () => void
 ): AsyncState<T> {
-  if (status === 'error') {
-    // A key can be marked failed a frame before its reason is recorded, and an
-    // 'unknown' failure still tells the user more than a skeleton would.
-    return { state: 'error', failure: failure ?? classifyConnectionFailure(undefined), retry };
+  if (entry?.status === 'error') {
+    // The reason arrives with the status now, so the fallback is only for a
+    // failure recorded before this rule existed.
+    return {
+      state: 'error',
+      failure: entry.failure ?? classifyConnectionFailure(undefined),
+      retry,
+    };
   }
 
   // Data without a ready status is a folder being re-synced: it has rows on
@@ -841,5 +803,5 @@ function toAsyncState<T>(
   // a worse answer than showing what is there.
   if (data !== undefined) return { state: 'ready', data };
 
-  return status === 'loading' ? { state: 'loading' } : { state: 'idle' };
+  return entry?.status === 'loading' ? { state: 'loading' } : { state: 'idle' };
 }

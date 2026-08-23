@@ -83,7 +83,7 @@ function standingIn(prefix: string) {
       },
       [prefix]: { folders: [], files: [], isTruncated: false },
     },
-    status: { '/': 'ready', [prefix]: 'ready' },
+    directory: { '/': { status: 'ready' }, [prefix]: { status: 'ready' } },
   });
 }
 
@@ -374,7 +374,7 @@ describe('recovering from inside the folder', () => {
           isTruncated: false,
         },
       },
-      status: { '/': 'ready' },
+      directory: { '/': { status: 'ready' } },
     });
     listFromPrefix.mockResolvedValue(['a.txt']);
     render(<DeleteRecoveryBanner />);
