@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
 import type { S3Provider } from '@/config/providers';
 import { ProviderMark } from './provider-mark';
 
@@ -18,37 +17,25 @@ interface ProviderPickerProps {
  * Rendering as links also keeps this a server component, so the hub ships no
  * client JavaScript at all.
  *
- * Laid out as full-width rows rather than a grid of cards. A row has space for
- * the one fact that actually decides the next screen - whether you will need to
- * paste an endpoint - and a card of the same height does not.
+ * Laid out as a wrapping grid of logo + name only. The tagline and endpoint
+ * badge that used to live here belong to the provider's own page, not the
+ * pick-one step - this step just needs to be scannable at a glance.
+ *
+ * Single column below `sm`: two columns at phone widths leaves barely enough
+ * room for the icon plus names like "Cloudflare R2", forcing an ellipsis on
+ * exactly the text that identifies the row.
  */
 export function ProviderPicker({ providers }: ProviderPickerProps) {
   return (
-    <ul className="space-y-2">
+    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {providers.map((provider) => (
         <li key={provider.slug}>
           <Link
             href={`/connect/${provider.slug}`}
-            className="group flex items-center gap-4 rounded-xl border border-transparent bg-surface-sunken px-4 py-3.5 transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+            className="flex items-center gap-3 rounded-xl border border-transparent bg-surface-sunken px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
           >
-            <ProviderMark provider={provider} size="md" />
-
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-foreground">{provider.name}</span>
-              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                {provider.tagline}
-              </span>
-            </span>
-
-            {/* The one thing worth knowing before you click. */}
-            <span className="hidden shrink-0 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground sm:block">
-              {provider.requiresCustomEndpoint ? 'Endpoint needed' : 'Endpoint automatic'}
-            </span>
-
-            <ChevronRight
-              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-              aria-hidden="true"
-            />
+            <ProviderMark provider={provider} size="sm" iconSize={20} />
+            <span className="truncate text-sm font-medium text-foreground">{provider.name}</span>
           </Link>
         </li>
       ))}
