@@ -9,21 +9,28 @@ import {
   S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import {
+  AddOrUpdateBucketTagsParams,
+  BucketTag,
+  CreateBucketResult,
   Credentials,
   DeleteBatchResult,
+  DeleteBucketResult,
   DirectoryStructure,
   DownloadFileParams,
+  GetBucketTagsResult,
   ListBucketParams,
   ListBucketResult,
   logTypes,
   MoveFileParams,
   MultipartUploadParams,
   PresignedUploadParams,
+  RemoveBucketTagsParams,
   RenameFileParams,
   RenameFolderParams,
   RenameFolderResult,
   SearchParams,
   SearchResult,
+  SetBucketTagsParams,
   SignedUrlParams,
   userTypes,
 } from './types.js';
@@ -146,6 +153,18 @@ export abstract class BaseS3ApiProvider {
   abstract getRegion(): string;
 
   abstract getBuckets(params: ListBucketParams): Promise<ListBucketResult>;
+
+  abstract createBucket(bucketName: string): Promise<CreateBucketResult>;
+
+  abstract deleteBucket(bucketName: string): Promise<DeleteBucketResult>;
+
+  abstract getBucketTags(bucketName: string): Promise<GetBucketTagsResult>;
+
+  abstract setBucketTags(params: SetBucketTagsParams): Promise<void>;
+
+  abstract addOrUpdateBucketTags(params: AddOrUpdateBucketTagsParams): Promise<BucketTag[]>;
+
+  abstract removeBucketTags(params: RemoveBucketTagsParams): Promise<BucketTag[]>;
 
   abstract getS3Client(): S3Client;
 }

@@ -1,20 +1,27 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
+  AddOrUpdateBucketTagsParams,
+  BucketTag,
+  CreateBucketResult,
   Credentials,
   DeleteBatchError,
   DeleteBatchResult,
+  DeleteBucketResult,
   DirectoryStructure,
   DownloadFileParams,
+  GetBucketTagsResult,
   MoveFileParams,
   MultipartUploadConfig,
   MultipartUploadParams,
   PresignedUploadParams,
+  RemoveBucketTagsParams,
   RenameFileParams,
   RenameFolderParams,
   RenameFolderError,
   RenameFolderResult,
   SearchParams,
   SearchResult,
+  SetBucketTagsParams,
   SignedUrlParams,
   userTypes,
   ListBucketParams,
@@ -33,8 +40,14 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   CopyObjectCommand,
+  CreateBucketCommand,
+  BucketLocationConstraint,
   S3ServiceException,
   DeleteObjectsCommand,
+  DeleteBucketCommand,
+  DeleteBucketTaggingCommand,
+  GetBucketTaggingCommand,
+  PutBucketTaggingCommand,
   ObjectIdentifier,
   S3Client,
   ListBucketsCommand,
@@ -626,6 +639,166 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       nextToken: response.ContinuationToken,
       isTruncated: response.ContinuationToken !== undefined,
     };
+  }
+
+  async createBucket(bucketName: string): Promise<CreateBucketResult> {
+    if (!bucketName) {
+      throw new Error('createBucket: bucketName is required');
+    }
+
+    const input =
+      this.credentials.region === 'us-east-1'
+        ? { Bucket: bucketName }
+        : {
+            Bucket: bucketName,
+            CreateBucketConfiguration: {
+              LocationConstraint: this.credentials.region as BucketLocationConstraint,
+            },
+          };
+
+    await this.s3.send(new CreateBucketCommand(input));
+
+    return { status: 'completed', bucketName, completed: true };
+  }
+
+  /**
+   * Deletes a bucket. Never empties it first - S3 itself already checks
+   * every current object, noncurrent version, and delete marker before
+   * allowing DeleteBucket, so re-implementing that check client-side would
+   * just be a redundant, racy round trip. Callers that want to empty a
+   * bucket before deleting it should do so explicitly (e.g. via
+   * listFromPrefix + deleteBatch) before calling this method.
+   *
+   * Returns a structured result instead of throwing for the one anticipated
+   * non-completion outcome (`status: 'not-empty'`, S3's BucketNotEmpty, 409)
+   * so callers can show a clear message without a try/catch. Every other
+   * error (NoSuchBucket, AccessDenied, throttling, ...) propagates raw.
+   */
+  async deleteBucket(bucketName: string): Promise<DeleteBucketResult> {
+    if (!bucketName) {
+      throw new Error('deleteBucket: bucketName is required');
+    }
+
+    try {
+      await this.s3.send(new DeleteBucketCommand({ Bucket: bucketName }));
+      return { status: 'completed', bucketName, completed: true };
+    } catch (err) {
+      if (err instanceof S3ServiceException && err.name === 'BucketNotEmpty') {
+        return { status: 'not-empty', bucketName, completed: false };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Reads a bucket's tag set. S3 responds with a 404 NoSuchTagSet error -
+   * not an empty TagSet - when the bucket has zero tags, so that specific
+   * case is translated to `{ tags: [] }`. Every other error (AccessDenied,
+   * NoSuchBucket, throttling, ...) propagates raw: silently returning an
+   * empty tag set on a permissions failure would make "I can't read this
+   * bucket's tags" look exactly like "this bucket has no tags".
+   */
+  async getBucketTags(bucketName: string): Promise<GetBucketTagsResult> {
+    if (!bucketName) {
+      throw new Error('getBucketTags: bucketName is required');
+    }
+
+    try {
+      const response = await this.s3.send(new GetBucketTaggingCommand({ Bucket: bucketName }));
+      const tags: BucketTag[] = (response.TagSet ?? []).map((t) => ({
+        key: t.Key ?? '',
+        value: t.Value ?? '',
+      }));
+      return { tags };
+    } catch (err) {
+      if (
+        err instanceof S3ServiceException &&
+        (err.name === 'NoSuchTagSet' || err.$metadata?.httpStatusCode === 404)
+      ) {
+        return { tags: [] };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Full replace of a bucket's tag set. Mirrors S3's PutBucketTagging
+   * semantics exactly - this replaces every existing tag, it does not
+   * merge. See addOrUpdateBucketTags / removeBucketTags for merge/subtract.
+   *
+   * `tags: []` is routed to DeleteBucketTaggingCommand instead of calling
+   * PutBucketTagging with an empty TagSet, since PutBucketTagging's TagSet
+   * is a required, non-empty list - DeleteBucketTagging is the documented
+   * way to clear all tags.
+   */
+  async setBucketTags(params: SetBucketTagsParams): Promise<void> {
+    const { bucketName, tags } = params;
+    if (!bucketName) {
+      throw new Error('setBucketTags: bucketName is required');
+    }
+
+    try {
+      if (tags.length === 0) {
+        await this.s3.send(new DeleteBucketTaggingCommand({ Bucket: bucketName }));
+        return;
+      }
+
+      await this.s3.send(
+        new PutBucketTaggingCommand({
+          Bucket: bucketName,
+          Tagging: { TagSet: tags.map((t) => ({ Key: t.key, Value: t.value })) },
+        })
+      );
+    } catch (err) {
+      throw new Error(`Set bucket tags failed for ${bucketName}: ${err}`);
+    }
+  }
+
+  /**
+   * Merges `tags` into the bucket's existing tag set via read-modify-write,
+   * since PutBucketTagging always replaces the whole set. Keys present in
+   * `tags` overwrite the existing value for that key; every other existing
+   * key is preserved. Returns the resulting full tag set so callers don't
+   * need a follow-up getBucketTags call.
+   *
+   * Not atomic: a concurrent tag write between the read and the write here
+   * can be lost (last-writer-wins) - S3 bucket tagging has no conditional-
+   * write/ETag primitive to guard against that.
+   */
+  async addOrUpdateBucketTags(params: AddOrUpdateBucketTagsParams): Promise<BucketTag[]> {
+    const { bucketName, tags } = params;
+    if (!bucketName) {
+      throw new Error('addOrUpdateBucketTags: bucketName is required');
+    }
+
+    const existing = await this.getBucketTags(bucketName);
+    const merged = new Map(existing.tags.map((t) => [t.key, t.value]));
+    for (const t of tags) merged.set(t.key, t.value);
+
+    const result: BucketTag[] = Array.from(merged, ([key, value]) => ({ key, value }));
+
+    await this.setBucketTags({ bucketName, tags: result });
+    return result;
+  }
+
+  /**
+   * Removes the given keys from the bucket's existing tag set via
+   * read-modify-write. Keys not present are ignored. Removing every tag
+   * (remaining set is empty) is routed to DeleteBucketTaggingCommand, via
+   * the same branch in setBucketTags.
+   */
+  async removeBucketTags(params: RemoveBucketTagsParams): Promise<BucketTag[]> {
+    const { bucketName, keys } = params;
+    if (!bucketName) {
+      throw new Error('removeBucketTags: bucketName is required');
+    }
+
+    const existing = await this.getBucketTags(bucketName);
+    const toRemove = new Set(keys);
+    const remaining = existing.tags.filter((t) => !toRemove.has(t.key));
+
+    await this.setBucketTags({ bucketName, tags: remaining });
+    return remaining;
   }
 
   getS3Client(): S3Client {
