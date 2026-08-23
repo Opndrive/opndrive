@@ -51,10 +51,17 @@ const SIZES = {
 interface ProviderMarkProps {
   provider: S3Provider;
   size?: keyof typeof SIZES;
+  /** Overrides the glyph size that `size` would otherwise imply, box unchanged. */
+  iconSize?: number;
   className?: string;
 }
 
-export function ProviderMark({ provider, size = 'md', className = '' }: ProviderMarkProps) {
+export function ProviderMark({
+  provider,
+  size = 'md',
+  iconSize,
+  className = '',
+}: ProviderMarkProps) {
   const dimensions = SIZES[size];
   const visual = PROVIDER_VISUALS[provider.slug];
 
@@ -68,7 +75,7 @@ export function ProviderMark({ provider, size = 'md', className = '' }: Provider
     >
       {/* The provider name is always rendered next to this, so the logo is
           decorative and should not be read out a second time. */}
-      <Icon size={dimensions.glyph} aria-hidden="true" focusable="false" />
+      <Icon size={iconSize ?? dimensions.glyph} aria-hidden="true" focusable="false" />
     </span>
   );
 }
