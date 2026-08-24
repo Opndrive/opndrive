@@ -191,6 +191,61 @@ export interface ListBucketResult {
   isTruncated?: boolean;
 }
 
+export interface CreateBucketResult {
+  status: 'completed';
+  bucketName: string;
+  /** Convenience for `status === 'completed'`. */
+  completed: true;
+}
+
+/**
+ * - `completed`  - the bucket was empty and has been deleted.
+ * - `not-empty`  - S3 refused because the bucket still has objects, versions,
+ *   or delete markers. Nothing was touched - deleteBucket never empties a
+ *   bucket itself, callers must do that first (e.g. via deleteBatch).
+ */
+export type DeleteBucketStatus = 'completed' | 'not-empty';
+
+export interface DeleteBucketResult {
+  status: DeleteBucketStatus;
+  bucketName: string;
+  /** Convenience for `status === 'completed'`. */
+  completed: boolean;
+}
+
+/** A single tag on a bucket. */
+export interface BucketTag {
+  key: string;
+  value: string;
+}
+
+export interface GetBucketTagsResult {
+  tags: BucketTag[];
+}
+
+export interface SetBucketTagsParams {
+  bucketName: string;
+  /**
+   * Full replacement tag set - mirrors S3's PutBucketTagging semantics
+   * exactly, this REPLACES every tag currently on the bucket, it does not
+   * merge. Pass [] to remove every tag. Use addOrUpdateBucketTags /
+   * removeBucketTags for merge/subtract semantics.
+   */
+  tags: BucketTag[];
+}
+
+export interface AddOrUpdateBucketTagsParams {
+  bucketName: string;
+  /** Tags to merge in. Existing keys not listed here are preserved; keys listed here overwrite the existing value. */
+  tags: BucketTag[];
+}
+
+export interface RemoveBucketTagsParams {
+  bucketName: string;
+  /** Keys to remove. Keys not present in the current tag set are silently ignored. */
+  keys: string[];
+}
+
 // Uploader
 
 export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'completed' | 'failed' | 'cancelled';

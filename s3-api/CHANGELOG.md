@@ -2,6 +2,8 @@
 
 ## 3.1.0
 
+- **Empty Bump:** For version sync only. No Major changes
+
 ## [3.0.0] - 2026-08-02
 
 ### Changed
