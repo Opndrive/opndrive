@@ -8,7 +8,7 @@ import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
-import { getItemKeyIntent } from './item-keyboard';
+import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FileItemListProps {
   file: FileItem;
@@ -57,6 +57,12 @@ export function FileItemList({
     if (!isTouchDevice) {
       selectItem(file, 'file', index, false, false, allFiles);
     }
+  };
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!opensMenuOnKey(event)) return;
+
+    selectItem(file, 'file', index, false, false, allFiles);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -243,6 +249,7 @@ export function FileItemList({
                 className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
                 aria-label={`More actions for ${file.name}`}
                 onPointerDown={handleMenuPointerDown}
+                onKeyDown={handleMenuKeyDown}
                 onClick={handleMenuClick}
               >
                 <HiOutlineDotsVertical
