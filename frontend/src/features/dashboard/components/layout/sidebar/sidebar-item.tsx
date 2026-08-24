@@ -25,15 +25,22 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
           : 'text-secondary-foreground hover:text-foreground hover:bg-accent'
       )}
     >
-      <div
+      {/*
+        Sized on the icon, not on a box around it.
+        `react-icons` default to width and height of 1em, so an icon given no
+        size of its own inherits the `text-sm` above and draws at 14px inside a
+        slot reserved for 20. It also read as misaligned: an svg is inline, so
+        it sat on the text baseline in the corner of that box with the
+        line-height gap beneath it. The link is already `flex items-center`, so
+        as a direct child the icon centres itself and the wrapper is not needed.
+      */}
+      <item.icon
         className={cn(
           'flex-shrink-0 mr-3',
           isInDropdown ? 'h-4 w-4' : 'h-5 w-5',
           itemIsActive && 'text-primary-foreground'
         )}
-      >
-        <item.icon />
-      </div>
+      />
       <span className="truncate">{item.title}</span>
       {item.badge && (
         <span
