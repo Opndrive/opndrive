@@ -5,7 +5,8 @@ import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
-import { formatTimeWithTooltip, NO_DATE, NO_DATE_TOOLTIP } from '@/shared/utils/time-utils';
+import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { NotApplicable, BECAUSE } from '@/shared/components/ui/not-applicable';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
@@ -233,12 +234,16 @@ export function FileItemList({
 
         {/* Last modified - visible from sm up */}
         <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
-          <span
-            className="text-xs sm:text-sm text-muted-foreground"
-            title={timeInfo.tooltip || NO_DATE_TOOLTIP}
-          >
-            {timeInfo.display || NO_DATE}
-          </span>
+          {timeInfo.display ? (
+            <span className="text-xs sm:text-sm text-muted-foreground" title={timeInfo.tooltip}>
+              {timeInfo.display}
+            </span>
+          ) : (
+            <NotApplicable
+              reason={BECAUSE.listingHasNoDate}
+              className="text-xs sm:text-sm text-muted-foreground"
+            />
+          )}
         </div>
 
         {/* Owner - visible from lg up */}

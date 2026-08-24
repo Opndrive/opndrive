@@ -198,23 +198,53 @@ describe('folder rows are recognised by the click-outside handler', () => {
  * to say so: the table drew a blank cell, the mobile row printed "No date", and
  * the grid card dropped the line.
  */
-describe('a folder with no date says so once, consistently', () => {
-  it('marks the table cell rather than leaving it blank', () => {
+describe('every dash explains itself the same way', () => {
+  it('shows one in each column a folder cannot fill', () => {
     render(<DriveList folders={[folder()]} files={[]} />);
 
-    // Same character the size cell in that row already uses. Two of them: the
-    // date and the size.
-    expect(screen.getAllByText('\u2014').length).toBeGreaterThanOrEqual(2);
+    // Date and size. Both absent for a folder, both marked the same way.
+    expect(screen.getAllByText('—')).toHaveLength(2);
   });
 
-  it('explains the dash rather than looking like a failed load', () => {
+  /**
+   * The regression this guards: the size cell was a bare dash whose reasoning
+   * lived only in a code comment, while the date cell explained itself on
+   * hover. Same character, same meaning, two behaviours - and a reader hovering
+   * the one that stayed silent learns nothing.
+   */
+  it('gives every dash a reason, not just the date', () => {
     const { container } = render(<DriveList folders={[folder()]} files={[]} />);
 
-    const explained = Array.from(container.querySelectorAll('[title]')).some((el) =>
-      el.getAttribute('title')?.includes('carries no date')
+    const dashes = Array.from(container.querySelectorAll('span[title]')).filter((el) =>
+      el.textContent?.includes('—')
     );
 
-    expect(explained).toBe(true);
+    expect(dashes).toHaveLength(2);
+    dashes.forEach((el) => expect(el.getAttribute('title')).toBeTruthy());
+  });
+
+  it('says why rather than just that', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[]} />);
+    const titles = Array.from(container.querySelectorAll('span[title]')).map((el) =>
+      el.getAttribute('title')
+    );
+
+    expect(titles).toContain('This listing carries no date for it.');
+    expect(titles).toContain('Folders have no size of their own, and S3 does not report one.');
+  });
+
+  /**
+   * A lone em dash is announced as punctuation or skipped, and `title` is not
+   * reliably announced at all, so the reason is in the accessibility tree as
+   * text - without either span becoming a tab stop, which in a long listing
+   * would put two of them in every row.
+   */
+  it('reads the reason to a screen reader and hides the dash from it', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[]} />);
+
+    expect(container.querySelectorAll('[aria-hidden="true"].sr-only')).toHaveLength(0);
+    expect(container.querySelectorAll('span.sr-only').length).toBeGreaterThanOrEqual(2);
+    expect(container.querySelectorAll('span[title][tabindex]')).toHaveLength(0);
   });
 
   it('never says "No date"', () => {

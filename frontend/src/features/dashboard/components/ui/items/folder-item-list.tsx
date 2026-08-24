@@ -8,7 +8,8 @@ import { FaRegCircle, FaUserAlt } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
-import { formatTimeWithTooltip, NO_DATE, NO_DATE_TOOLTIP } from '@/shared/utils/time-utils';
+import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
+import { NotApplicable, BECAUSE } from '@/shared/components/ui/not-applicable';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
@@ -195,12 +196,16 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
         </div>
 
         <div className="hidden sm:block sm:col-span-2 md:col-span-2 lg:col-span-3 xl:col-span-3">
-          <span
-            className="text-xs sm:text-sm text-muted-foreground"
-            title={timeInfo.tooltip || NO_DATE_TOOLTIP}
-          >
-            {timeInfo.display || NO_DATE}
-          </span>
+          {timeInfo.display ? (
+            <span className="text-xs sm:text-sm text-muted-foreground" title={timeInfo.tooltip}>
+              {timeInfo.display}
+            </span>
+          ) : (
+            <NotApplicable
+              reason={BECAUSE.listingHasNoDate}
+              className="text-xs sm:text-sm text-muted-foreground"
+            />
+          )}
         </div>
 
         <div className="hidden lg:flex items-center gap-2 lg:col-span-2 xl:col-span-2">
@@ -210,11 +215,11 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
           <span className="text-xs lg:text-sm text-muted-foreground truncate">me</span>
         </div>
 
-        {/* A folder has no size of its own. S3 reports none, and totalling the
-            objects beneath it would cost a LIST per row, so an em dash says
-            "not applicable" where a 0 B would be a lie. */}
         <div className="hidden xl:flex items-center xl:col-span-2">
-          <span className="text-sm text-muted-foreground">&mdash;</span>
+          <NotApplicable
+            reason={BECAUSE.folderHasNoSize}
+            className="text-sm text-muted-foreground"
+          />
         </div>
 
         <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1 flex justify-end">
