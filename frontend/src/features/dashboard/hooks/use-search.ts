@@ -7,7 +7,7 @@ import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 export const useSearch = () => {
   const { error } = useNotification();
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const { apiS3 } = useAuthGuard();
 
   // AbortController for cancelling searches

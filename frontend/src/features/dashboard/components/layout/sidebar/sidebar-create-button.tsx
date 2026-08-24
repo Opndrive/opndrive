@@ -15,7 +15,7 @@ interface SidebarCreateButtonProps {
 
 export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClick, className }) => {
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const { success, error } = useNotification();
 
   // Folder creation logic

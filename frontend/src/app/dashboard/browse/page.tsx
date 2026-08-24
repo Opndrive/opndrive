@@ -40,16 +40,18 @@ function BrowsePageContent() {
 
   const CHUNK_SIZE = 100; // Display 100 items per chunk
 
-  const {
-    currentPrefix,
-    cache,
-    loadMoreStatus,
-    fetchData,
-    loadMoreData,
-    setCurrentPrefix,
-    setRootPrefix,
-    setApiS3,
-  } = useDriveStore();
+  // One selector per value rather than `useDriveStore()`, which subscribes to
+  // the whole store. `cache` and `loadMoreStatus` are read whole here because
+  // this page genuinely indexes into both by prefix; the rest are stable
+  // actions, which never trigger a render of their own.
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const cache = useDriveStore((state) => state.cache);
+  const loadMoreStatus = useDriveStore((state) => state.loadMoreStatus);
+  const fetchData = useDriveStore((state) => state.fetchData);
+  const loadMoreData = useDriveStore((state) => state.loadMoreData);
+  const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
+  const setRootPrefix = useDriveStore((state) => state.setRootPrefix);
+  const setApiS3 = useDriveStore((state) => state.setApiS3);
 
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 

@@ -140,7 +140,7 @@ function describeFailures(failures: DeleteBatchError[], total: number): string {
 
 export function useDeleteOperations() {
   const { apiS3 } = useAuthGuard();
-  const { refreshCurrentData } = useDriveStore();
+  const refreshCurrentData = useDriveStore((state) => state.refreshCurrentData);
   const { error: errorFunction } = useNotification();
   const {
     startDeleteOperation,

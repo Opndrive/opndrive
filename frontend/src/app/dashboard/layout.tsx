@@ -25,7 +25,7 @@ import { useDeleteUnloadGuard } from '@/features/upload/hooks/use-delete-unload-
 import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
 
 const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
 
   return (
     <EnhancedDragDropProvider currentPath={currentPrefix || 'My Drive'}>

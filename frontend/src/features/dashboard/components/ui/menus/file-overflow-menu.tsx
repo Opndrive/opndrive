@@ -59,7 +59,7 @@ export const FileOverflowMenu: React.FC<FileOverflowMenuProps> = ({
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
   const { open: openDetails } = useDetails();
   const { openPreview } = useFilePreview();
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const { openShareDialog } = useShare();
   const { deleteFile, isDeleting } = useDeleteWithProgress();
 
