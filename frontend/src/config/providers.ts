@@ -40,11 +40,14 @@ export interface S3Provider {
   /** True when the endpoint cannot be derived and the user must supply it. */
   requiresCustomEndpoint: boolean;
   /**
-   * What to show in an empty endpoint field.
+   * What to show in an empty endpoint field, for a provider whose endpoint
+   * cannot be derived from anything we ask for.
    *
-   * The template was being used for this, so R2 offered the user a literal
-   * `{{accountId}}` - our own templating syntax, leaking onto a page we are
-   * trying to rank. This is written the way the provider's own docs write it.
+   * `endpoint` is a template and was being used for this directly, so R2
+   * offered the user a literal `{{accountId}}` - our own templating syntax,
+   * presented as the thing to type, on a page we are trying to rank. Where
+   * the region is the only variable, `resolveEndpoint` fills it in and the
+   * hint under the field carries the real URL, so only R2 needs one of these.
    */
   endpointPlaceholder?: string;
   seo: {

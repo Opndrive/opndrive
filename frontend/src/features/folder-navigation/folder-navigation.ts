@@ -81,11 +81,7 @@ export function getParentPrefix(prefix: string): string {
 /**
  * Build navigation URL for folder click
  */
-export function buildFolderClickUrl(
-  currentPrefix: string,
-  folderName: string,
-  _currentKey?: string
-): string {
+export function buildFolderClickUrl(currentPrefix: string, folderName: string): string {
   const newPrefix =
     currentPrefix === '/' || currentPrefix === ''
       ? `${folderName}/`

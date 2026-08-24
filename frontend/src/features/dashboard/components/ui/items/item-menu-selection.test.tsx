@@ -258,11 +258,28 @@ describe('the keyboard opens the menu and selects too', () => {
     expect(selection()).toHaveLength(0);
   });
 
-  it('selects a file row from the keyboard as well', () => {
-    render(<FileItemList file={file()} allFiles={[file()]} />);
+  // Same five rows the mouse block covers. The key list is shared now, but
+  // each component still wires its own onKeyDown, and a row that forgets to
+  // is exactly the drift this file exists to catch.
+  it('selects a folder row on mobile layout', () => {
+    render(<FolderItemMobile folder={folder()} allFolders={[folder()]} />);
+
+    fireEvent.keyDown(menuButton('Reports'), { key: 'Enter' });
+
+    expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('folder');
+  });
+
+  it.each([
+    ['list', FileItemList],
+    ['grid', FileItemGrid],
+    ['mobile', FileItemMobile],
+  ])('selects a file row in the %s layout', (_label, Component) => {
+    render(<Component file={file()} allFiles={[file()]} />);
 
     fireEvent.keyDown(menuButton('budget.xlsx'), { key: 'Enter' });
 
     expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('file');
   });
 });

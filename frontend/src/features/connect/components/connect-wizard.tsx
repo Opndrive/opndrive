@@ -198,9 +198,7 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
             required={provider.requiresCustomEndpoint}
             spellCheck={false}
             className={FIELD}
-            placeholder={
-              provider.endpointPlaceholder ?? provider.endpoint ?? 'https://storage.example.com'
-            }
+            placeholder={provider.endpointPlaceholder ?? 'https://storage.example.com'}
             value={form.endpoint}
             onChange={(event) => update({ endpoint: event.target.value })}
           />
