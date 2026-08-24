@@ -4,7 +4,8 @@ import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner
 
 interface CTASectionProps {
   handleGetStarted: () => void;
-  isLoading: boolean;
+  /** The blog's copies own their navigation and disable the button while it runs. */
+  isLoading?: boolean;
   /**
    * Named by the page, which is the only thing that knows the destination.
    * The blog's copies of this section always route to /connect, so they take
@@ -15,7 +16,7 @@ interface CTASectionProps {
 
 export default function CTASection({
   handleGetStarted,
-  isLoading,
+  isLoading = false,
   ctaLabel = 'Get Started',
 }: CTASectionProps) {
   return (

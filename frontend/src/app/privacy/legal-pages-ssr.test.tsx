@@ -98,10 +98,22 @@ describe('connect pages render for crawlers', () => {
   );
 });
 
+// The landing page is the pitch - hero, features, FAQ - and was the one public
+// page still gated. It sat in the list below, grouped with the dashboard as if
+// it were something to protect.
+describe('the landing page renders for crawlers', () => {
+  it('renders real content on /', () => {
+    const html = renderThroughProviders('/', <div>landing content</div>);
+
+    expect(html).not.toContain('Loading...');
+    expect(html).toContain('landing content');
+  });
+});
+
 describe('every other route keeps the gate it had', () => {
   // The placeholder exists so the dashboard never renders without a session.
   // Only pages that must be readable before anyone has a session are exempt.
-  it.each(['/dashboard', '/dashboard/search', '/dashboard/settings', '/'])(
+  it.each(['/dashboard', '/dashboard/search', '/dashboard/settings'])(
     'still shows the placeholder on %s',
     (pathname) => {
       const html = renderThroughProviders(pathname, <div>protected content</div>);

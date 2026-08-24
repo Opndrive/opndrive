@@ -169,9 +169,16 @@ const STORAGE_KEY = 's3_user_session';
  * /connect is a landing page we actively want ranked. A crawler that is served
  * `Loading...` indexes `Loading...`.
  *
- * Matching covers children, so /connect/cloudflare-r2 is public too.
+ * `/` is in the list for exactly that reason, and was the conspicuous omission:
+ * the marketing page - the hero, the features, the FAQ, the whole pitch - was
+ * the one public page still serving `Loading...` as its entire body to anyone
+ * who arrived without JavaScript, crawlers included.
+ *
+ * Matching covers children, so /connect/cloudflare-r2 is public too. It does
+ * not make `/` match everything: the child test looks for a `/` *after* the
+ * route, and no path begins with `//`.
  */
-const PUBLIC_ROUTES = ['/privacy', '/terms', '/connect'];
+const PUBLIC_ROUTES = ['/', '/privacy', '/terms', '/connect'];
 
 function isPublicRoute(pathname: string | null): boolean {
   if (pathname === null) return false;
@@ -310,10 +317,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setSignedUrlUploadManager(signedUrlManager);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
 
-      // You can redirect somewhere after login
-      if (pathname === '/' || pathname === '/login') {
-        router.push('/dashboard');
-      }
+      // Deliberately does not navigate. The one caller is ConnectWizard, which
+      // lives at /connect/[provider] and pushes to /dashboard itself once this
+      // resolves - so the branch this replaced could only ever have fired from
+      // `/` or `/login`, and neither has a form on it. `/login` is not even a
+      // route. Navigation belongs to the caller that knows why it called.
     } catch (error) {
       console.error('Login failed', error);
 
