@@ -120,6 +120,18 @@ async function initializeUploadManagers(
   // on the restore-at-startup path, where nothing is in flight yet.
   useUploadStore.getState().abortAllDeleteOperations();
 
+  // The listing cache needs it most of all, and was the one thing this did not
+  // clear. `fetchData` returns early when a prefix is already 'ready' or has
+  // rows cached, so connecting a second bucket without logging out first left
+  // the dashboard showing the previous bucket's file and folder names, and
+  // never refetching them until a full page reload.
+  //
+  // That path stopped being obscure when the connect pages stopped redirecting
+  // a signed-in visitor away: adding a second bucket is a thing people can now
+  // walk into from a bookmark. This also drops the in-flight request ids, so a
+  // listing issued for the old bucket cannot land as the new one's.
+  useDriveStore.getState().clearAllData();
+
   // This is the ONE place upload concurrency is set. The executor deliberately
   // has no pool of its own - two components each believing they control how
   // many uploads are in flight is how "3 at a time" becomes six.
