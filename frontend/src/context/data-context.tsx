@@ -754,11 +754,11 @@ export const useDriveStore = create<Store>((set, get) => ({
  * The directory listing for the folder the user is standing in, as one value
  * that cannot be read without deciding what a failure looks like.
  *
- * The store keeps status, data and failure in three separate maps, which is
- * fine for writing but is exactly what let both dashboard pages write
- * `status[prefix] === 'ready' ? rows : skeleton` and silently render a failed
- * listing as a skeleton forever. Narrowing happens here once, so a page reaches
- * `data` only through the branch that has any.
+ * The store keeps the request's state and its data in two maps, which is fine
+ * for writing but is exactly what let both dashboard pages ask whether a
+ * listing was ready and render a skeleton for every other answer - so a failed
+ * listing sat behind a skeleton forever. Narrowing happens here once, so a page
+ * reaches `data` only through the branch that has any.
  */
 export function useDirectoryState(): AsyncState<PrefixData> {
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
