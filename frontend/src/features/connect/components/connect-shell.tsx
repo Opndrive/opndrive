@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check } from 'lucide-react';
 import { ConnectNotice } from './connect-notice';
 import { SiteFooter } from '@/shared/components/layout/site-footer';
+import { DashboardLink } from '@/shared/components/layout/dashboard-link';
 
 /** The three things someone does, in order, to get into their bucket. */
 export const CONNECT_STEPS = ['Choose provider', 'Add credentials', 'Open your drive'] as const;
@@ -48,13 +49,20 @@ export function ConnectShell({
             <span className="text-base font-semibold tracking-tight text-foreground">Opndrive</span>
           </Link>
 
-          <Link
-            href={backHref ?? '/'}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {backLabel ?? 'Back to home'}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={backHref ?? '/'}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              {backLabel ?? 'Back to home'}
+            </Link>
+
+            {/* The one client leaf in this frame. Someone who already has a
+                bucket connected can be here to add a second, so the way back
+                into the drive is offered rather than forced. */}
+            <DashboardLink />
+          </div>
         </div>
       </header>
 
