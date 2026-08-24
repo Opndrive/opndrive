@@ -213,10 +213,17 @@ export function FolderItemMobile({
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-foreground truncate mb-1">{folder.name}</h3>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span title={timeInfo?.tooltip}>{timeInfo?.display || 'No date'}</span>
+          {/* Omitted rather than dashed: these fields sit inline, so there is
+              no column for a dash to keep straight. "No date" also said the
+              wrong thing - it reads as a date that went missing, when a folder
+              never had one to lose. */}
+          {timeInfo?.display && <span title={timeInfo.tooltip}>{timeInfo.display}</span>}
           {folder.itemCount !== undefined && (
             <>
-              <span>•</span>
+              {/* Separates two things, so it only earns its place when there
+                  are two. A folder with no date would otherwise open the line
+                  with a bullet separating nothing from the count. */}
+              {timeInfo?.display && <span>•</span>}
               <span>{folder.itemCount} items</span>
             </>
           )}

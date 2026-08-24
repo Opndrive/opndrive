@@ -188,3 +188,38 @@ describe('folder rows are recognised by the click-outside handler', () => {
     expect(container.querySelector('[data-folder-item]')).not.toBeNull();
   });
 });
+
+/**
+ * A folder has no date to show, and never will.
+ *
+ * A delimited S3 listing returns folders as CommonPrefixes, which carry the
+ * prefix string and no metadata at all, so there is nothing to read even where
+ * a folder marker object exists. The three surfaces used to disagree about how
+ * to say so: the table drew a blank cell, the mobile row printed "No date", and
+ * the grid card dropped the line.
+ */
+describe('a folder with no date says so once, consistently', () => {
+  it('marks the table cell rather than leaving it blank', () => {
+    render(<DriveList folders={[folder()]} files={[]} />);
+
+    // Same character the size cell in that row already uses. Two of them: the
+    // date and the size.
+    expect(screen.getAllByText('\u2014').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('explains the dash rather than looking like a failed load', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[]} />);
+
+    const explained = Array.from(container.querySelectorAll('[title]')).some((el) =>
+      el.getAttribute('title')?.includes('carries no date')
+    );
+
+    expect(explained).toBe(true);
+  });
+
+  it('never says "No date"', () => {
+    render(<DriveList folders={[folder()]} files={[]} />);
+
+    expect(screen.queryAllByText('No date')).toHaveLength(0);
+  });
+});
