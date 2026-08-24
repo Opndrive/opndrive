@@ -1,8 +1,7 @@
 'use client';
 
 import { useScroll } from '@/context/scroll-context';
-import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
-import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
+import { DriveList } from '@/features/dashboard/components/views/drive/drive-list';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
@@ -383,24 +382,16 @@ function BrowsePageContent() {
           >
             {() => (
               <>
-                {/* Folders */}
-                <SuggestedFolders
+                {/* Folders and files, one table in list view. */}
+                <DriveList
                   folders={displayedFolders}
+                  files={displayedFiles}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                  className="mt-8"
-                  hideTitle={pathSegments.length > 0}
-                />
-
-                {/* Files */}
-                <SuggestedFiles
-                  files={displayedFiles}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  className="mt-8"
-                  hideTitle={pathSegments.length > 0}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                 />
 
                 {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}

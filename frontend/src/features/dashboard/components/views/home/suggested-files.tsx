@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, Fragment, useRef, useEffect } from 'react';
+import { useState, Fragment, useRef, useEffect, Children } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
+import type { Folder } from '@/features/dashboard/types/folder';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
@@ -21,6 +22,31 @@ interface SuggestedFilesProps {
   className?: string;
   hideTitle?: boolean;
   onFilesDropped?: (processedData: ProcessedDragData) => void;
+  /**
+   * What this section is called.
+   *
+   * These components were written for Home and then reused wholesale by My
+   * Drive, heading and all - so the browse tree announced the literal contents
+   * of a bucket as "Suggested files". Nothing about a folder listing is a
+   * suggestion. Home keeps the suggesting; browse passes its own plain label.
+   */
+  title?: string;
+  /**
+   * Rows rendered above the files, under the same header.
+   *
+   * How the list view shows one directory instead of two: DriveList hands the
+   * folder rows in here rather than stacking a second table above this one.
+   * Absent - on Home, and in grid layout - nothing changes.
+   */
+  leadingRows?: React.ReactNode;
+  /**
+   * How many rows precede the files, so a file's index describes its place in
+   * the table rather than in the files array. Shift-select slices `allItems` by
+   * these numbers, so being off by the folder count selects the wrong rows.
+   */
+  fileIndexOffset?: number;
+  /** Folders and files together, the range a shift-select can span. */
+  allItems?: (FileItem | Folder)[];
 }
 
 export function SuggestedFiles({
@@ -33,6 +59,10 @@ export function SuggestedFiles({
   className = '',
   hideTitle = false,
   onFilesDropped,
+  title = 'Suggested files',
+  leadingRows,
+  fileIndexOffset = 0,
+  allItems,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -114,7 +144,11 @@ export function SuggestedFiles({
     onFileAction?.(action, file);
   };
 
-  if (files.length === 0) {
+  // Empty means nothing to show at all, not merely no files. Once folders
+  // render as leading rows in this same table, asking only about `files` put
+  // the drop zone in front of a folder that has subfolders and no files in it -
+  // a directory with contents, drawn as an empty one.
+  if (files.length === 0 && Children.count(leadingRows) === 0) {
     return (
       <div
         className={cn(`w-full ${className} transition-all duration-200 relative text-center`)}
@@ -163,7 +197,7 @@ export function SuggestedFiles({
       )}
       {!hideTitle ? (
         <div className="flex items-center justify-between mb-3">
-          <AriaLabel label="Suggested files - Click to expand/collapse" position="top">
+          <AriaLabel label={`${title} - Click to expand/collapse`} position="top">
             <button
               className="
                 flex items-center cursor-pointer gap-2 p-2
@@ -188,7 +222,7 @@ export function SuggestedFiles({
                   d="M9 5l7 7-7 7"
                 />
               </svg>
-              Suggested files
+              {title}
             </button>
           </AriaLabel>
 
@@ -217,7 +251,7 @@ export function SuggestedFiles({
           ) : (
             <div>
               <div className="hidden sm:block space-y-1">
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3.5 text-sm font-medium text-muted-foreground border-b border-border/50">
                   <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-4 xl:col-span-4">
                     Name
                   </div>
@@ -229,13 +263,15 @@ export function SuggestedFiles({
                   <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                 </div>
 
+                {leadingRows}
+
                 {files.map((file, index) => (
                   <Fragment key={file.Key}>
                     <FileItemList
                       file={file}
-                      allFiles={files}
+                      allFiles={allItems ?? files}
                       _onAction={handleFileAction}
-                      index={index}
+                      index={index + fileIndexOffset}
                     />
                     {index < files.length - 1 && (
                       <div className="mx-4" aria-hidden="true">

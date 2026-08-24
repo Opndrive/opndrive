@@ -168,33 +168,59 @@ describe('shift+click range', () => {
 describe('mixing files and folders', () => {
   const folders = [folder('one/'), folder('two/')];
 
-  it('discards a file selection when a folder is clicked', () => {
+  it('replaces the selection on a plain click, whatever was held before', () => {
     store().selectItem(files[0]!, 'file', 0, false, false, files);
     store().selectItem(files[1]!, 'file', 1, true, false, files);
 
     store().selectItem(folders[0]!, 'folder', 0, false, false, folders);
 
-    // Bulk actions differ for files and folders, so the two cannot mix.
+    // A click with no modifier still means "just this one" - mixing is what
+    // ctrl and shift are for.
     expect(keysOf()).toEqual(['one/']);
     expect(store().selectedType).toBe('folder');
   });
 
-  it('discards the old type even when ctrl is held', () => {
-    store().selectItem(files[0]!, 'file', 0, false, false, files);
+  // The list view shows folders and files as one table, so a selection that
+  // spans both is an ordinary thing to build rather than a rule to refuse.
+  const combined = [folders[0]!, folders[1]!, files[0]!, files[1]!];
 
-    store().selectItem(folders[0]!, 'folder', 0, true, false, folders);
+  it('adds a folder to a file selection when ctrl is held', () => {
+    store().selectItem(files[0]!, 'file', 2, false, false, combined);
 
-    expect(keysOf()).toEqual(['one/']);
+    store().selectItem(folders[0]!, 'folder', 0, true, false, combined);
+
+    expect(keysOf().sort()).toEqual(['one/', 'a.txt'].sort());
+    expect(store().selectedType).toBe('mixed');
   });
 
-  it('discards the old type even when shift is held', () => {
-    store().selectItem(files[0]!, 'file', 0, false, false, files);
+  it('carries a shift range across the folder-file boundary', () => {
+    store().selectItem(folders[1]!, 'folder', 1, false, false, combined);
 
-    store().selectItem(folders[1]!, 'folder', 1, false, true, folders);
+    store().selectItem(files[0]!, 'file', 2, false, true, combined);
 
-    // The type check runs before the range branch, so no cross-type range is
-    // ever built.
-    expect(keysOf()).toEqual(['two/']);
+    // Everything between the anchor and the target, whichever kind it is.
+    expect(keysOf()).toEqual(['two/', 'a.txt']);
+    expect(store().selectedType).toBe('mixed');
+  });
+
+  // Callers ask "is this files only" to decide whether open, download and share
+  // apply. Mixed has to answer no without pretending to be one or the other.
+  it('reports a single kind as that kind, not as mixed', () => {
+    store().selectItem(folders[0]!, 'folder', 0, false, false, combined);
+    store().selectItem(folders[1]!, 'folder', 1, true, false, combined);
+
+    expect(store().selectedType).toBe('folder');
+  });
+
+  it('falls back to the remaining kind when the odd one out is removed', () => {
+    store().selectItem(folders[0]!, 'folder', 0, false, false, combined);
+    store().selectItem(files[0]!, 'file', 2, true, false, combined);
+    expect(store().selectedType).toBe('mixed');
+
+    // Ctrl-clicking the folder again drops it, leaving only files behind.
+    store().selectItem(folders[0]!, 'folder', 0, true, false, combined);
+
+    expect(store().selectedType).toBe('file');
   });
 
   it('identifies folders by prefix', () => {

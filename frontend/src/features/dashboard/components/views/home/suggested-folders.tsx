@@ -19,6 +19,15 @@ interface SuggestedFoldersProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
+  /**
+   * What this section is called.
+   *
+   * Written for Home and then reused wholesale by My Drive, heading and all,
+   * so a bucket's own folders were announced as "Suggested Folders". Nothing
+   * in a directory listing is a suggestion. Home keeps the default; the drive
+   * views pass their own plain label.
+   */
+  title?: string;
   onFilesDroppedToFolder?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
@@ -31,6 +40,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   isLoadingMore = false,
   className = '',
   hideTitle = false,
+  title = 'Suggested Folders',
   onFilesDroppedToFolder,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -60,7 +70,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
     <div className={`w-full ${className}`}>
       {!hideTitle && (
         <AriaLabel
-          label={`${isExpanded ? 'Collapse' : 'Expand'} suggested folders section`}
+          label={`${isExpanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} section`}
           position="top"
         >
           <button
@@ -93,7 +103,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
                   />
                 </svg>
               </div>
-              <span className="text-muted-foreground">Suggested Folders</span>
+              <span className="text-muted-foreground">{title}</span>
             </div>
           </button>
         </AriaLabel>

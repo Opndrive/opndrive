@@ -4,6 +4,7 @@ import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
+import type { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
@@ -12,7 +13,12 @@ import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FileItemListProps {
   file: FileItem;
-  allFiles?: FileItem[]; // For navigation between files
+  /**
+   * The rows a shift-select range can span. Widened to include folders: in list
+   * view they share one table with the files, so a range from a folder into the
+   * files below has to be sliceable out of a single array.
+   */
+  allFiles?: (FileItem | Folder)[];
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
   additionalActions?: FileMenuAction[]; // Additional menu actions
@@ -29,6 +35,17 @@ export function FileItemList({
 }: FileItemListProps) {
   const { openFilePreview } = useFilePreviewActions();
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
+
+  /**
+   * The neighbours the preview can arrow through.
+   *
+   * `allFiles` carries the folders too now, because shift-select ranges span
+   * the whole table - but a folder has nothing to preview, so it is dropped
+   * here rather than handed to a viewer that would not know what to do with it.
+   */
+  const previewableFiles = allFiles.filter(
+    (item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix))
+  );
 
   const selected = isSelected(file);
   const hasSelection = getSelectionCount() > 0;
@@ -121,7 +138,7 @@ export function FileItemList({
 
       // No selection and not a long press - open file
       if (!file.Key?.endsWith('/')) {
-        openFilePreview(file, allFiles);
+        openFilePreview(file, previewableFiles);
       }
       setIsLongPress(false);
     } else {
@@ -134,7 +151,7 @@ export function FileItemList({
     // Only open preview for non-folder items on double click (desktop only)
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice && !file.Key?.endsWith('/')) {
-      openFilePreview(file, allFiles);
+      openFilePreview(file, previewableFiles);
     }
   };
 
@@ -151,7 +168,7 @@ export function FileItemList({
     }
 
     if (!file.Key?.endsWith('/')) {
-      openFilePreview(file, allFiles);
+      openFilePreview(file, previewableFiles);
     }
   };
 
@@ -240,7 +257,7 @@ export function FileItemList({
         <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1 flex justify-end">
           <FileOverflowMenu
             file={file}
-            allFiles={allFiles}
+            allFiles={previewableFiles}
             additionalActions={additionalActions}
             insertAdditionalActionsAfter={insertAdditionalActionsAfter}
             triggerLabel="More actions"

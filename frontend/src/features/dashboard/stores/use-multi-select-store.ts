@@ -5,8 +5,14 @@
  * - Single click to select items
  * - Ctrl+Click to toggle selection
  * - Shift+Click to select range from last clicked item (keeps only items in the range)
- * - Files and folders can't be selected together
+ * - Files and folders can be selected together
  * - ESC key or clicking outside (single item only) clears selection
+ *
+ * Mixed selection exists because the list view shows folders and files as one
+ * table. Refusing to hold both meant a shift-drag down that table silently threw
+ * away everything above the boundary, which reads as a bug rather than a rule.
+ * The index passed in is therefore an index into that combined list, not into
+ * whichever half the item came from.
  */
 
 import { create } from 'zustand';
@@ -16,9 +22,17 @@ import { Folder } from '../types/folder';
 type SelectableItem = FileItem | Folder;
 type ItemType = 'file' | 'folder';
 
+/**
+ * What is currently held. `mixed` is the honest answer for a selection spanning
+ * both, and callers already treat anything that is not `file` as "not files
+ * only" - the toolbar greys open, download and share on exactly that test, and
+ * leaves delete enabled, which is the behaviour a mixed selection wants.
+ */
+type SelectionType = ItemType | 'mixed';
+
 interface MultiSelectState {
   selectedItems: SelectableItem[];
-  selectedType: ItemType | null;
+  selectedType: SelectionType | null;
   lastSelectedIndex: number | null;
 
   // Actions
@@ -34,6 +48,26 @@ interface MultiSelectState {
   isSelected: (item: SelectableItem) => boolean;
   getSelectionCount: () => number;
 }
+
+const isFolder = (item: SelectableItem): boolean => 'Prefix' in item && Boolean(item.Prefix);
+
+/**
+ * Read back off the items rather than tracked separately.
+ *
+ * A stored type and a stored list are two records of one fact, and the moment a
+ * range spans both kinds they disagree. Deriving it means the answer cannot
+ * drift from what is actually held.
+ */
+const typeOf = (items: SelectableItem[]): SelectionType | null => {
+  if (items.length === 0) return null;
+
+  const folders = items.filter(isFolder).length;
+
+  if (folders === 0) return 'file';
+  if (folders === items.length) return 'folder';
+
+  return 'mixed';
+};
 
 const getItemKey = (item: SelectableItem): string => {
   if ('Key' in item && item.Key) {
@@ -53,25 +87,17 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
   selectItem: (item, type, index, ctrlKey, shiftKey, allItems) => {
     const state = get();
 
-    // If selecting a different type, clear selection
-    if (state.selectedType && state.selectedType !== type) {
-      set({
-        selectedItems: [item],
-        selectedType: type,
-        lastSelectedIndex: index,
-      });
-      return;
-    }
-
-    // Shift+Click: Select range from last clicked item to current item
-    if (shiftKey && state.lastSelectedIndex !== null && state.selectedType === type) {
+    // Shift+Click: Select range from last clicked item to current item.
+    // No longer gated on the anchor matching this item's type - the range runs
+    // over the combined list, so crossing from folders into files is ordinary.
+    if (shiftKey && state.lastSelectedIndex !== null) {
       const start = Math.min(state.lastSelectedIndex, index);
       const end = Math.max(state.lastSelectedIndex, index);
       const rangeItems = allItems.slice(start, end + 1);
 
       set({
         selectedItems: rangeItems,
-        selectedType: type,
+        selectedType: typeOf(rangeItems),
         // Don't update lastSelectedIndex - keep the anchor point fixed
       });
       return;
@@ -91,14 +117,15 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
         );
         set({
           selectedItems: newSelection,
-          selectedType: newSelection.length > 0 ? type : null,
+          selectedType: typeOf(newSelection),
           lastSelectedIndex: index,
         });
       } else {
         // Add to selection
+        const newSelection = [...state.selectedItems, item];
         set({
-          selectedItems: [...state.selectedItems, item],
-          selectedType: type,
+          selectedItems: newSelection,
+          selectedType: typeOf(newSelection),
           lastSelectedIndex: index,
         });
       }
