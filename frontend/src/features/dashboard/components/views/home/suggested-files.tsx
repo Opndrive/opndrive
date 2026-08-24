@@ -40,6 +40,14 @@ interface SuggestedFilesProps {
    */
   leadingRows?: React.ReactNode;
   /**
+   * The same rows in their mobile form.
+   *
+   * The list view renders two trees, one per breakpoint, and only one is ever
+   * visible. Handing folder rows to the desktop tree alone made them vanish
+   * below `sm`, which on a folder-only prefix left the page blank.
+   */
+  leadingMobileRows?: React.ReactNode;
+  /**
    * How many rows precede the files, so a file's index describes its place in
    * the table rather than in the files array. Shift-select slices `allItems` by
    * these numbers, so being off by the folder count selects the wrong rows.
@@ -61,6 +69,7 @@ export function SuggestedFiles({
   onFilesDropped,
   title = 'Suggested files',
   leadingRows,
+  leadingMobileRows,
   fileIndexOffset = 0,
   allItems,
 }: SuggestedFilesProps) {
@@ -283,16 +292,21 @@ export function SuggestedFiles({
               </div>
 
               <div className="sm:hidden">
-                <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
-                  Files
-                </div>
+                {/* "Files" would be a lie above a list that opens with folders,
+                    the same reason the desktop table drops its heading. */}
+                {Children.count(leadingMobileRows) === 0 && (
+                  <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                    Files
+                  </div>
+                )}
                 <div className="divide-y divide-border/30">
+                  {leadingMobileRows}
                   {files.map((file, index) => (
                     <FileItemMobile
                       key={file.Key}
                       file={file}
-                      allFiles={files}
-                      index={index}
+                      allFiles={allItems ?? files}
+                      index={index + fileIndexOffset}
                       onFileClick={handleFileClick}
                       _onAction={handleFileAction}
                     />

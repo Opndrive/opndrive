@@ -4,13 +4,18 @@ import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
+import type { FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FolderItemMobileProps {
   folder: Folder;
-  allFolders?: Folder[];
+  /**
+   * The rows a shift-select can span, which in the drive's list view means the
+   * files below these folders as well. Same widening the desktop row took.
+   */
+  allFolders?: (FileItem | Folder)[];
   onFolderClick?: (folder: Folder) => void;
   _onAction?: (action: string, folder: Folder) => void;
   index?: number;

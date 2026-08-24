@@ -114,7 +114,12 @@ describe('list view is one table', () => {
    * directory.
    */
   it('shows folders in a directory that has no files', () => {
-    render(<DriveList folders={[folder(), folder({ id: 'tax', name: 'Taxes' })]} files={[]} />);
+    render(
+      <DriveList
+        folders={[folder(), folder({ id: 'tax', name: 'Taxes', Prefix: 'taxes/' })]}
+        files={[]}
+      />
+    );
 
     expect(screen.getAllByText('Reports').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Taxes').length).toBeGreaterThan(0);
@@ -146,5 +151,40 @@ describe('grid view keeps the two sections', () => {
 
     expect(screen.getAllByText('Reports').length).toBeGreaterThan(0);
     expect(screen.getAllByText('budget.xlsx').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The list view renders one tree per breakpoint and shows whichever the CSS
+ * allows. Handing the folder rows to the desktop tree alone made them vanish
+ * below `sm`, and on a prefix holding only folders it left the page blank -
+ * the empty-state drop zone having been suppressed by then too.
+ */
+describe('the mobile tree lists the folders as well', () => {
+  it('renders each folder in both trees, not just the desktop one', () => {
+    render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    // One row per breakpoint tree. Before the fix the folder appeared once,
+    // in the desktop tree, and was invisible on a phone.
+    expect(screen.getAllByText('Reports')).toHaveLength(2);
+  });
+
+  it('does not head the mobile list "Files" when folders open it', () => {
+    render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    expect(screen.queryAllByText('Files')).toHaveLength(0);
+  });
+});
+
+/**
+ * Both dashboard pages clear the selection on any mousedown that misses a row,
+ * testing for these attributes. A folder row without one cleared the selection
+ * it had just made.
+ */
+describe('folder rows are recognised by the click-outside handler', () => {
+  it('marks itself as a folder item', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[]} />);
+
+    expect(container.querySelector('[data-folder-item]')).not.toBeNull();
   });
 });

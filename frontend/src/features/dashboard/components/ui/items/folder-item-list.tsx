@@ -10,7 +10,7 @@ import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
-import { getItemKeyIntent } from './item-keyboard';
+import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 /**
  * A folder as a row in the drive table.
@@ -143,6 +143,12 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
     }
   };
 
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!opensMenuOnKey(event)) return;
+
+    selectItem(folder, 'folder', index, false, false, allItems);
+  };
+
   const handleMenuClick = (event: React.MouseEvent) => {
     // The row opens the folder on click, so the click that opened the menu must
     // not reach it.
@@ -155,6 +161,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
       <div
         role="button"
         tabIndex={0}
+        data-folder-item
         aria-label={`${folder.name}, folder${selected ? ', selected' : ''}`}
         className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 sm:gap-3 lg:gap-4 px-3 sm:px-4 py-3 hover:bg-secondary/50 transition-all cursor-pointer items-center min-h-[56px] sm:min-h-[64px] focus-visible:ring-2 focus-visible:ring-primary"
         style={{
@@ -218,6 +225,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
                 className="p-1.5 sm:p-2 rounded-full cursor-pointer hover:bg-secondary/80 transition-colors"
                 aria-label={`More actions for ${folder.name}`}
                 onPointerDown={handleMenuPointerDown}
+                onKeyDown={handleMenuKeyDown}
                 onClick={handleMenuClick}
               >
                 <MoreVerticalIcon size={16} className="text-muted-foreground" />

@@ -8,6 +8,8 @@ import type { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import { SuggestedFiles } from '../home/suggested-files';
 import { SuggestedFolders } from '../home/suggested-folders';
 import { FolderItemList } from '../../ui/items/folder-item-list';
+import { FolderItemMobile } from '../../ui/items/folder-item-mobile';
+import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
 
 /**
  * The drive's contents, in whichever shape the current layout calls for.
@@ -96,14 +98,43 @@ export function DriveList({
       allItems={allItems}
       fileIndexOffset={folders.length}
       leadingRows={folders.map((folder, index) => (
-        <FolderItemList
+        <FolderDropTarget
           key={folder.Prefix ?? folder.name}
-          folder={folder}
-          index={index}
-          allItems={allItems}
-          onClick={onFolderClick}
-          onMenuClick={onFolderMenuClick}
-        />
+          folder={{
+            id: folder.Prefix || folder.name,
+            name: folder.name,
+            path: folder.Prefix || folder.name,
+          }}
+          onFilesDropped={onFilesDroppedToFolder ?? (() => {})}
+        >
+          <FolderItemList
+            folder={folder}
+            index={index}
+            allItems={allItems}
+            onClick={onFolderClick}
+            onMenuClick={onFolderMenuClick}
+          />
+        </FolderDropTarget>
+      ))}
+      // The list view renders a tree per breakpoint and shows one of them, so
+      // the folder rows have to exist in both or they vanish below `sm`.
+      leadingMobileRows={folders.map((folder, index) => (
+        <FolderDropTarget
+          key={folder.Prefix ?? folder.name}
+          folder={{
+            id: folder.Prefix || folder.name,
+            name: folder.name,
+            path: folder.Prefix || folder.name,
+          }}
+          onFilesDropped={onFilesDroppedToFolder ?? (() => {})}
+        >
+          <FolderItemMobile
+            folder={folder}
+            index={index}
+            allFolders={allItems}
+            onFolderClick={onFolderClick}
+          />
+        </FolderDropTarget>
       ))}
     />
   );

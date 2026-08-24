@@ -34,6 +34,18 @@ interface MultiSelectState {
   selectedItems: SelectableItem[];
   selectedType: SelectionType | null;
   lastSelectedIndex: number | null;
+  /**
+   * The key of the row `lastSelectedIndex` counted to, so a range can tell
+   * whether it is still being measured against the same list.
+   *
+   * Indices only mean anything relative to the array they came from, and not
+   * every view has one array. My Drive's list numbers folders and files
+   * together; Home and search render them as separate sections, each numbering
+   * from zero. Without this, anchoring on the third folder in Home and then
+   * shift-clicking a file sliced the files array from index three and selected
+   * a block that had nothing to do with either click.
+   */
+  anchorKey: string | null;
 
   // Actions
   selectItem: (
@@ -83,16 +95,27 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
   selectedItems: [],
   selectedType: null,
   lastSelectedIndex: null,
+  anchorKey: null,
 
   selectItem: (item, type, index, ctrlKey, shiftKey, allItems) => {
     const state = get();
 
     // Shift+Click: Select range from last clicked item to current item.
-    // No longer gated on the anchor matching this item's type - the range runs
-    // over the combined list, so crossing from folders into files is ordinary.
-    if (shiftKey && state.lastSelectedIndex !== null) {
-      const start = Math.min(state.lastSelectedIndex, index);
-      const end = Math.max(state.lastSelectedIndex, index);
+    //
+    // No longer gated on the anchor matching this item's type - in one table
+    // the range runs over the combined list, so crossing from folders into
+    // files is ordinary. It is gated on the anchor still being where it was
+    // instead: a view that numbers folders and files separately hands over an
+    // index that means nothing in this array, and slicing on it would select
+    // rows the user never pointed at.
+    const anchorHolds =
+      state.lastSelectedIndex !== null &&
+      state.anchorKey !== null &&
+      getItemKey(allItems[state.lastSelectedIndex] ?? ({} as SelectableItem)) === state.anchorKey;
+
+    if (shiftKey && anchorHolds) {
+      const start = Math.min(state.lastSelectedIndex!, index);
+      const end = Math.max(state.lastSelectedIndex!, index);
       const rangeItems = allItems.slice(start, end + 1);
 
       set({
@@ -119,6 +142,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
           selectedItems: newSelection,
           selectedType: typeOf(newSelection),
           lastSelectedIndex: index,
+          anchorKey: itemKey,
         });
       } else {
         // Add to selection
@@ -127,6 +151,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
           selectedItems: newSelection,
           selectedType: typeOf(newSelection),
           lastSelectedIndex: index,
+          anchorKey: itemKey,
         });
       }
       return;
@@ -137,6 +162,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       selectedItems: [item],
       selectedType: type,
       lastSelectedIndex: index,
+      anchorKey: getItemKey(item),
     });
   },
 
@@ -145,6 +171,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       selectedItems: [],
       selectedType: null,
       lastSelectedIndex: null,
+      anchorKey: null,
     });
   },
 
