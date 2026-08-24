@@ -27,12 +27,16 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
     >
       {/*
         Sized on the icon, not on a box around it.
-        `react-icons` default to width and height of 1em, so an icon given no
-        size of its own inherits the `text-sm` above and draws at 14px inside a
-        slot reserved for 20. It also read as misaligned: an svg is inline, so
-        it sat on the text baseline in the corner of that box with the
-        line-height gap beneath it. The link is already `flex items-center`, so
-        as a direct child the icon centres itself and the wrapper is not needed.
+
+        `react-icons` default to a width and height of 1em, so an icon given no
+        size of its own inherits the `text-sm` on the row and draws at 14px.
+        The wrapper it used to sit in reserved 20, and Tailwind's preflight
+        makes an svg `display: block`, so those 14px sat in the top left corner
+        of that 20px box. The row centred the box; nothing centred the icon
+        inside it. That is why it looked both small and high.
+
+        The row is already `flex items-center`, so as a direct child the icon is
+        centred by the row and there is no box left to be the wrong size.
       */}
       <item.icon
         className={cn(
