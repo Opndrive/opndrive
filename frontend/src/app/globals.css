@@ -70,11 +70,6 @@
   --success-foreground: #ffffff;
   --success-surface: #e6f4ea;
 
-  /* Error state for form validation and failed connections */
-  --danger: #d93025;
-  --danger-surface: #fce8e6;
-  --danger-border: #f6aea9;
-
   /* Informational banner, softer than a warning and calmer than primary */
   --info-surface: #e8f0fe;
   --info-border: #d2e3fc;
@@ -114,6 +109,12 @@
      white-on-white. */
   --destructive: #d93025;
   --destructive-foreground: #ffffff;
+  /* Tints of the same red, for the surface and border of an error panel.
+     These were a second scale called `danger` holding byte-identical values,
+     which is one retune away from the app having two different reds and no
+     rule for which belongs where. */
+  --destructive-surface: #fce8e6;
+  --destructive-border: #f6aea9;
 }
 
 @theme inline {
@@ -142,9 +143,6 @@
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-success-surface: var(--success-surface);
-  --color-danger: var(--danger);
-  --color-danger-surface: var(--danger-surface);
-  --color-danger-border: var(--danger-border);
   --color-info-surface: var(--info-surface);
   --color-info-border: var(--info-border);
   --color-info-foreground: var(--info-foreground);
@@ -165,6 +163,8 @@
   --color-provider-custom-soft: var(--provider-custom-soft);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-surface: var(--destructive-surface);
+  --color-destructive-border: var(--destructive-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -225,10 +225,6 @@
   --success-foreground: #202124;
   --success-surface: rgba(129, 201, 149, 0.16);
 
-  --danger: #f28b82;
-  --danger-surface: rgba(242, 139, 130, 0.14);
-  --danger-border: rgba(242, 139, 130, 0.32);
-
   --info-surface: rgba(138, 180, 248, 0.12);
   --info-border: rgba(138, 180, 248, 0.28);
   --info-foreground: #aecbfa;
@@ -241,6 +237,8 @@
      dark here the way --primary-foreground does. */
   --destructive: #f28b82;
   --destructive-foreground: #202124;
+  --destructive-surface: rgba(242, 139, 130, 0.14);
+  --destructive-border: rgba(242, 139, 130, 0.32);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -300,10 +298,6 @@
     --success-foreground: #202124;
     --success-surface: rgba(129, 201, 149, 0.16);
 
-    --danger: #f28b82;
-    --danger-surface: rgba(242, 139, 130, 0.14);
-    --danger-border: rgba(242, 139, 130, 0.32);
-
     --info-surface: rgba(138, 180, 248, 0.12);
     --info-border: rgba(138, 180, 248, 0.28);
     --info-foreground: #aecbfa;
@@ -313,6 +307,8 @@
     --step-pending-border: #5f6368;
     --destructive: #f28b82;
     --destructive-foreground: #202124;
+    --destructive-surface: rgba(242, 139, 130, 0.14);
+    --destructive-border: rgba(242, 139, 130, 0.32);
   }
 }
 

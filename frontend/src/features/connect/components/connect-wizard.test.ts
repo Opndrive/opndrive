@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildCredentials, formatPrefix } from './connect-wizard';
-import { getProviderBySlug, resolveEndpoint } from '@/config/providers';
+import { getProviderBySlug, resolveEndpoint, S3_PROVIDERS } from '@/config/providers';
 
 const aws = getProviderBySlug('aws-s3')!;
 const wasabi = getProviderBySlug('wasabi')!;
@@ -142,5 +142,41 @@ describe('resolveEndpoint', () => {
 
   it('is empty for a provider with no template at all', () => {
     expect(resolveEndpoint(minio, 'us-east-1')).toBe('');
+  });
+});
+
+/**
+ * What the endpoint field offers when it is empty.
+ *
+ * `endpoint` is a template, and using it directly as the placeholder is how R2
+ * came to present a literal `{{accountId}}` as the thing to type. Wasabi and
+ * Backblaze had the same hole with `{{region}}`; they are filled in by
+ * `resolveEndpoint` and shown in the hint under the field instead.
+ *
+ * The other half of that bug: three providers declare `endpoint: ''`, so a
+ * chain that reached for the template with `??` rather than `||` resolved to
+ * the empty string and left a required field with no example at all.
+ */
+describe('the endpoint placeholder', () => {
+  const placeholderFor = (provider: (typeof S3_PROVIDERS)[number]) =>
+    provider.endpointPlaceholder ?? 'https://storage.example.com';
+
+  it.each(S3_PROVIDERS.map((p) => [p.slug, p] as const))(
+    'gives %s something to look at that is not a template',
+    (_slug, provider) => {
+      const placeholder = placeholderFor(provider);
+
+      expect(placeholder).not.toBe('');
+      expect(placeholder).not.toContain('{{');
+    }
+  );
+
+  it('spells R2 out, because its account id is never derivable', () => {
+    expect(placeholderFor(r2)).toBe('https://<account-id>.r2.cloudflarestorage.com');
+  });
+
+  it('leaves region-only providers to the derived hint', () => {
+    expect(wasabi.endpointPlaceholder).toBeUndefined();
+    expect(resolveEndpoint(wasabi, 'eu-west-1')).toBe('https://s3.eu-west-1.wasabisys.com');
   });
 });

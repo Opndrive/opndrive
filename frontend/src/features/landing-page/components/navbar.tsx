@@ -7,6 +7,7 @@ import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
 import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import { DOCS_URL } from '@/config/links';
+import { DashboardLink } from '@/shared/components/layout/dashboard-link';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -129,6 +130,10 @@ export default function Navbar() {
               />
 
               <ThemeToggleCustom />
+
+              {/* Only renders for a visitor who already has a bucket
+                  connected. The nav is otherwise the same signed in or out. */}
+              <DashboardLink />
             </div>
           </div>
         </nav>

@@ -96,7 +96,6 @@ function BrowsePageContent() {
   const params = parseFolderParams(searchParams);
   const {
     prefix: prefixParam = '',
-    key: keyParam = '',
     maxKeys: _maxKeys,
     continuationToken: _continuationToken,
   } = params;
@@ -162,7 +161,7 @@ function BrowsePageContent() {
       const folderName = folder.name;
       if (folderName) {
         // Use utility function to build URL
-        const url = buildFolderClickUrl(prefixParam, folderName, keyParam);
+        const url = buildFolderClickUrl(prefixParam, folderName);
         router.push(url);
       }
     }
@@ -318,17 +317,13 @@ function BrowsePageContent() {
       {pathSegments.length > 0 && (
         <EnhancedFolderBreadcrumb
           pathSegments={pathSegments}
-          currentKey={keyParam}
-          onNavigate={(prefix: string, key?: string) => {
+          onNavigate={(prefix: string) => {
             const params = new URLSearchParams();
             if (prefix) {
               params.set('prefix', prefix);
             }
-            if (key) {
-              params.set('key', key);
-            }
 
-            const url = prefix || key ? `/dashboard/browse?${params.toString()}` : '/dashboard';
+            const url = prefix ? `/dashboard/browse?${params.toString()}` : '/dashboard';
             router.push(url);
           }}
         />
