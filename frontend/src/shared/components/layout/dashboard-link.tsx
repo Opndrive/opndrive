@@ -16,6 +16,12 @@ import { useAuth } from '@/hooks/use-auth';
  * only reads localStorage in an effect, so there is no hydration mismatch to
  * guard against here; waiting for `isLoading` to clear just avoids showing a
  * link, hiding it, and showing it again while the restore is in flight.
+ *
+ * The label is one word. "Go to Dashboard" pushed the sticky nav wider than the
+ * pill it sits in, and the two leading words carry nothing the arrow does not
+ * already say. `rounded-full` matches that pill, and the arrow thickens to 2.5
+ * so it still reads as a direction at 16px rather than dissolving into the
+ * label beside it.
  */
 export function DashboardLink({ className }: { className?: string }) {
   const { userCreds, isLoading } = useAuth();
@@ -27,11 +33,15 @@ export function DashboardLink({ className }: { className?: string }) {
       href="/dashboard"
       className={
         className ??
-        'inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90'
+        'group inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90'
       }
     >
-      Go to Dashboard
-      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      Dashboard
+      <ArrowRight
+        className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+        strokeWidth={2.5}
+        aria-hidden="true"
+      />
     </Link>
   );
 }
