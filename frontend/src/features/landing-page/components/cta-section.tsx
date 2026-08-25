@@ -4,7 +4,13 @@ import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner
 
 interface CTASectionProps {
   handleGetStarted: () => void;
-  isLoading: boolean;
+  /**
+   * The blog's copies own their navigation and hold this true from the click
+   * until the route changes, so the button reads as busy rather than sitting
+   * disabled under a label that still invites a press. The landing page has
+   * nothing to wait for and leaves it alone.
+   */
+  isLoading?: boolean;
   /**
    * Named by the page, which is the only thing that knows the destination.
    * The blog's copies of this section always route to /connect, so they take
@@ -15,7 +21,7 @@ interface CTASectionProps {
 
 export default function CTASection({
   handleGetStarted,
-  isLoading,
+  isLoading = false,
   ctaLabel = 'Get Started',
 }: CTASectionProps) {
   return (
@@ -48,7 +54,7 @@ export default function CTASection({
               disabled={isLoading}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 sm:px-8 md:px-10 lg:px-12 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-medium min-w-[120px] sm:min-w-[140px] md:min-w-[160px]"
             >
-              {ctaLabel}
+              {isLoading ? 'Loading...' : ctaLabel}
             </Button>
           </div>
 

@@ -41,6 +41,7 @@ let mockPathname = '/privacy';
 import { AuthProvider } from '@/context/auth-context';
 import PrivacyPolicyPage from './page';
 import TermsOfServicePage from '../terms/page';
+import LandingPage from '../page';
 
 function renderThroughProviders(pathname: string, page: React.ReactElement): string {
   mockPathname = pathname;
@@ -98,10 +99,32 @@ describe('connect pages render for crawlers', () => {
   );
 });
 
+// The landing page is the pitch - hero, features, FAQ - and was the one public
+// page still gated. It sat in the list below, grouped with the dashboard as if
+// it were something to protect.
+describe('the landing page renders for crawlers', () => {
+  const html = renderThroughProviders('/', <LandingPage />);
+
+  it('is not replaced by the auth loading placeholder', () => {
+    expect(html).not.toContain('Loading...');
+  });
+
+  it('renders the pitch into the markup', () => {
+    expect(html).toContain('Open-source web interface for S3 compatible storage');
+  });
+
+  // The call to action is the point of the page, and it is rendered before any
+  // session has been looked for. If it ever goes back to reporting that, this
+  // is what a crawler would index in its place.
+  it('renders a real call to action rather than a loading state', () => {
+    expect(html).toContain('Get Started');
+  });
+});
+
 describe('every other route keeps the gate it had', () => {
   // The placeholder exists so the dashboard never renders without a session.
   // Only pages that must be readable before anyone has a session are exempt.
-  it.each(['/dashboard', '/dashboard/search', '/dashboard/settings', '/'])(
+  it.each(['/dashboard', '/dashboard/search', '/dashboard/settings'])(
     'still shows the placeholder on %s',
     (pathname) => {
       const html = renderThroughProviders(pathname, <div>protected content</div>);
