@@ -23,9 +23,16 @@ import type { SearchResult } from '@opndrive/s3-api';
 
 const pushMock = vi.fn();
 
+/**
+ * The route the provider believes it is on. Mutable because restoring a
+ * session behaves differently per route, and a fixed '/dashboard' hid that:
+ * the redirect this used to perform could never fire under test.
+ */
+const route = vi.hoisted(() => ({ current: '/dashboard' }));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => '/dashboard',
+  usePathname: () => route.current,
 }));
 
 /**
@@ -396,5 +403,69 @@ describe('credentials are proved before a session is built on them', () => {
     // A stored session that cannot list is a dashboard that cannot load, and
     // the user is no longer on the page that could fix it.
     await waitFor(() => expect(localStorage.getItem('s3_user_session')).toBeNull());
+  });
+});
+
+/**
+ * Restoring a session is not a reason to navigate.
+ *
+ * The provider used to push to /dashboard whenever it found stored credentials
+ * while the user sat on `/`, `/connect` or a provider page. All three are pages
+ * with something to read - the landing page is the pitch, and the connect pages
+ * exist to be found in search - so a returning visitor was bounced off the
+ * exact page they had arrived at, and someone with one bucket connected could
+ * not reach the form to add a second.
+ *
+ * It also read far more into the signal than was there: there is no account
+ * here, so "has a session" means only that keys are in this browser's
+ * localStorage, which a shared machine satisfies just as well as present
+ * intent.
+ *
+ * These pin the absence of that redirect. The old `usePathname` mock returned
+ * '/dashboard' unconditionally, so the behaviour was never covered either way.
+ */
+describe('restoring a session does not navigate', () => {
+  const storedCreds = JSON.stringify({
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+  });
+
+  beforeEach(() => {
+    pushMock.mockClear();
+    localStorage.clear();
+    route.current = '/dashboard';
+  });
+
+  it.each(['/', '/connect', '/connect/cloudflare-r2'])(
+    'leaves a signed-in visitor on %s',
+    async (pathname) => {
+      route.current = pathname;
+      localStorage.setItem(STORAGE_KEY, storedCreds);
+
+      await renderProvider();
+
+      expect(pushMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it('still restores the session it found', async () => {
+    route.current = '/connect';
+    localStorage.setItem(STORAGE_KEY, storedCreds);
+
+    await renderProvider();
+
+    // Not navigating is only correct if the session is genuinely live: the
+    // "Go to Dashboard" control on these pages renders off exactly this.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(storedCreds);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('does not navigate when there is no session to restore', async () => {
+    route.current = '/';
+
+    await renderProvider();
+
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

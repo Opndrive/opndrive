@@ -233,3 +233,53 @@ describe('presses that do not open the menu do not select', () => {
     expect(selection()).toHaveLength(1);
   });
 });
+
+/**
+ * Opening the same menu from the keyboard has to select the same row.
+ *
+ * Radix opens on keydown and preventDefaults, so no click is synthesised and
+ * the mouse path never ran - a keyboard user got a menu over an unselected row
+ * with no toolbar to say what it would act on.
+ */
+describe('the keyboard opens the menu and selects too', () => {
+  it.each(['Enter', ' ', 'ArrowDown'])('selects on %s', (key) => {
+    render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    fireEvent.keyDown(menuButton('Reports'), { key });
+
+    expect(selection()).toHaveLength(1);
+  });
+
+  it('ignores keys that do not open the menu', () => {
+    render(<FolderItem folder={folder()} allFolders={[folder()]} />);
+
+    fireEvent.keyDown(menuButton('Reports'), { key: 'a' });
+
+    expect(selection()).toHaveLength(0);
+  });
+
+  // Same five rows the mouse block covers. The key list is shared now, but
+  // each component still wires its own onKeyDown, and a row that forgets to
+  // is exactly the drift this file exists to catch.
+  it('selects a folder row on mobile layout', () => {
+    render(<FolderItemMobile folder={folder()} allFolders={[folder()]} />);
+
+    fireEvent.keyDown(menuButton('Reports'), { key: 'Enter' });
+
+    expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('folder');
+  });
+
+  it.each([
+    ['list', FileItemList],
+    ['grid', FileItemGrid],
+    ['mobile', FileItemMobile],
+  ])('selects a file row in the %s layout', (_label, Component) => {
+    render(<Component file={file()} allFiles={[file()]} />);
+
+    fireEvent.keyDown(menuButton('budget.xlsx'), { key: 'Enter' });
+
+    expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('file');
+  });
+});
