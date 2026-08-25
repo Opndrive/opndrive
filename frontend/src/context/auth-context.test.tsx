@@ -469,3 +469,107 @@ describe('restoring a session does not navigate', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Public pages render before a session has been looked for.
+ *
+ * `isLoading` starts true, so the placeholder is what the server renders for
+ * any route not on the public list - the page's entire body is the word
+ * "Loading...", which is also what a crawler indexes. `/privacy`, `/terms` and
+ * `/connect` were on the list for that reason; the landing page, which is the
+ * whole pitch, was not.
+ */
+describe('public routes render without waiting for the session', () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    localStorage.clear();
+    route.current = '/dashboard';
+  });
+
+  it.each(['/', '/privacy', '/terms', '/connect', '/connect/cloudflare-r2'])(
+    'renders %s straight away',
+    (pathname) => {
+      route.current = pathname;
+
+      render(
+        <AuthProvider>
+          <SessionControls />
+        </AuthProvider>
+      );
+
+      // No waitFor: the point is that this is in the very first render.
+      expect(screen.getByText('logout')).toBeDefined();
+      expect(screen.queryByText('Loading...')).toBeNull();
+    }
+  );
+
+  // A stored session is what makes the restore genuinely asynchronous: with
+  // nothing to restore it resolves before the first render returns, and the
+  // placeholder never appears on any route.
+  const storedCreds = JSON.stringify({
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+  });
+
+  it.each(['/dashboard', '/dashboard/browse'])('still gates %s behind the restore', (pathname) => {
+    // '/' would match every route if the child test treated it as a bare
+    // prefix. It looks for a '/' after the route, and nothing begins with '//'.
+    route.current = pathname;
+    localStorage.setItem(STORAGE_KEY, storedCreds);
+
+    render(
+      <AuthProvider>
+        <SessionControls />
+      </AuthProvider>
+    );
+
+    expect(screen.getByText('Loading...')).toBeDefined();
+  });
+
+  it('renders / straight away even with a session to restore', () => {
+    route.current = '/';
+    localStorage.setItem(STORAGE_KEY, storedCreds);
+
+    render(
+      <AuthProvider>
+        <SessionControls />
+      </AuthProvider>
+    );
+
+    expect(screen.getByText('logout')).toBeDefined();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+});
+
+/**
+ * Establishing a session is not a reason to navigate either.
+ *
+ * `createSession` used to push to /dashboard from `/` or `/login`. Its only
+ * caller is ConnectWizard, which lives at /connect/[provider] and navigates
+ * itself once this resolves - so the branch could never fire, and `/login` is
+ * not a route at all.
+ */
+describe('createSession does not navigate', () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    localStorage.clear();
+    route.current = '/connect/cloudflare-r2';
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+  });
+
+  it.each(['/', '/login', '/connect/cloudflare-r2'])(
+    'leaves navigation to the caller from %s',
+    async (pathname) => {
+      route.current = pathname;
+      await renderProvider();
+
+      await act(async () => {
+        screen.getByText('connect').click();
+      });
+
+      expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+      expect(pushMock).not.toHaveBeenCalled();
+    }
+  );
+});
