@@ -25,15 +25,26 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
           : 'text-secondary-foreground hover:text-foreground hover:bg-accent'
       )}
     >
-      <div
+      {/*
+        Sized on the icon, not on a box around it.
+
+        `react-icons` default to a width and height of 1em, so an icon given no
+        size of its own inherits the `text-sm` on the row and draws at 14px.
+        The wrapper it used to sit in reserved 20, and Tailwind's preflight
+        makes an svg `display: block`, so those 14px sat in the top left corner
+        of that 20px box. The row centred the box; nothing centred the icon
+        inside it. That is why it looked both small and high.
+
+        The row is already `flex items-center`, so as a direct child the icon is
+        centred by the row and there is no box left to be the wrong size.
+      */}
+      <item.icon
         className={cn(
           'flex-shrink-0 mr-3',
           isInDropdown ? 'h-4 w-4' : 'h-5 w-5',
           itemIsActive && 'text-primary-foreground'
         )}
-      >
-        <item.icon />
-      </div>
+      />
       <span className="truncate">{item.title}</span>
       {item.badge && (
         <span
