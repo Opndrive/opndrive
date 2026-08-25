@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { cn } from '@/shared/utils/utils';
+import { sidebarBadgeClasses, sidebarRowClasses } from '@/shared/utils/sidebar-row';
 import { SidebarItemProps } from './types/sidebar';
 
 export const SidebarItem: React.FC<SidebarItemProps> = ({
@@ -11,20 +12,12 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
   isInDropdown = false,
 }) => {
   const itemFullPath = `${basePath}${item.href === '/' ? '' : item.href}`;
-  const itemIsActive = isActive(item.href);
+  // A row that cannot be navigated to is not the current page, whatever the
+  // route says.
+  const itemIsActive = !item.disabled && isActive(item.href);
 
-  return (
-    <Link
-      href={itemFullPath}
-      onClick={onItemClick}
-      className={cn(
-        'flex items-center w-full text-sm transition-all duration-200 ease-in-out group',
-        isInDropdown ? 'px-3 py-2 ml-6 rounded-lg' : 'px-3 py-2 rounded-lg',
-        itemIsActive
-          ? 'bg-primary text-primary-foreground font-medium shadow-sm'
-          : 'text-secondary-foreground hover:text-foreground hover:bg-accent'
-      )}
-    >
+  const rowContent = (
+    <>
       {/*
         Sized on the icon, not on a box around it.
 
@@ -39,6 +32,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         centred by the row and there is no box left to be the wrong size.
       */}
       <item.icon
+        aria-hidden="true"
         className={cn(
           'flex-shrink-0 mr-3',
           isInDropdown ? 'h-4 w-4' : 'h-5 w-5',
@@ -46,18 +40,39 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         )}
       />
       <span className="truncate">{item.title}</span>
-      {item.badge && (
-        <span
-          className={cn(
-            'ml-auto text-xs px-2 py-1 rounded-full',
-            itemIsActive
-              ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'bg-muted text-muted-foreground'
-          )}
-        >
-          {item.badge}
-        </span>
+      {/*
+        `!= null` rather than a truthiness check: `badge` is `string | number`,
+        and `{item.badge && ...}` renders a bare `0` next to the label for a
+        zero count instead of the pill.
+      */}
+      {item.badge != null && (
+        <span className={sidebarBadgeClasses({ isActive: itemIsActive })}>{item.badge}</span>
       )}
+    </>
+  );
+
+  // Rendered as a span, not a disabled link: HTML has no disabled state for an
+  // anchor, and an <a> without href is still in the accessibility tree as a
+  // link. This is out of the tab order and announced as disabled.
+  if (item.disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className={sidebarRowClasses({ isNested: isInDropdown, isDisabled: true })}
+      >
+        {rowContent}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={itemFullPath}
+      onClick={onItemClick}
+      aria-current={itemIsActive ? 'page' : undefined}
+      className={sidebarRowClasses({ isActive: itemIsActive, isNested: isInDropdown })}
+    >
+      {rowContent}
     </Link>
   );
 };

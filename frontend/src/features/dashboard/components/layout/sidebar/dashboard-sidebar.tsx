@@ -1,14 +1,43 @@
 'use client';
 import { useScrollLock } from '@/hooks/use-scroll-lock';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/shared/utils/utils';
-import { DashboardSidebarProps } from './types/sidebar';
+import { DashboardSidebarProps, SidebarItem as SidebarItemType } from './types/sidebar';
 import { SidebarCreateButton } from './sidebar-create-button';
 import { SidebarItem } from './sidebar-item';
 import { SidebarDropdown } from './sidebar-dropdown';
 import { SidebarDiscordCta } from './sidebar-discord-cta';
-import { groupSidebarItems } from './utils/sidebar';
+
+/**
+ * Bumped when the stored shape changes, so an old blob is ignored rather than
+ * parsed into something the current code does not expect.
+ *
+ * Appended as an interpolation rather than written into the literal below, so
+ * the static prefix of that template stays exactly `dashboard_sidebar_state`.
+ * `storage-keys.test.ts` resolves a key to the text before its first `${` and
+ * matches it against the privacy registry by exact string, so moving the
+ * version into the prefix would take the key out of the published policy.
+ */
+const SIDEBAR_STATE_VERSION = ':v2';
+
+/** Matches Tailwind's `lg` breakpoint, which the layout classes below key off. */
+const MOBILE_QUERY = '(max-width: 1023px)';
+
+function readOpenSections(key: string): Record<string, boolean> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, boolean>;
+    }
+  } catch {
+    // Corrupt JSON, or storage unavailable in private mode. Start closed.
+  }
+  return {};
+}
 
 export function DashboardSidebar({
   isOpen,
@@ -17,65 +46,72 @@ export function DashboardSidebar({
   basePath,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
-
-  // Removed role-based key; use a stable key (optionally include basePath to scope it per app/space)
+  // Kept inline as a template with a literal prefix, not moved into a helper:
+  // the storage-key scan resolves a const declared in the same file and cannot
+  // follow a function call.
   const localStorageKey = useMemo(
-    () => `dashboard_sidebar_state${basePath ? `:${basePath}` : ''}`,
+    () => `dashboard_sidebar_state${SIDEBAR_STATE_VERSION}${basePath ? `:${basePath}` : ''}`,
     [basePath]
   );
 
-  const sidebarSections = useMemo(() => groupSidebarItems(sidebarItems), [sidebarItems]);
+  // Read during the first render rather than from an effect. The previous
+  // version had one effect seeding this from the route, one persisting it and
+  // one loading it back, all on mount, which is three chances to write over
+  // what the user had.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    readOpenSections(localStorageKey)
+  );
 
+  const [isSmallScreen, setIsSmallScreen] = useState(() =>
+    typeof window === 'undefined' ? false : window.matchMedia(MOBILE_QUERY).matches
+  );
+
+  // `matchMedia` rather than a `resize` listener: resize fires continuously
+  // while a window is being dragged and every event set state. This fires only
+  // when the breakpoint is actually crossed.
   useEffect(() => {
-    function checkScreenSize() {
-      setIsSmallScreen(window.innerWidth < 1024);
-    }
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
+    const query = window.matchMedia(MOBILE_QUERY);
+    const update = (event: MediaQueryListEvent) => setIsSmallScreen(event.matches);
+
+    setIsSmallScreen(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
   }, []);
 
   useScrollLock(isOpen && isSmallScreen);
 
+  // Skips the render that read storage, so mounting alone never writes.
+  const hasHydrated = useRef(false);
   useEffect(() => {
-    const initialOpenSections: Record<string, boolean> = {};
-    sidebarItems.forEach((item) => {
-      if (item.children) {
-        const isActive = item.children.some((child) => {
-          const childFullPath = `${basePath}${child.href === '/' ? '' : child.href}`;
-          return pathname === childFullPath || pathname.startsWith(childFullPath + '/');
-        });
-        if (isActive) {
-          initialOpenSections[item.title] = true;
-        }
-      }
-    });
-    const savedOpenSections = localStorage.getItem(localStorageKey);
-    if (!savedOpenSections && Object.keys(initialOpenSections).length > 0) {
-      setOpenSections(initialOpenSections);
+    if (!hasHydrated.current) {
+      hasHydrated.current = true;
+      return;
     }
-  }, [pathname, sidebarItems, basePath, localStorageKey]);
-
-  useEffect(() => {
-    if (Object.keys(openSections).length > 0) {
-      localStorage.setItem(localStorageKey, JSON.stringify(openSections));
+    try {
+      window.localStorage.setItem(localStorageKey, JSON.stringify(openSections));
+    } catch {
+      // Sidebar state simply will not persist if storage is unavailable.
     }
   }, [openSections, localStorageKey]);
 
+  // Held in a ref so the Escape listener is subscribed once rather than
+  // resubscribed every time the parent hands down a new closure.
+  const closeSidebarRef = useRef(closeSidebar);
   useEffect(() => {
-    const savedOpenSections = localStorage.getItem(localStorageKey);
-    if (savedOpenSections) {
-      try {
-        setOpenSections(JSON.parse(savedOpenSections));
-      } catch {
-        // Reset sidebar state if corrupted
-        localStorage.removeItem(localStorageKey);
-      }
-    }
-  }, [localStorageKey]);
+    closeSidebarRef.current = closeSidebar;
+  }, [closeSidebar]);
+
+  useEffect(() => {
+    if (!isOpen || !isSmallScreen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeSidebarRef.current();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, isSmallScreen]);
 
   const toggleSection = (title: string) => {
     setOpenSections((prev) => ({
@@ -84,12 +120,28 @@ export function DashboardSidebar({
     }));
   };
 
-  const isActive = (itemHref: string) => {
-    const fullPath = `${basePath}${itemHref === '/' ? '' : itemHref}`;
-    if (itemHref === '/') {
-      return pathname === fullPath;
-    }
-    return pathname === fullPath || pathname.startsWith(fullPath + '/');
+  const isActive = useCallback(
+    (itemHref: string) => {
+      const fullPath = `${basePath}${itemHref === '/' ? '' : itemHref}`;
+      if (itemHref === '/') {
+        return pathname === fullPath;
+      }
+      return pathname === fullPath || pathname.startsWith(fullPath + '/');
+    },
+    [basePath, pathname]
+  );
+
+  /**
+   * Derived during render, not seeded by an effect. A section the user has
+   * never touched opens because the route is inside it; once they have opened
+   * or closed it by hand, that choice wins. The effect this replaces only
+   * applied the route-derived state when nothing had been saved yet, so
+   * auto-opening silently stopped working after the first toggle.
+   */
+  const isSectionOpen = (item: SidebarItemType): boolean => {
+    const explicit = openSections[item.title];
+    if (explicit !== undefined) return explicit;
+    return item.children?.some((child) => isActive(child.href)) ?? false;
   };
 
   const handleMenuItemClick = () => {
@@ -129,38 +181,36 @@ export function DashboardSidebar({
               {/* Create Button */}
               <SidebarCreateButton />
 
-              {/* Navigation Sections */}
-              {sidebarSections.map((section, sectionIndex) => (
-                <div key={sectionIndex}>
-                  {/* Separator */}
-                  {section.showSeparator && <div className="border-t border-border my-4" />}
-
-                  {/* Section Items */}
-                  <div className="space-y-1 mb-4">
-                    {section.items.map((item) =>
-                      item.children ? (
-                        <SidebarDropdown
-                          key={item.title}
-                          item={item}
-                          isOpen={!!openSections[item.title]}
-                          onToggle={() => toggleSection(item.title)}
-                          basePath={basePath}
-                          isActive={isActive}
-                          onItemClick={handleMenuItemClick}
-                        />
-                      ) : (
-                        <SidebarItem
-                          key={item.title}
-                          item={item}
-                          basePath={basePath}
-                          isActive={isActive}
-                          onItemClick={handleMenuItemClick}
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-              ))}
+              {/*
+                A flat list. This used to run through `groupSidebarItems`, which
+                returned one section with `showSeparator: false` no matter what
+                it was given - so the separator could never draw and the loop
+                around it could only ever run once. Grouping can come back
+                described by data when something actually needs it.
+              */}
+              <nav aria-label="Dashboard" className="space-y-1 mb-4">
+                {sidebarItems.map((item) =>
+                  item.children ? (
+                    <SidebarDropdown
+                      key={item.title}
+                      item={item}
+                      isOpen={isSectionOpen(item)}
+                      onToggle={() => toggleSection(item.title)}
+                      basePath={basePath}
+                      isActive={isActive}
+                      onItemClick={handleMenuItemClick}
+                    />
+                  ) : (
+                    <SidebarItem
+                      key={item.title}
+                      item={item}
+                      basePath={basePath}
+                      isActive={isActive}
+                      onItemClick={handleMenuItemClick}
+                    />
+                  )
+                )}
+              </nav>
             </>
           )}
         </div>
