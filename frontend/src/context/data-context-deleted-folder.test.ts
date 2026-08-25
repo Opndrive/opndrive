@@ -61,7 +61,11 @@ describe('forgetting the folder itself', () => {
         'docs/': listing(['docs/2024/'], ['docs/a.txt']),
         'docs/2024/': listing([], ['docs/2024/b.txt']),
       },
-      status: { '/': 'ready', 'docs/': 'ready', 'docs/2024/': 'ready' },
+      directory: {
+        '/': { status: 'ready' },
+        'docs/': { status: 'ready' },
+        'docs/2024/': { status: 'ready' },
+      },
       loadMoreStatus: { 'docs/': 'ready' },
     });
   });
@@ -75,7 +79,7 @@ describe('forgetting the folder itself', () => {
   it('drops the statuses too, so nothing is served as ready', () => {
     store().removeDeletedFolder('docs/');
 
-    expect(store().status).toEqual({ '/': 'ready' });
+    expect(store().directory).toEqual({ '/': { status: 'ready' } });
     expect(store().loadMoreStatus).toEqual({});
   });
 
@@ -107,14 +111,14 @@ describe('the parent listing', () => {
   it('loses the folder but stays cached, so it still renders', () => {
     useDriveStore.setState({
       cache: { '/': listing(['docs/', 'photos/'], ['readme.md']) },
-      status: { '/': 'ready' },
+      directory: { '/': { status: 'ready' } },
     });
 
     store().removeDeletedFolder('docs/');
 
     expect(store().cache['/'].folders.map((f) => f.Prefix)).toEqual(['photos/']);
     expect(store().cache['/'].files.map((f) => f.Key)).toEqual(['readme.md']);
-    expect(store().status['/']).toBe('ready');
+    expect(store().directory['/']?.status).toBe('ready');
   });
 
   it('is found through the bucket prefix the session is pinned to', () => {
@@ -162,7 +166,7 @@ describe('the recents on the home page', () => {
           folderOffset: 10,
         },
       },
-      recentStatus: { '/': 'ready', 'docs/': 'ready' },
+      recent: { '/': { status: 'ready' }, 'docs/': { status: 'ready' } },
     });
   });
 
@@ -186,7 +190,7 @@ describe('the recents on the home page', () => {
     store().removeDeletedFolder('docs/');
 
     expect(store().recentCache['docs/']).toBeUndefined();
-    expect(store().recentStatus).toEqual({ '/': 'ready' });
+    expect(store().recent).toEqual({ '/': { status: 'ready' } });
   });
 });
 
@@ -241,7 +245,7 @@ describe('a read still in the air', () => {
       rootPrefix: '/',
       currentPrefix: '/',
       cache: { '/': { ...listing(['docs/']), isTruncated: true, nextToken: 'page-2' } },
-      status: { '/': 'ready' },
+      directory: { '/': { status: 'ready' } },
     });
 
     // "Show more" is already running when the delete lands
@@ -267,18 +271,18 @@ describe('a read still in the air', () => {
       rootPrefix: '/',
       currentPrefix: '/',
       cache: { '/': listing(['docs/', 'photos/']) },
-      status: { '/': 'ready' },
+      directory: { '/': { status: 'ready' } },
     });
 
     const reading = store().fetchData({ sync: true });
-    expect(store().status['/']).toBe('loading');
+    expect(store().directory['/']?.status).toBe('loading');
 
     store().removeDeletedFolder('docs/');
 
     page.resolve({ files: [], folders: [{ Prefix: 'docs/' }] });
     await reading;
 
-    expect(store().status['/']).toBe('ready');
+    expect(store().directory['/']?.status).toBe('ready');
     expect(store().cache['/'].folders.map((f) => f.Prefix)).toEqual(['photos/']);
   });
 
@@ -301,7 +305,7 @@ describe('a read still in the air', () => {
 
     // A resurrected entry reads as ready and gets served to whoever walks back in
     expect(store().cache['docs/2024/']).toBeUndefined();
-    expect(store().status['docs/2024/']).toBeUndefined();
+    expect(store().directory['docs/2024/']?.status).toBeUndefined();
   });
 });
 

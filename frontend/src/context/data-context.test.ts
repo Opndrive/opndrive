@@ -96,7 +96,7 @@ describe('returning to a folder whose request is still open', () => {
 
     expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
     expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
-    expect(store().status['/']).toBe('ready');
+    expect(store().directory['/']?.status).toBe('ready');
   });
 
   it('gives the second caller the first caller result', async () => {
@@ -186,7 +186,7 @@ describe('returning to a folder whose request is still open', () => {
 
     // A folder that loaded fine must not render as failed because an older
     // request for it happened to give up afterwards.
-    expect(store().status['/']).toBe('ready');
+    expect(store().directory['/']?.status).toBe('ready');
     expect(cachedKeys()).toEqual(['fresh.txt']);
   });
 });
@@ -439,8 +439,8 @@ describe('a listing that fails', () => {
 
     await store().fetchData({ sync: false });
 
-    expect(useDriveStore.getState().status['/']).toBe('error');
-    expect(useDriveStore.getState().failures['/']?.kind).toBe('permissions');
+    expect(useDriveStore.getState().directory['/']?.status).toBe('error');
+    expect(useDriveStore.getState().directory['/']?.failure?.kind).toBe('permissions');
   });
 
   it('keeps the reason specific enough to act on', async () => {
@@ -450,21 +450,21 @@ describe('a listing that fails', () => {
 
     // A blocked CORS preflight and a wrong secret key are different problems
     // fixed in different places, so they must not arrive as the same message.
-    expect(useDriveStore.getState().failures['/']?.kind).toBe('network');
+    expect(useDriveStore.getState().directory['/']?.failure?.kind).toBe('network');
   });
 
   it('forgets the reason once the folder loads', async () => {
     fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
     await store().fetchData({ sync: false });
-    expect(useDriveStore.getState().failures['/']).toBeDefined();
+    expect(useDriveStore.getState().directory['/']?.failure).toBeDefined();
 
     // What Retry does. A stale reason left behind would render over a folder
     // that had just come back fine.
     fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
     await store().fetchData({ sync: true });
 
-    expect(useDriveStore.getState().status['/']).toBe('ready');
-    expect(useDriveStore.getState().failures['/']).toBeUndefined();
+    expect(useDriveStore.getState().directory['/']?.status).toBe('ready');
+    expect(useDriveStore.getState().directory['/']?.failure).toBeUndefined();
   });
 
   it('does not carry a failure into the next session', async () => {
@@ -473,7 +473,7 @@ describe('a listing that fails', () => {
 
     store().clearAllData();
 
-    expect(useDriveStore.getState().failures).toEqual({});
+    expect(useDriveStore.getState().directory).toEqual({});
   });
 
   // The superseding rule already covered the status; the reason has to follow
@@ -489,8 +489,8 @@ describe('a listing that fails', () => {
     slowFailure.reject(sdkError('AccessDenied', 403));
     await first;
 
-    expect(useDriveStore.getState().status['/']).toBe('ready');
-    expect(useDriveStore.getState().failures['/']).toBeUndefined();
+    expect(useDriveStore.getState().directory['/']?.status).toBe('ready');
+    expect(useDriveStore.getState().directory['/']?.failure).toBeUndefined();
   });
 });
 
@@ -522,9 +522,9 @@ describe('two requests for one prefix', () => {
 
     const state = useDriveStore.getState();
 
-    expect(state.recentStatus['/']).toBe('error');
+    expect(state.recent['/']?.status).toBe('error');
     // Not 'unknown': the recent list still has to be able to say it was denied.
-    expect(state.recentFailures['/']?.kind).toBe('permissions');
+    expect(state.recent['/']?.failure?.kind).toBe('permissions');
   });
 
   it('keeps the directory failure when the recent listing succeeds', async () => {
@@ -539,7 +539,7 @@ describe('two requests for one prefix', () => {
 
     const state = useDriveStore.getState();
 
-    expect(state.status['/']).toBe('error');
-    expect(state.failures['/']?.kind).toBe('bucket');
+    expect(state.directory['/']?.status).toBe('error');
+    expect(state.directory['/']?.failure?.kind).toBe('bucket');
   });
 });

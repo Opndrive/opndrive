@@ -27,14 +27,14 @@ export const SidebarDropdown: React.FC<SidebarDropdownProps> = ({
         )}
       >
         <div className="flex items-center flex-1 min-w-0">
-          <div
+          {/* Same fix as SidebarItem: the size belongs on the icon, and the
+              row is already centring its children. */}
+          <item.icon
             className={cn(
               'flex-shrink-0 mr-3 h-5 w-5',
               (itemIsActive || hasActiveChild) && 'text-primary-foreground'
             )}
-          >
-            <item.icon />
-          </div>
+          />
           <span className="truncate">{item.title}</span>
           {item.badge && (
             <span
