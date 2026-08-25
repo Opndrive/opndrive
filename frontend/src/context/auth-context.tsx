@@ -254,14 +254,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserCreds(creds);
             setApiS3(api);
 
-            // Only redirect to dashboard if user is on home page/connect page
-            // Otherwise, stay on current route (preserve the URL after refresh)
-            // Provider pages count as /connect here. Landing on
-            // /connect/cloudflare-r2 with a live session should behave the same
-            // as landing on /connect with one.
-            if (pathname === '/' || pathname === '/connect' || pathname.startsWith('/connect/')) {
-              router.push('/dashboard');
-            }
+            // Restoring a session deliberately does not navigate anywhere.
+            //
+            // It used to push to /dashboard from `/`, `/connect` and the
+            // provider pages. All three are pages with something to read: the
+            // landing page is the pitch, and /connect and /connect/[provider]
+            // exist to be found in search. Bouncing a visitor off them meant
+            // the page Google indexed was the one page a returning user could
+            // never see, and someone with a bucket already connected could not
+            // reach the form to add a second.
+            //
+            // It also read far more into the signal than was there. There is
+            // no account here - "signed in" means access keys are sitting in
+            // this browser's localStorage, which a shared machine or a visit
+            // three months ago satisfies just as well as present intent.
+            //
+            // Signed-in visitors get a "Go to Dashboard" control on those
+            // pages instead, so the way through is visible without the choice
+            // being made for them. Connecting a bucket still navigates, in
+            // ConnectWizard, because that is a thing the user just asked for.
           } else {
             throw new Error('Invalid credentials in storage');
           }

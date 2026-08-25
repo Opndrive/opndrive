@@ -69,6 +69,10 @@ export default [
       // Minified files
       '**/*.min.js',
       '**/*.bundle.js',
+
+      // Local agent tooling
+      '.agents/**',
+      'skills-lock.json',
     ],
   },
 

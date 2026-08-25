@@ -9,7 +9,7 @@ import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
-import { getItemKeyIntent } from './item-keyboard';
+import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FolderItemProps {
   folder: Folder;
@@ -164,6 +164,12 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     }
   };
 
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!opensMenuOnKey(event)) return;
+
+    selectItem(folder, 'folder', index, false, false, allFolders);
+  };
+
   const handleMenuClick = (event: React.MouseEvent) => {
     // Still load-bearing after the selection moved off it: the row opens the
     // item on click, so the click that opened the menu must not reach it.
@@ -240,6 +246,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
               "
               aria-label={`More actions for ${folder.name}`}
               onPointerDown={handleMenuPointerDown}
+              onKeyDown={handleMenuKeyDown}
               onClick={handleMenuClick}
             >
               <MoreVerticalIcon size={16} />

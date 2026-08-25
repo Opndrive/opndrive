@@ -53,3 +53,8 @@ copilot-instructions.md
 # Local maintainer tooling for bulk-creating GitHub issues
 .github/issues.json
 .github/push-issues.cjs
+
+# Local agent tooling: installed skills and the lockfile pinning them.
+# Per-developer, not part of the project's build or runtime.
+.agents/
+skills-lock.json

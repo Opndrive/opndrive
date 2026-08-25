@@ -3,11 +3,21 @@ import Image from 'next/image';
 import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner';
 
 interface CTASectionProps {
-  handleGetStarted: () => Promise<void>;
+  handleGetStarted: () => void;
   isLoading: boolean;
+  /**
+   * Named by the page, which is the only thing that knows the destination.
+   * The blog's copies of this section always route to /connect, so they take
+   * the default rather than growing session logic of their own.
+   */
+  ctaLabel?: string;
 }
 
-export default function CTASection({ handleGetStarted, isLoading }: CTASectionProps) {
+export default function CTASection({
+  handleGetStarted,
+  isLoading,
+  ctaLabel = 'Get Started',
+}: CTASectionProps) {
   return (
     <section id="get-started" className="py-12 sm:py-16 md:py-20 lg:py-24 bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-8">
@@ -38,7 +48,7 @@ export default function CTASection({ handleGetStarted, isLoading }: CTASectionPr
               disabled={isLoading}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 sm:px-8 md:px-10 lg:px-12 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-medium min-w-[120px] sm:min-w-[140px] md:min-w-[160px]"
             >
-              {isLoading ? 'Loading...' : 'Get Started'}
+              {ctaLabel}
             </Button>
           </div>
 

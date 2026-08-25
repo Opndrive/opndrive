@@ -5,37 +5,27 @@ import { Breadcrumb, type BreadcrumbItem } from '@/shared/components/ui/breadcru
 
 interface EnhancedFolderBreadcrumbProps {
   pathSegments: string[];
-  currentKey?: string;
-  onNavigate?: (prefix: string, key?: string) => void;
+  onNavigate?: (prefix: string) => void;
 }
 
 export function EnhancedFolderBreadcrumb({
   pathSegments,
-  currentKey,
   onNavigate,
 }: EnhancedFolderBreadcrumbProps) {
   const router = useRouter();
 
   const handleNavigation = (segments: string[]) => {
     const newPrefix = segments.length > 0 ? segments.join('/') + '/' : '';
-    const newKey = segments.length > 0 ? segments[segments.length - 1] : undefined;
 
     if (onNavigate) {
-      onNavigate(newPrefix, newKey);
+      onNavigate(newPrefix);
     } else {
       // Default navigation behavior
       const params = new URLSearchParams();
       if (newPrefix) {
         params.set('prefix', newPrefix);
       }
-      if (newKey && currentKey) {
-        params.set('key', newKey);
-      }
-
-      const url =
-        newPrefix || (newKey && currentKey)
-          ? `/dashboard/browse?${params.toString()}`
-          : '/dashboard';
+      const url = newPrefix ? `/dashboard/browse?${params.toString()}` : '/dashboard';
       router.push(url);
     }
   };

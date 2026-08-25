@@ -6,7 +6,7 @@ import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
-import { getItemKeyIntent } from './item-keyboard';
+import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FolderItemMobileProps {
   folder: Folder;
@@ -53,6 +53,12 @@ export function FolderItemMobile({
     if (!isTouchDevice) {
       selectItem(folder, 'folder', index, false, false, allFolders);
     }
+  };
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!opensMenuOnKey(event)) return;
+
+    selectItem(folder, 'folder', index, false, false, allFolders);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -219,6 +225,7 @@ export function FolderItemMobile({
           <button
             className="flex-shrink-0 p-2 cursor-pointer rounded-full hover:bg-secondary/80 transition-colors ml-2"
             onPointerDown={handleMenuPointerDown}
+            onKeyDown={handleMenuKeyDown}
             onClick={handleMenuClick}
             aria-label={`More actions for ${folder.name}`}
           >
