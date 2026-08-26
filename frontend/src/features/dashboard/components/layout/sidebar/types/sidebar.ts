@@ -3,16 +3,16 @@ import React from 'react';
 export interface SidebarItem {
   title: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  /**
+   * Typed as full SVG props rather than `{ className?: string }` so the row can
+   * mark the icon `aria-hidden`. Both icon sets in use - `react-icons` and
+   * `lucide-react` - render an `<svg>` and accept its attributes.
+   */
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   children?: SidebarItem[];
   badge?: string | number;
+  /** Renders the row non-interactive: no navigation, no focus, `aria-disabled`. */
   disabled?: boolean;
-}
-
-export interface SidebarSection {
-  title?: string;
-  items: SidebarItem[];
-  showSeparator?: boolean;
 }
 
 export interface DashboardSidebarProps {
@@ -37,10 +37,4 @@ export interface SidebarDropdownProps {
   basePath: string;
   isActive: (href: string) => boolean;
   onItemClick: () => void;
-}
-
-export interface SidebarStorageProps {
-  used: number;
-  total: number;
-  onGetMoreStorage?: () => void;
 }
