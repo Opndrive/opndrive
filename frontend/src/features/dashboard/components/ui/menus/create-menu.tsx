@@ -50,7 +50,7 @@ export const CreateMenu: React.FC<CreateMenuProps> = ({
   // The auth guards used to sit here, above every hook below them, so React
   // saw a different hook count before and after the session resolved. They now
   // live with the other early return, once all hooks have run.
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
 
   const triggerFileUpload = useCallback(async () => {
     try {

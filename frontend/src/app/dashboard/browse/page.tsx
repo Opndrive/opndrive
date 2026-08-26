@@ -1,8 +1,7 @@
 'use client';
 
 import { useScroll } from '@/context/scroll-context';
-import { SuggestedFolders } from '@/features/dashboard/components/views/home/suggested-folders';
-import { SuggestedFiles } from '@/features/dashboard/components/views/home/suggested-files';
+import { DriveList } from '@/features/dashboard/components/views/drive/drive-list';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
@@ -41,16 +40,18 @@ function BrowsePageContent() {
 
   const CHUNK_SIZE = 100; // Display 100 items per chunk
 
-  const {
-    currentPrefix,
-    cache,
-    loadMoreStatus,
-    fetchData,
-    loadMoreData,
-    setCurrentPrefix,
-    setRootPrefix,
-    setApiS3,
-  } = useDriveStore();
+  // One selector per value rather than `useDriveStore()`, which subscribes to
+  // the whole store. `cache` and `loadMoreStatus` are read whole here because
+  // this page genuinely indexes into both by prefix; the rest are stable
+  // actions, which never trigger a render of their own.
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const cache = useDriveStore((state) => state.cache);
+  const loadMoreStatus = useDriveStore((state) => state.loadMoreStatus);
+  const fetchData = useDriveStore((state) => state.fetchData);
+  const loadMoreData = useDriveStore((state) => state.loadMoreData);
+  const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
+  const setRootPrefix = useDriveStore((state) => state.setRootPrefix);
+  const setApiS3 = useDriveStore((state) => state.setApiS3);
 
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
@@ -383,24 +384,16 @@ function BrowsePageContent() {
           >
             {() => (
               <>
-                {/* Folders */}
-                <SuggestedFolders
+                {/* Folders and files, one table in list view. */}
+                <DriveList
                   folders={displayedFolders}
+                  files={displayedFiles}
                   onFolderClick={handleFolderClick}
                   onFolderMenuClick={handleFolderMenuClick}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                  className="mt-8"
-                  hideTitle={pathSegments.length > 0}
-                />
-
-                {/* Files */}
-                <SuggestedFiles
-                  files={displayedFiles}
                   onFileClick={handleFileClick}
                   onFileAction={handleFileAction}
                   onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  className="mt-8"
-                  hideTitle={pathSegments.length > 0}
+                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                 />
 
                 {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}

@@ -19,6 +19,26 @@ interface SuggestedFoldersProps {
   isLoadingMore?: boolean;
   className?: string;
   hideTitle?: boolean;
+  /**
+   * What this section is called.
+   *
+   * Written for Home and then reused wholesale by My Drive, heading and all,
+   * so a bucket's own folders were announced as "Suggested Folders". Nothing
+   * in a directory listing is a suggestion. Home keeps the default; the drive
+   * views pass their own plain label.
+   */
+  title?: string;
+  /**
+   * Rendered at the right of this section's heading.
+   *
+   * The layout toggle lives here in grid view. It used to sit in the file
+   * table's heading in both layouts, and in grid that heading is below the
+   * whole folders section - so switching from list to grid dropped the control
+   * the length of the folder grid, out from under the pointer that had just
+   * clicked it. Whichever section leads the page owns the toggle instead, so it
+   * stays put.
+   */
+  headerAction?: React.ReactNode;
   onFilesDroppedToFolder?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
@@ -31,6 +51,8 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   isLoadingMore = false,
   className = '',
   hideTitle = false,
+  title = 'Suggested Folders',
+  headerAction,
   onFilesDroppedToFolder,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -58,45 +80,50 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
 
   return (
     <div className={`w-full ${className}`}>
+      {/* min-h-9 is the height of the heading button, held whether or not there
+          is a heading, so the toggle sits at the same y in both layouts. */}
       {!hideTitle && (
-        <AriaLabel
-          label={`${isExpanded ? 'Collapse' : 'Expand'} suggested folders section`}
-          position="top"
-        >
-          <button
-            className="
-              flex items-center cursor-pointer gap-2  p-2 mb-3
+        <div className="flex min-h-9 items-center justify-between mb-3">
+          <AriaLabel
+            label={`${isExpanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} section`}
+            position="top"
+          >
+            <button
+              className="
+              flex items-center cursor-pointer gap-2  p-2
               text-sm font-medium text-foreground
               hover:bg-secondary/80 rounded-lg
               transition-all duration-200
-              w-full justify-between
             "
-            onClick={toggleExpanded}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className={`transition-transform duration-200 ${
-                  isExpanded ? 'rotate-90' : 'rotate-0'
-                }`}
-              >
-                <svg
-                  className="w-4 h-4 text-muted-foreground"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              onClick={toggleExpanded}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`transition-transform duration-200 ${
+                    isExpanded ? 'rotate-90' : 'rotate-0'
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
+                  <svg
+                    className="w-4 h-4 text-muted-foreground"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </div>
+                <span className="text-muted-foreground">{title}</span>
               </div>
-              <span className="text-muted-foreground">Suggested Folders</span>
-            </div>
-          </button>
-        </AriaLabel>
+            </button>
+          </AriaLabel>
+
+          {headerAction}
+        </div>
       )}
 
       {(hideTitle || isExpanded) && (
@@ -112,7 +139,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
                 name: folder.name,
                 path: folder.Prefix || folder.name,
               }}
-              onFilesDropped={onFilesDroppedToFolder || (() => {})}
+              onFilesDropped={onFilesDroppedToFolder}
               className="rounded-lg"
             >
               <FolderItem

@@ -23,6 +23,7 @@ export default defineConfig({
         // Phase 3 adds the interaction layer: drop extraction and the drag
         // handlers. Components are still out of scope.
         'src/features/**/utils/folder-structure-processor.ts',
+        'src/features/**/utils/drag-events.ts',
         'src/features/**/hooks/use-folder-drop-target.ts',
       ],
       exclude: ['**/*.test.{ts,tsx}'],

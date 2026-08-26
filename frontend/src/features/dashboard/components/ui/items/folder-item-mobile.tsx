@@ -4,13 +4,18 @@ import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder } from '@/features/dashboard/types/folder';
+import type { FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FolderItemMobileProps {
   folder: Folder;
-  allFolders?: Folder[];
+  /**
+   * The rows a shift-select can span, which in the drive's list view means the
+   * files below these folders as well. Same widening the desktop row took.
+   */
+  allFolders?: (FileItem | Folder)[];
   onFolderClick?: (folder: Folder) => void;
   _onAction?: (action: string, folder: Folder) => void;
   index?: number;
@@ -208,10 +213,17 @@ export function FolderItemMobile({
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-foreground truncate mb-1">{folder.name}</h3>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span title={timeInfo?.tooltip}>{timeInfo?.display || 'No date'}</span>
+          {/* Omitted rather than dashed: these fields sit inline, so there is
+              no column for a dash to keep straight. "No date" also said the
+              wrong thing - it reads as a date that went missing, when a folder
+              never had one to lose. */}
+          {timeInfo?.display && <span title={timeInfo.tooltip}>{timeInfo.display}</span>}
           {folder.itemCount !== undefined && (
             <>
-              <span>•</span>
+              {/* Separates two things, so it only earns its place when there
+                  are two. A folder with no date would otherwise open the line
+                  with a bullet separating nothing from the count. */}
+              {timeInfo?.display && <span>•</span>}
               <span>{folder.itemCount} items</span>
             </>
           )}

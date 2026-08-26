@@ -25,7 +25,13 @@ vi.mock('@opndrive/s3-api', () => ({ BYOS3ApiProvider: class {} }));
 
 vi.mock('@/context/data-context', () => {
   const state = { fetchData, refreshCurrentData };
-  const useDriveStore = Object.assign(() => state, { getState: () => state });
+  // Applies the selector the way zustand does. Returning the whole state
+  // regardless worked only while callers destructured it, and silently handed
+  // back the entire store to anyone selecting a single value out of it.
+  const useDriveStore = Object.assign(
+    (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state),
+    { getState: () => state }
+  );
   return { useDriveStore };
 });
 

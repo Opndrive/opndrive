@@ -26,15 +26,17 @@ import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
   const router = useRouter();
-  const {
-    currentPrefix,
-    fetchRecentItems,
-    loadMoreRecentFiles,
-    loadMoreRecentFolders,
-    setCurrentPrefix,
-    setRootPrefix,
-    setApiS3,
-  } = useDriveStore();
+  // One selector per value rather than `useDriveStore()`, which subscribes to
+  // the whole store: every listing write, for any prefix, re-rendered this page
+  // and the whole tree of cards under it. The actions are stable references, so
+  // selecting them costs nothing and never triggers a render on its own.
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const fetchRecentItems = useDriveStore((state) => state.fetchRecentItems);
+  const loadMoreRecentFiles = useDriveStore((state) => state.loadMoreRecentFiles);
+  const loadMoreRecentFolders = useDriveStore((state) => state.loadMoreRecentFolders);
+  const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
+  const setRootPrefix = useDriveStore((state) => state.setRootPrefix);
+  const setApiS3 = useDriveStore((state) => state.setApiS3);
 
   const dispatchDrop = useUploadDispatch();
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);

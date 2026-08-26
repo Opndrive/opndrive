@@ -10,7 +10,7 @@ interface SearchBreadcrumbProps {
 }
 
 export function SearchBreadcrumb({ prefix, className = '' }: SearchBreadcrumbProps) {
-  const { setCurrentPrefix } = useDriveStore();
+  const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
 
   // Parse the prefix into segments
   const segments = prefix ? prefix.split('/').filter((segment) => segment.length > 0) : [];

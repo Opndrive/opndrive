@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
 import { cn } from '@/shared/utils/utils';
 import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
+import { useEnhancedDragDrop } from '@/features/upload/providers/enhanced-drag-drop-provider';
+import { isExternalFileDrag } from '@/features/upload/utils/drag-events';
 
 interface EmptyStateDropzoneProps {
   onFilesDropped?: (processedData: ProcessedDragData) => void;
@@ -11,69 +12,41 @@ interface EmptyStateDropzoneProps {
 }
 
 export function EmptyStateDropzone({ onFilesDropped, className = '' }: EmptyStateDropzoneProps) {
-  const [isDragActive, setIsDragActive] = useState(false);
-  const dragCounter = useRef(0);
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current++;
-    if (dragCounter.current === 1) {
-      setIsDragActive(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
-      dragCounter.current = 0;
-      setIsDragActive(false);
-    }
-  };
+  // One window listener owns the drag, rather than a per-element tally of
+  // dragenter against dragleave that drifts out of step. See the provider.
+  const { isFileDragActive } = useEnhancedDragDrop();
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) return;
     e.preventDefault();
-    e.stopPropagation();
   };
 
   const handleDrop = async (e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) return;
+
     e.preventDefault();
-    e.stopPropagation();
 
-    setIsDragActive(false);
-    dragCounter.current = 0;
+    if (!onFilesDropped) return;
 
-    if (onFilesDropped && e.dataTransfer) {
-      try {
-        const dataTransfer = e.dataTransfer;
-        const processedData = await FolderStructureProcessor.processDataTransferItems(
-          dataTransfer.items
-        );
+    try {
+      const processedData = await FolderStructureProcessor.processDataTransferItems(
+        e.dataTransfer.items
+      );
 
-        onFilesDropped(processedData);
-      } catch (error) {
-        console.error('Error processing drag and drop:', error);
-      }
+      onFilesDropped(processedData);
+    } catch (error) {
+      console.error('Error processing drag and drop:', error);
     }
-
-    setTimeout(() => {
-      setIsDragActive(false);
-      dragCounter.current = 0;
-    }, 100);
   };
 
   return (
     <div
       className={cn(`w-full h-full relative transition-all duration-300 ease-in-out ${className}`)}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
       {/* Drag Active Overlay */}
-      {isDragActive && (
+      {isFileDragActive ? (
         <div
           className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center rounded-lg transition-all duration-200"
           style={{
@@ -82,7 +55,7 @@ export function EmptyStateDropzone({ onFilesDropped, className = '' }: EmptyStat
             border: '2px dashed var(--primary)',
           }}
         ></div>
-      )}
+      ) : null}
 
       {/* Empty State Content */}
       <div className="text-center mx-auto py-16">

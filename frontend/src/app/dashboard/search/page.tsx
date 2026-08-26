@@ -59,7 +59,7 @@ export default function SearchPage() {
   // effect has read it - see the loading branch below.
   const { value: query, isHydrated: queryReady } = usePrivateParam(PRIVATE_PARAM_QUERY);
   const { layout: viewMode } = useCurrentLayout();
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);

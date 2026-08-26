@@ -28,7 +28,8 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
     onKeepBoth: null,
   });
 
-  const { fetchData, refreshCurrentData } = useDriveStore();
+  const fetchData = useDriveStore((state) => state.fetchData);
+  const refreshCurrentData = useDriveStore((state) => state.refreshCurrentData);
 
   const { apiS3 } = useAuthGuard();
 

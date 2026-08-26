@@ -53,7 +53,7 @@ export const FolderOverflowMenu: React.FC<OverflowMenuProps> = ({
 
   const { deleteFolder, isDeleting } = useDeleteWithProgress();
   const { isRenaming, showRenameDialog: openRenameDialog } = useRename();
-  const { currentPrefix } = useDriveStore();
+  const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const router = useRouter();
 
   const executeRename = () => {

@@ -4,6 +4,7 @@ import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
+import type { Folder } from '@/features/dashboard/types/folder';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file-extensions';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
@@ -12,7 +13,11 @@ import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
 
 interface FileItemMobileProps {
   file: FileItem;
-  allFiles?: FileItem[]; // For navigation between files
+  /**
+   * The rows a shift-select can span, which in the drive's list view means the
+   * folders above these files as well. Same widening the desktop row took.
+   */
+  allFiles?: (FileItem | Folder)[];
   onFileClick?: (file: FileItem) => void;
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
@@ -169,14 +174,19 @@ export function FileItemMobile({
       type: file.extension || getFileExtensionWithoutDot(file.name),
     };
 
-    const previewableFiles = allFiles.map((f) => ({
-      id: f.id,
-      name: f.name,
-      key: f.Key,
-      size: typeof f.Size === 'number' ? f.Size : 0,
-      lastModified: f.lastModified,
-      type: f.extension || getFileExtensionWithoutDot(f.name),
-    }));
+    // `allFiles` carries the folders too, because shift-select ranges span the
+    // whole table - but a folder has nothing to preview, so it is dropped here
+    // rather than handed to a viewer that would not know what to do with it.
+    const previewableFiles = allFiles
+      .filter((item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix)))
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        key: f.Key,
+        size: typeof f.Size === 'number' ? f.Size : 0,
+        lastModified: f.lastModified,
+        type: f.extension || getFileExtensionWithoutDot(f.name),
+      }));
 
     openPreview(
       previewableFile,
@@ -251,7 +261,9 @@ export function FileItemMobile({
       {/* Menu Button */}
       <FileOverflowMenu
         file={file}
-        allFiles={allFiles}
+        allFiles={allFiles.filter(
+          (item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix))
+        )}
         additionalActions={additionalActions}
         insertAdditionalActionsAfter={insertAdditionalActionsAfter}
         triggerLabel="More actions"
