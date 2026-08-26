@@ -56,14 +56,14 @@ export function FolderItemMobile({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(folder, 'folder', index, false, false, allFolders);
+      selectItem(folder, index, false, false, allFolders);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(folder, 'folder', index, false, false, allFolders);
+    selectItem(folder, index, false, false, allFolders);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -80,7 +80,7 @@ export function FolderItemMobile({
     const timer = setTimeout(() => {
       setIsLongPress(true);
       // Trigger selection on long press
-      selectItem(folder, 'folder', index, true, false, allFolders);
+      selectItem(folder, index, true, false, allFolders);
       // Haptic feedback if available (wrapped in try-catch to avoid console errors)
       try {
         if (navigator.vibrate) {
@@ -125,7 +125,7 @@ export function FolderItemMobile({
 
     // If there's already a selection, add to it (toggle like Ctrl+Click)
     if (hasCurrentSelection) {
-      selectItem(folder, 'folder', index, true, false, allFolders);
+      selectItem(folder, index, true, false, allFolders);
       setIsLongPress(false);
       return;
     }
@@ -148,14 +148,7 @@ export function FolderItemMobile({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(
-        folder,
-        'folder',
-        index,
-        event.ctrlKey || event.metaKey,
-        event.shiftKey,
-        allFolders
-      );
+      selectItem(folder, index, event.ctrlKey || event.metaKey, event.shiftKey, allFolders);
       return;
     }
 

@@ -17,6 +17,7 @@ export const createFileItem = (
 ): FileItem => {
   return {
     id,
+    kind: 'file',
     name,
     extension,
     size: options?.size || {

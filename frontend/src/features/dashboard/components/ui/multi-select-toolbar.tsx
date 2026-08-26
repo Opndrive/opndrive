@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMultiSelectStore } from '../../stores/use-multi-select-store';
+import { isFile, isFolder, isFolderMarker } from '@/shared/utils/drive-item';
 import {
   HiOutlineX,
   HiOutlineShare,
@@ -55,18 +56,21 @@ export function MultiSelectToolbar({
 
   // Helper to get parent folder path for files or the folder path itself for folders
   const getLocationPath = useCallback((item: FileItem | Folder): string => {
-    if ('Prefix' in item && item.Prefix) {
-      // It's a folder - keep the Prefix as-is with trailing slash for S3 compatibility
-      return item.Prefix;
-    } else if ('Key' in item && item.Key) {
-      // It's a file - navigate to the parent folder containing the file
-      const key = item.Key;
-      const pathParts = key.split('/').filter(Boolean);
-      pathParts.pop(); // Remove filename
+    if (isFolder(item)) {
+      // Keep the Prefix as-is with trailing slash for S3 compatibility
+      return item.Prefix ?? '';
+    }
+
+    // A file, or a folder written as an object. Either way the destination is
+    // the prefix holding it, so drop the last segment of the key.
+    if (isFile(item) || isFolderMarker(item)) {
+      const pathParts = (item.Key ?? '').split('/').filter(Boolean);
+      pathParts.pop();
       // Add trailing slash for S3 folder listing compatibility
       const parentPath = pathParts.join('/');
       return parentPath ? `${parentPath}/` : '';
     }
+
     return '';
   }, []);
 
@@ -87,9 +91,7 @@ export function MultiSelectToolbar({
   const count = getSelectionCount();
 
   // Determine what actions are available based on selection
-  const hasFiles = selectedItems.some(
-    (item) => 'Key' in item && item.Key && !item.Key.endsWith('/')
-  );
+  const hasFiles = selectedItems.some(isFile);
 
   const isFilesOnly = selectedType === 'file';
   const isSingleSelection = count === 1;

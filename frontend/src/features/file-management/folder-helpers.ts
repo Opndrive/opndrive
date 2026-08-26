@@ -31,6 +31,7 @@ export const createFolder = (
 ): Folder => {
   return {
     id,
+    kind: 'folder',
     name,
     location: createFolderLocation(locationType, options?.customLocationLabel),
     icon: options?.icon || 'folder',

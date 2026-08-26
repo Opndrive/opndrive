@@ -25,6 +25,9 @@ export default defineConfig({
         'src/features/**/utils/folder-structure-processor.ts',
         'src/features/**/utils/drag-events.ts',
         'src/features/**/hooks/use-folder-drop-target.ts',
+        // The single answer to whether an item is a file or a folder. Every
+        // delete routes through it, so it is worth holding to a number.
+        'src/shared/utils/drive-item.ts',
       ],
       exclude: ['**/*.test.{ts,tsx}'],
       // No thresholds yet - Phase 2 is only half written. Add them at the end,
