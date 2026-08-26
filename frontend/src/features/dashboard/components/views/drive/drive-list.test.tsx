@@ -46,19 +46,20 @@ vi.mock('@/context/file-preview-context', () => ({
   useFilePreview: () => ({ openPreview: vi.fn() }),
 }));
 
-// Grid view's folder cards register themselves as drop targets, which needs the
-// provider the dashboard layout supplies. Nothing here drags anything.
+/**
+ * The drag state the dashboard layout normally supplies.
+ *
+ * Both rows and the listing read it, so the mock has to return the real shape:
+ * a mock returning fields that no longer exist reads as `undefined` everywhere,
+ * which is indistinguishable from "no drag" - the overlay and the folder
+ * highlight could stop working entirely and every case here would still pass.
+ */
+const { drag } = vi.hoisted(() => ({
+  drag: { isFileDragActive: false, hoveredTargetId: null as string | null },
+}));
+
 vi.mock('@/features/upload/providers/enhanced-drag-drop-provider', () => ({
-  useEnhancedDragDrop: () => ({
-    isActive: false,
-    source: null,
-    canDrop: false,
-    registerDropTarget: vi.fn(),
-    unregisterDropTarget: vi.fn(),
-    setDragSource: vi.fn(),
-    setHoverTarget: vi.fn(),
-    getTargetState: () => ({ isHovered: false, canAcceptDrop: false, isDraggedOver: false }),
-  }),
+  useEnhancedDragDrop: () => drag,
 }));
 
 function folder(over: Partial<Folder> = {}): Folder {
@@ -86,6 +87,8 @@ function file(over: Partial<FileItem> = {}): FileItem {
 
 beforeEach(() => {
   layout = 'list';
+  drag.isFileDragActive = false;
+  drag.hoveredTargetId = null;
   useMultiSelectStore.getState().clearSelection();
 });
 
@@ -251,5 +254,102 @@ describe('every dash explains itself the same way', () => {
     render(<DriveList folders={[folder()]} files={[]} />);
 
     expect(screen.queryAllByText('No date')).toHaveLength(0);
+  });
+});
+
+/**
+ * What the old mock hid.
+ *
+ * It returned the drag API as it was before the rewrite, so every component
+ * here read `undefined` for the two fields they actually use - which looks
+ * exactly like "no drag in progress". The overlay and the folder highlight
+ * could have stopped working outright and every case above would still pass.
+ */
+describe('folder rows as drop targets', () => {
+  it('marks a folder so the drag provider can find it', () => {
+    const { container } = render(
+      <DriveList folders={[folder()]} files={[file()]} onFilesDroppedToFolder={vi.fn()} />
+    );
+
+    // The list renders a tree per breakpoint and shows one, so the row is
+    // marked twice - whichever is on screen has to be findable.
+    expect(container.querySelectorAll('[data-drop-target-id="folder-reports/"]')).toHaveLength(2);
+  });
+
+  it('leaves a folder unmarked when nothing handles its drops', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    // Unmarked means the hit-test walks past to the listing, which uploads to
+    // the current prefix. Standing a no-op in - what this used to pass - left
+    // the row claiming the drop and then discarding it.
+    expect(container.querySelector('[data-drop-target-id]')).toBeNull();
+  });
+
+  it('highlights the folder the pointer is over', () => {
+    drag.isFileDragActive = true;
+    drag.hoveredTargetId = 'folder-reports/';
+
+    const { container } = render(
+      <DriveList folders={[folder()]} files={[file()]} onFilesDroppedToFolder={vi.fn()} />
+    );
+
+    const row = container.querySelector('[data-drop-target-id="folder-reports/"]')!;
+    expect(row.querySelector('[class*="bg-primary/10"]')).not.toBeNull();
+  });
+
+  it('leaves every other folder alone', () => {
+    drag.isFileDragActive = true;
+    drag.hoveredTargetId = 'folder-taxes/';
+
+    const { container } = render(
+      <DriveList
+        folders={[folder(), folder({ id: 'tax', name: 'Taxes', Prefix: 'taxes/' })]}
+        files={[]}
+        onFilesDroppedToFolder={vi.fn()}
+      />
+    );
+
+    const reports = container.querySelector('[data-drop-target-id="folder-reports/"]')!;
+    expect(reports.querySelector('[class*="bg-primary/10"]')).toBeNull();
+  });
+});
+
+describe('the listing offers itself as a drop target', () => {
+  it('outlines itself while files are being dragged', () => {
+    drag.isFileDragActive = true;
+
+    const { container } = render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    expect(container.querySelector('[class*="border-dashed"]')).not.toBeNull();
+  });
+
+  it('steps back while a folder is claiming the drop', () => {
+    drag.isFileDragActive = true;
+    drag.hoveredTargetId = 'folder-reports/';
+
+    const { container } = render(
+      <DriveList folders={[folder()]} files={[file()]} onFilesDroppedToFolder={vi.fn()} />
+    );
+
+    // Otherwise the table and the row both advertise themselves, giving two
+    // answers to the one question of where the files are about to land.
+    expect(container.querySelector('[class*="border-dashed"]')).toBeNull();
+  });
+
+  it('draws nothing with no drag in progress', () => {
+    const { container } = render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    expect(container.querySelector('[class*="border-dashed"]')).toBeNull();
+  });
+});
+
+describe('the layout control stays reachable', () => {
+  it('survives a directory with nothing in it', () => {
+    // The empty-state branch rendered no toggle at all, so opening an empty
+    // folder in grid view left no way back to list until you navigated away.
+    render(<DriveList folders={[]} files={[]} />);
+
+    // List and grid: the only two buttons an empty directory has.
+    expect(screen.getAllByRole('button')).toHaveLength(2);
   });
 });

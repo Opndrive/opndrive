@@ -1,7 +1,8 @@
 /**
  * Folder Drop Target Component
  *
- * Visual component for folders that can accept drag-and-drop
+ * Wraps a folder row or card so files dropped on it upload into that folder,
+ * and marks it while the pointer is over it.
  */
 
 'use client';
@@ -18,7 +19,8 @@ interface FolderDropTargetProps {
     name: string;
     path: string;
   };
-  onFilesDropped: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
+  /** Absent means the folder takes no drops; they fall through to the listing. */
+  onFilesDropped?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
   className?: string;
 }
 
@@ -28,30 +30,22 @@ export function FolderDropTarget({
   onFilesDropped,
   className = '',
 }: FolderDropTargetProps) {
-  const { dragHandlers, targetState } = useFolderDropTarget({
+  const { dragHandlers, isDropTarget } = useFolderDropTarget({
     folder,
     onFilesDropped,
   });
 
   return (
-    <div
-      className={`
-        relative transition-all duration-200
-        ${className}
-      `}
-      {...dragHandlers}
-    >
-      {/* Original content */}
-      <div
-        className={`transition-all duration-200 ${targetState.isDraggedOver ? 'opacity-90' : 'opacity-100'}`}
-      >
-        {children}
-      </div>
+    <div className={`relative transition-all duration-200 ${className}`} {...dragHandlers}>
+      {children}
 
-      {/* Whitish overlay only when being dragged over (hovered) */}
-      {targetState.isDraggedOver && (
-        <div className="absolute inset-0 bg-white/20 dark:bg-white/10 rounded border-2 border-blue-400 pointer-events-none" />
-      )}
+      {/* Sits above the row rather than tinting it, so the folder's own name and
+          icon stay readable underneath - it is the label for where the files are
+          about to land. `pointer-events-none` keeps it out of the hit test that
+          picks the target in the first place. */}
+      {isDropTarget ? (
+        <div className="pointer-events-none absolute inset-0 rounded-lg border-2 border-primary bg-primary/10" />
+      ) : null}
     </div>
   );
 }

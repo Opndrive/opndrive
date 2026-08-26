@@ -14,13 +14,16 @@ export { FolderDropTarget } from './components/folder-drop-target';
 // Hooks
 export { useFolderDropTarget } from './hooks/use-folder-drop-target';
 
+// Utils
+export {
+  DROP_TARGET_ATTRIBUTE,
+  dropTargetIdAt,
+  folderTargetId,
+  isExternalFileDrag,
+} from './utils/drag-events';
+
 // Types
-export type {
-  DragDropTarget,
-  DragDropSource,
-  DragDropContext,
-  DragDropCallbacks,
-} from './types/drag-drop-types';
+export type { DragDropTarget } from './types/drag-drop-types';
 
 // Re-export existing upload components
 export { UploadCard } from './components/upload-card';

@@ -1,44 +1,31 @@
 /**
  * Folder drop target: the drag handlers a folder row spreads onto itself.
  *
- * The hook reads its drag state from EnhancedDragDropProvider, which is mocked
- * at the module boundary - what matters here is the handler logic, not the
- * provider's own bookkeeping.
+ * The rule the whole suite turns on is that the row decides for itself, from
+ * the event in hand. It used to ask the provider whether a drag was in
+ * progress, which meant it could only work if some other handler had already
+ * recorded one - and in the list view none ever did, because the file table
+ * stopped the events before they got that far. So the tests here pass no drag
+ * state in: a handler either recognises the drop from its own event or it does
+ * not.
  *
- * The recurring rule is that every handler is inert unless an EXTERNAL file
- * drag is in progress. Without that guard, dragging a file row across the list
- * to reorder it would light up every folder as a drop target and a stray drop
- * would start an upload.
+ * The provider is still mocked, but only for the one thing it now owns: which
+ * folder the pointer is over.
  *
- * This is the first suite to use renderHook. Phase 2 excluded it deliberately;
- * a hook that returns event handlers cannot be exercised any other way.
- *
- * The synchronous handlers are called directly, NOT wrapped in act(). The
- * provider is mocked, so they only invoke vi.fn() spies - there is no React
- * state update and therefore no update queue to flush, and wrapping would be
- * noise. act() is kept on the async drop path, where real awaited work runs
- * and where a future switch to the real provider would need it.
+ * The synchronous handler is called directly, NOT wrapped in act(). It touches
+ * no React state, so there is no update queue to flush and wrapping would be
+ * noise. act() is kept on the async drop path, where real awaited work runs.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFolderDropTarget } from './use-folder-drop-target';
 import { FolderStructureProcessor } from '../utils/folder-structure-processor';
-import type { DragDropSource } from '../types/drag-drop-types';
+import { DROP_TARGET_ATTRIBUTE } from '../utils/drag-events';
 import type { ProcessedDragData } from '../types/folder-upload-types';
 
 const { context } = vi.hoisted(() => ({
-  context: {
-    source: null as DragDropSource | null,
-    registerDropTarget: vi.fn(),
-    unregisterDropTarget: vi.fn(),
-    setHoverTarget: vi.fn(),
-    getTargetState: vi.fn(() => ({
-      isHovered: false,
-      canAcceptDrop: true,
-      isDraggedOver: false,
-    })),
-  },
+  context: { hoveredTargetId: null as string | null },
 }));
 
 vi.mock('../providers/enhanced-drag-drop-provider', () => ({
@@ -51,26 +38,18 @@ vi.mock('../utils/folder-structure-processor', () => ({
 
 const processItems = vi.mocked(FolderStructureProcessor.processDataTransferItems);
 
-const externalDrag: DragDropSource = { type: 'external-files', items: [], count: 1 };
-const internalDrag: DragDropSource = { type: 'internal-files', items: [], count: 1 };
-
 const folder = { id: 'f1', name: 'Photos', path: 'docs/photos/' };
+const target = { type: 'folder', id: 'folder-f1', path: 'docs/photos/', name: 'Photos' };
 
 /**
- * A drag event with the bits the handlers touch. `getBoundingClientRect` backs
- * the leave test's inside/outside check.
+ * A drag event carrying whichever types the case is about. `types` is the only
+ * thing a browser exposes mid-drag, and so the only thing the handlers read.
  */
-function dragEvent(overrides: Partial<Record<string, unknown>> = {}) {
+function dragEvent(types: string[] | null = ['Files']) {
   return {
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
-    dataTransfer: { items: {} as DataTransferItemList, dropEffect: 'none' },
-    clientX: 50,
-    clientY: 50,
-    currentTarget: {
-      getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
-    },
-    ...overrides,
+    dataTransfer: types ? { types, items: {} as DataTransferItemList, dropEffect: 'none' } : null,
   } as unknown as React.DragEvent;
 }
 
@@ -81,172 +60,66 @@ function mount(onFilesDropped = vi.fn()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  context.source = null;
-  context.getTargetState.mockReturnValue({
-    isHovered: false,
-    canAcceptDrop: true,
-    isDraggedOver: false,
-  });
+  context.hoveredTargetId = null;
   processItems.mockResolvedValue({ individualFiles: [], folderStructures: [], skipped: [] });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-describe('registration', () => {
-  it('registers the folder as a drop target on mount', () => {
-    mount();
-
-    expect(context.registerDropTarget).toHaveBeenCalledWith({
-      type: 'folder',
-      id: 'folder-f1',
-      path: 'docs/photos/',
-      name: 'Photos',
-    });
-  });
-
-  it('unregisters on unmount', () => {
-    const { unmount } = mount();
-
-    unmount();
-
-    // A folder scrolled out of the virtualised list must stop claiming drops.
-    expect(context.unregisterDropTarget).toHaveBeenCalledWith('folder-f1');
-  });
-
-  it('namespaces the target id so folders cannot collide with other targets', () => {
-    mount();
-
-    expect(context.registerDropTarget).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'folder-f1' })
-    );
-  });
-});
-
-describe('dragEnter', () => {
-  it('marks the folder hovered during an external drag', () => {
-    context.source = externalDrag;
-    const { result } = mount();
-    const event = dragEvent();
-
-    result.current.dragHandlers.onDragEnter(event);
-
-    expect(context.setHoverTarget).toHaveBeenCalledWith({
-      type: 'folder',
-      id: 'folder-f1',
-      path: 'docs/photos/',
-      name: 'Photos',
-    });
-    // Without preventDefault the browser refuses the drop outright.
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(event.stopPropagation).toHaveBeenCalled();
-  });
-
-  it('ignores an internal drag', () => {
-    context.source = internalDrag;
-    const { result } = mount();
-    const event = dragEvent();
-
-    result.current.dragHandlers.onDragEnter(event);
-
-    // Dragging a row within the list must not light up folders as targets.
-    expect(context.setHoverTarget).not.toHaveBeenCalled();
-    expect(event.preventDefault).not.toHaveBeenCalled();
-  });
-
-  it('ignores an enter with no drag in progress', () => {
+describe('marking the row', () => {
+  it('tags the row with its namespaced target id', () => {
     const { result } = mount();
 
-    result.current.dragHandlers.onDragEnter(dragEvent());
-
-    expect(context.setHoverTarget).not.toHaveBeenCalled();
-  });
-});
-
-describe('dragLeave', () => {
-  beforeEach(() => {
-    context.source = externalDrag;
-  });
-
-  it('clears the hover once the pointer is outside the row', () => {
-    const { result } = mount();
-
-    result.current.dragHandlers.onDragLeave(dragEvent({ clientX: 150, clientY: 50 }));
-
-    expect(context.setHoverTarget).toHaveBeenCalledWith(null);
-  });
-
-  it('keeps the hover while the pointer is still inside', () => {
-    const { result } = mount();
-
-    result.current.dragHandlers.onDragLeave(dragEvent({ clientX: 50, clientY: 50 }));
-
-    // dragleave also fires when crossing onto a CHILD element. Clearing then
-    // would make the highlight flicker off as the pointer moves over the row's
-    // icon or label.
-    expect(context.setHoverTarget).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['left of the row', { clientX: -1, clientY: 50 }],
-    ['right of the row', { clientX: 101, clientY: 50 }],
-    ['above the row', { clientX: 50, clientY: -1 }],
-    ['below the row', { clientX: 50, clientY: 101 }],
-  ])('clears the hover when the pointer is %s', (_label, coords) => {
-    const { result } = mount();
-
-    result.current.dragHandlers.onDragLeave(dragEvent(coords));
-
-    expect(context.setHoverTarget).toHaveBeenCalledWith(null);
-  });
-
-  it('treats the exact edge as still inside', () => {
-    const { result } = mount();
-
-    result.current.dragHandlers.onDragLeave(dragEvent({ clientX: 100, clientY: 100 }));
-
-    // The bounds check is exclusive, so the boundary pixel stays hovered.
-    expect(context.setHoverTarget).not.toHaveBeenCalled();
-  });
-
-  it('ignores an internal drag', () => {
-    context.source = internalDrag;
-    const { result } = mount();
-
-    result.current.dragHandlers.onDragLeave(dragEvent({ clientX: 999 }));
-
-    expect(context.setHoverTarget).not.toHaveBeenCalled();
+    // This attribute is the whole registration: the provider hit-tests the
+    // pointer against it, so a row scrolled out of the DOM stops claiming
+    // drops without having to announce that it has gone.
+    expect(result.current.dragHandlers[DROP_TARGET_ATTRIBUTE]).toBe('folder-f1');
   });
 });
 
 describe('dragOver', () => {
-  it('asks the browser for a copy cursor during an external drag', () => {
-    context.source = externalDrag;
+  it('claims the drop and asks for a copy cursor during a file drag', () => {
     const { result } = mount();
     const event = dragEvent();
 
     result.current.dragHandlers.onDragOver(event);
 
-    // Without preventDefault on dragover the drop event never fires at all.
+    // An element that does not cancel dragover never receives a drop at all.
     expect(event.preventDefault).toHaveBeenCalled();
     expect(event.dataTransfer.dropEffect).toBe('copy');
   });
 
-  it('leaves the cursor alone for an internal drag', () => {
-    context.source = internalDrag;
+  it('works without any prior event having been seen', () => {
+    // The regression this hook was rewritten for: the first event of a drag
+    // that began over the listing had to be enough on its own.
     const { result } = mount();
     const event = dragEvent();
 
     result.current.dragHandlers.onDragOver(event);
 
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('leaves a drag that carries no files alone', () => {
+    const { result } = mount();
+    const event = dragEvent(['text/plain']);
+
+    result.current.dragHandlers.onDragOver(event);
+
+    // Dragging a row within the list must not turn every folder into a target.
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(event.dataTransfer.dropEffect).toBe('none');
+  });
+
+  it('survives an event with no dataTransfer', () => {
+    const { result } = mount();
+    const event = dragEvent(null);
+
+    expect(() => result.current.dragHandlers.onDragOver(event)).not.toThrow();
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 });
 
 describe('drop', () => {
-  beforeEach(() => {
-    context.source = externalDrag;
-  });
-
   it('hands the extracted files to the caller with this folder as the target', async () => {
     const extracted = {
       individualFiles: [new File([], 'a.txt')],
@@ -258,46 +131,60 @@ describe('drop', () => {
 
     await act(async () => result.current.dragHandlers.onDrop(dragEvent()));
 
-    expect(onFilesDropped).toHaveBeenCalledExactlyOnceWith(extracted, {
-      type: 'folder',
-      id: 'folder-f1',
-      path: 'docs/photos/',
-      name: 'Photos',
+    expect(onFilesDropped).toHaveBeenCalledExactlyOnceWith(extracted, target);
+  });
+
+  it('keeps the drop from reaching the listing behind it', async () => {
+    const { result } = mount();
+    const event = dragEvent();
+
+    await act(async () => result.current.dragHandlers.onDrop(event));
+
+    // The listing uploads to the current prefix. Letting the drop through as
+    // well is what put files beside the folder they were aimed at.
+    expect(event.stopPropagation).toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('stops the propagation before awaiting the extraction', async () => {
+    // Extraction walks the dropped tree and can take a while. stopPropagation
+    // after the await would run in a later task, long after the event finished
+    // bubbling and the listing already took the drop.
+    let release!: (v: ProcessedDragData) => void;
+    processItems.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const { result } = mount();
+    const event = dragEvent();
+
+    const dropping = result.current.dragHandlers.onDrop(event);
+
+    expect(event.stopPropagation).toHaveBeenCalled();
+
+    release({ individualFiles: [], folderStructures: [], skipped: [] });
+    await act(async () => {
+      await dropping;
     });
   });
 
-  it('clears the hover afterwards', async () => {
-    const { result } = mount();
-
-    await act(async () => result.current.dragHandlers.onDrop(dragEvent()));
-
-    // A highlight left behind would follow the user around the list.
-    expect(context.setHoverTarget).toHaveBeenLastCalledWith(null);
-  });
-
-  it('ignores an internal drag', async () => {
-    context.source = internalDrag;
+  it('ignores a drag that carries no files', async () => {
     const { result, onFilesDropped } = mount();
+    const event = dragEvent(['text/plain']);
 
-    await act(async () => result.current.dragHandlers.onDrop(dragEvent()));
+    await act(async () => result.current.dragHandlers.onDrop(event));
 
     expect(processItems).not.toHaveBeenCalled();
     expect(onFilesDropped).not.toHaveBeenCalled();
-  });
-
-  it('ignores a drop with no drag registered', async () => {
-    context.source = null;
-    const { result, onFilesDropped } = mount();
-
-    await act(async () => result.current.dragHandlers.onDrop(dragEvent()));
-
-    expect(onFilesDropped).not.toHaveBeenCalled();
+    // Left uncancelled, so whatever the drag really was still gets its drop.
+    expect(event.stopPropagation).not.toHaveBeenCalled();
   });
 
   it('ignores a drop carrying no dataTransfer', async () => {
     const { result, onFilesDropped } = mount();
 
-    await act(async () => result.current.dragHandlers.onDrop(dragEvent({ dataTransfer: null })));
+    await act(async () => result.current.dragHandlers.onDrop(dragEvent(null)));
 
     // Some synthetic events arrive without one; reading .items would throw.
     expect(onFilesDropped).not.toHaveBeenCalled();
@@ -313,21 +200,10 @@ describe('drop', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it('still clears the hover when extraction fails', async () => {
-    processItems.mockRejectedValue(new Error('SecurityError'));
-    const { result } = mount();
-
-    await act(async () => result.current.dragHandlers.onDrop(dragEvent()));
-
-    // Otherwise a failed drop leaves the folder permanently highlighted.
-    expect(context.setHoverTarget).toHaveBeenLastCalledWith(null);
-  });
-
   it('survives the row unmounting while extraction is still running', async () => {
-    // Drop a folder, navigate away, and the walk is still going. Everything the
-    // continuation touches lives ABOVE this component - setHoverTarget belongs
-    // to the provider and onFilesDropped to the upload store - so there is no
-    // setState on an unmounted component. React 19 would not warn either way,
+    // Drop onto a folder, navigate away, and the walk is still going.
+    // Everything the continuation touches lives above this component, so there
+    // is no setState on an unmounted one. React 19 would not warn either way,
     // which is exactly why this is worth asserting rather than assuming.
     let release!: (v: ProcessedDragData) => void;
     processItems.mockReturnValue(
@@ -346,7 +222,6 @@ describe('drop', () => {
 
     // The upload still starts: the user asked for it before navigating away.
     expect(onFilesDropped).toHaveBeenCalledOnce();
-    expect(context.unregisterDropTarget).toHaveBeenCalledWith('folder-f1');
   });
 
   it('forwards an empty extraction rather than swallowing it', async () => {
@@ -360,43 +235,70 @@ describe('drop', () => {
   });
 });
 
-describe('reported state', () => {
-  it('can accept a drop while an external drag is running', () => {
-    context.source = externalDrag;
+describe('highlight', () => {
+  it('marks itself when the provider names this folder', () => {
+    context.hoveredTargetId = 'folder-f1';
 
     const { result } = mount();
 
-    expect(result.current.canAcceptDrop).toBe(true);
+    expect(result.current.isDropTarget).toBe(true);
   });
 
-  it('cannot accept a drop with no drag in progress', () => {
-    context.source = null;
+  it('stays unmarked while another folder is hovered', () => {
+    context.hoveredTargetId = 'folder-other';
 
     const { result } = mount();
 
-    // The row must not render as a live target when nothing is being dragged.
-    expect(result.current.canAcceptDrop).toBe(false);
+    // Exactly one folder is ever the target, so a row has only to recognise
+    // its own id rather than track the pointer itself.
+    expect(result.current.isDropTarget).toBe(false);
   });
 
-  it('cannot accept a drop the provider has ruled out', () => {
-    context.source = externalDrag;
-    context.getTargetState.mockReturnValue({
-      isHovered: false,
-      canAcceptDrop: false,
-      isDraggedOver: false,
-    });
-
+  it('stays unmarked with no drag in progress', () => {
     const { result } = mount();
 
-    expect(result.current.canAcceptDrop).toBe(false);
+    expect(result.current.isDropTarget).toBe(false);
+  });
+});
+
+describe('a folder with nowhere to put a drop', () => {
+  const mountUnhandled = () => renderHook(() => useFolderDropTarget({ folder }));
+
+  it('does not mark itself as a target', () => {
+    const { result } = mountUnhandled();
+
+    // Unmarked, so the provider's hit-test walks past to the listing behind.
+    expect(result.current.dragHandlers[DROP_TARGET_ATTRIBUTE]).toBeUndefined();
   });
 
-  it('passes the provider target state straight through', () => {
-    const state = { isHovered: true, canAcceptDrop: true, isDraggedOver: true };
-    context.getTargetState.mockReturnValue(state);
+  it('lets a drop fall through to the listing', async () => {
+    const { result } = mountUnhandled();
+    const event = dragEvent();
 
-    const { result } = mount();
+    await act(async () => result.current.dragHandlers.onDrop(event));
 
-    expect(result.current.targetState).toEqual(state);
+    // Claiming it stops the listing from ever seeing it. Doing that and then
+    // discarding it - what a no-op handler amounted to - lost the files.
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(processItems).not.toHaveBeenCalled();
+  });
+
+  it('does not claim the dragover either', () => {
+    const { result } = mountUnhandled();
+    const event = dragEvent();
+
+    result.current.dragHandlers.onDragOver(event);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('never highlights, even when named as the hovered target', () => {
+    context.hoveredTargetId = 'folder-f1';
+
+    const { result } = mountUnhandled();
+
+    // Promising a drop it cannot take.
+    expect(result.current.isDropTarget).toBe(false);
   });
 });

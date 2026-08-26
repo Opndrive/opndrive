@@ -312,6 +312,47 @@
   }
 }
 
+/*
+ * A pair of artworks, one per theme, chosen the way every colour above is.
+ *
+ * Picking the src in JavaScript cannot work on a server-rendered page: the
+ * server has no way to know the theme, so it sends the light one, and React
+ * keeps the server's attribute through hydration rather than patching it. The
+ * component then computes the right theme, agrees with what it already holds,
+ * and never re-renders - so the light image stays until something else forces
+ * a render, which is why toggling the theme "fixed" it.
+ *
+ * CSS has no such problem. The inline script in the root layout stamps
+ * data-theme before first paint, so the correct one of the pair is the only one
+ * ever painted. The media query underneath is the same fallback the tokens use,
+ * for a first paint that happens without that script.
+ *
+ * Both are in the markup, but only one is fetched: the hidden one is never in
+ * the viewport, so lazy loading never asks for it. Do not mark either `priority`
+ * - that preloads regardless of display, which would download both.
+ */
+.theme-dark-only {
+  display: none;
+}
+
+[data-theme='dark'] .theme-dark-only {
+  display: block;
+}
+
+[data-theme='dark'] .theme-light-only {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .theme-dark-only {
+    display: block;
+  }
+
+  :root:not([data-theme='light']) .theme-light-only {
+    display: none;
+  }
+}
+
 body {
   background: var(--secondary);
   color: var(--foreground);

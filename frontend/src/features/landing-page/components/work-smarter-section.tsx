@@ -1,9 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { assets } from '@/assets';
-import useEffectiveTheme from '@/hooks/use-effective-theme';
 
 type FeatureId = 'upload' | 'search' | 'preview' | 'share';
 
@@ -58,11 +57,12 @@ const featureImages: Record<FeatureId, { light: string; dark: string }> = {
   },
 };
 
+/** How long each feature holds before the next one takes over. */
+const ROTATE_INTERVAL_MS = 6000;
+
 export default function WorkSmarterSection() {
   const [activeFeature, setActiveFeature] = useState(0);
-  const effectiveTheme = useEffectiveTheme();
 
-  const rotateIntervalMs = 6000;
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pausedRef = useRef(false);
 
@@ -71,25 +71,33 @@ export default function WorkSmarterSection() {
     window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const startRotation = () => {
-    if (prefersReducedMotion) return;
-    if (intervalRef.current) return;
-    intervalRef.current = setInterval(() => {
-      if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % features.length);
-    }, rotateIntervalMs);
-  };
-
-  const stopRotation = () => {
+  /**
+   * Stable, so the effect below can name them as dependencies honestly.
+   *
+   * As plain functions they were rebuilt on every render, so listing them would
+   * have torn the interval down and restarted it each time - which is why the
+   * effect omitted them, and why the linter objected. Neither reads anything
+   * that changes but the motion preference.
+   */
+  const stopRotation = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  };
+  }, []);
+
+  const startRotation = useCallback(() => {
+    if (prefersReducedMotion) return;
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(() => {
+      if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % features.length);
+    }, ROTATE_INTERVAL_MS);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
     startRotation();
     return () => stopRotation();
-  }, []);
+  }, [startRotation, stopRotation]);
 
   const handleFeatureClick = (index: number) => {
     setActiveFeature(index);
@@ -132,7 +140,6 @@ export default function WorkSmarterSection() {
   };
 
   const active = features[activeFeature];
-  const src = featureImages[active.id][effectiveTheme === 'dark' ? 'dark' : 'light'];
 
   return (
     <section id="tools" className="bg-background py-12 sm:py-16 md:py-20 lg:py-24">
@@ -153,14 +160,25 @@ export default function WorkSmarterSection() {
           <div className="hidden lg:flex justify-center lg:justify-start">
             <div className="w-full max-w-sm lg:max-w-md xl:max-w-lg h-72 lg:h-80 xl:h-96 overflow-hidden">
               <div className="relative w-full h-full">
+                {/* Both themes ship; CSS paints one. See .theme-light-only in
+                    globals.css for why this cannot be a src chosen in JS. The
+                    same alt sits on both: the hidden one is display:none and so
+                    out of the accessibility tree. */}
                 <Image
-                  key={`${active.id}-${effectiveTheme}`}
-                  src={src}
+                  key={`${active.id}-light`}
+                  src={featureImages[active.id].light}
                   alt={active.imageAlt}
                   fill
                   sizes="(min-width: 1280px) 512px, (min-width: 1024px) 448px, 384px"
-                  className="object-contain transition-opacity duration-500"
-                  priority
+                  className="object-contain transition-opacity duration-500 theme-light-only"
+                />
+                <Image
+                  key={`${active.id}-dark`}
+                  src={featureImages[active.id].dark}
+                  alt={active.imageAlt}
+                  fill
+                  sizes="(min-width: 1280px) 512px, (min-width: 1024px) 448px, 384px"
+                  className="object-contain transition-opacity duration-500 theme-dark-only"
                 />
               </div>
             </div>

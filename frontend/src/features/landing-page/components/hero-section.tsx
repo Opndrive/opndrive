@@ -4,7 +4,6 @@ import { assets } from '@/assets';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import useEffectiveTheme from '@/hooks/use-effective-theme';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
@@ -28,7 +27,6 @@ interface HeroSectionProps {
 
 export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionProps) {
   const router = useRouter();
-  const effectiveTheme = useEffectiveTheme();
 
   // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
@@ -95,16 +93,22 @@ export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionP
 
           <div className="relative mt-8 sm:mt-12 lg:mt-0">
             <div className="w-full h-48 xs:h-56 sm:h-72 md:h-80 lg:h-96 xl:h-[28rem] flex items-center justify-center relative overflow-hidden">
+              {/* Both themes ship; CSS paints one. See .theme-light-only in
+                  globals.css for why this cannot be a src chosen in JS. */}
               <Image
-                src={
-                  effectiveTheme === 'dark'
-                    ? assets.DarkLandingPageHeroImg
-                    : assets.LightLandingPageHeroImg
-                }
+                src={assets.LightLandingPageHeroImg}
                 alt="opndrive-hero-image"
                 fill
-                className="object-contain"
-                priority
+                className="object-contain theme-light-only"
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
+              />
+              {/* The same alt on both: whichever is display:none is out of the
+                  accessibility tree, so exactly one is ever announced. */}
+              <Image
+                src={assets.DarkLandingPageHeroImg}
+                alt="opndrive-hero-image"
+                fill
+                className="object-contain theme-dark-only"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
               />
             </div>

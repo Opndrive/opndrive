@@ -12,27 +12,29 @@ import { FilePreviewProvider } from '@/context/file-preview-context';
 import { RenameProvider } from '@/context/rename-context';
 import { ShareProvider } from '@/context/share-context';
 import { EnhancedDragDropProvider } from '@/features/upload/providers/enhanced-drag-drop-provider';
-import { DragDetectionWrapper } from '@/features/upload/components/drag-detection-wrapper';
 import { DetailsManager } from '@/features/dashboard/components/ui/details/details-manager';
 import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
 import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 import { useAuth } from '@/hooks/use-auth';
-import { useDriveStore } from '@/context/data-context';
 import { UploadCard } from '@/features/upload/components/upload-card';
 import { useDeleteUnloadGuard } from '@/features/upload/hooks/use-delete-unload-guard';
 import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
 
-const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => {
-  const currentPrefix = useDriveStore((state) => state.currentPrefix);
-
-  return (
-    <EnhancedDragDropProvider currentPath={currentPrefix || 'My Drive'}>
-      <DragDetectionWrapper>{children}</DragDetectionWrapper>
-    </EnhancedDragDropProvider>
-  );
-};
+/**
+ * The provider now listens at the window for itself, so there is no detection
+ * wrapper left to render and no prefix to hand it - it never read the prefix,
+ * and subscribing to one here re-rendered the whole dashboard on every
+ * navigation to pass a value nothing used.
+ *
+ * The div stays: it is what gives the page below a height to fill.
+ */
+const DragAndDropWrapper = ({ children }: { children: React.ReactNode }) => (
+  <EnhancedDragDropProvider>
+    <div className="h-full w-full">{children}</div>
+  </EnhancedDragDropProvider>
+);
 
 const LayoutShell = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);

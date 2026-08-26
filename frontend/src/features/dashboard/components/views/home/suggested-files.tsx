@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Fragment, useRef, useEffect, Children } from 'react';
+import { useState, Fragment, useEffect, Children } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
@@ -11,6 +11,8 @@ import { FolderStructureProcessor } from '@/features/upload/utils/folder-structu
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
+import { useEnhancedDragDrop } from '@/features/upload/providers/enhanced-drag-drop-provider';
+import { isExternalFileDrag } from '@/features/upload/utils/drag-events';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -55,6 +57,15 @@ interface SuggestedFilesProps {
   fileIndexOffset?: number;
   /** Folders and files together, the range a shift-select can span. */
   allItems?: (FileItem | Folder)[];
+  /**
+   * Leave the layout toggle to whichever section leads the page.
+   *
+   * This table owned it in both layouts, and in grid it is the second section,
+   * so switching from list to grid moved the toggle down past the whole folder
+   * grid - out from under the pointer that had just clicked it. In grid the
+   * folders section renders it instead; here it would be a second copy.
+   */
+  hideLayoutToggle?: boolean;
 }
 
 export function SuggestedFiles({
@@ -72,12 +83,29 @@ export function SuggestedFiles({
   leadingMobileRows,
   fileIndexOffset = 0,
   allItems,
+  hideLayoutToggle = false,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
-  const [isDragActive, setIsDragActive] = useState(false);
-  const dragCounter = useRef(0);
   const { clearSelection } = useMultiSelectStore();
+  /**
+   * The drag is one fact about the page, so one listener at the window owns it.
+   *
+   * It used to be tracked here, by counting dragenter against dragleave. Both
+   * fire once per descendant, so a table of rows full of icons and buttons
+   * emits them in bursts and the count drifts - the wash would stick on after
+   * the pointer left, or never appear at all.
+   */
+  const { isFileDragActive, hoveredTargetId } = useEnhancedDragDrop();
+
+  /**
+   * The listing is the destination only while no folder in it is.
+   *
+   * Drawing this at the same time as a folder row's own highlight would offer
+   * two answers to where the files are about to land. A folder claiming the
+   * drop is the more specific answer, so it wins and this steps back.
+   */
+  const isDropTarget = isFileDragActive && hoveredTargetId === null;
 
   // Handle ESC key to clear selection
   useEffect(() => {
@@ -95,54 +123,39 @@ export function SuggestedFiles({
     setIsExpanded(!isExpanded);
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current++;
-    if (dragCounter.current === 1) {
-      setIsDragActive(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
-      dragCounter.current = 0;
-      setIsDragActive(false);
-    }
-  };
-
+  /**
+   * No stopPropagation here.
+   *
+   * Stopping the drag events on the way up is what broke dropping onto a folder
+   * once folders moved into this table: the window listener that tracks the
+   * drag sits above this component, so a drag that began over the rows was
+   * never seen at all, and every folder in the list stayed inert for the rest
+   * of it.
+   */
   const handleDragOver = (e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) return;
     e.preventDefault();
-    e.stopPropagation();
   };
 
   const handleDrop = async (e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) return;
+
     e.preventDefault();
-    e.stopPropagation();
 
-    setIsDragActive(false);
-    dragCounter.current = 0;
+    // A drop on a folder row never reaches here - the row stops it - so
+    // anything that does was aimed at the listing, and belongs in the prefix
+    // the listing is showing.
+    if (!onFilesDropped) return;
 
-    if (onFilesDropped && e.dataTransfer) {
-      try {
-        const dataTransfer = e.dataTransfer;
-        const processedData = await FolderStructureProcessor.processDataTransferItems(
-          dataTransfer.items
-        );
+    try {
+      const processedData = await FolderStructureProcessor.processDataTransferItems(
+        e.dataTransfer.items
+      );
 
-        onFilesDropped(processedData);
-      } catch (error) {
-        console.error('Error processing drag and drop:', error);
-      }
+      onFilesDropped(processedData);
+    } catch (error) {
+      console.error('Error processing drag and drop:', error);
     }
-
-    setTimeout(() => {
-      setIsDragActive(false);
-      dragCounter.current = 0;
-    }, 100);
   };
 
   const handleFileClick = (file: FileItem) => {
@@ -162,14 +175,22 @@ export function SuggestedFiles({
       <div
         className={cn(`w-full ${className} transition-all duration-200 relative text-center`)}
         style={{ minHeight: '300px' }}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {isDragActive && (
-          <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-primary rounded-lg pointer-events-none z-10 flex items-center justify-center"></div>
+        {isDropTarget ? (
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-dashed border-primary bg-primary/5" />
+        ) : null}
+
+        {/* An empty directory still gets the layout control. Without it, opening
+            one in grid view left no way back to list until the user navigated
+            somewhere with contents. */}
+        {hideLayoutToggle ? null : (
+          <div className="relative z-20 flex min-h-9 items-center justify-end mb-3">
+            <LayoutToggle />
+          </div>
         )}
+
         <div className="flex flex-col items-center justify-center h-full py-16">
           <div className="w-16 h-16 mb-4 rounded-full bg-muted/30 flex items-center justify-center">
             <svg
@@ -196,16 +217,18 @@ export function SuggestedFiles({
   return (
     <div
       className={cn(`w-full ${className} transition-all duration-200 relative`)}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {isDragActive && (
-        <div className="absolute inset-0 bg-white/20 dark:bg-white/10 border-2 border-dashed border-blue-500 rounded-lg pointer-events-none z-10" />
-      )}
+      {/* Behind the rows, not over them: a folder highlighting itself as the
+          drop target has to stay legible through this. */}
+      {isDropTarget ? (
+        <div className="pointer-events-none absolute inset-0 rounded-lg border-2 border-dashed border-primary bg-primary/5" />
+      ) : null}
+      {/* min-h-9 is the heading button's height, held whether or not there is a
+          heading, so the layout toggle sits at the same y in both layouts. */}
       {!hideTitle ? (
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex min-h-9 items-center justify-between mb-3">
           <AriaLabel label={`${title} - Click to expand/collapse`} position="top">
             <button
               className="
@@ -235,11 +258,11 @@ export function SuggestedFiles({
             </button>
           </AriaLabel>
 
-          {isExpanded && <LayoutToggle />}
+          {isExpanded && !hideLayoutToggle ? <LayoutToggle /> : null}
         </div>
       ) : (
-        <div className="flex items-center justify-end mb-3">
-          <LayoutToggle />
+        <div className="flex min-h-9 items-center justify-end mb-3">
+          {hideLayoutToggle ? null : <LayoutToggle />}
         </div>
       )}
 

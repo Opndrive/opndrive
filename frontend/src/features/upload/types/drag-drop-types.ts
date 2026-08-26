@@ -1,7 +1,14 @@
 /**
- * Drag and Drop Context Types
+ * Drag and Drop Types
  *
- * Defines the different types of drag-and-drop interactions in the app
+ * Where a dropped set of files is headed.
+ *
+ * The source of a drag used to be modelled here too - who was dragging, how
+ * many items, whether the app or the OS started it. None of it could be known
+ * while a drag was in flight (the browser hides the files until the drop) and
+ * so all of it was guessed at and stored, which is what made a folder's
+ * willingness to take a drop depend on state some other component had written
+ * first. Targets are now read from the drop event, and the guesses are gone.
  */
 
 export type DragDropTarget = {
@@ -10,30 +17,3 @@ export type DragDropTarget = {
   path: string;
   name: string;
 };
-
-export type DragDropItem = {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  path?: string;
-  size?: number;
-};
-
-export type DragDropSource = {
-  type: 'external-files' | 'internal-files' | 'internal-folders';
-  items: DragDropItem[];
-  count: number;
-};
-
-export type DragDropContext = {
-  source: DragDropSource | null;
-  target: DragDropTarget | null;
-  isActive: boolean;
-  canDrop: boolean;
-};
-
-export interface DragDropCallbacks {
-  onFilesDroppedToDirectory?: (files: File[], folders: File[], targetPath: string) => void;
-  onFilesDroppedToFolder?: (files: File[], folders: File[], targetFolder: DragDropTarget) => void;
-  onInternalItemsDropped?: (items: DragDropItem[], target: DragDropTarget) => void;
-}

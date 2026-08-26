@@ -10,6 +10,7 @@ import { SuggestedFolders } from '../home/suggested-folders';
 import { FolderItemList } from '../../ui/items/folder-item-list';
 import { FolderItemMobile } from '../../ui/items/folder-item-mobile';
 import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
+import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 
 /**
  * The drive's contents, in whichever shape the current layout calls for.
@@ -53,6 +54,21 @@ export function DriveList({
   const { layout } = useCurrentLayout();
 
   if (layout !== 'list') {
+    /**
+     * The toggle belongs to whichever section comes first.
+     *
+     * It used to live in the file table's heading in both layouts. In grid that
+     * heading sits below the entire folder grid, so switching from list to grid
+     * dropped the control a section's height - away from the pointer that had
+     * just clicked it, and back up again on the way back. Handing it to the
+     * folders heading, which starts at the same offset the list view's table
+     * does, leaves it where it was.
+     *
+     * SuggestedFolders renders nothing at all when there are no folders, so in
+     * that case the table keeps it and is the first section regardless.
+     */
+    const foldersLead = folders.length > 0;
+
     return (
       <>
         <SuggestedFolders
@@ -62,6 +78,7 @@ export function DriveList({
           onFilesDroppedToFolder={onFilesDroppedToFolder}
           className="mt-8"
           title="Folders"
+          headerAction={<LayoutToggle />}
         />
         <SuggestedFiles
           files={files}
@@ -70,6 +87,7 @@ export function DriveList({
           onFilesDropped={onFilesDropped}
           className="mt-8"
           title="Files"
+          hideLayoutToggle={foldersLead}
         />
       </>
     );
@@ -105,7 +123,7 @@ export function DriveList({
             name: folder.name,
             path: folder.Prefix || folder.name,
           }}
-          onFilesDropped={onFilesDroppedToFolder ?? (() => {})}
+          onFilesDropped={onFilesDroppedToFolder}
         >
           <FolderItemList
             folder={folder}
@@ -126,7 +144,7 @@ export function DriveList({
             name: folder.name,
             path: folder.Prefix || folder.name,
           }}
-          onFilesDropped={onFilesDroppedToFolder ?? (() => {})}
+          onFilesDropped={onFilesDroppedToFolder}
         >
           <FolderItemMobile
             folder={folder}
