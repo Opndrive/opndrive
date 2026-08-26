@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@/shared/utils/utils';
+import { sidebarRowClasses } from '@/shared/utils/sidebar-row';
 import { SettingsTab } from '../types';
 import { SETTINGS_TABS } from '../constants';
 
@@ -9,23 +9,35 @@ interface SettingsSidebarProps {
   onTabChange: (tab: SettingsTab) => void;
 }
 
+/**
+ * These rows carried their own copy of the dashboard nav row's classes, right
+ * down to the active and hover states. They now share one description of a
+ * sidebar row with `SidebarItem` and `SidebarDropdown`, so a change to how a
+ * row looks reaches all three instead of two.
+ *
+ * No icons here on purpose: settings is a sub-navigation and its tabs are
+ * text-only, so `SettingsTabInfo` has no icon to render.
+ */
 export function SettingsSidebar({ activeTab, onTabChange }: SettingsSidebarProps) {
   return (
     <>
-      {SETTINGS_TABS.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => onTabChange(tab.id)}
-          className={cn(
-            'flex items-center w-full text-sm cursor-pointer transition-all duration-200 ease-in-out group px-3 py-2 rounded-lg',
-            activeTab === tab.id
-              ? 'bg-primary text-primary-foreground font-medium shadow-sm'
-              : 'text-secondary-foreground hover:text-foreground hover:bg-accent'
-          )}
-        >
-          <span className="truncate">{tab.label}</span>
-        </button>
-      ))}
+      {SETTINGS_TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onTabChange(tab.id)}
+            // Not `page`: these switch a panel in place and never change the
+            // URL, so there is no current page for them to be.
+            aria-current={isActive ? 'true' : undefined}
+            className={sidebarRowClasses({ isActive })}
+          >
+            <span className="truncate">{tab.label}</span>
+          </button>
+        );
+      })}
     </>
   );
 }

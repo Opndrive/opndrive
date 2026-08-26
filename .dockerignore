@@ -36,3 +36,4 @@ Dockerfile
 # Local agent tooling, never part of the image.
 .agents
 skills-lock.json
+.claude

@@ -1,13 +1,14 @@
-import React from 'react';
 import { MdHomeFilled } from 'react-icons/md';
 import { PiHardDrivesFill } from 'react-icons/pi';
+import type { SidebarItem } from '@/features/dashboard/components/layout/sidebar/types/sidebar';
 
-export interface SidebarItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children?: SidebarItem[];
-}
+/**
+ * This file used to declare its own `SidebarItem`, structurally similar to the
+ * one the sidebar components use but missing `badge` and `disabled`. Two
+ * descriptions of the same shape, and only one of them was ever updated. The
+ * components own the type; this file supplies the data for it.
+ */
+export type { SidebarItem };
 
 const SidebarItems: SidebarItem[] = [
   {

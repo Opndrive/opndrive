@@ -58,5 +58,4 @@ copilot-instructions.md
 # Per-developer, not part of the project's build or runtime.
 .agents/
 skills-lock.json
-# The skills CLI symlinks installed skills in here for Claude Code.
-.claude/skills
+.claude/

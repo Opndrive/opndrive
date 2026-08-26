@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
-import { CreateMenu } from '../../ui';
+import { CreateMenu } from '../../ui/menus/create-menu';
 import { CreateFolderDialog } from '../../ui/dialogs/create-folder-dialog';
 import { DuplicateDialog } from '@/features/upload/components/duplicate-dialog';
 import { useDriveStore } from '@/context/data-context';
@@ -71,17 +71,18 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
         currentPath={currentPrefix || ''}
         trigger={
           <button
+            type="button"
             onClick={handleClick}
             className={cn(
               'flex items-center w-full cursor-pointer px-6 py-4 mb-4 text-base font-medium',
               'bg-card text-card-foreground border border-border',
-              'rounded-2xl shadow-sm hover:shadow-md transition-all duration-200',
+              'rounded-2xl shadow-sm hover:shadow-md transition-[color,background-color,box-shadow] duration-200',
               'hover:bg-accent hover:text-foreground',
               className
             )}
             aria-label="Create new file or folder"
           >
-            <Plus className="w-6 h-6 mr-3 flex-shrink-0" />
+            <Plus aria-hidden="true" className="w-6 h-6 mr-3 flex-shrink-0" />
             <span>New</span>
           </button>
         }

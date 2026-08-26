@@ -19,3 +19,10 @@ disabled button labelled "Loading..." as the page's primary CTA.
 ConnectWizard, which lives at /connect/[provider] and navigates itself once the
 session resolves, so the branch could only have fired from `/` or `/login`,
 neither of which has a connect form, and `/login` is not a route.
+
+The way back into the drive, which those same public pages now have to show
+rather than redirect, is labelled "Dashboard" instead of "Go to Dashboard". Two
+words that the arrow beside them already carried, and enough width to push the
+landing page's sticky nav wider than the pill it sits in. It is a rounded-full
+pill to match that nav, and the arrow is thickened so it still reads as a
+direction next to the label rather than dissolving into it.
