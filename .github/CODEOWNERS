@@ -1,9 +1,20 @@
-# Default owner for everything not matched below
-* @yash-sangwan
+# Default owners for everything not matched below.
+#
+# Both maintainers, which is what makes the review requirement mean something:
+# GitHub never requests a review from the PR's own author, so listing both puts
+# each maintainer's work in front of the other one automatically. With a single
+# owner, that maintainer's own pull requests had no code owner left to ask.
+#
+# Approval from ONE listed owner satisfies the requirement. CODEOWNERS cannot
+# ask for two.
+* @yash-sangwan @Rakesh-46-VR
 
 # Coverage ratchet. The thresholds in this file are the only thing stopping
 # covered behaviour from being quietly dropped, and CI will faithfully enforce
-# whatever number is committed - including a lowered one. Requiring a second
-# maintainer here makes the ratchet one-way in practice, not just on paper.
-# Later rules win in CODEOWNERS, so this must stay below the `*` entry.
+# whatever number is committed - including a lowered one.
+#
+# This now names the same two owners as the `*` rule above, so it no longer
+# changes who has to approve. It is kept as the record of why this file is
+# worth guarding, and as the place to narrow ownership again if the two lists
+# ever diverge. Later rules win in CODEOWNERS, so it must stay below `*`.
 /s3-api/vitest.config.ts @yash-sangwan @Rakesh-46-VR
