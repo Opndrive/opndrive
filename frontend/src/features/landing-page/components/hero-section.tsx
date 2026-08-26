@@ -22,12 +22,11 @@ const navItems = [
 
 interface HeroSectionProps {
   handleGetStarted: () => void;
-  isLoading: boolean;
   /** Named by the page, which is the only thing that knows the destination. */
   ctaLabel: string;
 }
 
-export default function HeroSection({ handleGetStarted, isLoading, ctaLabel }: HeroSectionProps) {
+export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionProps) {
   const router = useRouter();
   const effectiveTheme = useEffectiveTheme();
 
@@ -75,7 +74,6 @@ export default function HeroSection({ handleGetStarted, isLoading, ctaLabel }: H
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6 sm:mt-8 justify-center lg:justify-start">
               <Button
                 onClick={handleGetStarted}
-                disabled={isLoading}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 sm:px-8 lg:px-10 py-3 sm:py-3.5 lg:py-4 text-sm sm:text-base lg:text-lg font-medium w-full sm:w-auto text-center min-w-[140px] sm:min-w-[160px]"
               >
                 {ctaLabel}
