@@ -58,3 +58,4 @@ copilot-instructions.md
 # Per-developer, not part of the project's build or runtime.
 .agents/
 skills-lock.json
+.claude/

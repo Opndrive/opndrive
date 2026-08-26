@@ -28,7 +28,7 @@ const navItems = [
 
 export default function LandingPage() {
   const router = useRouter();
-  const { userCreds, isLoading } = useAuth();
+  const { userCreds } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
 
@@ -62,12 +62,17 @@ export default function LandingPage() {
    *
    * The session comes from the auth context rather than a second, hand-copied
    * read of the `s3_user_session` key, which is the sort of duplicate that
-   * survives a rename of the original. `AuthProvider` holds this page back
-   * until the restore has finished, so `userCreds` is settled by the time any
-   * of this renders; the loading label is what shows if that ever changes.
+   * survives a rename of the original.
+   *
+   * There is deliberately no loading state. This page is public now, so the
+   * server renders it before any session has been looked for - and a hero
+   * button reading "Loading..." is what a crawler would have indexed as the
+   * call to action. It says "Get Started" and goes to /connect until a session
+   * turns up, which is the right answer for almost everyone who lands here and
+   * a harmless one for the rest: /connect offers them the way back in.
    */
   const hasSession = userCreds !== null;
-  const ctaLabel = isLoading ? 'Loading...' : hasSession ? 'Go to Dashboard' : 'Get Started';
+  const ctaLabel = hasSession ? 'Go to Dashboard' : 'Get Started';
 
   const handleGetStarted = () => {
     router.push(hasSession ? '/dashboard' : '/connect');
@@ -176,7 +181,6 @@ export default function LandingPage() {
                     setIsMobileMenuOpen(false);
                     handleGetStarted();
                   }}
-                  disabled={isLoading}
                   className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2.5 text-sm font-medium rounded-md transition-colors"
                 >
                   {ctaLabel}
@@ -195,14 +199,14 @@ export default function LandingPage() {
         />
       )}
 
-      <HeroSection handleGetStarted={handleGetStarted} isLoading={isLoading} ctaLabel={ctaLabel} />
+      <HeroSection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
       {/* Add top padding after hero section for mobile navbar */}
       <div className="lg:pt-0" style={{ paddingTop: showMobileNav ? '3.5rem' : '0' }}>
         <Navbar />
         <FeaturesSection />
         <WorkSmarterSection />
         <FAQSection />
-        <CTASection handleGetStarted={handleGetStarted} isLoading={isLoading} ctaLabel={ctaLabel} />
+        <CTASection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
         <SiteFooter />
       </div>
     </main>
