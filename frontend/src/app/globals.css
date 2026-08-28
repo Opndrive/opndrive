@@ -882,6 +882,19 @@ body {
   max-width: 200px;
 }
 
+/*
+ * A tooltip that lists things, one per line.
+ *
+ * `multiline` alone is not enough: it gives white-space: normal, which wraps
+ * but folds newlines into spaces, so a list of filenames arrives as one
+ * run-on paragraph.
+ */
+.custom-aria-label.aria-label-list {
+  white-space: pre-line;
+  text-align: left;
+  max-width: 320px;
+}
+
 /* No triangle - clean tooltip design */
 
 @media (max-width: 640px) {
@@ -894,6 +907,10 @@ body {
 
   .custom-aria-label.multiline {
     max-width: 150px;
+  }
+
+  .custom-aria-label.aria-label-list {
+    max-width: 220px;
   }
 }
 

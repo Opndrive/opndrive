@@ -31,6 +31,8 @@ const { refreshCurrentData, notifyError, removeDeletedFolder } = vi.hoisted(() =
   notifyError: vi.fn(),
   removeDeletedFolder: vi.fn(),
 }));
+/** Returns its undo, the way the real mutator does. */
+const removeFiles = vi.fn(() => vi.fn());
 
 vi.mock('@opndrive/s3-api', () => ({
   UploadManager: class {},
@@ -48,6 +50,7 @@ const drive = {
   rootPrefix: '/' as string | null,
   refreshCurrentData,
   removeDeletedFolder,
+  removeFiles,
 };
 
 vi.mock('@/context/data-context', () => ({

@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { generateUniqueFolderName } from '@/features/upload/utils/unique-filename';
 import { useDriveStore } from '@/context/data-context';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
 import { describeFolderNameError } from '@/features/upload/utils/folder-name';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
@@ -28,8 +29,7 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
     onKeepBoth: null,
   });
 
-  const fetchData = useDriveStore((state) => state.fetchData);
-  const refreshCurrentData = useDriveStore((state) => state.refreshCurrentData);
+  const addFolder = useDriveStore((state) => state.addFolder);
 
   const { apiS3 } = useAuthGuard();
 
@@ -71,14 +71,26 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
       const name = folderName.trim();
       const folderKey = generateS3Key(`${name}/`, currentPath);
 
-      await apiS3.createFolder(folderKey);
+      // The row goes in before the request. One call decides whether this
+      // folder exists, so a failure means it provably does not and the row
+      // comes straight back out.
+      //
+      // The prefix is read back off the key that will actually be written
+      // rather than from currentPath, so there is only ever one opinion about
+      // where this folder lives - generateS3Key strips a leading slash and
+      // currentPath may carry one.
+      const undoRow = addFolder(getParentPrefix(folderKey), name);
 
-      // Refresh the current directory to show the new folder
-      await fetchData({ sync: true });
+      try {
+        await apiS3.createFolder(folderKey);
+      } catch (error) {
+        undoRow();
+        throw error;
+      }
 
       onFolderCreated?.(name);
     },
-    [currentPath, fetchData, onFolderCreated, apiS3]
+    [currentPath, addFolder, onFolderCreated, apiS3]
   );
 
   // Handle folder creation with duplicate checking
@@ -107,12 +119,9 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
                   onReplace: null,
                   onKeepBoth: null,
                 });
-                // Refresh data to show the newly created folder
-                try {
-                  await refreshCurrentData();
-                } catch {
-                  // Don't fail folder creation if refresh fails
-                }
+                // createFolder has already put the row in the listing. The
+                // re-read that used to follow it here was the third full
+                // listing of this prefix for one folder.
                 resolve();
               } catch (error) {
                 resolve();
@@ -129,12 +138,6 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
                   onReplace: null,
                   onKeepBoth: null,
                 });
-                // Refresh data to show the newly created folder
-                try {
-                  await refreshCurrentData();
-                } catch {
-                  // Don't fail folder creation if refresh fails
-                }
                 resolve();
               } catch (error) {
                 resolve();
@@ -146,16 +149,9 @@ export function useFolderCreation({ currentPath, onFolderCreated }: UseFolderCre
       } else {
         // No duplicate, create folder directly
         await createFolder(folderName);
-
-        // Refresh data to show the newly created folder
-        try {
-          await refreshCurrentData();
-        } catch {
-          // Don't fail folder creation if refresh fails
-        }
       }
     },
-    [checkFolderExists, createFolder, currentPath, refreshCurrentData, apiS3]
+    [checkFolderExists, createFolder, currentPath, apiS3]
   );
 
   return {
