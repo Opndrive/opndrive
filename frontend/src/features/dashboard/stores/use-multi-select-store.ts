@@ -18,6 +18,7 @@
 import { create } from 'zustand';
 import { FileItem } from '../types/file';
 import { Folder } from '../types/folder';
+import { isFolderLike, itemKey as getItemKey } from '@/shared/utils/drive-item';
 
 type SelectableItem = FileItem | Folder;
 type ItemType = 'file' | 'folder';
@@ -48,9 +49,17 @@ interface MultiSelectState {
   anchorKey: string | null;
 
   // Actions
+  /**
+   * Takes no item type.
+   *
+   * Callers used to pass a literal `'file'` or `'folder'` alongside the item.
+   * It was a fifth answer to a question the item itself can be asked, and only
+   * the plain-click path ever read it - so the same folder reported one thing
+   * when clicked and another when ctrl-clicked, because those paths had always
+   * derived it. Every path derives now, and there is nothing left to disagree.
+   */
   selectItem: (
     item: SelectableItem,
-    type: ItemType,
     index: number,
     ctrlKey: boolean,
     shiftKey: boolean,
@@ -61,34 +70,26 @@ interface MultiSelectState {
   getSelectionCount: () => number;
 }
 
-const isFolder = (item: SelectableItem): boolean => 'Prefix' in item && Boolean(item.Prefix);
-
 /**
  * Read back off the items rather than tracked separately.
  *
  * A stored type and a stored list are two records of one fact, and the moment a
  * range spans both kinds they disagree. Deriving it means the answer cannot
  * drift from what is actually held.
+ *
+ * `isFolderLike` rather than a local test: a folder written as an object whose
+ * key ends in a slash is still a folder to the person selecting it, and the
+ * toolbar has to grey the same actions for it.
  */
 const typeOf = (items: SelectableItem[]): SelectionType | null => {
   if (items.length === 0) return null;
 
-  const folders = items.filter(isFolder).length;
+  const folders = items.filter(isFolderLike).length;
 
   if (folders === 0) return 'file';
   if (folders === items.length) return 'folder';
 
   return 'mixed';
-};
-
-const getItemKey = (item: SelectableItem): string => {
-  if ('Key' in item && item.Key) {
-    return item.Key;
-  }
-  if ('Prefix' in item && item.Prefix) {
-    return item.Prefix;
-  }
-  return '';
 };
 
 export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
@@ -97,7 +98,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
   lastSelectedIndex: null,
   anchorKey: null,
 
-  selectItem: (item, type, index, ctrlKey, shiftKey, allItems) => {
+  selectItem: (item, index, ctrlKey, shiftKey, allItems) => {
     const state = get();
 
     // Shift+Click: Select range from last clicked item to current item.
@@ -157,10 +158,12 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       return;
     }
 
-    // Regular click: Single selection
+    // Regular click: Single selection.
+    //
+    // Derived from the item, like every other path here.
     set({
       selectedItems: [item],
-      selectedType: type,
+      selectedType: typeOf([item]),
       lastSelectedIndex: index,
       anchorKey: getItemKey(item),
     });

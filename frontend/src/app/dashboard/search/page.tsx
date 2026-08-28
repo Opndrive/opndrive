@@ -195,6 +195,7 @@ export default function SearchPage() {
 
       return {
         id: `folder-${index}`,
+        kind: 'folder',
         name: folderName,
         Prefix: folder.Key,
         lastModified: folder.LastModified || new Date(),
@@ -210,6 +211,7 @@ export default function SearchPage() {
 
       return {
         id: `file-${index}`,
+        kind: 'file',
         name: fileName,
         Key: file.Key,
         Size: file.Size, // Preserve original Size in bytes for preview checks

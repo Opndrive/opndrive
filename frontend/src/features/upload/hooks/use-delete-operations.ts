@@ -10,6 +10,7 @@ import { markerLast } from '../utils/delete-key-order';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { isFile } from '@/shared/utils/drive-item';
 
 interface FolderContents {
   allKeys: string[];
@@ -428,7 +429,7 @@ export function useDeleteOperations() {
       const itemId = `delete-batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // Determine batch operation details
-      const fileCount = items.filter((item) => 'Key' in item).length;
+      const fileCount = items.filter(isFile).length;
       const folderCount = items.length - fileCount;
       const operationLabel =
         folderCount > 0 && fileCount > 0
@@ -464,8 +465,7 @@ export function useDeleteOperations() {
             throw abortError();
           }
 
-          if ('Key' in item) {
-            // It's a file
+          if (isFile(item)) {
             allKeysToDelete.push(item.Key || item.name);
           }
         }
