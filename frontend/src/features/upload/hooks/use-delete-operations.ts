@@ -583,9 +583,12 @@ export function useDeleteOperations() {
 
       const undoOrResync = () => {
         // A revert only tells the truth while nothing has actually been
-        // deleted. Once the first batch has gone out, some of these keys are
-        // gone and some are not, and putting every row back would be as wrong
-        // as leaving them all out - so the bucket gets asked instead.
+        // deleted. Once a batch has come back successfully, some of these keys
+        // are gone and some are not, and putting every row back would be as
+        // wrong as leaving them all out - so the bucket gets asked instead.
+        //
+        // "come back", not "gone out": the flag is set after the await, which
+        // is what makes a first-batch failure revert rather than resync.
         if (anyDispatched) void refreshCurrentData({ silent: true });
         else undoRemoval();
       };

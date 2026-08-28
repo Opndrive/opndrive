@@ -337,43 +337,6 @@ describe('creating a folder', () => {
   });
 });
 
-describe('invalidating a prefix', () => {
-  it('drops one the user is not looking at', () => {
-    useDriveStore.setState({
-      currentPrefix: '/',
-      cache: {
-        '/': { files: [file('a.txt')], folders: [], isTruncated: false },
-        'docs/': { files: [file('docs/b.txt')], folders: [], isTruncated: false },
-      },
-      directory: { 'docs/': { status: 'ready' } },
-    });
-
-    store().invalidatePrefix('docs/');
-
-    expect(store().cache['docs/']).toBeUndefined();
-    expect(store().directory['docs/']).toBeUndefined();
-    // The folder on screen is untouched.
-    expect(keysAt('/')).toEqual(['a.txt']);
-  });
-
-  it('re-reads the one on screen instead of dropping it', () => {
-    const fetchDirectoryStructure = vi.fn(() => new Promise(() => {}));
-    useDriveStore.setState({
-      currentPrefix: '/',
-      cache: { '/': { files: [file('a.txt')], folders: [], isTruncated: false } },
-      directory: { '/': { status: 'ready' } },
-    });
-    store().setApiS3({ fetchDirectoryStructure, getPrefix: () => '' } as never);
-
-    store().invalidatePrefix('/');
-
-    // Dropping it would leave the view with nothing to render and send it back
-    // to its skeleton, which is the blanking this whole change exists to avoid.
-    expect(keysAt('/')).toEqual(['a.txt']);
-    expect(fetchDirectoryStructure).toHaveBeenCalled();
-  });
-});
-
 describe('statuses left behind by a retired request', () => {
   it('frees a "Show more" that was mid-flight', () => {
     useDriveStore.setState({

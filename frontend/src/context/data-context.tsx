@@ -92,17 +92,6 @@ type Store = {
   renameFolder: (prefix: string, newName: string) => Revert;
 
   /**
-   * Marks a prefix stale without disturbing what is on screen.
-   *
-   * For the folder an operation landed in when the user is standing somewhere
-   * else: dropping its cache costs nothing, and it re-lists when they walk into
-   * it. The prefix being viewed is the one case that cannot be dropped - with
-   * no cache entry the view has nothing to render and falls back to its
-   * skeleton - so that one is re-read in place instead.
-   */
-  invalidatePrefix: (prefix: string) => void;
-
-  /**
    * `silent` re-reads a prefix without announcing it: no 'loading' on the way
    * in, and no 'error' on the way out over rows that are still on screen. For
    * refreshing something the user is already looking at.
@@ -479,6 +468,13 @@ function withFile(data: PrefixData, file: FileItem, restoring = false): PrefixDa
  * the last loaded key backwards, so renaming the last row of a truncated folder
  * looks to it like an object from an unfetched page and it refuses to place it.
  * A rename would then read as a deletion.
+ *
+ * The cost of bypassing it: in a truncated folder, a name that really does sort
+ * into an unfetched page is shown here anyway, and when that page arrives
+ * `appendUnique` finds the key already present and keeps this row instead. The
+ * row carries the object's real size and timestamp, so what is left is a sort
+ * position that is wrong until the next full read - which is a far smaller
+ * problem than the file appearing to have been deleted.
  */
 function replacingFile(data: PrefixData, fromKey: string, to: FileItem): PrefixData {
   return withFile(withoutKeys(data, new Set([fromKey])), to, true);
@@ -1092,41 +1088,6 @@ export const useDriveStore = create<Store>((set, get) => ({
         );
       }
     };
-  },
-
-  invalidatePrefix: (prefix) => {
-    const key = toCacheKey(prefix);
-    const { currentPrefix } = get();
-
-    // The prefix on screen cannot simply be dropped: with no cache entry the
-    // view has nothing to render and falls back to its skeleton, which is the
-    // blanking this whole change exists to avoid. Re-read it in place instead,
-    // so the rows stay up until the new ones arrive.
-    if (currentPrefix !== null && key === toCacheKey(currentPrefix)) {
-      void get().fetchData({ silent: true });
-      void get().fetchRecentItems({ silent: true, itemsPerType: 10 });
-      return;
-    }
-
-    discardOpenRequests(key);
-
-    set((state) => {
-      const cache = { ...state.cache };
-      const recentCache = { ...state.recentCache };
-      const directory = { ...state.directory };
-      const recent = { ...state.recent };
-      const loadMoreStatus = { ...state.loadMoreStatus };
-
-      delete cache[key];
-      delete recentCache[key];
-      delete directory[key];
-      delete recent[key];
-      delete loadMoreStatus[key];
-
-      return { cache, recentCache, directory, recent, loadMoreStatus };
-    });
-
-    useSearchStore.getState().invalidatePrefix(key);
   },
 
   fetchData: async (opts = { sync: false }) => {
