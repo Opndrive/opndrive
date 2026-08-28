@@ -11,6 +11,7 @@ import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
 import { getEffectiveExtension } from '@/config/file-extensions';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
+import { isFile } from '@/shared/utils/drive-item';
 
 interface FileItemListProps {
   file: FileItem;
@@ -44,9 +45,7 @@ export function FileItemList({
    * the whole table - but a folder has nothing to preview, so it is dropped
    * here rather than handed to a viewer that would not know what to do with it.
    */
-  const previewableFiles = allFiles.filter(
-    (item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix))
-  );
+  const previewableFiles = allFiles.filter(isFile);
 
   const selected = isSelected(file);
   const hasSelection = getSelectionCount() > 0;
@@ -73,14 +72,14 @@ export function FileItemList({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(file, 'file', index, false, false, allFiles);
+      selectItem(file, index, false, false, allFiles);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(file, 'file', index, false, false, allFiles);
+    selectItem(file, index, false, false, allFiles);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -94,7 +93,7 @@ export function FileItemList({
     const timer = setTimeout(() => {
       setIsLongPress(true);
       // Trigger selection on long press - start selection mode with ctrlKey=true to toggle/add
-      selectItem(file, 'file', index, true, false, allFiles); // true = toggle/add to selection
+      selectItem(file, index, true, false, allFiles); // true = toggle/add to selection
       // Haptic feedback if available (wrapped in try-catch to avoid console errors)
       try {
         if (navigator.vibrate) {
@@ -124,7 +123,7 @@ export function FileItemList({
       if (hasSelection) {
         event.preventDefault();
         event.stopPropagation();
-        selectItem(file, 'file', index, true, false, allFiles); // true = toggle/add to selection
+        selectItem(file, index, true, false, allFiles); // true = toggle/add to selection
         setIsLongPress(false);
         return; // Stop here, don't open file
       }
@@ -138,20 +137,20 @@ export function FileItemList({
       }
 
       // No selection and not a long press - open file
-      if (!file.Key?.endsWith('/')) {
+      if (isFile(file)) {
         openFilePreview(file, previewableFiles);
       }
       setIsLongPress(false);
     } else {
       // Desktop: Single click to select
-      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
     }
   };
 
   const handleDoubleClick = () => {
     // Only open preview for non-folder items on double click (desktop only)
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (!isTouchDevice && !file.Key?.endsWith('/')) {
+    if (!isTouchDevice && isFile(file)) {
       openFilePreview(file, previewableFiles);
     }
   };
@@ -164,11 +163,11 @@ export function FileItemList({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
       return;
     }
 
-    if (!file.Key?.endsWith('/')) {
+    if (isFile(file)) {
       openFilePreview(file, previewableFiles);
     }
   };

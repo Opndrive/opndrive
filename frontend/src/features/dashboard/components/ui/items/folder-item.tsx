@@ -53,7 +53,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     const timer = setTimeout(() => {
       setIsLongPress(true);
       // Trigger selection on long press - start selection mode with ctrlKey=true to toggle/add
-      selectItem(folder, 'folder', index, true, false, allFolders); // true = toggle/add to selection
+      selectItem(folder, index, true, false, allFolders); // true = toggle/add to selection
       // Haptic feedback if available (wrapped in try-catch to avoid console errors)
       try {
         if (navigator.vibrate) {
@@ -83,7 +83,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
       if (hasSelection) {
         event.preventDefault();
         event.stopPropagation();
-        selectItem(folder, 'folder', index, true, false, allFolders); // true = toggle/add to selection
+        selectItem(folder, index, true, false, allFolders); // true = toggle/add to selection
         setIsLongPress(false);
         return; // Stop here, don't open folder
       }
@@ -101,14 +101,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
       setIsLongPress(false);
     } else {
       // Desktop: Single click to select
-      selectItem(
-        folder,
-        'folder',
-        index,
-        event.ctrlKey || event.metaKey,
-        event.shiftKey,
-        allFolders
-      );
+      selectItem(folder, index, event.ctrlKey || event.metaKey, event.shiftKey, allFolders);
     }
   };
 
@@ -128,14 +121,7 @@ export const FolderItem: React.FC<FolderItemProps> = ({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(
-        folder,
-        'folder',
-        index,
-        event.ctrlKey || event.metaKey,
-        event.shiftKey,
-        allFolders
-      );
+      selectItem(folder, index, event.ctrlKey || event.metaKey, event.shiftKey, allFolders);
       return;
     }
 
@@ -160,14 +146,14 @@ export const FolderItem: React.FC<FolderItemProps> = ({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(folder, 'folder', index, false, false, allFolders);
+      selectItem(folder, index, false, false, allFolders);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(folder, 'folder', index, false, false, allFolders);
+    selectItem(folder, index, false, false, allFolders);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {

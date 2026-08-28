@@ -56,6 +56,13 @@ function folder(overrides: Partial<Folder> = {}): Folder {
   };
 }
 
+/**
+ * A file, and by default a real one.
+ *
+ * `Key` has to carry a name that is not a trailing slash: the kind of a
+ * selection is derived from the item now, and a key ending in `/` is how a
+ * folder stored as an object is spelled. `id` is what identity reads first.
+ */
 function file(overrides: Partial<FileItem> = {}): FileItem {
   return {
     id: 'budget',
@@ -292,6 +299,37 @@ describe('the keyboard opens the menu and selects too', () => {
     fireEvent.keyDown(menuButton('budget.xlsx'), { key: 'Enter' });
 
     expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('file');
+  });
+});
+
+/**
+ * The row a component renders in does not decide what was selected.
+ *
+ * These components used to pass a hardcoded `'file'` or `'folder'` alongside
+ * the item, and a row could therefore disagree with the thing it was holding.
+ * The argument is gone and the kind comes off the item, so a folder reaching a
+ * file row is now selected as a folder - which is what this pins.
+ */
+describe('the kind is read off the item, not off the row', () => {
+  it('calls a folder stored as an object a folder, from a file row', () => {
+    // A zero-byte object whose key ends in a slash is a folder. It reaches
+    // FileItemList, which announces it as a file, and used to be selected as
+    // one - so the toolbar offered open, download and share on a folder.
+    const photos = file({ id: 'archive/photos/', name: 'Photos', Key: 'archive/photos/' });
+    render(<FileItemList file={photos} allFiles={[photos]} />);
+
+    pressMenu(menuButton('Photos'));
+
+    expect(selection()).toHaveLength(1);
+    expect(useMultiSelectStore.getState().selectedType).toBe('folder');
+  });
+
+  it('still calls an ordinary file a file from the same row', () => {
+    render(<FileItemList file={file()} allFiles={[file()]} />);
+
+    pressMenu(menuButton('budget.xlsx'));
+
     expect(useMultiSelectStore.getState().selectedType).toBe('file');
   });
 });
