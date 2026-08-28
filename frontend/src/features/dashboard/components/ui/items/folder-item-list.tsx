@@ -64,7 +64,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
     setIsLongPress(false);
     const timer = setTimeout(() => {
       setIsLongPress(true);
-      selectItem(folder, 'folder', index, true, false, allItems);
+      selectItem(folder, index, true, false, allItems);
       try {
         if (navigator.vibrate) {
           navigator.vibrate(50);
@@ -90,7 +90,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
       if (hasSelection) {
         event.preventDefault();
         event.stopPropagation();
-        selectItem(folder, 'folder', index, true, false, allItems);
+        selectItem(folder, index, true, false, allItems);
         setIsLongPress(false);
         return;
       }
@@ -105,7 +105,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
       onClick?.(folder);
       setIsLongPress(false);
     } else {
-      selectItem(folder, 'folder', index, event.ctrlKey || event.metaKey, event.shiftKey, allItems);
+      selectItem(folder, index, event.ctrlKey || event.metaKey, event.shiftKey, allItems);
     }
   };
 
@@ -123,7 +123,7 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(folder, 'folder', index, event.ctrlKey || event.metaKey, event.shiftKey, allItems);
+      selectItem(folder, index, event.ctrlKey || event.metaKey, event.shiftKey, allItems);
       return;
     }
 
@@ -140,14 +140,14 @@ export const FolderItemList: React.FC<FolderItemListProps> = ({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(folder, 'folder', index, false, false, allItems);
+      selectItem(folder, index, false, false, allItems);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(folder, 'folder', index, false, false, allItems);
+    selectItem(folder, index, false, false, allItems);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {

@@ -8,6 +8,18 @@ export interface FolderLocation {
 
 export interface Folder extends CommonPrefix {
   id: string;
+  /**
+   * Which shape this was built as, stated rather than inferred.
+   *
+   * `Prefix` is optional on CommonPrefix, so a folder that arrives without one
+   * used to be indistinguishable from a file - there was nothing left to test.
+   * Set by every factory that produces a Folder.
+   *
+   * Optional only so that anything constructed before this existed, or already
+   * sitting in a cache, still type-checks. The guards in `shared/utils/drive-item`
+   * read it first and fall back to the structural test when it is absent.
+   */
+  kind?: 'folder';
   name: string;
   location: FolderLocation;
   icon?: 'folder';

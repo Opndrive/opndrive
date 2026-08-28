@@ -10,6 +10,7 @@ import { getEffectiveExtension, getFileExtensionWithoutDot } from '@/config/file
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { useFilePreview } from '@/context/file-preview-context';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
+import { isFile } from '@/shared/utils/drive-item';
 
 interface FileItemMobileProps {
   file: FileItem;
@@ -63,14 +64,14 @@ export function FileItemMobile({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(file, 'file', index, false, false, allFiles);
+      selectItem(file, index, false, false, allFiles);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(file, 'file', index, false, false, allFiles);
+    selectItem(file, index, false, false, allFiles);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -87,7 +88,7 @@ export function FileItemMobile({
     const timer = setTimeout(() => {
       setIsLongPress(true);
       // Trigger selection on long press
-      selectItem(file, 'file', index, true, false, allFiles);
+      selectItem(file, index, true, false, allFiles);
       // Haptic feedback if available (wrapped in try-catch to avoid console errors)
       try {
         if (navigator.vibrate) {
@@ -133,7 +134,7 @@ export function FileItemMobile({
     // If there's already a selection, add to it (like Ctrl+Click for multi-select)
     if (hasCurrentSelection) {
       // Use ctrlKey=true to add to selection (or toggle if already selected)
-      selectItem(file, 'file', index, true, false, allFiles);
+      selectItem(file, index, true, false, allFiles);
       setIsLongPress(false);
       return;
     }
@@ -156,7 +157,7 @@ export function FileItemMobile({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(file, 'file', index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
       return;
     }
 
@@ -164,6 +165,11 @@ export function FileItemMobile({
   };
 
   const handleFileOpen = () => {
+    // A folder has nothing to preview. The desktop rows have always checked
+    // this before opening; this one never did, so tapping a folder stored as
+    // an object opened a viewer over it.
+    if (!isFile(file)) return;
+
     // Use the same preview logic as the overflow menu's "Open" action
     const previewableFile = {
       id: file.id,
@@ -177,16 +183,14 @@ export function FileItemMobile({
     // `allFiles` carries the folders too, because shift-select ranges span the
     // whole table - but a folder has nothing to preview, so it is dropped here
     // rather than handed to a viewer that would not know what to do with it.
-    const previewableFiles = allFiles
-      .filter((item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix)))
-      .map((f) => ({
-        id: f.id,
-        name: f.name,
-        key: f.Key,
-        size: typeof f.Size === 'number' ? f.Size : 0,
-        lastModified: f.lastModified,
-        type: f.extension || getFileExtensionWithoutDot(f.name),
-      }));
+    const previewableFiles = allFiles.filter(isFile).map((f) => ({
+      id: f.id,
+      name: f.name,
+      key: f.Key,
+      size: typeof f.Size === 'number' ? f.Size : 0,
+      lastModified: f.lastModified,
+      type: f.extension || getFileExtensionWithoutDot(f.name),
+    }));
 
     openPreview(
       previewableFile,
@@ -261,9 +265,7 @@ export function FileItemMobile({
       {/* Menu Button */}
       <FileOverflowMenu
         file={file}
-        allFiles={allFiles.filter(
-          (item): item is FileItem => !('Prefix' in item && Boolean(item.Prefix))
-        )}
+        allFiles={allFiles.filter(isFile)}
         additionalActions={additionalActions}
         insertAdditionalActionsAfter={insertAdditionalActionsAfter}
         triggerLabel="More actions"

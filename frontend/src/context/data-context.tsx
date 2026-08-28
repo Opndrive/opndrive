@@ -199,6 +199,7 @@ function enrichFolder(obj: CommonPrefix): Folder {
   return {
     ...obj,
     id: obj.Prefix || `folder-${Date.now()}-${Math.random()}`,
+    kind: 'folder',
     name: name ?? '',
     icon: 'folder',
     location: {
@@ -241,6 +242,7 @@ function enrichFile(obj: _Object): FileItem {
   return {
     ...obj,
     id: obj.Key || `file-${Date.now()}-${Math.random()}`,
+    kind: 'file',
     name: name ?? '',
     extension: ext ?? 'unknown',
     size: formatBytes(obj.Size),

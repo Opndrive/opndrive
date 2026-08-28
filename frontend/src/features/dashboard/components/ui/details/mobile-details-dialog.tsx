@@ -13,11 +13,17 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/shared/components/ui/dialog';
+import { isFile } from '@/shared/utils/drive-item';
 
-const isFileItem = (item: FileItem | null): item is FileItem => {
-  if (!item) return false;
-  return ('Key' in item && !!item.Key) || ('name' in item && !!item.name);
-};
+/**
+ * Something this panel can actually describe.
+ *
+ * The old test also accepted anything carrying a `name`, which every folder
+ * does - so a folder marker reached the metadata fetch and was rendered as an
+ * ordinary file. `isFile` excludes keys ending in a slash, which is the only
+ * thing separating a marker from a file.
+ */
+const isFileItem = (item: FileItem | null): item is FileItem => isFile(item);
 
 export const MobileDetailsDialog = () => {
   const { isOpen, selectedItem, close } = useDetails();

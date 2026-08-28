@@ -6,6 +6,19 @@ export type DataUnits = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
 
 export interface FileItem extends _Object {
   id: string;
+  /**
+   * Which shape this was built as, stated rather than inferred.
+   *
+   * Note what this does NOT say: a zero-byte object whose key ends in a slash
+   * is a folder to the person looking at it, and it is built by the same
+   * factory as any other object, so it carries `kind: 'file'` too. The tag
+   * records the shape; `isFile` and `isFolderLike` in `shared/utils/drive-item`
+   * answer what it means, and they treat that case as a folder.
+   *
+   * Optional only so that anything constructed before this existed, or already
+   * sitting in a cache, still type-checks.
+   */
+  kind?: 'file';
   name: string;
   extension: string;
   size: {
