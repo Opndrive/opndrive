@@ -24,12 +24,16 @@ import { useUploadQueueStore, type QueueNotice } from '../stores/use-upload-queu
 const ACCENT: Record<QueueNotice['kind'], string> = {
   renamed: 'var(--primary)',
   skipped: 'var(--muted-foreground)',
+  // Amber like 'unverified': something was done that cannot be undone, and the
+  // reader did not ask for it in the moment.
+  replaced: '#f59e0b',
   unverified: '#f59e0b',
 };
 
 const LABEL: Record<QueueNotice['kind'], string> = {
   renamed: 'Renamed',
   skipped: 'Skipped',
+  replaced: 'Replaced',
   unverified: 'Not verified',
 };
 

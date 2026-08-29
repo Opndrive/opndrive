@@ -31,6 +31,8 @@ import type { DispatchResult } from '../services/upload-executor';
 import { objectExists, objectKey } from '@/services/object-existence';
 import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateUniqueFileName } from '../utils/unique-filename';
+import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
+import type { DuplicatePolicy } from '../types';
 
 export interface DropOutcome {
   dispatched: DispatchResult[];
@@ -73,7 +75,8 @@ async function decideLooseFiles(
   files: readonly File[],
   destination: string,
   apiS3: BYOS3ApiProvider,
-  ask: (file: File, remaining: number) => Promise<DuplicateAnswer>
+  ask: (file: File, remaining: number) => Promise<DuplicateAnswer>,
+  policy: DuplicatePolicy
 ): Promise<FileVerdict[]> {
   const verdicts: FileVerdict[] = new Array(files.length);
   const collisions: number[] = [];
@@ -115,7 +118,13 @@ async function decideLooseFiles(
    * exist used to mean ten identical questions and ten clicks.
    */
   const ordered = collisions.sort((a, b) => a - b);
-  let standing: DuplicateAnswer['choice'] | null = null;
+
+  /**
+   * A settings policy is the same thing as ticking "do the same for the rest"
+   * before the first question is asked, so it seeds this rather than being
+   * threaded through the loop separately.
+   */
+  let standing: DuplicateAnswer['choice'] | null = policy === 'ask' ? null : policy;
 
   for (let position = 0; position < ordered.length; position++) {
     const index = ordered[position]!;
@@ -151,6 +160,29 @@ async function decideLooseFiles(
   }
 
   return verdicts;
+}
+
+/**
+ * One line on the card when a policy answered for the user.
+ *
+ * Replacing without being asked is the case that needs saying: the file that
+ * was there is gone, and a setting chosen weeks ago is not something anyone
+ * remembers at the moment it acts. Keeping both takes nothing away and the new
+ * name is already on the card, so it passes without a notice.
+ */
+function policyNotice(policy: DuplicatePolicy, count: number): QueueNotice | null {
+  if (policy !== 'replace' || count === 0) return null;
+
+  return {
+    id: `dup-policy-${Date.now()}`,
+    kind: 'replaced',
+    path: '',
+    count,
+    detail:
+      count === 1
+        ? 'A file that already existed here was replaced, because your upload setting is set to replace.'
+        : `${count} files that already existed here were replaced, because your upload setting is set to replace.`,
+  };
 }
 
 export function useUploadDispatch() {
@@ -200,12 +232,25 @@ export function useUploadDispatch() {
       const looseNotices: QueueNotice[] = [];
 
       if (apiS3 && individualFiles.length > 0) {
+        // Read at drop time rather than closed over, so changing the setting
+        // takes effect on the next drop instead of the next remount.
+        const policy = useUploadSettingsStore.getState().duplicatePolicy;
+
         const verdicts = await decideLooseFiles(
           individualFiles,
           destinationPrefix,
           apiS3,
-          askAboutDuplicate
+          askAboutDuplicate,
+          policy
         );
+
+        // Every collision was answered by the policy when it is not `ask`, so
+        // the replacements are exactly the ones nobody was asked about.
+        const replaced = policyNotice(
+          policy,
+          policy === 'replace' ? verdicts.filter((v) => v.kind === 'replace').length : 0
+        );
+        if (replaced) looseNotices.push(replaced);
 
         individualFiles = [];
         verdicts.forEach((verdict, index) => {

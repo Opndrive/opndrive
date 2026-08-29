@@ -20,6 +20,7 @@ import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { useUploadDispatch } from './use-upload-dispatch';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import { useUploadStore } from '../stores/use-upload-store';
+import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
 import type { ProcessedDragData, FolderStructure } from '../types/folder-upload-types';
 import { folderExists } from '@/services/folder-existence';
 import { objectExists } from '@/services/object-existence';
@@ -97,6 +98,8 @@ beforeEach(() => {
   mockObjectExists.mockResolvedValue(false);
   mockUniqueName.mockReset();
   useUploadStore.setState({ uploads: {}, duplicateQueue: [] });
+  // The prompt is the default; the tests that care set their own.
+  useUploadSettingsStore.setState({ duplicatePolicy: 'ask' });
 });
 
 function dispatch() {
@@ -418,6 +421,67 @@ describe('loose file collisions', () => {
     await pending;
 
     expect(manager.added).toEqual([]);
+  });
+
+  it('never asks when the setting already answers for you', async () => {
+    useUploadSettingsStore.setState({ duplicatePolicy: 'keepBoth' });
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    // No prompt was raised at all, so nothing had to be answered for the drop
+    // to finish - which is the whole point of having decided in advance.
+    expect(useUploadStore.getState().duplicateQueue).toEqual([]);
+    expect(manager.added.map((a) => a.key)).toEqual(['copy-a.txt', 'copy-b.txt']);
+  });
+
+  it('leaves a notice behind when the setting replaced files unasked', async () => {
+    useUploadSettingsStore.setState({ duplicatePolicy: 'replace' });
+    mockObjectExists.mockResolvedValue(true);
+    const dispatchDrop = dispatch();
+
+    const outcome = await dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    // Overwriting without being asked is the one case that has to leave a
+    // record: a setting chosen weeks ago is not something anyone remembers at
+    // the moment it takes a file away.
+    const replaced = outcome.notices.filter((n) => n.kind === 'replaced');
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]!.count).toBe(2);
+    expect(manager.added.map((a) => a.key)).toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('leaves no notice when keeping both, which takes nothing away', async () => {
+    useUploadSettingsStore.setState({ duplicatePolicy: 'keepBoth' });
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    const outcome = await dispatchDrop(drop({ individualFiles: [makeFile('a.txt')] }), '', apiS3);
+
+    expect(outcome.notices.filter((n) => n.kind === 'replaced')).toEqual([]);
+  });
+
+  it('still asks when nothing has been decided in advance', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockResolvedValue('copy-a.txt');
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(drop({ individualFiles: [makeFile('a.txt')] }), '', apiS3);
+    await answer('keepBoth');
+    await pending;
+
+    expect(manager.added.map((a) => a.key)).toEqual(['copy-a.txt']);
   });
 
   it('asks one question at a time', async () => {
