@@ -165,7 +165,16 @@ export function FileItemGrid({
       role="button"
       tabIndex={0}
       aria-label={`${file.name}, file${selected ? ', selected' : ''}`}
-      className="group relative rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-primary"
+      /* overflow-hidden because the thumbnail is a square box sitting flush in
+         the top corners, so without it the card's radius is only on the
+         background and the image paints straight over the curve. It shows up
+         worst when selected, where the outline traces a clean rounded corner
+         and the image crosses it. The grid skeleton already draws its
+         placeholder with rounded-t-lg, which is the shape being matched here.
+         Nothing else is clipped by this: the focus ring is a box-shadow and
+         the selected outline is drawn outside the border box, and the overflow
+         menu portals out to the body. */
+      className="group relative overflow-hidden rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-primary"
       style={{
         outline: selected ? '2px solid var(--primary)' : 'none',
         background: selected ? 'var(--accent)' : undefined,
