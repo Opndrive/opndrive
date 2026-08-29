@@ -593,76 +593,52 @@ describe('duplicate prompt queue', () => {
     expect(store().duplicateQueue).toEqual([]);
   });
 
-  it('answers every waiting prompt with one choice', () => {
-    const replaces = [vi.fn(), vi.fn(), vi.fn()];
-    replaces.forEach((onReplace, i) =>
-      store().showDuplicateDialog({ name: `${i}.txt`, type: 'file' }, onReplace, vi.fn())
-    );
-
-    // The whole point: one answer for ten files rather than ten identical ones.
-    store().resolveAllDuplicates('replace');
-
-    replaces.forEach((onReplace) => expect(onReplace).toHaveBeenCalledOnce());
-    expect(store().duplicateQueue).toEqual([]);
-  });
-
-  it('resumes every parked upload when answered in bulk', async () => {
-    const parked = ['a.txt', 'b.txt', 'c.txt'].map(
-      (name) =>
-        new Promise<string>((resolve) => {
-          store().showDuplicateDialog(
-            { name, type: 'file' },
-            () => resolve(`${name}:replace`),
-            () => resolve(`${name}:keepBoth`)
-          );
-        })
-    );
-
-    store().resolveAllDuplicates('keepBoth');
-
-    // Not just emptied - every upload behind the queue has to actually resume,
-    // or a bulk answer would quietly strand the files it claimed to handle.
-    expect(await Promise.all(parked)).toEqual([
-      'a.txt:keepBoth',
-      'b.txt:keepBoth',
-      'c.txt:keepBoth',
-    ]);
-  });
-
-  it('empties the queue before running the handlers', () => {
-    let queueLengthDuringHandler = -1;
-    store().showDuplicateDialog(
-      { name: 'a.txt', type: 'file' },
-      () => {
-        queueLengthDuringHandler = store().duplicateQueue.length;
-      },
-      vi.fn()
-    );
-
-    store().resolveAllDuplicates('replace');
-
-    // A handler that queues fresh work of its own has to raise a new prompt
-    // rather than have it answered by the loop it was created inside.
-    expect(queueLengthDuringHandler).toBe(0);
-  });
-
-  it('drops every waiting prompt without answering any of them', () => {
+  it('hands the choice back with whether it should stand for the rest', () => {
     const onReplace = vi.fn();
-    const onKeepBoth = vi.fn();
-    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, onKeepBoth);
-    store().showDuplicateDialog({ name: 'b.txt', type: 'file' }, onReplace, onKeepBoth);
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, vi.fn());
 
-    store().cancelAllDuplicates();
+    store().resolveDuplicate('replace', true);
 
-    // Same meaning Cancel always had for one prompt: the file is not uploaded.
-    expect(store().duplicateQueue).toEqual([]);
-    expect(onReplace).not.toHaveBeenCalled();
-    expect(onKeepBoth).not.toHaveBeenCalled();
+    // Not acted on here. Prompts are raised one at a time, so the only thing
+    // that can honour "apply to all" is the loop that decides whether to ask
+    // again - this just carries the answer back to it.
+    expect(onReplace).toHaveBeenCalledWith(true);
   });
 
-  it('ignores a bulk answer when nothing is queued', () => {
-    expect(() => store().resolveAllDuplicates('replace')).not.toThrow();
-    expect(store().duplicateQueue).toEqual([]);
+  it('defaults to answering for this file only', () => {
+    const onKeepBoth = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), onKeepBoth);
+
+    store().resolveDuplicate('keepBoth');
+
+    expect(onKeepBoth).toHaveBeenCalledWith(false);
+  });
+
+  it('answers a cancel through its own handler', () => {
+    const onCancel = vi.fn();
+    const onReplace = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, vi.fn(), { onCancel });
+
+    store().resolveDuplicate('cancel', true);
+
+    // Cancelling used to close the dialog and resolve nothing, leaving whoever
+    // was awaiting the answer waiting for good.
+    expect(onCancel).toHaveBeenCalledWith(true);
+    expect(onReplace).not.toHaveBeenCalled();
+  });
+
+  it('carries how many collisions are left', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn(), {
+      remaining: 7,
+    });
+
+    expect(store().duplicateQueue[0]!.remaining).toBe(7);
+  });
+
+  it('counts a lone prompt as the only one left', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn());
+
+    expect(store().duplicateQueue[0]!.remaining).toBe(1);
   });
 });
 

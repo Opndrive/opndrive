@@ -18,27 +18,24 @@ export interface DuplicateItem {
 
 interface DuplicateDialogProps {
   isOpen: boolean;
-  onClose: () => void;
-  onReplace: () => void;
-  onKeepBoth: () => void;
   duplicateItem: DuplicateItem | null;
-  /** How many prompts are waiting, this one included. */
+  /**
+   * How many collisions are left in this drop, this one included. Only one is
+   * ever asked at a time, so this is what the rest of the drop looks like
+   * rather than a count of open dialogs.
+   */
   pendingCount?: number;
-  /** Answers every waiting prompt with the same choice. */
-  onApplyToAll?: (choice: 'replace' | 'keep-both') => void;
-  /** Drops every waiting prompt, uploading none of them. */
-  onCancelAll?: () => void;
+  /** `applyToAll` asks for this answer to stand for every collision left. */
+  onResolve: (choice: 'replace' | 'keepBoth', applyToAll: boolean) => void;
+  onCancel: (applyToAll: boolean) => void;
 }
 
 export function DuplicateDialog({
   isOpen,
-  onClose,
-  onReplace,
-  onKeepBoth,
   duplicateItem,
   pendingCount = 1,
-  onApplyToAll,
-  onCancelAll,
+  onResolve,
+  onCancel,
 }: DuplicateDialogProps) {
   const [selectedAction, setSelectedAction] = useState<'replace' | 'keep-both'>('keep-both');
   const [applyToAll, setApplyToAll] = useState(false);
@@ -58,23 +55,15 @@ export function DuplicateDialog({
   }, [isOpen]);
 
   const handleUpload = () => {
-    if (applyToAll && onApplyToAll) {
-      // No onClose here. Emptying the queue is what closes the dialog, and
-      // calling it as well would dequeue from a queue that is already empty.
-      onApplyToAll(selectedAction);
-      return;
-    }
-
-    if (selectedAction === 'keep-both') {
-      onKeepBoth();
-    } else {
-      onReplace();
-    }
-    onClose();
+    onResolve(selectedAction === 'keep-both' ? 'keepBoth' : 'replace', applyToAll);
   };
 
   const handleCancel = () => {
-    onClose();
+    onCancel(false);
+  };
+
+  const handleCancelAll = () => {
+    onCancel(true);
   };
 
   if (!duplicateItem) return null;
@@ -258,9 +247,9 @@ export function DuplicateDialog({
                 obvious while nine more waited behind it. */}
             {hasQueue ? 'Skip this one' : 'Cancel'}
           </button>
-          {hasQueue && onCancelAll && (
+          {hasQueue && (
             <button
-              onClick={onCancelAll}
+              onClick={handleCancelAll}
               className="px-4 py-2 cursor-pointer text-sm font-medium transition-colors rounded-md"
               style={{
                 color: 'var(--muted-foreground)',

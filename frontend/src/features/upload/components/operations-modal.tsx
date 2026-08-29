@@ -151,9 +151,6 @@ export const OperationsModal: React.FC = () => {
   const updateUpload = useUploadStore((state) => state.updateUpload);
   const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
   const resolveDuplicate = useUploadStore((state) => state.resolveDuplicate);
-  const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
-  const resolveAllDuplicates = useUploadStore((state) => state.resolveAllDuplicates);
-  const cancelAllDuplicates = useUploadStore((state) => state.cancelAllDuplicates);
 
   // Only the oldest pending duplicate is shown; answering it reveals the next.
   const currentDuplicate = duplicateQueue[0] ?? null;
@@ -834,15 +831,13 @@ export const OperationsModal: React.FC = () => {
       {/* Duplicate Dialog */}
       <DuplicateDialog
         isOpen={currentDuplicate !== null}
-        onClose={hideDuplicateDialog}
         duplicateItem={currentDuplicate?.duplicateItem ?? null}
-        onReplace={() => resolveDuplicate('replace')}
-        onKeepBoth={() => resolveDuplicate('keepBoth')}
-        pendingCount={duplicateQueue.length}
-        onApplyToAll={(choice) =>
-          resolveAllDuplicates(choice === 'replace' ? 'replace' : 'keepBoth')
-        }
-        onCancelAll={cancelAllDuplicates}
+        onResolve={(choice, applyToAll) => resolveDuplicate(choice, applyToAll)}
+        onCancel={(applyToAll) => resolveDuplicate('cancel', applyToAll)}
+        // Off the prompt, not the queue: the queue holds one question at a
+        // time, and what the reader needs to know is how many files are behind
+        // this one in the drop being processed.
+        pendingCount={currentDuplicate?.remaining ?? 1}
       />
     </>
   );

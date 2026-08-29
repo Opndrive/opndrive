@@ -36,8 +36,16 @@ export interface DuplicateItem {
 export interface DuplicatePrompt {
   id: string;
   duplicateItem: DuplicateItem;
-  onReplace: () => void;
-  onKeepBoth: () => void;
+  onReplace: (applyToAll: boolean) => void;
+  onKeepBoth: (applyToAll: boolean) => void;
+  /**
+   * Cancelling used to close the dialog and nothing else, leaving the promise
+   * the caller was awaiting unresolved - so the rest of the drop was never
+   * asked about and never uploaded. It is an answer like the other two now.
+   */
+  onCancel?: (applyToAll: boolean) => void;
+  /** Collisions left in this drop, this one included. */
+  remaining: number;
 }
 
 interface UploadProgress {
@@ -223,19 +231,25 @@ interface UploadStore {
   // Duplicate dialog methods
   showDuplicateDialog: (
     duplicateItem: DuplicateItem,
-    onReplace: () => void,
-    onKeepBoth: () => void
+    onReplace: (applyToAll: boolean) => void,
+    onKeepBoth: (applyToAll: boolean) => void,
+    options?: {
+      onCancel?: (applyToAll: boolean) => void;
+      /** Collisions left in this drop, this one included. */
+      remaining?: number;
+    }
   ) => void;
   /**
    * Runs the head prompt's chosen callback. Deliberately does NOT dequeue: the
    * dialog component calls the choice handler and then onClose, so dequeuing
    * here as well would skip the next prompt.
+   *
+   * `applyToAll` is handed back to whoever raised the prompt rather than acted
+   * on here. Prompts are raised one at a time - the loop in use-upload-dispatch
+   * awaits each answer before asking the next - so honouring it means not
+   * asking again, which only that loop is in a position to do.
    */
-  resolveDuplicate: (choice: 'replace' | 'keepBoth') => void;
-  /** Answers every waiting prompt with one choice, and empties the queue. */
-  resolveAllDuplicates: (choice: 'replace' | 'keepBoth') => void;
-  /** Drops every waiting prompt, uploading none of them. */
-  cancelAllDuplicates: () => void;
+  resolveDuplicate: (choice: 'replace' | 'keepBoth' | 'cancel', applyToAll?: boolean) => void;
   /** Dismisses the head prompt, revealing the next one. */
   hideDuplicateDialog: () => void;
 
@@ -514,7 +528,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   },
 
   // Duplicate dialog methods
-  showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth) =>
+  showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth, options) =>
     set((state) => ({
       duplicateQueue: [
         ...state.duplicateQueue,
@@ -523,52 +537,28 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           duplicateItem,
           onReplace,
           onKeepBoth,
+          onCancel: options?.onCancel,
+          remaining: options?.remaining ?? 1,
         },
       ],
     })),
 
-  resolveDuplicate: (choice) => {
+  resolveDuplicate: (choice, applyToAll = false) => {
     const prompt = get().duplicateQueue[0];
     if (!prompt) return;
 
     // Only invokes; hideDuplicateDialog does the dequeue. The dialog component
     // calls the choice handler and then onClose, so dequeuing here too would
     // drop the prompt behind this one.
-    if (choice === 'replace') prompt.onReplace();
-    else prompt.onKeepBoth();
-  },
-
-  /**
-   * Answers every prompt still waiting with the same choice.
-   *
-   * Dropping ten files onto ten that already exist raised ten identical
-   * questions, one after another, with no way to say the same thing once.
-   *
-   * The queue is emptied before the handlers run rather than after. Emptying it
-   * is what closes the dialog, and doing that first means a handler that queues
-   * work of its own raises a fresh prompt instead of having it answered by the
-   * loop it was created inside.
-   */
-  resolveAllDuplicates: (choice) => {
-    const pending = get().duplicateQueue;
-    if (pending.length === 0) return;
-
-    set({ duplicateQueue: [] });
-
-    for (const prompt of pending) {
-      if (choice === 'replace') prompt.onReplace();
-      else prompt.onKeepBoth();
-    }
+    if (choice === 'replace') prompt.onReplace(applyToAll);
+    else if (choice === 'keepBoth') prompt.onKeepBoth(applyToAll);
+    else prompt.onCancel?.(applyToAll);
   },
 
   hideDuplicateDialog: () =>
     set((state) => ({
       duplicateQueue: state.duplicateQueue.slice(1),
     })),
-
-  // Neither handler runs, which is what Cancel already meant for one prompt:
-  // the file is simply not uploaded.
-  cancelAllDuplicates: () => set({ duplicateQueue: [] }),
 
   /**
    * The fallback, for an upload that finished without enough on its card to

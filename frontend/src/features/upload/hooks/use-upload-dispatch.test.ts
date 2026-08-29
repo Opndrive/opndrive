@@ -214,18 +214,22 @@ describe('loose files', () => {
 });
 
 describe('loose file collisions', () => {
-  /** Answers whatever prompt the dispatch raises, once one appears. */
-  async function answer(choice: 'replace' | 'keepBoth') {
+  /** Waits for the dispatch to raise a prompt and hands it back. */
+  async function nextPrompt() {
     for (let i = 0; i < 50; i++) {
       const prompt = useUploadStore.getState().duplicateQueue[0];
-      if (prompt) {
-        if (choice === 'replace') prompt.onReplace();
-        else prompt.onKeepBoth();
-        return;
-      }
+      if (prompt) return prompt;
       await Promise.resolve();
     }
     throw new Error('no duplicate prompt was raised');
+  }
+
+  /** Answers whatever prompt the dispatch raises, once one appears. */
+  async function answer(choice: 'replace' | 'keepBoth' | 'cancel', applyToAll = false) {
+    const prompt = await nextPrompt();
+    if (choice === 'replace') prompt.onReplace(applyToAll);
+    else if (choice === 'keepBoth') prompt.onKeepBoth(applyToAll);
+    else prompt.onCancel?.(applyToAll);
   }
 
   it('uploads without prompting when nothing is in the way', async () => {
@@ -334,6 +338,86 @@ describe('loose file collisions', () => {
 
     expect(peak).toBeGreaterThan(1);
     expect(mockObjectExists).toHaveBeenCalledTimes(8);
+  });
+
+  it('asks once when the answer is meant for the rest of the drop', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt'), makeFile('c.txt')] }),
+      '',
+      apiS3
+    );
+
+    // One answer for three colliding files. This used to be three identical
+    // questions and three clicks, with no way to say the same thing once.
+    await answer('keepBoth', true);
+    await pending;
+
+    expect(manager.added.map((a) => a.key)).toEqual(['copy-a.txt', 'copy-b.txt', 'copy-c.txt']);
+    expect(useUploadStore.getState().duplicateQueue).toEqual([]);
+  });
+
+  it('counts down how many collisions are left', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    // So the dialog can say how many are left rather than leaving the reader to
+    // guess whether answering means one more click or nine.
+    const first = await nextPrompt();
+    expect(first.remaining).toBe(2);
+    first.onKeepBoth(false);
+
+    const second = await nextPrompt();
+    expect(second.remaining).toBe(1);
+    second.onKeepBoth(false);
+
+    await pending;
+  });
+
+  it('carries on with the drop when one file is cancelled', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    mockUniqueName.mockImplementation(async (_api, name: string) => `copy-${name}`);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    // Cancel used to close the dialog and resolve nothing, so this loop waited
+    // for good: b.txt was never asked about and the whole drop stalled.
+    await answer('cancel');
+    await answer('keepBoth');
+    await pending;
+
+    expect(manager.added.map((a) => a.key)).toEqual(['copy-b.txt']);
+  });
+
+  it('abandons every remaining collision when cancel is meant for the rest', async () => {
+    mockObjectExists.mockResolvedValue(true);
+    const dispatchDrop = dispatch();
+
+    const pending = dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt')] }),
+      '',
+      apiS3
+    );
+
+    await answer('cancel', true);
+    await pending;
+
+    expect(manager.added).toEqual([]);
   });
 
   it('asks one question at a time', async () => {
