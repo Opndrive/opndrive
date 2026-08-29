@@ -116,18 +116,17 @@ export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionP
         </div>
       </div>
 
-      {/* sentinel for navbar intersection observer */}
+      {/* The sentinel the page's IntersectionObserver watches to decide when
+          the hero is behind the reader and the fixed navbars take over. */}
       <div id="hero-anchor" className="absolute left-0 right-0 bottom-0 h-2 pointer-events-none" />
 
       {/* Static navbar at bottom of hero section - this one shows initially.
           z-50 keeps it above the Discord card's z-40 page backdrop, so the
           navbar stays sharp while the rest of the page blurs behind it. */}
       <div className="relative z-50 w-full flex justify-center pb-4 sm:pb-6 lg:pb-8 px-4">
-        {/* Static navbar visible only on large screens; kept in DOM for sticky detection */}
-        <div
-          id="static-navbar"
-          className="hidden lg:flex bg-card/80 backdrop-blur-md border border-border rounded-full px-6 lg:px-8 py-3 lg:py-4 shadow-lg max-w-fit"
-        >
+        {/* Large screens only; the fixed navbar takes over below the hero and
+            the mobile bar covers every narrower viewport. */}
+        <div className="hidden lg:flex bg-card/80 backdrop-blur-md border border-border rounded-full px-6 lg:px-8 py-3 lg:py-4 shadow-lg max-w-fit">
           <div className="flex items-center gap-4 lg:gap-6 xl:gap-8">
             {navItems.map((item, index) => (
               <button

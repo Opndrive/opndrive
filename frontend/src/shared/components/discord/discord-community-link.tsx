@@ -91,6 +91,13 @@ const GAP_PX = 64;
 /** How far the side card is lifted above its trigger, for the same reason. */
 const SIDE_RISE_PX = 72;
 
+/**
+ * How far the vertical connector reaches sideways out of its trigger - the
+ * `w-28` it is drawn in, less the `-translate-x-2` that starts its tail over
+ * the icon rather than beside it.
+ */
+const ARROW_REACH_PX = { left: -8, right: 104 };
+
 interface DiscordCommunityLinkProps {
   /** Which side of the trigger the card opens on. The hero navbar sits at the
    *  bottom of the viewport, so it opens upward; the sticky navbar opens down;
@@ -127,8 +134,38 @@ export function DiscordCommunityLink({
   const [mounted, setMounted] = useState(false);
   const closeTimer = useRef<number | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
-  // Viewport coords of the trigger's right edge, for the portalled side card.
-  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  /**
+   * Where the trigger is on screen, in viewport coordinates, which is all a
+   * fixed-position card needs to be pinned to any side of it. `viewportHeight`
+   * rides along so the render can pin by `bottom` without reading `window`.
+   */
+  const [anchor, setAnchor] = useState<{
+    centerX: number;
+    rightEdge: number;
+    top: number;
+    bottom: number;
+    viewportHeight: number;
+  } | null>(null);
+  // Whether the card had to open on the side opposite the one asked for.
+  const [flipped, setFlipped] = useState(false);
+  // Whether the connector has room to be drawn without landing on something.
+  const [arrowFits, setArrowFits] = useState(false);
+
+  /**
+   * Which side the card actually opens on.
+   *
+   * `placement` is a preference, not an outcome. The hero navbar asks for
+   * `top` because it sits near the bottom of the viewport - but it scrolls
+   * with the page, and once the reader has pushed it near the top there is no
+   * longer room above it, so the card opened off the top of the screen. It now
+   * flips to whichever side can hold it.
+   */
+  const resolvedPlacement =
+    placement !== 'right' && flipped ? (placement === 'top' ? 'bottom' : 'top') : placement;
+
+  /** True once the trigger has been measured, which is when the card mounts. */
+  const isPositioned = anchor !== null;
 
   // Resolved after mount so SSR and first client render agree.
   useEffect(() => {
@@ -147,25 +184,104 @@ export function DiscordCommunityLink({
   const hoverEnabled = variant !== 'row' && !isTouch;
 
   /**
-   * The sidebar clips its overflow on the x axis, so the side card cannot be an
-   * absolutely positioned child - it is portalled out and pinned to the
-   * trigger's measured position instead. Re-measured on scroll and resize so it
-   * tracks the trigger while open.
+   * Track the trigger while the card is open.
+   *
+   * The card cannot be an absolutely positioned child of the trigger, because
+   * an ancestor that clips its overflow would cut it off - and two of them do.
+   * The dashboard sidebar clips its x axis; the hero section clips both, which
+   * is why a card opening downward out of the hero navbar was invisible while
+   * its connector, drawn nearer the icon, was only half cut off. So the card is
+   * portalled to `body` and pinned to the measured position instead, which
+   * means re-measuring as the trigger scrolls.
    */
   useEffect(() => {
-    if (!isOpen || placement !== 'right') return;
+    if (!isOpen) return;
     const measure = () => {
       const rect = (anchorRef?.current ?? triggerRef.current)?.getBoundingClientRect();
-      if (rect) setAnchor({ left: rect.right, bottom: window.innerHeight - rect.bottom });
+      if (!rect) return;
+      setAnchor({
+        centerX: rect.left + rect.width / 2,
+        rightEdge: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        viewportHeight: window.innerHeight,
+      });
     };
     measure();
+    // Passive: this only ever reads the trigger's position, and a listener the
+    // browser has to wait on before scrolling is what makes scrolling stutter.
+    const scrollOpts = { capture: true, passive: true } as const;
     window.addEventListener('resize', measure);
-    window.addEventListener('scroll', measure, true);
+    window.addEventListener('scroll', measure, scrollOpts);
     return () => {
       window.removeEventListener('resize', measure);
-      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('scroll', measure, scrollOpts);
     };
-  }, [isOpen, placement, anchorRef]);
+  }, [isOpen, anchorRef]);
+
+  /**
+   * Measure the card against the room on each side of the trigger, and flip if
+   * the requested side cannot hold it. The wrapper is what gets measured, so
+   * its height already includes the GAP_PX of padding the connector is drawn
+   * in - the card needs the gap as much as it needs its own body.
+   *
+   * `offsetHeight` and not `getBoundingClientRect()`, because the card enters
+   * at `scale: 0.97` and only the former ignores the transform and reports the
+   * height the card is settling into.
+   *
+   * Gated on `isPositioned` rather than on `anchor` itself. The card only
+   * enters the DOM once the trigger has been measured, so on the render that
+   * opens it there is nothing yet to measure - and depending on the anchor
+   * value instead would re-run this on every scroll event, flipping the card
+   * back and forth underneath a reader. A boolean settles once and stays put.
+   */
+  useEffect(() => {
+    if (!isOpen || !isPositioned || placement === 'right') return;
+
+    const fit = () => {
+      const trigger = triggerRef.current;
+      const card = cardRef.current;
+      if (!trigger || !card) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const needed = card.offsetHeight;
+      const above = rect.top;
+      const below = window.innerHeight - rect.bottom;
+      const [preferred, other] = placement === 'top' ? [above, below] : [below, above];
+
+      // Only when the other side is genuinely roomier: if neither fits there is
+      // nothing to gain by moving, and flipping anyway just looks like a glitch.
+      setFlipped(preferred < needed && other > preferred);
+
+      /**
+       * And whether to draw the connector at all.
+       *
+       * The squiggle reaches a long way sideways out of its trigger, and it is
+       * drawn above the chrome it comes out of, so it wins every overlap. Out
+       * of a full-width sidebar row that costs nothing - it leaves into open
+       * page. Out of a navbar the trigger is a 20px icon in a packed row, and
+       * the squiggle lands across whichever control sits next to it. So look
+       * for anything within its reach, and where there is something, let the
+       * card stand on its own.
+       */
+      const centerX = rect.left + rect.width / 2;
+      const reachLeft = centerX + ARROW_REACH_PX.left;
+      const reachRight = centerX + ARROW_REACH_PX.right;
+      const neighbours = Array.from(trigger.parentElement?.children ?? []);
+
+      setArrowFits(
+        neighbours.every((el) => {
+          if (el === trigger) return true;
+          const r = el.getBoundingClientRect();
+          return r.right <= reachLeft || r.left >= reachRight;
+        })
+      );
+    };
+
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [isOpen, isPositioned, placement]);
 
   const open = useCallback(() => {
     cancelClose();
@@ -228,43 +344,97 @@ export function DiscordCommunityLink({
     );
 
   /**
-   * Card and connector for the sidebar placement, portalled past the sidebar's
-   * overflow clip. The GAP_PX of left padding sits inside the hover region, so
-   * the cursor can cross to the card without spending the close grace period.
+   * Card and connector, portalled to `body` past whatever clips the trigger.
+   *
+   * Both arrangements keep the run between trigger and card inside the hover
+   * region - as padding on the card wrapper rather than a margin - so the
+   * cursor can cross the gap without spending the close grace period. The
+   * vertical one is pinned by `top` when it hangs below the trigger and by
+   * `bottom` when it rises above, which is what `top-full` and `bottom-full`
+   * did while it was still an absolutely positioned child.
    */
-  const sidePopover =
+  const popover =
     mounted &&
-    placement === 'right' &&
     createPortal(
       <AnimatePresence>
-        {isOpen && anchor && (
-          <>
-            <ConnectorArrow
-              orientation="horizontal"
-              className="fixed z-40 hidden h-18 w-16 lg:block"
-              style={{ left: anchor.left, bottom: anchor.bottom }}
-            />
-            <motion.div
-              initial={{ opacity: 0, x: -6, scale: 0.97 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -6, scale: 0.97 }}
-              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-              className="fixed z-40 hidden lg:block"
-              // The padding lifts and offsets the card while keeping the whole
-              // L-shaped run between row and card inside the hover region.
-              style={{
-                left: anchor.left,
-                bottom: anchor.bottom,
-                paddingLeft: GAP_PX,
-                paddingBottom: SIDE_RISE_PX,
-              }}
-              onMouseEnter={cancelClose}
-              onMouseLeave={scheduleClose}
-            >
-              <DiscordBentoCard className="w-[420px] max-w-[calc(100vw-20rem)]" />
-            </motion.div>
-          </>
-        )}
+        {isOpen && anchor ? (
+          placement === 'right' ? (
+            <>
+              <ConnectorArrow
+                orientation="horizontal"
+                className="fixed z-40 hidden h-18 w-16 lg:block"
+                style={{
+                  left: anchor.rightEdge,
+                  bottom: anchor.viewportHeight - anchor.bottom,
+                }}
+              />
+              <motion.div
+                initial={{ opacity: 0, x: -6, scale: 0.97 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -6, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                className="fixed z-40 hidden lg:block"
+                // The padding lifts and offsets the card while keeping the whole
+                // L-shaped run between row and card inside the hover region.
+                style={{
+                  left: anchor.rightEdge,
+                  bottom: anchor.viewportHeight - anchor.bottom,
+                  paddingLeft: GAP_PX,
+                  paddingBottom: SIDE_RISE_PX,
+                }}
+                onMouseEnter={cancelClose}
+                onMouseLeave={scheduleClose}
+              >
+                <DiscordBentoCard className="w-[420px] max-w-[calc(100vw-20rem)]" />
+              </motion.div>
+            </>
+          ) : (
+            <>
+              {/* Drawn icon-at-bottom for a card above; only the downward
+                placement needs the vertical mirror. Left out entirely when
+                there is something within its reach to land on. */}
+              {arrowFits && (
+                <ConnectorArrow
+                  className={cn(
+                    'fixed z-60 hidden h-16 w-28 -translate-x-2 lg:block',
+                    resolvedPlacement === 'bottom' && '-scale-y-100'
+                  )}
+                  style={
+                    resolvedPlacement === 'bottom'
+                      ? { left: anchor.centerX, top: anchor.bottom }
+                      : { left: anchor.centerX, bottom: anchor.viewportHeight - anchor.top }
+                  }
+                />
+              )}
+              <motion.div
+                ref={cardRef}
+                initial={{ opacity: 0, y: resolvedPlacement === 'bottom' ? -6 : 6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: resolvedPlacement === 'bottom' ? -6 : 6, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                className={cn(
+                  // Offset to the right of the icon by the same GAP_PX the
+                  // connector spans, and padded by it on the side facing the
+                  // trigger so the gap stays inside the hover region.
+                  'fixed z-60 hidden -translate-x-1/2 lg:block',
+                  resolvedPlacement === 'bottom' ? 'pt-16' : 'pb-16'
+                )}
+                style={
+                  resolvedPlacement === 'bottom'
+                    ? { left: anchor.centerX + GAP_PX, top: anchor.bottom }
+                    : {
+                        left: anchor.centerX + GAP_PX,
+                        bottom: anchor.viewportHeight - anchor.top,
+                      }
+                }
+                onMouseEnter={cancelClose}
+                onMouseLeave={scheduleClose}
+              >
+                <DiscordBentoCard className="w-[420px] max-w-[calc(100vw-2rem)]" />
+              </motion.div>
+            </>
+          )
+        ) : null}
       </AnimatePresence>,
       document.body
     );
@@ -333,7 +503,7 @@ export function DiscordCommunityLink({
             <span className="truncate">Join our Discord</span>
           </a>
         </div>
-        {sidePopover}
+        {popover}
         {backdrop}
         {sheet}
       </>
@@ -365,6 +535,7 @@ export function DiscordCommunityLink({
   return (
     <>
       <div
+        ref={triggerRef}
         className="relative inline-flex"
         onMouseEnter={open}
         onMouseLeave={scheduleClose}
@@ -391,48 +562,9 @@ export function DiscordCommunityLink({
             className={cn('transition-transform duration-200 group-hover:scale-110', iconClassName)}
           />
         </a>
-
-        {/* Desktop hover card. The padding lives on the wrapper, not as a margin,
-            so the gap between icon and card is still inside the hover region. */}
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: placement === 'bottom' ? -6 : 6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: placement === 'bottom' ? -6 : 6, scale: 0.97 }}
-              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-              className={cn(
-                // Offset up and to the right of the icon: the 64px of padding
-                // is the gap the connector arrow spans, and stays inside the
-                // hover region so the cursor can cross it without closing.
-                'absolute left-[calc(50%+64px)] z-60 hidden -translate-x-1/2 lg:block',
-                placement === 'bottom' ? 'top-full pt-16' : 'bottom-full pb-16'
-              )}
-              onMouseEnter={cancelClose}
-              onMouseLeave={scheduleClose}
-            >
-              <DiscordBentoCard className="w-[420px] max-w-[calc(100vw-2rem)]" />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Connector, drawn in the gap the offset above opens up. Its tail
-            starts by the icon and its tip points into the card's near edge. */}
-        <AnimatePresence>
-          {isOpen && (
-            <ConnectorArrow
-              className={cn(
-                // -translate-x-2 starts the tail over the icon rather than beside it.
-                'absolute left-1/2 z-60 hidden h-16 w-28 -translate-x-2 lg:block',
-                // Drawn icon-at-bottom for a card above; only the downward
-                // placement needs the vertical mirror.
-                placement === 'bottom' ? 'top-full -scale-y-100' : 'bottom-full'
-              )}
-            />
-          )}
-        </AnimatePresence>
       </div>
 
+      {popover}
       {backdrop}
       {sheet}
     </>

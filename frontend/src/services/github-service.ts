@@ -15,6 +15,8 @@ interface GitHubApiResponse {
 class GitHubService {
   private static instance: GitHubService;
   private cache: Map<string, { data: GitHubApiResponse; timestamp: number }> = new Map();
+  /** Requests already on their way, so callers can share one instead of racing. */
+  private inFlight: Map<string, Promise<GitHubApiResponse | null>> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private readonly API_BASE = 'https://api.github.com';
 
@@ -43,6 +45,28 @@ class GitHubService {
       return cached.data;
     }
 
+    /**
+     * Share a request that is already running.
+     *
+     * The cache is only written once a response lands, so callers that start
+     * together all miss it and all fetch - and the landing page has three star
+     * counters mounting in the same tick, which made three identical requests
+     * against a limit of sixty an hour for an unauthenticated IP.
+     */
+    const existing = this.inFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const request = this.requestRepoData(owner, repo).finally(() => {
+      this.inFlight.delete(cacheKey);
+    });
+    this.inFlight.set(cacheKey, request);
+    return request;
+  }
+
+  /** The actual call, entered once per cache key at a time. */
+  private async requestRepoData(owner: string, repo: string): Promise<GitHubApiResponse | null> {
+    const cacheKey = `${owner}/${repo}`;
+
     try {
       const response = await fetch(`${this.API_BASE}/repos/${owner}/${repo}`, {
         headers: {
@@ -64,7 +88,7 @@ class GitHubService {
       };
 
       // Cache the result
-      this.cache.set(cacheKey, { data: result, timestamp: now });
+      this.cache.set(cacheKey, { data: result, timestamp: Date.now() });
 
       return result;
     } catch (error) {

@@ -65,11 +65,7 @@ export default function WorkSmarterSection() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pausedRef = useRef(false);
-
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sectionRef = useRef<HTMLElement>(null);
 
   /**
    * Stable, so the effect below can name them as dependencies honestly.
@@ -77,7 +73,7 @@ export default function WorkSmarterSection() {
    * As plain functions they were rebuilt on every render, so listing them would
    * have torn the interval down and restarted it each time - which is why the
    * effect omitted them, and why the linter objected. Neither reads anything
-   * that changes but the motion preference.
+   * that changes between renders.
    */
   const stopRotation = useCallback(() => {
     if (intervalRef.current) {
@@ -86,17 +82,45 @@ export default function WorkSmarterSection() {
     }
   }, []);
 
+  /**
+   * The one place that decides whether rotating is appropriate at all, so a
+   * click or an arrow key cannot start a timer the effect below would not have.
+   *
+   * Narrower than `lg` the image column beside this list is `hidden`, which
+   * left the timer with nothing to change but the paragraph a reader was in the
+   * middle of - and the pause is bound to hover, which a touch device never
+   * fires, so on a phone there was no way to stop it. Read at call time rather
+   * than during render, where it ran on every pass and never noticed the
+   * preference changing.
+   */
   const startRotation = useCallback(() => {
-    if (prefersReducedMotion) return;
     if (intervalRef.current) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!window.matchMedia('(min-width: 1024px)').matches) return;
     intervalRef.current = setInterval(() => {
       if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % features.length);
     }, ROTATE_INTERVAL_MS);
-  }, [prefersReducedMotion]);
+  }, []);
 
+  /**
+   * Run only while the section is actually on screen. It used to tick for as
+   * long as the tab stayed open, redrawing a section the reader had left
+   * behind every six seconds and remounting both of its images each time.
+   */
   useEffect(() => {
-    startRotation();
-    return () => stopRotation();
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) startRotation();
+      else stopRotation();
+    });
+    observer.observe(section);
+
+    return () => {
+      observer.disconnect();
+      stopRotation();
+    };
   }, [startRotation, stopRotation]);
 
   const handleFeatureClick = (index: number) => {
@@ -142,7 +166,7 @@ export default function WorkSmarterSection() {
   const active = features[activeFeature];
 
   return (
-    <section id="tools" className="bg-background py-12 sm:py-16 md:py-20 lg:py-24">
+    <section ref={sectionRef} id="tools" className="bg-background py-12 sm:py-16 md:py-20 lg:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 md:mb-16">
@@ -170,7 +194,7 @@ export default function WorkSmarterSection() {
                   alt={active.imageAlt}
                   fill
                   sizes="(min-width: 1280px) 512px, (min-width: 1024px) 448px, 384px"
-                  className="object-contain transition-opacity duration-500 theme-light-only"
+                  className="object-contain animate-in fade-in duration-500 theme-light-only"
                 />
                 <Image
                   key={`${active.id}-dark`}
@@ -178,7 +202,7 @@ export default function WorkSmarterSection() {
                   alt={active.imageAlt}
                   fill
                   sizes="(min-width: 1280px) 512px, (min-width: 1024px) 448px, 384px"
-                  className="object-contain transition-opacity duration-500 theme-dark-only"
+                  className="object-contain animate-in fade-in duration-500 theme-dark-only"
                 />
               </div>
             </div>
