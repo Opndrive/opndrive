@@ -172,82 +172,33 @@ describe('startDownload', () => {
     expect(store().downloads.get('file-1')!.progress).toBe(25);
   });
 
-  it('clears a completed download after the linger delay', async () => {
-    vi.useFakeTimers();
-    const service = fakeService();
-    service.downloadFile.mockImplementation(async (_f, opts) => {
-      opts.onComplete('file-1');
-    });
-    createDownloadServiceMock.mockReturnValue(service as never);
+  it.each(['completed', 'cancelled', 'error'] as const)(
+    'keeps a %s download on the list until it is removed',
+    async (status) => {
+      vi.useFakeTimers();
+      const service = fakeService();
+      service.downloadFile.mockImplementation(async (_f, opts) => {
+        opts.onProgress(
+          progress({ status, error: status === 'error' ? 'Network error' : undefined })
+        );
+      });
+      createDownloadServiceMock.mockReturnValue(service as never);
 
-    store().setProgress(progress({ status: 'completed', progress: 100 }));
-    await store().startDownload(apiA, file);
+      await store().startDownload(apiA, file);
 
-    // The row stays briefly so the user sees it finish.
-    expect(store().downloads.has('file-1')).toBe(true);
-    vi.advanceTimersByTime(3000);
-    expect(store().downloads.has('file-1')).toBe(false);
-  });
+      // Nothing takes it away on a timer. A row that removes itself is a
+      // reason for a failure that disappears before anyone reads it, and the
+      // panel it sits on can be collapsed at the time. Uploads and deletes
+      // have always waited to be dismissed.
+      vi.advanceTimersByTime(60_000);
+      expect(store().downloads.has('file-1')).toBe(true);
 
-  it('clears a cancelled download sooner than a completed one', async () => {
-    vi.useFakeTimers();
-    const service = fakeService();
-    service.downloadFile.mockImplementation(async (_f, opts) => {
-      opts.onProgress(progress({ status: 'cancelled' }));
-    });
-    createDownloadServiceMock.mockReturnValue(service as never);
+      store().removeDownload('file-1');
+      expect(store().downloads.has('file-1')).toBe(false);
+    }
+  );
 
-    await store().startDownload(apiA, file);
-
-    expect(store().downloads.has('file-1')).toBe(true);
-    vi.advanceTimersByTime(2000);
-    expect(store().downloads.has('file-1')).toBe(false);
-  });
-
-  it('clears a failed download, and lets it linger longest', async () => {
-    vi.useFakeTimers();
-    const service = fakeService();
-    service.downloadFile.mockImplementation(async (_f, opts) => {
-      opts.onProgress(progress({ status: 'error', error: 'Network error' }));
-    });
-    createDownloadServiceMock.mockReturnValue(service as never);
-
-    await store().startDownload(apiA, file);
-
-    // A failure has a reason worth reading, so it outstays a cancel and a
-    // completion. It used to outstay the page: there was no linger for 'error'
-    // at all, and no button on either panel would remove the row by hand.
-    expect(store().downloads.has('file-1')).toBe(true);
-    vi.advanceTimersByTime(3000);
-    expect(store().downloads.has('file-1')).toBe(true);
-
-    vi.advanceTimersByTime(5000);
-    expect(store().downloads.has('file-1')).toBe(false);
-  });
-
-  it('does not let a settled row clear the retry that reuses its id', async () => {
-    vi.useFakeTimers();
-    const service = fakeService();
-    service.downloadFile.mockImplementation(async (_f, opts) => {
-      opts.onProgress(progress({ status: 'error', error: 'Network error' }));
-    });
-    createDownloadServiceMock.mockReturnValue(service as never);
-
-    await store().startDownload(apiA, file);
-
-    // Retried while the failed row is still on screen, which is exactly what
-    // eight seconds of linger invites the reader to do.
-    vi.advanceTimersByTime(2000);
-    store().setProgress(progress({ status: 'downloading', progress: 10 }));
-
-    // The timer left over from the failure must not take the live row with it:
-    // the panel would drop a transfer still in flight, and the file would read
-    // as not downloading while it was.
-    vi.advanceTimersByTime(10_000);
-    expect(store().downloads.get('file-1')?.status).toBe('downloading');
-  });
-
-  it('does not schedule removal for ordinary progress updates', async () => {
+  it('leaves an in-flight download on the list', async () => {
     vi.useFakeTimers();
     const service = fakeService();
     service.downloadFile.mockImplementation(async (_f, opts) => {
@@ -256,9 +207,8 @@ describe('startDownload', () => {
     createDownloadServiceMock.mockReturnValue(service as never);
 
     await store().startDownload(apiA, file);
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(60_000);
 
-    // An in-flight download must never disappear from the list on a timer.
     expect(store().downloads.has('file-1')).toBe(true);
   });
 

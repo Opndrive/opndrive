@@ -19,18 +19,6 @@ import {
 } from '../services/download-service';
 import type { FileItem } from '../types/file';
 
-/** How long a finished row lingers before it clears itself from the list. */
-const COMPLETED_LINGER_MS = 3000;
-const CANCELLED_LINGER_MS = 2000;
-/**
- * Longer than the other two, because a failure carries a reason worth reading.
- *
- * It does still leave. Errors had no linger at all, so a download that hit a
- * network problem stayed in the list until the page was reloaded, and neither
- * panel showing it offered a way to dismiss it by hand either.
- */
-const ERROR_LINGER_MS = 8000;
-
 interface DownloadState {
   downloads: Map<string, DownloadProgress>;
   /**
@@ -85,43 +73,21 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       return { downloads };
     }),
 
+  /**
+   * A settled row stays until someone removes it.
+   *
+   * Downloads used to clear themselves on a timer - three seconds for a
+   * completion, two for a cancel - which read as tidy until a failure needed
+   * the same treatment. A reason for the failure that takes itself off the
+   * screen is no use to anyone who was not looking at that moment, and the
+   * panel can be collapsed. Uploads and deletes have always waited to be
+   * dismissed; downloads now do too, and every settled row has a button on it.
+   */
   startDownload: async (api, file, handlers) => {
-    const { getService, setProgress, removeDownload } = get();
-
-    /**
-     * Clears the row when its linger is up, unless it is no longer the row this
-     * timer was set for.
-     *
-     * A retry reuses the file id, so an unguarded timer left over from an
-     * attempt that already settled would delete the row of the one now running:
-     * the panel would drop a live transfer, `isDownloading` would go false for
-     * a file still being fetched, and starting it a third time would overwrite
-     * the abort controller of the second, leaving that one uncancellable. Easy
-     * to hit now that a failure lingers eight seconds and can be retried at
-     * once, but the shorter delays could always race the same way.
-     */
-    const clearWhenSettled = (
-      fileId: string,
-      settledAs: DownloadProgress['status'],
-      delay: number
-    ) =>
-      setTimeout(() => {
-        if (get().downloads.get(fileId)?.status === settledAs) removeDownload(fileId);
-      }, delay);
+    const { getService, setProgress } = get();
 
     await getService(api).downloadFile(file, {
-      onProgress: (progress) => {
-        setProgress(progress);
-        if (progress.status === 'cancelled') {
-          clearWhenSettled(file.id, 'cancelled', CANCELLED_LINGER_MS);
-        }
-        if (progress.status === 'error') {
-          clearWhenSettled(file.id, 'error', ERROR_LINGER_MS);
-        }
-      },
-      onComplete: (fileId) => {
-        clearWhenSettled(fileId, 'completed', COMPLETED_LINGER_MS);
-      },
+      onProgress: setProgress,
       onError: handlers?.onError,
     });
   },

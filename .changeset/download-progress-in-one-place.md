@@ -18,11 +18,12 @@ gone wrong fell past all three to nothing - so the one row a reader most wants
 rid of was the only one with nothing to press. That was true of failed uploads
 and deletes too, and is fixed for all three.
 
-An error now clears itself after 8 seconds, longer than a cancel or a completion
-because it carries a reason worth reading. Those timers check that the row is
-still the one they were set for before removing it: a retry reuses the file id,
-so a leftover timer would otherwise delete the row of the transfer now running,
-and the file would read as not downloading while it was being fetched.
+Settled downloads now wait to be dismissed instead of clearing themselves. They
+used to go on a timer, three seconds for a completion and two for a cancel,
+which read as tidy until a failure needed the same treatment: a reason for a
+failure that takes itself off the screen is no use to anyone who was not looking
+at that moment, and the panel can be collapsed. Uploads and deletes have always
+waited to be dismissed, and downloads now match them.
 
 The same download was also announcing itself three times over: a toast, a card
 of its own in the top right, and a row on the operations card in the bottom
