@@ -152,6 +152,8 @@ export const OperationsModal: React.FC = () => {
   const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
   const resolveDuplicate = useUploadStore((state) => state.resolveDuplicate);
   const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
+  const resolveAllDuplicates = useUploadStore((state) => state.resolveAllDuplicates);
+  const cancelAllDuplicates = useUploadStore((state) => state.cancelAllDuplicates);
 
   // Only the oldest pending duplicate is shown; answering it reveals the next.
   const currentDuplicate = duplicateQueue[0] ?? null;
@@ -836,6 +838,11 @@ export const OperationsModal: React.FC = () => {
         duplicateItem={currentDuplicate?.duplicateItem ?? null}
         onReplace={() => resolveDuplicate('replace')}
         onKeepBoth={() => resolveDuplicate('keepBoth')}
+        pendingCount={duplicateQueue.length}
+        onApplyToAll={(choice) =>
+          resolveAllDuplicates(choice === 'replace' ? 'replace' : 'keepBoth')
+        }
+        onCancelAll={cancelAllDuplicates}
       />
     </>
   );

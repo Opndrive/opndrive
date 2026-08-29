@@ -232,6 +232,10 @@ interface UploadStore {
    * here as well would skip the next prompt.
    */
   resolveDuplicate: (choice: 'replace' | 'keepBoth') => void;
+  /** Answers every waiting prompt with one choice, and empties the queue. */
+  resolveAllDuplicates: (choice: 'replace' | 'keepBoth') => void;
+  /** Drops every waiting prompt, uploading none of them. */
+  cancelAllDuplicates: () => void;
   /** Dismisses the head prompt, revealing the next one. */
   hideDuplicateDialog: () => void;
 
@@ -534,10 +538,37 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     else prompt.onKeepBoth();
   },
 
+  /**
+   * Answers every prompt still waiting with the same choice.
+   *
+   * Dropping ten files onto ten that already exist raised ten identical
+   * questions, one after another, with no way to say the same thing once.
+   *
+   * The queue is emptied before the handlers run rather than after. Emptying it
+   * is what closes the dialog, and doing that first means a handler that queues
+   * work of its own raises a fresh prompt instead of having it answered by the
+   * loop it was created inside.
+   */
+  resolveAllDuplicates: (choice) => {
+    const pending = get().duplicateQueue;
+    if (pending.length === 0) return;
+
+    set({ duplicateQueue: [] });
+
+    for (const prompt of pending) {
+      if (choice === 'replace') prompt.onReplace();
+      else prompt.onKeepBoth();
+    }
+  },
+
   hideDuplicateDialog: () =>
     set((state) => ({
       duplicateQueue: state.duplicateQueue.slice(1),
     })),
+
+  // Neither handler runs, which is what Cancel already meant for one prompt:
+  // the file is simply not uploaded.
+  cancelAllDuplicates: () => set({ duplicateQueue: [] }),
 
   /**
    * The fallback, for an upload that finished without enough on its card to

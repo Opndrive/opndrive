@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { File, Folder, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
@@ -22,6 +22,12 @@ interface DuplicateDialogProps {
   onReplace: () => void;
   onKeepBoth: () => void;
   duplicateItem: DuplicateItem | null;
+  /** How many prompts are waiting, this one included. */
+  pendingCount?: number;
+  /** Answers every waiting prompt with the same choice. */
+  onApplyToAll?: (choice: 'replace' | 'keep-both') => void;
+  /** Drops every waiting prompt, uploading none of them. */
+  onCancelAll?: () => void;
 }
 
 export function DuplicateDialog({
@@ -30,10 +36,35 @@ export function DuplicateDialog({
   onReplace,
   onKeepBoth,
   duplicateItem,
+  pendingCount = 1,
+  onApplyToAll,
+  onCancelAll,
 }: DuplicateDialogProps) {
   const [selectedAction, setSelectedAction] = useState<'replace' | 'keep-both'>('keep-both');
+  const [applyToAll, setApplyToAll] = useState(false);
+
+  /** Only worth offering when there is something else to apply the answer to. */
+  const hasQueue = pendingCount > 1;
+  const others = pendingCount - 1;
+
+  /**
+   * Cleared by hand, because the dialog is never unmounted between prompts:
+   * answering one reveals the next while it stays open. Only on the way back
+   * open, which happens between drops rather than between files, so ticking the
+   * box for one batch cannot carry into the next.
+   */
+  useEffect(() => {
+    if (isOpen) setApplyToAll(false);
+  }, [isOpen]);
 
   const handleUpload = () => {
+    if (applyToAll && onApplyToAll) {
+      // No onClose here. Emptying the queue is what closes the dialog, and
+      // calling it as well would dequeue from a queue that is already empty.
+      onApplyToAll(selectedAction);
+      return;
+    }
+
     if (selectedAction === 'keep-both') {
       onKeepBoth();
     } else {
@@ -68,6 +99,17 @@ export function DuplicateDialog({
             <DialogTitle className="text-lg font-medium" style={{ color: 'var(--foreground)' }}>
               {duplicateItem.type === 'file' ? 'File already exists' : 'Folder already exists'}
             </DialogTitle>
+            {/* Without this there was no way to tell whether answering meant
+                one more click or nine, which is most of what made repeating
+                the same answer feel endless. */}
+            {hasQueue && (
+              <span
+                className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}
+              >
+                {pendingCount} left
+              </span>
+            )}
           </div>
           <DialogDescription className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
             A {duplicateItem.type} named "{duplicateItem.name}" already exists in this location.
@@ -168,6 +210,27 @@ export function DuplicateDialog({
               </div>
             </label>
           </div>
+
+          {hasQueue && (
+            <label
+              className="mt-4 flex items-center gap-3 rounded-lg p-3 cursor-pointer transition-colors"
+              style={{
+                backgroundColor: applyToAll ? 'var(--accent)' : 'transparent',
+                border: applyToAll ? '1px solid var(--primary)' : '1px solid var(--border)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={applyToAll}
+                onChange={(e) => setApplyToAll(e.target.checked)}
+                className="h-4 w-4"
+                style={{ accentColor: 'var(--primary)' }}
+              />
+              <span className="text-sm" style={{ color: 'var(--foreground)' }}>
+                Do the same for the other {others} {others === 1 ? 'item' : 'items'}
+              </span>
+            </label>
+          )}
         </div>
 
         <div
@@ -191,8 +254,28 @@ export function DuplicateDialog({
               e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
-            Cancel
+            {/* "Cancel" was only ever skipping this one file, which was not
+                obvious while nine more waited behind it. */}
+            {hasQueue ? 'Skip this one' : 'Cancel'}
           </button>
+          {hasQueue && onCancelAll && (
+            <button
+              onClick={onCancelAll}
+              className="px-4 py-2 cursor-pointer text-sm font-medium transition-colors rounded-md"
+              style={{
+                color: 'var(--muted-foreground)',
+                backgroundColor: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              Cancel all
+            </button>
+          )}
           <button
             onClick={handleUpload}
             className="px-6 py-2 text-sm cursor-pointer font-medium rounded-md transition-colors"

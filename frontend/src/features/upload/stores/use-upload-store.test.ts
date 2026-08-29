@@ -592,6 +592,78 @@ describe('duplicate prompt queue', () => {
     expect(() => store().hideDuplicateDialog()).not.toThrow();
     expect(store().duplicateQueue).toEqual([]);
   });
+
+  it('answers every waiting prompt with one choice', () => {
+    const replaces = [vi.fn(), vi.fn(), vi.fn()];
+    replaces.forEach((onReplace, i) =>
+      store().showDuplicateDialog({ name: `${i}.txt`, type: 'file' }, onReplace, vi.fn())
+    );
+
+    // The whole point: one answer for ten files rather than ten identical ones.
+    store().resolveAllDuplicates('replace');
+
+    replaces.forEach((onReplace) => expect(onReplace).toHaveBeenCalledOnce());
+    expect(store().duplicateQueue).toEqual([]);
+  });
+
+  it('resumes every parked upload when answered in bulk', async () => {
+    const parked = ['a.txt', 'b.txt', 'c.txt'].map(
+      (name) =>
+        new Promise<string>((resolve) => {
+          store().showDuplicateDialog(
+            { name, type: 'file' },
+            () => resolve(`${name}:replace`),
+            () => resolve(`${name}:keepBoth`)
+          );
+        })
+    );
+
+    store().resolveAllDuplicates('keepBoth');
+
+    // Not just emptied - every upload behind the queue has to actually resume,
+    // or a bulk answer would quietly strand the files it claimed to handle.
+    expect(await Promise.all(parked)).toEqual([
+      'a.txt:keepBoth',
+      'b.txt:keepBoth',
+      'c.txt:keepBoth',
+    ]);
+  });
+
+  it('empties the queue before running the handlers', () => {
+    let queueLengthDuringHandler = -1;
+    store().showDuplicateDialog(
+      { name: 'a.txt', type: 'file' },
+      () => {
+        queueLengthDuringHandler = store().duplicateQueue.length;
+      },
+      vi.fn()
+    );
+
+    store().resolveAllDuplicates('replace');
+
+    // A handler that queues fresh work of its own has to raise a new prompt
+    // rather than have it answered by the loop it was created inside.
+    expect(queueLengthDuringHandler).toBe(0);
+  });
+
+  it('drops every waiting prompt without answering any of them', () => {
+    const onReplace = vi.fn();
+    const onKeepBoth = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, onKeepBoth);
+    store().showDuplicateDialog({ name: 'b.txt', type: 'file' }, onReplace, onKeepBoth);
+
+    store().cancelAllDuplicates();
+
+    // Same meaning Cancel always had for one prompt: the file is not uploaded.
+    expect(store().duplicateQueue).toEqual([]);
+    expect(onReplace).not.toHaveBeenCalled();
+    expect(onKeepBoth).not.toHaveBeenCalled();
+  });
+
+  it('ignores a bulk answer when nothing is queued', () => {
+    expect(() => store().resolveAllDuplicates('replace')).not.toThrow();
+    expect(store().duplicateQueue).toEqual([]);
+  });
 });
 
 /**
