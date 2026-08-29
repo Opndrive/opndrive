@@ -7,7 +7,7 @@ import { cn } from '@/shared/utils/utils';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 export const DownloadProgressManager: React.FC = () => {
-  const { getAllDownloads, cancelDownload } = useDownloadList();
+  const { getAllDownloads, cancelDownload, removeDownload } = useDownloadList();
   const downloads = getAllDownloads();
 
   if (downloads.length === 0) return null;
@@ -19,6 +19,7 @@ export const DownloadProgressManager: React.FC = () => {
           key={download.fileId}
           download={download}
           onCancel={() => cancelDownload(download.fileId)}
+          onDismiss={() => removeDownload(download.fileId)}
         />
       ))}
     </div>
@@ -35,9 +36,14 @@ interface DownloadProgressItemProps {
     queuePosition?: number;
   };
   onCancel: () => void;
+  onDismiss: () => void;
 }
 
-const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, onCancel }) => {
+const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({
+  download,
+  onCancel,
+  onDismiss,
+}) => {
   const getStatusIcon = () => {
     switch (download.status) {
       case 'completed':
@@ -70,10 +76,16 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
     }
   };
 
-  const shouldShowProgress =
+  /**
+   * Still moving, so the button aborts it. Otherwise the transfer is over one
+   * way or another and the button just clears the row away.
+   */
+  const isRunning =
     download.status === 'downloading' ||
     download.status === 'pending' ||
     download.status === 'queued';
+
+  const shouldShowProgress = isRunning;
 
   return (
     <div
@@ -97,18 +109,22 @@ const DownloadProgressItem: React.FC<DownloadProgressItemProps> = ({ download, o
             </div>
           )}
         </div>
-        {(download.status === 'downloading' ||
-          download.status === 'pending' ||
-          download.status === 'queued') && (
-          <AriaLabel label={`Cancel download of ${download.fileName}`} position="left">
-            <button
-              onClick={onCancel}
-              className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </AriaLabel>
-        )}
+        {/* Always offered. The button used to render only while a download was
+            running, so a row that failed had no control on it at all and the
+            only way to be rid of it was to reload the page. */}
+        <AriaLabel
+          label={
+            isRunning ? `Cancel download of ${download.fileName}` : `Dismiss ${download.fileName}`
+          }
+          position="left"
+        >
+          <button
+            onClick={isRunning ? onCancel : onDismiss}
+            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors p-1 rounded hover:bg-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </AriaLabel>
       </div>
     </div>
   );

@@ -109,6 +109,13 @@ export const useIsFileDownloading = (fileId: string): boolean =>
 export const useDownloadList = () => {
   const downloads = useDownloadStore((state) => state.downloads);
   const { cancelDownload } = useDownloadActions();
+  /**
+   * Drops a settled row without touching the transfer, which is what a failed
+   * download needs: cancelling one is a no-op because there is nothing left in
+   * flight to abort, so the panels had no way to clear it. Selecting the action
+   * on its own is free - zustand action identities are stable.
+   */
+  const removeDownload = useDownloadStore((state) => state.removeDownload);
 
   const downloadProgress = useMemo(() => Array.from(downloads.values()), [downloads]);
   const getAllDownloads = useCallback(
@@ -116,5 +123,5 @@ export const useDownloadList = () => {
     [downloadProgress]
   );
 
-  return { downloadProgress, getAllDownloads, cancelDownload };
+  return { downloadProgress, getAllDownloads, cancelDownload, removeDownload };
 };

@@ -22,6 +22,14 @@ import type { FileItem } from '../types/file';
 /** How long a finished row lingers before it clears itself from the list. */
 const COMPLETED_LINGER_MS = 3000;
 const CANCELLED_LINGER_MS = 2000;
+/**
+ * Longer than the other two, because a failure carries a reason worth reading.
+ *
+ * It does still leave. Errors had no linger at all, so a download that hit a
+ * network problem stayed in the list until the page was reloaded, and neither
+ * panel showing it offered a way to dismiss it by hand either.
+ */
+const ERROR_LINGER_MS = 8000;
 
 interface DownloadState {
   downloads: Map<string, DownloadProgress>;
@@ -85,6 +93,9 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
         setProgress(progress);
         if (progress.status === 'cancelled') {
           setTimeout(() => removeDownload(file.id), CANCELLED_LINGER_MS);
+        }
+        if (progress.status === 'error') {
+          setTimeout(() => removeDownload(file.id), ERROR_LINGER_MS);
         }
       },
       onComplete: (fileId) => {

@@ -204,6 +204,27 @@ describe('startDownload', () => {
     expect(store().downloads.has('file-1')).toBe(false);
   });
 
+  it('clears a failed download, and lets it linger longest', async () => {
+    vi.useFakeTimers();
+    const service = fakeService();
+    service.downloadFile.mockImplementation(async (_f, opts) => {
+      opts.onProgress(progress({ status: 'error', error: 'Network error' }));
+    });
+    createDownloadServiceMock.mockReturnValue(service as never);
+
+    await store().startDownload(apiA, file);
+
+    // A failure has a reason worth reading, so it outstays a cancel and a
+    // completion. It used to outstay the page: there was no linger for 'error'
+    // at all, and no button on either panel would remove the row by hand.
+    expect(store().downloads.has('file-1')).toBe(true);
+    vi.advanceTimersByTime(3000);
+    expect(store().downloads.has('file-1')).toBe(true);
+
+    vi.advanceTimersByTime(5000);
+    expect(store().downloads.has('file-1')).toBe(false);
+  });
+
   it('does not schedule removal for ordinary progress updates', async () => {
     vi.useFakeTimers();
     const service = fakeService();
