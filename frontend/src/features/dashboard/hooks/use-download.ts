@@ -40,18 +40,11 @@ async function withConcurrency<T>(
  * row in the listing on every chunk of every download.
  */
 export const useDownloadActions = () => {
-  const { error: showError, info } = useNotification();
+  const { error: showError } = useNotification();
   const { apiS3 } = useAuthGuard();
 
   const startDownload = useDownloadStore((state) => state.startDownload);
-  const cancelInStore = useDownloadStore((state) => state.cancelDownload);
-
-  const handleError = useCallback(
-    (_fileId: string, error: string) => {
-      showError(error);
-    },
-    [showError]
-  );
+  const cancelDownload = useDownloadStore((state) => state.cancelDownload);
 
   const downloadFile = useCallback(
     async (file: FileItem) => {
@@ -61,30 +54,31 @@ export const useDownloadActions = () => {
       if (!apiS3) return;
 
       try {
-        await startDownload(apiS3, file, { onError: handleError });
+        await startDownload(apiS3, file);
       } catch (error) {
+        /**
+         * The last download toast, and the only one worth keeping.
+         *
+         * Starting, cancelling and failing are all written to the operations
+         * card as they happen, so a toast saying the same thing was the same
+         * news twice, in two corners of the screen at once. This branch is
+         * different: it runs only if the download threw before the service
+         * could record it, which means there is no row on the card to read and
+         * staying quiet here would lose the failure altogether.
+         */
         showError(`Failed to download ${file.name}, ${error}`);
       }
     },
-    [apiS3, startDownload, handleError, showError]
+    [apiS3, startDownload, showError]
   );
 
   const downloadMultipleFiles = useCallback(
     async (files: FileItem[]) => {
       if (!apiS3 || files.length === 0) return;
 
-      info(`Downloading ${files.length} file${files.length > 1 ? 's' : ''}...`);
       await withConcurrency(files, MULTI_DOWNLOAD_CONCURRENCY, downloadFile);
     },
-    [apiS3, downloadFile, info]
-  );
-
-  const cancelDownload = useCallback(
-    (fileId: string) => {
-      cancelInStore(fileId);
-      info('Download cancelled');
-    },
-    [cancelInStore, info]
+    [apiS3, downloadFile]
   );
 
   return { downloadFile, downloadMultipleFiles, cancelDownload };

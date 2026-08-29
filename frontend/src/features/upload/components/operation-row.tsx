@@ -167,8 +167,11 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'downloading' && (
+          // With the percentage, which is the one thing the separate download
+          // card said that this row did not. The ring beside it has always
+          // shown the same figure as a shape; this puts a number on it.
           <p className="text-xs" style={{ color: 'var(--primary)' }}>
-            Downloading...
+            Downloading... {Math.round(progress)}%
           </p>
         )}
         {status === 'pending' && (

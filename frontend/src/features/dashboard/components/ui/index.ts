@@ -14,8 +14,6 @@ export { CreateMenu } from './menus/create-menu';
 export { FileOverflowMenu } from './menus/file-overflow-menu';
 export { FolderOverflowMenu } from './menus/folder-overflow-menu';
 
-export { DownloadProgressManager } from './download-progress-manager';
-
 export { SuggestedSectionSkeleton, DashboardLoading } from './skeletons/dashboard-skeleton';
 export {
   FileSkeletonGrid,
