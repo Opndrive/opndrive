@@ -116,7 +116,11 @@ export function CustomAriaLabel({
 
     if (triggerRef.current) {
       const temp = document.createElement('div');
-      temp.className = `custom-aria-label ${position} ${multiline ? 'multiline' : ''}`;
+      // `className` included, because it is part of what the tooltip is
+      // rendered with below. Measuring without it sizes a different element
+      // than the one that appears, so a caller whose class changes the width -
+      // a list, say - gets positioned off the edge it was supposed to avoid.
+      temp.className = `custom-aria-label ${position} ${multiline ? 'multiline' : ''} ${className}`;
       Object.assign(temp.style, {
         visibility: 'hidden',
         position: 'fixed',

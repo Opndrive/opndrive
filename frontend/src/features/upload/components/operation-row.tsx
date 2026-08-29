@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { HiOutlineXMark } from 'react-icons/hi2';
+import { Files, Info } from 'lucide-react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
@@ -27,7 +28,16 @@ export type OperationType = 'upload' | 'delete' | 'download';
 export interface OperationRowProps {
   id: string;
   name: string;
-  type: 'file' | 'folder';
+  /** 'mixed' is a selection that is neither - see DeleteProgress['type']. */
+  type: 'file' | 'folder' | 'mixed';
+  /**
+   * Names of what a counted card is actually operating on, one per line.
+   *
+   * Shown behind an info icon rather than on the card: eight of them inline
+   * truncate to "main - Copy - Copy (2).json, mai...", which spends a whole
+   * line saying less than the count above it already did.
+   */
+  detail?: string;
   operationType: OperationType;
   status: string;
   progress: number;
@@ -52,6 +62,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
   id,
   name,
   type,
+  detail,
   operationType,
   status,
   progress,
@@ -94,6 +105,10 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
       <div className="flex-shrink-0">
         {type === 'folder' ? (
           <FolderIcon />
+        ) : type === 'mixed' ? (
+          // Files and folders together. Drawing either one alone would claim
+          // something about the selection that is not true.
+          <Files className="w-6 h-6" style={{ color: 'var(--muted-foreground)' }} />
         ) : (
           <FileIcon extension={extension} filename={name} className="w-6 h-6" />
         )}
@@ -101,25 +116,35 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p
-          className="text-xs font-medium truncate"
-          title={name}
-          style={{ color: 'var(--foreground)' }}
-        >
-          {name}
-        </p>
-        {status === 'completed' && (
+        <div className="flex min-w-0 items-center gap-1.5">
           <p
-            className="text-xs"
-            style={{
-              color:
-                operationType === 'upload'
-                  ? 'var(--muted-foreground)'
-                  : operationType === 'download'
-                    ? 'var(--muted-foreground)'
-                    : '#ef4444',
-            }}
+            className="text-xs font-medium truncate"
+            title={name}
+            style={{ color: 'var(--foreground)' }}
           >
+            {name}
+          </p>
+          {detail ? (
+            <AriaLabel
+              label={detail}
+              multiline
+              className="aria-label-list"
+              position="top"
+              focusableWrapper
+            >
+              <Info
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Show all items"
+              />
+            </AriaLabel>
+          ) : null}
+        </div>
+        {status === 'completed' && (
+          // Muted, like the other two. A finished delete used to be painted the
+          // same red as a cancelled or failed one, so a green tick sat next to
+          // red text - and a real failure looked identical to a success.
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
             {operationType === 'upload'
               ? 'Upload complete'
               : operationType === 'delete'
@@ -161,7 +186,11 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
             Paused
           </p>
         )}
-        {status === 'error' && (
+        {(status === 'failed' || status === 'error') && (
+          // 'failed' is the status a delete actually reports; only uploads and
+          // downloads use 'error'. Matching on 'error' alone meant a failed or
+          // partly-failed delete rendered no reason at all - the summary naming
+          // the objects that survived was written to the store and never shown.
           <p className="text-xs" style={{ color: '#ef4444' }}>
             {error || 'Failed'}
           </p>

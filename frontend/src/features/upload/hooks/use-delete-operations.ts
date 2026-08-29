@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useDriveStore } from '@/context/data-context';
+import { useDriveStore, type Revert } from '@/context/data-context';
 import { SESSION_ENDED, useUploadStore } from '../stores/use-upload-store';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
@@ -10,7 +10,7 @@ import { markerLast } from '../utils/delete-key-order';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { isFile } from '@/shared/utils/drive-item';
+import { isFile, isFolderLike } from '@/shared/utils/drive-item';
 
 interface FolderContents {
   allKeys: string[];
@@ -126,22 +126,108 @@ class PartialDeleteError extends Error {
   }
 }
 
+/**
+ * How many failed objects to name before falling back to a count.
+ *
+ * This string is rendered on a card, and a failed batch can run to hundreds.
+ */
+const MAX_NAMED_FAILURES = 3;
+
+/**
+ * What went wrong, in the words S3 used.
+ *
+ * Every one of these failures arrives inside the same DeleteObjects response
+ * that did the deleting - S3 returns per-object errors inline - so naming them
+ * costs nothing. The alternative, asking afterwards whether each object is
+ * still there, would be one HEAD request per object.
+ */
 function describeFailures(failures: DeleteBatchError[], total: number): string {
   const headline = `${failures.length} of ${total} object(s) could not be deleted.`;
-  const first = failures[0];
-  if (!first) return headline;
+  if (failures.length === 0) return headline;
 
-  const parts = [first.key || '(unknown key)'];
-  if (first.versionId) parts.push(`version ${first.versionId}`);
-  if (first.code) parts.push(first.code);
-  if (first.message) parts.push(first.message);
+  const named = failures.slice(0, MAX_NAMED_FAILURES).map((failure) => {
+    const parts = [failure.key || '(unknown key)'];
+    if (failure.versionId) parts.push(`version ${failure.versionId}`);
+    if (failure.code) parts.push(failure.code);
+    // Only when there is one, otherwise three S3 messages make an unreadable
+    // wall of text out of a line that has to fit on a card.
+    if (failures.length === 1 && failure.message) parts.push(failure.message);
+    return parts.join(' - ');
+  });
 
-  return `${headline} First failure: ${parts.join(' - ')}`;
+  const remaining = failures.length - named.length;
+  const more = remaining > 0 ? `; and ${remaining} more` : '';
+
+  return `${headline} ${named.join('; ')}${more}`;
+}
+
+/**
+ * How many names the tooltip lists before the rest become a count.
+ *
+ * The tooltip is not scrollable - it is pointer-transparent by design, so
+ * nothing can reach a scrollbar inside it. A cap is what keeps a selection of
+ * four hundred from running off the screen.
+ */
+const MAX_NAMED_ITEMS = 12;
+
+/** The name to show for an item, falling back to the last segment of its key. */
+function displayName(item: FileItem | Folder): string {
+  if (item.name) return item.name;
+
+  // A folder marker's name comes out empty: enrichFile splits its key on '/'
+  // and a key ending in one leaves nothing after the final separator.
+  const key = 'Prefix' in item ? item.Prefix : 'Key' in item ? item.Key : undefined;
+  return typeof key === 'string' ? (key.split('/').filter(Boolean).pop() ?? key) : '';
+}
+
+function extensionOf(name: string): string | undefined {
+  const dot = name.lastIndexOf('.');
+  // `<= 0` rather than `=== -1`, so a dotfile is not read as being all suffix.
+  return dot <= 0 ? undefined : name.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * The extension every name shares, when they share one.
+ *
+ * Eight .json files have an obvious icon and should get it. Eight files of
+ * different kinds have no single icon that would not be a lie about seven of
+ * them, so they get the stacked one instead.
+ */
+function sharedExtension(names: string[]): string | undefined {
+  const first = extensionOf(names[0] ?? '');
+  if (!first) return undefined;
+
+  return names.every((name) => extensionOf(name) === first) ? first : undefined;
+}
+
+/**
+ * What is in the selection, one name per line.
+ *
+ * These are the items the caller already handed us, so this costs nothing.
+ * "8 items" is true and useless - it does not tell you whether the eight you
+ * selected are the eight you meant.
+ *
+ * Newline-separated rather than an array because the operations panel memoises
+ * each row on shallow-equal props: an array rebuilt every render would defeat
+ * that for every row at once, which is the regression OperationRow's own doc
+ * comment exists to warn about. The tooltip renders the breaks.
+ */
+function describeItems(names: string[]): string | undefined {
+  if (names.length <= 1) return undefined;
+
+  const usable = names.filter(Boolean);
+  if (usable.length === 0) return undefined;
+
+  const listed = usable.slice(0, MAX_NAMED_ITEMS);
+  const remaining = usable.length - listed.length;
+
+  return remaining > 0 ? `${listed.join('\n')}\nand ${remaining} more` : listed.join('\n');
 }
 
 export function useDeleteOperations() {
   const { apiS3 } = useAuthGuard();
   const refreshCurrentData = useDriveStore((state) => state.refreshCurrentData);
+  const removeFiles = useDriveStore((state) => state.removeFiles);
   const { error: errorFunction } = useNotification();
   const {
     startDeleteOperation,
@@ -204,8 +290,23 @@ export function useDeleteOperations() {
         // Show intermediate progress
         updateDeleteProgress(itemId, 20);
 
-        // Perform the actual delete
-        await apiS3.deleteFile(file.Key || file.name);
+        // The row goes now rather than when S3 answers. Everything below is
+        // careful about who may put it back: only a failure of the one call
+        // this function makes leaves the object provably still there.
+        const undoRemoval = removeFiles([file.Key || file.name]);
+
+        try {
+          // Perform the actual delete
+          await apiS3.deleteFile(file.Key || file.name);
+        } catch (error) {
+          // One call, one object: it either happened or it did not, so the row
+          // belongs back exactly as it was. Note this is deliberately not the
+          // outer catch, which also sees aborts raised *after* the delete
+          // succeeded - putting the row back there would resurrect a file that
+          // really is gone.
+          undoRemoval();
+          throw error;
+        }
 
         updateDeleteProgress(itemId, 90);
 
@@ -220,8 +321,6 @@ export function useDeleteOperations() {
 
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
-
-        await refreshCurrentData();
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
@@ -234,7 +333,7 @@ export function useDeleteOperations() {
     },
     [
       apiS3,
-      refreshCurrentData,
+      removeFiles,
       errorFunction,
       startDeleteOperation,
       updateDeleteProgress,
@@ -348,8 +447,10 @@ export function useDeleteOperations() {
             const summary = describeFailures(failures, allKeys.length);
             failDeleteOperation(itemId, summary);
             errorFunction(`Partially deleted "${folder.name}": ${summary}`);
-            // Refresh so the browser reflects what actually survived.
-            await refreshCurrentData();
+            // Some objects went and some did not, and only the bucket knows
+            // which. Silently, because those rows are on screen and asking is
+            // no reason to blank them.
+            await refreshCurrentData({ silent: true });
             throw new PartialDeleteError(summary, failures);
           }
         } else {
@@ -371,10 +472,10 @@ export function useDeleteOperations() {
         completeDeleteOperation(itemId);
 
         // Every listing that mentioned this folder is now wrong, not just the
-        // one on screen. When the folder we were pointing at is one of them,
-        // the cleanup has moved us out and there is nothing left to refetch.
-        const prefixGone = cleanUpDeletedFolder(normalizedKey);
-        if (!prefixGone) await refreshCurrentData();
+        // one on screen. cleanUpDeletedFolder drops all of them and prunes the
+        // row out of the parent, so there is nothing left to re-read: the
+        // listing the user is looking at is already correct.
+        cleanUpDeletedFolder(normalizedKey);
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
@@ -438,15 +539,59 @@ export function useDeleteOperations() {
             ? `Deleting ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
             : `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
 
+      // Deleting one thing is not a batch to the person doing it, so the card
+      // says which thing. Only a real multi-selection falls back to a count.
+      const single = items.length === 1 ? items[0] : undefined;
+      const names = items.map(displayName);
+
+      // Only meaningful when the whole selection is files: a folder has no
+      // extension to agree with.
+      const uniform = folderCount === 0 ? sharedExtension(names) : undefined;
+
       const signal = startDeleteOperation(itemId, {
         id: itemId,
-        name: `${items.length} item${items.length !== 1 ? 's' : ''}`,
-        type: 'folder', // Use folder icon for batch operations
+        name: single ? displayName(single) : `${items.length} items`,
+        // 'file' only where there is an extension to draw it from. A batch card
+        // is named "8 items", which has no extension to read back off it, so
+        // claiming 'file' without one lands on FileIcon's unknown-type
+        // question mark - which reads as an error rather than as eight files.
+        type: single
+          ? isFolderLike(single)
+            ? 'folder'
+            : 'file'
+          : fileCount === 0
+            ? 'folder'
+            : uniform
+              ? 'file'
+              : 'mixed',
         size: 0,
         status: 'deleting',
         progress: 0,
         operationLabel,
+        extension: single
+          ? isFolderLike(single)
+            ? undefined
+            : (single as FileItem).extension
+          : uniform,
+        detail: describeItems(names),
       });
+
+      // Declared out here so the catch can reach them. `anyDispatched` is what
+      // decides whether undoing is still honest: see undoOrResync.
+      let undoRemoval: Revert = () => {};
+      let anyDispatched = false;
+
+      const undoOrResync = () => {
+        // A revert only tells the truth while nothing has actually been
+        // deleted. Once a batch has come back successfully, some of these keys
+        // are gone and some are not, and putting every row back would be as
+        // wrong as leaving them all out - so the bucket gets asked instead.
+        //
+        // "come back", not "gone out": the flag is set after the await, which
+        // is what makes a first-batch failure revert rather than resync.
+        if (anyDispatched) void refreshCurrentData({ silent: true });
+        else undoRemoval();
+      };
 
       try {
         // Show calculating state
@@ -486,9 +631,11 @@ export function useDeleteOperations() {
         if (uniqueKeys.length === 0) {
           updateDeleteProgress(itemId, 100);
           completeDeleteOperation(itemId);
-          await refreshCurrentData();
+          // Nothing was deleted, so nothing in the listing has changed.
           return;
         }
+
+        undoRemoval = removeFiles(uniqueKeys);
 
         // Batch delete in chunks of 1000 (S3 limit)
         const batchSize = 1000;
@@ -510,6 +657,13 @@ export function useDeleteOperations() {
           );
           if (!result.reliable) warnLegacyProviderOnce();
 
+          // Set after the call, not before it. Set beforehand, a failure on the
+          // very first batch - offline, a 5xx, expired credentials - read as
+          // "some of this was deleted", so undoOrResync resynced instead of
+          // reverting. The resync is deliberately silent, so when it failed too
+          // it changed nothing: the rows stayed gone, having never been deleted.
+          anyDispatched = true;
+
           processed += batch.length;
           deletedCount += result.deleted;
           failures.push(...result.errors);
@@ -527,7 +681,7 @@ export function useDeleteOperations() {
           const summary = describeFailures(failures, uniqueKeys.length);
           failDeleteOperation(itemId, summary);
           errorFunction(`Partially deleted selection: ${summary}`);
-          await refreshCurrentData();
+          await refreshCurrentData({ silent: true });
           throw new PartialDeleteError(summary, failures);
         }
 
@@ -540,15 +694,17 @@ export function useDeleteOperations() {
 
         updateDeleteProgress(itemId, 100);
         completeDeleteOperation(itemId);
-
-        await refreshCurrentData();
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
+          // A cancel can land between batches, so this is the same question as
+          // a failure: how far did we get before stopping?
+          undoOrResync();
           return;
         }
         if (error instanceof PartialDeleteError) {
           throw error;
         }
+        undoOrResync();
         const errorMessage = error instanceof Error ? error.message : 'Batch delete failed';
         failDeleteOperation(itemId, errorMessage);
         errorFunction(`Failed to delete items: ${errorMessage}`);
@@ -558,6 +714,7 @@ export function useDeleteOperations() {
     // batchDelete works from keys it already has, so it never lists a prefix
     [
       apiS3,
+      removeFiles,
       refreshCurrentData,
       errorFunction,
       startDeleteOperation,
@@ -584,16 +741,43 @@ export function useDeleteOperations() {
       const uniqueKeys = Array.from(new Set(keys));
 
       const itemId = `delete-keys-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Only raw keys here, so the trailing slash is the only thing that says
+      // folder. Same rule as isFolderLike, applied to a string.
+      const markerCount = uniqueKeys.filter((key) => key.endsWith('/')).length;
+      const onlyKey = uniqueKeys.length === 1 ? uniqueKeys[0]! : undefined;
+      const names = uniqueKeys.map((key) => key.split('/').filter(Boolean).pop() ?? key);
+      const uniform = markerCount === 0 ? sharedExtension(names) : undefined;
+
       const signal = startDeleteOperation(itemId, {
         id: itemId,
-        name: `${uniqueKeys.length} item${uniqueKeys.length !== 1 ? 's' : ''}`,
-        type: 'folder',
+        name: onlyKey ? (names[0] ?? onlyKey) : `${uniqueKeys.length} items`,
+        // Same rule as batchDelete: 'file' only where an icon can be drawn.
+        type:
+          markerCount === uniqueKeys.length
+            ? 'folder'
+            : markerCount > 0
+              ? 'mixed'
+              : onlyKey || uniform
+                ? 'file'
+                : 'mixed',
         size: 0,
         status: 'deleting',
         progress: 0,
         totalFiles: uniqueKeys.length,
         operationLabel: `Deleting ${uniqueKeys.length} item${uniqueKeys.length !== 1 ? 's' : ''}`,
+        extension: onlyKey ? extensionOf(names[0] ?? '') : uniform,
+        detail: describeItems(names),
       });
+
+      // Same scaffolding as batchDelete, for the same reason.
+      let undoRemoval: Revert = () => {};
+      let anyDispatched = false;
+
+      const undoOrResync = () => {
+        if (anyDispatched) void refreshCurrentData({ silent: true });
+        else undoRemoval();
+      };
 
       try {
         updateDeleteProgress(itemId, 0, 0, uniqueKeys.length);
@@ -601,6 +785,8 @@ export function useDeleteOperations() {
         if (signal.aborted) {
           throw abortError();
         }
+
+        undoRemoval = removeFiles(uniqueKeys);
 
         // Batch delete in chunks of 1000 (S3 limit)
         const batchSize = 1000;
@@ -622,6 +808,13 @@ export function useDeleteOperations() {
           );
           if (!result.reliable) warnLegacyProviderOnce();
 
+          // Set after the call, not before it. Set beforehand, a failure on the
+          // very first batch - offline, a 5xx, expired credentials - read as
+          // "some of this was deleted", so undoOrResync resynced instead of
+          // reverting. The resync is deliberately silent, so when it failed too
+          // it changed nothing: the rows stayed gone, having never been deleted.
+          anyDispatched = true;
+
           processed += batch.length;
           deletedCount += result.deleted;
           failures.push(...result.errors);
@@ -638,19 +831,20 @@ export function useDeleteOperations() {
           const summary = describeFailures(failures, uniqueKeys.length);
           failDeleteOperation(itemId, summary);
           errorFunction(`Partially deleted items: ${summary}`);
-          await refreshCurrentData();
+          await refreshCurrentData({ silent: true });
           throw new PartialDeleteError(summary, failures);
         }
 
         completeDeleteOperation(itemId);
-        await refreshCurrentData();
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
+          undoOrResync();
           return;
         }
         if (error instanceof PartialDeleteError) {
           throw error;
         }
+        undoOrResync();
         const errorMessage = error instanceof Error ? error.message : 'Batch delete failed';
         failDeleteOperation(itemId, errorMessage);
         errorFunction(`Failed to delete items: ${errorMessage}`);
@@ -659,6 +853,7 @@ export function useDeleteOperations() {
     },
     [
       apiS3,
+      removeFiles,
       refreshCurrentData,
       errorFunction,
       startDeleteOperation,

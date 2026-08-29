@@ -16,7 +16,8 @@ import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-sett
 interface OperationItem {
   id: string;
   name: string;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'mixed';
+  detail?: string;
   operationType: OperationType;
   status: string;
   progress: number;
@@ -291,7 +292,14 @@ export const OperationsModal: React.FC = () => {
         completedFiles: deleteOp.completedFiles,
         isCalculatingSize: deleteOp.isCalculatingSize,
         error: deleteOp.error,
-        extension: deleteOp.type === 'file' ? getFileExtension(deleteOp.name) : undefined,
+        detail: deleteOp.detail,
+        // The stored extension first. A batch card is named "8 items", which
+        // has nothing to read an extension out of, but the hook already worked
+        // out that all eight of them are .json.
+        extension:
+          deleteOp.type === 'file'
+            ? ((deleteOp.extension as FileExtension | undefined) ?? getFileExtension(deleteOp.name))
+            : undefined,
       })),
       // Download operations
       ...downloads.map((download) => ({
@@ -710,6 +718,7 @@ export const OperationsModal: React.FC = () => {
                   id={operation.id}
                   name={operation.name}
                   type={operation.type}
+                  detail={operation.detail}
                   operationType={operation.operationType}
                   status={operation.status}
                   progress={operation.progress}

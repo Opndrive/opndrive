@@ -16,15 +16,20 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFolderCreation } from './use-folder-creation';
 
-const { fetchData, refreshCurrentData } = vi.hoisted(() => ({
-  fetchData: vi.fn(async () => {}),
-  refreshCurrentData: vi.fn(async () => {}),
-}));
+const { fetchData, refreshCurrentData, addFolder, undoAddFolder } = vi.hoisted(() => {
+  const undoAddFolder = vi.fn();
+  return {
+    fetchData: vi.fn(async () => {}),
+    refreshCurrentData: vi.fn(async () => {}),
+    addFolder: vi.fn(() => undoAddFolder),
+    undoAddFolder,
+  };
+});
 
 vi.mock('@opndrive/s3-api', () => ({ BYOS3ApiProvider: class {} }));
 
 vi.mock('@/context/data-context', () => {
-  const state = { fetchData, refreshCurrentData };
+  const state = { fetchData, refreshCurrentData, addFolder };
   // Applies the selector the way zustand does. Returning the whole state
   // regardless worked only while callers destructured it, and silently handed
   // back the entire store to anyone selecting a single value out of it.
@@ -171,5 +176,42 @@ describe('a name that cannot work is refused, not rewritten', () => {
     ).rejects.toThrow('Folder name cannot be empty.');
 
     expect(apiS3.createFolder).not.toHaveBeenCalled();
+  });
+});
+
+describe('the new folder appears without a re-list', () => {
+  it('adds the row to the listing it was created in', async () => {
+    const { result } = mount('projects/');
+
+    await act(async () => {
+      await result.current.handleFolderCreation('reports');
+    });
+
+    expect(addFolder).toHaveBeenCalledWith('projects/', 'reports');
+    // This used to cost three full listings of the prefix for one folder: one
+    // inside createFolder and a refreshCurrentData - itself two - after it.
+    expect(fetchData).not.toHaveBeenCalled();
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('adds it at the root when there is no current path', async () => {
+    const { result } = mount('');
+
+    await act(async () => {
+      await result.current.handleFolderCreation('reports');
+    });
+
+    expect(addFolder).toHaveBeenCalledWith('', 'reports');
+  });
+
+  it('takes the row back out when the write is refused', async () => {
+    apiS3.createFolder.mockRejectedValueOnce(new Error('AccessDenied'));
+    const { result } = mount('projects/');
+
+    await act(async () => {
+      await expect(result.current.handleFolderCreation('reports')).rejects.toThrow('AccessDenied');
+    });
+
+    expect(undoAddFolder).toHaveBeenCalled();
   });
 });

@@ -73,12 +73,39 @@ type Store = {
   clearAllData: () => void;
   removeDeletedFolder: (prefix: string) => void;
 
-  fetchData: (opts?: { sync?: boolean }) => Promise<void>;
-  fetchRecentItems: (opts?: { sync?: boolean; itemsPerType?: number }) => Promise<void>;
+  /**
+   * Localized edits, for when an operation has already told us what changed.
+   *
+   * Each one rewrites the affected listing in place and returns the inverse of
+   * what it did, so a caller whose request then fails can put things back.
+   *
+   * The revert is an inverse operation and not a restored snapshot on purpose.
+   * Restoring the array a row sat in would also restore every other row a
+   * concurrent operation had removed from it meanwhile - delete two files while
+   * an upload is in flight, let the upload fail, and both deleted files come
+   * back. Applying the inverse touches only what this call touched.
+   */
+  removeFiles: (keys: readonly string[]) => Revert;
+  addFile: (prefix: string, file: OptimisticFile) => Revert;
+  addFolder: (prefix: string, name: string) => Revert;
+  renameFile: (oldKey: string, newKey: string) => Revert;
+  renameFolder: (prefix: string, newName: string) => Revert;
+
+  /**
+   * `silent` re-reads a prefix without announcing it: no 'loading' on the way
+   * in, and no 'error' on the way out over rows that are still on screen. For
+   * refreshing something the user is already looking at.
+   */
+  fetchData: (opts?: { sync?: boolean; silent?: boolean }) => Promise<void>;
+  fetchRecentItems: (opts?: {
+    sync?: boolean;
+    silent?: boolean;
+    itemsPerType?: number;
+  }) => Promise<void>;
   loadMoreRecentFiles: () => Promise<void>;
   loadMoreRecentFolders: () => Promise<void>;
   loadMoreData: () => Promise<void>;
-  refreshCurrentData: () => Promise<void>;
+  refreshCurrentData: (opts?: { silent?: boolean }) => Promise<void>;
   refreshAll: () => Promise<void>;
 };
 
@@ -294,6 +321,413 @@ function recentWithoutPrefix(data: RecentDataWithCache, prefix: string): RecentD
   };
 }
 
+/** Undoes one optimistic change by applying its inverse. */
+export type Revert = () => void;
+
+/** Nothing changed, so there is nothing to undo. */
+const NO_REVERT: Revert = () => {};
+
+/** The zustand setter, narrowed to the functional form these helpers require. */
+type SetState = (updater: (state: Store) => Partial<Store>) => void;
+
+type GetState = () => Store;
+
+/** What an optimistic insert knows about a file before S3 has confirmed it. */
+export type OptimisticFile = {
+  key: string;
+  size?: number;
+  lastModified?: Date;
+};
+
+function fileKey(file: FileItem): string {
+  return file.Key ?? file.id;
+}
+
+function folderKey(folder: Folder): string {
+  return folder.Prefix ?? folder.id;
+}
+
+function fileTime(file: FileItem): number {
+  return file.lastModified ? file.lastModified.getTime() : 0;
+}
+
+function ensureTrailingSlash(prefix: string): string {
+  return prefix.endsWith('/') ? prefix : `${prefix}/`;
+}
+
+/**
+ * A listing with the named objects taken out, matched by whole key.
+ *
+ * Deliberately not `withoutPrefix`. That matches with startsWith, which is what
+ * a folder needs and what a file must never get: removing "report.pdf" by
+ * prefix takes "report.pdf.bak" with it.
+ */
+function withoutKeys(data: PrefixData, keys: ReadonlySet<string>): PrefixData {
+  const files = data.files.filter((file) => !keys.has(fileKey(file)));
+
+  // Returning the same object when nothing matched is what stops a change
+  // aimed at one folder from re-rendering every other one.
+  if (files.length === data.files.length) return data;
+
+  // nextToken and isTruncated describe where the server's cursor stopped, not
+  // what we are holding, so filtering locally leaves both alone.
+  return { ...data, files };
+}
+
+function recentWithoutKeys(
+  data: RecentDataWithCache,
+  keys: ReadonlySet<string>
+): RecentDataWithCache {
+  const files = data.files.filter((file) => !keys.has(fileKey(file)));
+  const allFiles = data._allFiles?.filter((file) => !keys.has(fileKey(file)));
+
+  if (files.length === data.files.length && allFiles?.length === data._allFiles?.length) {
+    return data;
+  }
+
+  return {
+    ...data,
+    files,
+    _allFiles: allFiles,
+    // The rule recentWithoutPrefix follows: the offset marks how far the
+    // visible window reaches, so it moves with the window. Left behind, "View
+    // more" skips an item for every one removed ahead of it.
+    fileOffset: files.length,
+    hasMoreFiles: allFiles ? allFiles.length > files.length : data.hasMoreFiles,
+  };
+}
+
+/** Index for `key` in a list held in S3's lexicographic order. */
+function sortedIndex<T>(items: readonly T[], key: string, keyOf: (item: T) => string): number {
+  let low = 0;
+  let high = items.length;
+
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (keyOf(items[mid]!) < key) low = mid + 1;
+    else high = mid;
+  }
+
+  return low;
+}
+
+/**
+ * Where a new object belongs in a listing, or null when it belongs to a page
+ * nobody has fetched.
+ *
+ * A truncated listing holds only the pages read so far. An object sorting past
+ * the last of them is not missing from the view - it is in a page the user has
+ * not asked for yet. Putting it in anyway strands it there for good: when that
+ * page does arrive, `appendUnique` finds the key already present and drops the
+ * real object, leaving the guess standing in its place.
+ */
+function insertionIndex<T>(
+  items: readonly T[],
+  key: string,
+  keyOf: (item: T) => string,
+  isTruncated: boolean | undefined
+): number | null {
+  const last = items[items.length - 1];
+  if (isTruncated && last && keyOf(last) < key) return null;
+
+  return sortedIndex(items, key, keyOf);
+}
+
+function insertAt<T>(items: readonly T[], item: T, index: number): T[] {
+  return [...items.slice(0, index), item, ...items.slice(index)];
+}
+
+/**
+ * @param restoring true when putting back a row this session took out.
+ *
+ * The truncation guard is about objects we have never had in the listing. A row
+ * that was in it a moment ago belongs in it still - and once it has been
+ * removed, the key after it becomes the last one, so the guard would refuse to
+ * put back the very row it was asked to restore. That is a rollback silently
+ * losing the last file of a folder with more than a thousand objects in it.
+ */
+function withFile(data: PrefixData, file: FileItem, restoring = false): PrefixData {
+  const key = fileKey(file);
+
+  // Already listed: an upload that overwrote an existing object, or a revert
+  // running twice. Either way the row is there, and adding it would double it.
+  if (data.files.some((existing) => fileKey(existing) === key)) return data;
+
+  const at = insertionIndex(data.files, key, fileKey, restoring ? false : data.isTruncated);
+  if (at === null) return data;
+
+  return { ...data, files: insertAt(data.files, file, at) };
+}
+
+/**
+ * One row swapped for another.
+ *
+ * The truncation guard is deliberately bypassed. This is not a new object
+ * arriving from S3 - it is one the listing was already showing, under another
+ * name - and the guard cannot tell the difference: taking the old row out moves
+ * the last loaded key backwards, so renaming the last row of a truncated folder
+ * looks to it like an object from an unfetched page and it refuses to place it.
+ * A rename would then read as a deletion.
+ *
+ * The cost of bypassing it: in a truncated folder, a name that really does sort
+ * into an unfetched page is shown here anyway, and when that page arrives
+ * `appendUnique` finds the key already present and keeps this row instead. The
+ * row carries the object's real size and timestamp, so what is left is a sort
+ * position that is wrong until the next full read - which is a far smaller
+ * problem than the file appearing to have been deleted.
+ */
+function replacingFile(data: PrefixData, fromKey: string, to: FileItem): PrefixData {
+  return withFile(withoutKeys(data, new Set([fromKey])), to, true);
+}
+
+/** `restoring` as in withFile, for the same reason. */
+function withFolder(data: PrefixData, folder: Folder, restoring = false): PrefixData {
+  const key = folderKey(folder);
+  if (data.folders.some((existing) => folderKey(existing) === key)) return data;
+
+  const at = insertionIndex(data.folders, key, folderKey, restoring ? false : data.isTruncated);
+  if (at === null) return data;
+
+  return { ...data, folders: insertAt(data.folders, folder, at) };
+}
+
+/**
+ * A listing with one folder row taken out, matched by whole prefix.
+ *
+ * The row only - nothing cached *under* the folder. Dropping that is
+ * removeDeletedFolder's job, and it is not what an undo wants.
+ */
+function withoutFolder(data: PrefixData, prefix: string): PrefixData {
+  const folders = data.folders.filter((folder) => folderKey(folder) !== prefix);
+  if (folders.length === data.folders.length) return data;
+
+  return { ...data, folders };
+}
+
+/** Position for `file` in a list held newest-first. */
+function newestFirstIndex(files: readonly FileItem[], file: FileItem): number {
+  const time = fileTime(file);
+  const at = files.findIndex((existing) => fileTime(existing) < time);
+
+  return at === -1 ? files.length : at;
+}
+
+/**
+ * The recent list with one file added, to both the window on screen and the
+ * pagination source behind it.
+ *
+ * `files` is a window onto `_allFiles`; adding to one and not the other makes
+ * "View more" hand back a list that disagrees with what is showing. A file
+ * older than everything on screen goes only into the source, where "View more"
+ * reaches it in its proper place.
+ */
+function recentWithFile(data: RecentDataWithCache, file: FileItem): RecentDataWithCache {
+  const key = fileKey(file);
+  if (data.files.some((existing) => fileKey(existing) === key)) return data;
+  if (data._allFiles?.some((existing) => fileKey(existing) === key)) return data;
+
+  const allFiles = data._allFiles
+    ? insertAt(data._allFiles, file, newestFirstIndex(data._allFiles, file))
+    : undefined;
+
+  // With no pagination source there is no "behind the window" to fall into, so
+  // everything shows.
+  const oldestVisible = data.files[data.files.length - 1];
+  const belongsOnScreen =
+    !allFiles || oldestVisible === undefined || fileTime(file) >= fileTime(oldestVisible);
+
+  const files = belongsOnScreen
+    ? insertAt(data.files, file, newestFirstIndex(data.files, file))
+    : data.files;
+
+  return {
+    ...data,
+    files,
+    _allFiles: allFiles,
+    fileOffset: files.length,
+    hasMoreFiles: allFiles ? allFiles.length > files.length : data.hasMoreFiles,
+  };
+}
+
+/**
+ * The same for a folder, inserted in lexicographic order.
+ *
+ * Recent folders arrive from S3 in that order and stay in it: a CommonPrefix
+ * carries no LastModified, so the sort in fetchRecentItems has nothing to move
+ * them by and leaves them as they came.
+ */
+function recentWithFolder(data: RecentDataWithCache, folder: Folder): RecentDataWithCache {
+  const key = folderKey(folder);
+  if (data.folders.some((existing) => folderKey(existing) === key)) return data;
+  if (data._allFolders?.some((existing) => folderKey(existing) === key)) return data;
+
+  const allFolders = data._allFolders
+    ? insertAt(data._allFolders, folder, sortedIndex(data._allFolders, key, folderKey))
+    : undefined;
+
+  const at = sortedIndex(data.folders, key, folderKey);
+  const belongsOnScreen = !allFolders || at < data.folders.length || !data.hasMoreFolders;
+
+  const folders = belongsOnScreen ? insertAt(data.folders, folder, at) : data.folders;
+
+  return {
+    ...data,
+    folders,
+    _allFolders: allFolders,
+    folderOffset: folders.length,
+    hasMoreFolders: allFolders ? allFolders.length > folders.length : data.hasMoreFolders,
+  };
+}
+
+function recentWithoutFolder(data: RecentDataWithCache, prefix: string): RecentDataWithCache {
+  const folders = data.folders.filter((folder) => folderKey(folder) !== prefix);
+  const allFolders = data._allFolders?.filter((folder) => folderKey(folder) !== prefix);
+
+  if (folders.length === data.folders.length && allFolders?.length === data._allFolders?.length) {
+    return data;
+  }
+
+  return {
+    ...data,
+    folders,
+    _allFolders: allFolders,
+    folderOffset: folders.length,
+    hasMoreFolders: allFolders ? allFolders.length > folders.length : data.hasMoreFolders,
+  };
+}
+
+/** The five prefix-keyed maps, as the copies a functional update is building. */
+type StatusMaps = {
+  cache: Record<string, PrefixData>;
+  recentCache: Record<string, RecentDataWithCache>;
+  directory: Record<string, RequestState>;
+  recent: Record<string, RequestState>;
+  loadMoreStatus: Record<string, Status>;
+};
+
+/**
+ * Puts a key's statuses back to something a view can act on, after
+ * `discardOpenRequests` has retired whatever was running for it.
+ *
+ * A retired request returns without writing, and the status it set on the way
+ * in is part of what it never writes. Left alone that is permanent: a listing
+ * behind a skeleton that never resolves, and a "Show more" that refuses to run
+ * again because it still reads as loading. What is cached is what there is to
+ * show, so say so.
+ *
+ * Mutates the maps it is handed.
+ */
+function repairStrandedStatus(key: string, maps: StatusMaps): void {
+  if (maps.directory[key]?.status === 'loading') {
+    if (maps.cache[key]) maps.directory[key] = { status: 'ready' };
+    else delete maps.directory[key];
+  }
+
+  if (maps.recent[key]?.status === 'loading') {
+    if (maps.recentCache[key]) maps.recent[key] = { status: 'ready' };
+    else delete maps.recent[key];
+  }
+
+  if (maps.loadMoreStatus[key] === 'loading') delete maps.loadMoreStatus[key];
+}
+
+/**
+ * Applies one change to a prefix's two listings, as a single write.
+ *
+ * Both listings are read from `state` inside the update rather than from a
+ * snapshot taken beforehand, so two operations landing in the same tick compose
+ * instead of overwriting one another - the lesson loadMoreData records about
+ * appending to a stale copy, applied to every mutation rather than only that
+ * one.
+ *
+ * No status is written. The rows are already right, and writing 'loading' is
+ * what puts a folder behind a skeleton when it has nothing cached to show.
+ */
+function applyToPrefix(
+  set: SetState,
+  get: GetState,
+  key: string,
+  changeDirectory: (data: PrefixData) => PrefixData,
+  changeRecent: (data: RecentDataWithCache) => RecentDataWithCache
+): void {
+  const current = get();
+
+  // Every transform here returns its argument untouched when it matched
+  // nothing, which is the whole point of that convention: a delete in one
+  // folder must not hand the subscribers of every other folder a new store
+  // object. Writing unconditionally would do exactly that, since the write
+  // rebuilds all five maps whether or not anything in them moved.
+  //
+  // Reading state to decide whether to write is safe precisely here: this
+  // function is synchronous start to finish, so nothing can land between the
+  // read and the write the way it can across an await.
+  const directoryData = current.cache[key];
+  const recentData = current.recentCache[key];
+
+  const changesRows =
+    (directoryData !== undefined && changeDirectory(directoryData) !== directoryData) ||
+    (recentData !== undefined && changeRecent(recentData) !== recentData);
+
+  const strandedStatus =
+    current.directory[key]?.status === 'loading' ||
+    current.recent[key]?.status === 'loading' ||
+    current.loadMoreStatus[key] === 'loading';
+
+  // An open request is a reason to write even when no row moved, and it is not
+  // the same question as whether anything is cached. Delete a file from a
+  // folder being listed for the very first time and there is nothing cached to
+  // change - but that listing is still on its way, still describing the file as
+  // present, and retiring it is the only thing standing between the user and
+  // watching the row come back.
+  const hasOpenRequest =
+    inFlightFetches.has(key) || inFlightRecentFetches.has(key) || inFlightLoadMores.has(key);
+
+  if (!changesRows && !strandedStatus && !hasOpenRequest) return;
+
+  // A read issued before this change is about to describe the prefix as it was,
+  // and it would land on top of what we are writing. Retiring it here turns it
+  // into a no-op when it arrives.
+  discardOpenRequests(key);
+
+  set((state) => {
+    const cache = { ...state.cache };
+    const recentCache = { ...state.recentCache };
+    const directory = { ...state.directory };
+    const recent = { ...state.recent };
+    const loadMoreStatus = { ...state.loadMoreStatus };
+
+    const directoryData = cache[key];
+    const recentData = recentCache[key];
+
+    if (directoryData) cache[key] = changeDirectory(directoryData);
+    if (recentData) recentCache[key] = changeRecent(recentData);
+
+    repairStrandedStatus(key, { cache, recentCache, directory, recent, loadMoreStatus });
+
+    return { cache, recentCache, directory, recent, loadMoreStatus };
+  });
+
+  // Cached search results for this prefix now list something that is gone, or
+  // miss something that is there. invalidatePrefix drops only those entries;
+  // clearCache would blank a search page the user is reading.
+  useSearchStore.getState().invalidatePrefix(key);
+}
+
+/** Groups object keys by the cache key of the listing that holds them. */
+function groupKeysByPrefix(keys: readonly string[]): Map<string, Set<string>> {
+  const groups = new Map<string, Set<string>>();
+
+  for (const key of keys) {
+    const cacheKey = toCacheKey(getParentPrefix(key));
+    const group = groups.get(cacheKey);
+
+    if (group) group.add(key);
+    else groups.set(cacheKey, new Set([key]));
+  }
+
+  return groups;
+}
+
 export const useDriveStore = create<Store>((set, get) => ({
   apiS3: null,
   cache: {},
@@ -424,18 +858,8 @@ export const useDriveStore = create<Store>((set, get) => ({
 
       // A request retired above never writes, which includes the status it set
       // on its way out. Anything the parent had in flight would sit on
-      // 'loading' for good: a listing stuck behind its skeleton, and a "Show
-      // more" that refuses to run again because it thinks one is still going.
-      // What is already cached is what there is to show, so say so.
-      if (directory[parentKey]?.status === 'loading') {
-        if (cache[parentKey]) directory[parentKey] = { status: 'ready' };
-        else delete directory[parentKey];
-      }
-      if (recent[parentKey]?.status === 'loading') {
-        if (recentCache[parentKey]) recent[parentKey] = { status: 'ready' };
-        else delete recent[parentKey];
-      }
-      if (loadMoreStatus[parentKey] === 'loading') delete loadMoreStatus[parentKey];
+      // 'loading' for good.
+      repairStrandedStatus(parentKey, { cache, recentCache, directory, recent, loadMoreStatus });
 
       return { cache, recentCache, directory, recent, loadMoreStatus };
     });
@@ -445,6 +869,225 @@ export const useDriveStore = create<Store>((set, get) => ({
     // started from a search result would blank the whole page the user is
     // reading. A cached query that still lists the folder goes stale on its own
     // TTL, which is the smaller problem of the two.
+  },
+
+  removeFiles: (keys) => {
+    if (keys.length === 0) return NO_REVERT;
+
+    const groups = groupKeysByPrefix(keys);
+
+    // The rows themselves, read before the removal, so the revert puts back
+    // exactly what this call took out and nothing else.
+    const removed: { prefix: string; file: FileItem }[] = [];
+    const { cache } = get();
+
+    for (const [prefix, group] of groups) {
+      for (const file of cache[prefix]?.files ?? []) {
+        if (group.has(fileKey(file))) removed.push({ prefix, file });
+      }
+    }
+
+    for (const [prefix, group] of groups) {
+      applyToPrefix(
+        set,
+        get,
+        prefix,
+        (data) => withoutKeys(data, group),
+        (data) => recentWithoutKeys(data, group)
+      );
+    }
+
+    // Nothing was showing, so nothing needs putting back. The listing will
+    // arrive already correct whenever it is read.
+    if (removed.length === 0) return NO_REVERT;
+
+    return () => {
+      for (const { prefix, file } of removed) {
+        applyToPrefix(
+          set,
+          get,
+          prefix,
+          (data) => withFile(data, file, true),
+          (data) => recentWithFile(data, file)
+        );
+      }
+    };
+  },
+
+  addFile: (prefix, file) => {
+    const key = toCacheKey(prefix);
+
+    // The same shape a listing would have given us, built from what the upload
+    // already knows. An absent timestamp means now: this object was written a
+    // moment ago, which is exactly where the recent list should show it.
+    const item = enrichFile({
+      Key: file.key,
+      Size: file.size,
+      LastModified: file.lastModified ?? new Date(),
+    });
+
+    // Was the row already there before this call? An upload that replaced an
+    // existing object finds it listed and withFile leaves it alone - so this
+    // call added nothing, and handing back an undo that removes it would take
+    // out a row this call is not responsible for.
+    const alreadyListed = (get().cache[key]?.files ?? []).some(
+      (existing) => fileKey(existing) === file.key
+    );
+
+    applyToPrefix(
+      set,
+      get,
+      key,
+      (data) => withFile(data, item),
+      (data) => recentWithFile(data, item)
+    );
+
+    if (alreadyListed) return NO_REVERT;
+
+    return () => {
+      const gone = new Set([file.key]);
+
+      applyToPrefix(
+        set,
+        get,
+        key,
+        (data) => withoutKeys(data, gone),
+        (data) => recentWithoutKeys(data, gone)
+      );
+    };
+  },
+
+  addFolder: (prefix, name) => {
+    const parentKey = toCacheKey(prefix);
+    const folderPrefix = `${prefix === '/' ? '' : prefix}${name}/`;
+    const folder = enrichFolder({ Prefix: folderPrefix });
+
+    // As in addFile: creating a folder over one that is already listed - the
+    // "replace" answer to the duplicate prompt - adds nothing, so there is
+    // nothing for an undo to take away. Removing the row anyway would delete a
+    // folder from the listing that is still perfectly real.
+    const alreadyListed = (get().cache[parentKey]?.folders ?? []).some(
+      (existing) => folderKey(existing) === folderPrefix
+    );
+
+    applyToPrefix(
+      set,
+      get,
+      parentKey,
+      (data) => withFolder(data, folder),
+      (data) => recentWithFolder(data, folder)
+    );
+
+    if (alreadyListed) return NO_REVERT;
+
+    return () => {
+      applyToPrefix(
+        set,
+        get,
+        parentKey,
+        (data) => withoutFolder(data, folderPrefix),
+        (data) => recentWithoutFolder(data, folderPrefix)
+      );
+    };
+  },
+
+  renameFile: (oldKey, newKey) => {
+    const prefix = toCacheKey(getParentPrefix(oldKey));
+    const existing = get().cache[prefix]?.files.find((file) => fileKey(file) === oldKey);
+
+    // Nothing cached to rename; the listing will arrive already correct.
+    if (!existing) return NO_REVERT;
+
+    // Size, timestamp and ETag survive a rename. The key is what changes, and
+    // the name, extension and id are read back off it by enrichFile.
+    //
+    // The two put back afterwards are the ones enrichFile infers from the raw
+    // S3 fields rather than from the row: a FileItem is only guaranteed to
+    // carry the enriched `size` and `lastModified`, so a row built anywhere but
+    // a listing comes back from enrichFile with no date at all - and a file
+    // with no date sorts to the bottom of the recent list instead of staying
+    // where the user just renamed it.
+    const renamed: FileItem = {
+      ...enrichFile({ ...existing, Key: newKey }),
+      size: existing.size,
+      lastModified: existing.lastModified,
+    };
+
+    // Is something already sitting at the new key? Answering "replace" to the
+    // duplicate prompt renames onto a row that is already listed, so withFile
+    // leaves it alone and this call adds nothing - it only takes the old row
+    // out. Undoing by removing the new key would then delete a file this call
+    // never touched and which is still perfectly real.
+    const targetOccupied = (get().cache[prefix]?.files ?? []).some(
+      (file) => fileKey(file) === newKey
+    );
+
+    // Out and back in rather than in place: the new name sorts somewhere else,
+    // and a row left at the old index is a listing out of order.
+    const swap = (from: FileItem, to: FileItem) => {
+      const fromKey = fileKey(from);
+      const gone = new Set([fromKey]);
+
+      applyToPrefix(
+        set,
+        get,
+        prefix,
+        (data) => replacingFile(data, fromKey, to),
+        (data) => recentWithFile(recentWithoutKeys(data, gone), to)
+      );
+    };
+
+    swap(existing, renamed);
+
+    if (targetOccupied) {
+      // Put back only the row this call removed. Whoever was at the new key
+      // was there first and stays.
+      return () => {
+        applyToPrefix(
+          set,
+          get,
+          prefix,
+          (data) => withFile(data, existing, true),
+          (data) => recentWithFile(data, existing)
+        );
+      };
+    }
+
+    return () => swap(renamed, existing);
+  },
+
+  renameFolder: (prefix, newName) => {
+    const normalized = ensureTrailingSlash(prefix);
+
+    // '/' is the root, which is not a folder anyone can rename.
+    if (normalized === '/' || normalized === '') return NO_REVERT;
+
+    const parent = getParentPrefix(normalized);
+    const parentKey = toCacheKey(parent);
+    const existing = get().cache[parentKey]?.folders.find(
+      (folder) => folderKey(folder) === normalized
+    );
+
+    // Every listing cached under the old prefix describes objects that have
+    // moved, so they go along with the row in the parent. What is dropped here
+    // is re-read on the next visit; the undo below only restores the row, which
+    // is the part anyone is looking at.
+    get().removeDeletedFolder(normalized);
+    const undoAdd = get().addFolder(parent, newName);
+
+    return () => {
+      undoAdd();
+
+      if (existing) {
+        applyToPrefix(
+          set,
+          get,
+          parentKey,
+          (data) => withFolder(data, existing, true),
+          (data) => recentWithFolder(data, existing)
+        );
+      }
+    };
   },
 
   fetchData: async (opts = { sync: false }) => {
@@ -464,14 +1107,19 @@ export const useDriveStore = create<Store>((set, get) => ({
     // Avoid duplicate concurrent fetches unless forced by sync
     const currStatus = directory[keyPrefix]?.status;
 
-    if (currStatus === 'ready' && !opts.sync) return;
+    // A silent read is a forced one. Its whole purpose is to replace what is
+    // cached, so the checks that skip a fetch when data is present must let it
+    // through the same way a sync does.
+    const force = opts.sync === true || opts.silent === true;
+
+    if (currStatus === 'ready' && !force) return;
 
     const currentData = cache[keyPrefix];
 
     // Data already present and nobody asked for fresh; just reflect it.
     // Don't auto-refetch just because isTruncated is true - let the user decide
     // with the "Show More" button.
-    if (currentData && !opts.sync) {
+    if (currentData && !force) {
       if (currStatus !== 'ready') setDirectoryState(keyPrefix, 'ready');
       return;
     }
@@ -480,11 +1128,13 @@ export const useDriveStore = create<Store>((set, get) => ({
     // identical one. Navigating A -> B -> A did exactly that: A's first request
     // is still 'loading' rather than 'ready', so the status check above let it
     // through, and cache[A] was still empty, so the data check did too.
-    return runDeduped(inFlightFetches, keyPrefix, !opts.sync, async () => {
+    return runDeduped(inFlightFetches, keyPrefix, !force, async () => {
       const requestId = claimRequestId(latestRequestId, keyPrefix);
 
       try {
-        setDirectoryState(keyPrefix, 'loading');
+        // A silent read leaves the status alone. 'loading' only means anything
+        // with nothing to show, and this one runs over a listing already up.
+        if (!opts.silent) setDirectoryState(keyPrefix, 'loading');
 
         // Always read from the top. This branch only runs when there is no data
         // yet or a sync was forced, and either way the result replaces the cache
@@ -509,6 +1159,12 @@ export const useDriveStore = create<Store>((set, get) => ({
         // result, or a folder that loaded fine renders as failed.
         if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
 
+        // Neither may a silent read. toAsyncState checks 'error' before it
+        // checks for data, so writing it here would replace a listing the user
+        // is reading with a full-page failure notice - over rows that are still
+        // perfectly good. A background read that failed changes nothing.
+        if (opts.silent && get().cache[keyPrefix]) return;
+
         // One write, so there is no frame in which the row knows it failed
         // but not why.
         setDirectoryState(keyPrefix, 'error', classifyConnectionFailure(error));
@@ -516,7 +1172,7 @@ export const useDriveStore = create<Store>((set, get) => ({
     });
   },
 
-  refreshCurrentData: async () => {
+  refreshCurrentData: async (opts) => {
     const { fetchData, fetchRecentItems, currentPrefix, rootPrefix } = get();
 
     // Only refresh if we have valid prefixes set
@@ -526,8 +1182,8 @@ export const useDriveStore = create<Store>((set, get) => ({
 
       // Refresh both regular cache and recent cache in parallel
       await Promise.all([
-        fetchData({ sync: true }),
-        fetchRecentItems({ sync: true, itemsPerType: 10 }),
+        fetchData({ sync: true, silent: opts?.silent }),
+        fetchRecentItems({ sync: true, silent: opts?.silent, itemsPerType: 10 }),
       ]);
     }
   },
@@ -560,7 +1216,12 @@ export const useDriveStore = create<Store>((set, get) => ({
     const keyPrefix = formattedPrefix === '' ? '/' : formattedPrefix;
 
     const currStatus = recent[keyPrefix]?.status;
-    if (currStatus === 'ready' && !opts.sync) return;
+
+    // Same rule as fetchData: silent still means read, it just means read
+    // quietly.
+    const force = opts.sync === true || opts.silent === true;
+
+    if (currStatus === 'ready' && !force) return;
 
     // Ensure itemsPerType has a default value
     const itemsPerType = opts.itemsPerType ?? 10;
@@ -568,11 +1229,11 @@ export const useDriveStore = create<Store>((set, get) => ({
     // Same A -> B -> A race as fetchData: 'loading' is not 'ready', so
     // returning to a folder whose recent-items request is still open used to
     // fire a second identical one.
-    return runDeduped(inFlightRecentFetches, keyPrefix, !opts.sync, async () => {
+    return runDeduped(inFlightRecentFetches, keyPrefix, !force, async () => {
       const requestId = claimRequestId(latestRecentRequestId, keyPrefix);
 
       try {
-        setRecentState(keyPrefix, 'loading');
+        if (!opts.silent) setRecentState(keyPrefix, 'loading');
 
         // Fetch up to 1000 items from current directory
         const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
@@ -611,7 +1272,12 @@ export const useDriveStore = create<Store>((set, get) => ({
 
         // Store all sorted data for pagination (keeping full sorted arrays in memory temporarily)
         const existingCache = recentCache[keyPrefix];
-        if (!existingCache || opts.sync) {
+
+        // `force`, not `opts.sync`: a silent read replaces the listing, so it
+        // has to replace the pagination source behind it too. Leaving the old
+        // _allFiles in place would let "View more" hand back rows this read
+        // just established are gone.
+        if (!existingCache || force) {
           // Store full sorted arrays for pagination access
           recentData._allFiles = sortedFiles;
           recentData._allFolders = sortedFolders;
@@ -621,6 +1287,10 @@ export const useDriveStore = create<Store>((set, get) => ({
         setRecentState(keyPrefix, 'ready');
       } catch (error) {
         if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
+
+        // As in fetchData: a failed background read must not replace a good
+        // list with an error notice.
+        if (opts.silent && get().recentCache[keyPrefix]) return;
 
         setRecentState(keyPrefix, 'error', classifyConnectionFailure(error));
       }

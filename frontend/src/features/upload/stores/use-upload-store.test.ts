@@ -4,7 +4,8 @@
  *
  * `@opndrive/s3-api` is mocked at the module boundary - it has its own suite and
  * nothing here should depend on real S3 behaviour. The data context is mocked
- * too, because completing an upload asks it to refresh.
+ * too, because completing an upload reaches into it: to add the row it just
+ * produced, or - when the card cannot say where it landed - to re-read.
  *
  * NOTE: this store also keeps a module-scope `refreshState` object that lives
  * OUTSIDE zustand, so the automatic store reset does not clear it. It debounces
@@ -16,8 +17,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useUploadStore } from './use-upload-store';
 
-const { refreshCurrentData } = vi.hoisted(() => ({
+const { refreshCurrentData, addFile, addFolder, removeFiles } = vi.hoisted(() => ({
   refreshCurrentData: vi.fn(async () => {}),
+  addFile: vi.fn(() => () => {}),
+  addFolder: vi.fn(() => () => {}),
+  removeFiles: vi.fn(() => () => {}),
 }));
 
 vi.mock('@opndrive/s3-api', () => ({
@@ -27,7 +31,7 @@ vi.mock('@opndrive/s3-api', () => ({
 }));
 
 vi.mock('@/context/data-context', () => ({
-  useDriveStore: { getState: () => ({ refreshCurrentData }) },
+  useDriveStore: { getState: () => ({ refreshCurrentData, addFile, addFolder, removeFiles }) },
 }));
 
 const store = () => useUploadStore.getState();
@@ -587,5 +591,163 @@ describe('duplicate prompt queue', () => {
   it('ignores a dismiss when nothing is queued', () => {
     expect(() => store().hideDuplicateDialog()).not.toThrow();
     expect(store().duplicateQueue).toEqual([]);
+  });
+});
+
+/**
+ * Placing the row a finished upload produced.
+ *
+ * The tests above still pass because their cards carry no destination - which
+ * is the fallback, and stays throttled. These cover the path that replaced it.
+ */
+describe('placing the finished row', () => {
+  // Same discipline as 'refresh on completion': the 3s debounce lives outside
+  // zustand, so each test gets a clock that has definitively moved past it.
+  let clock = Date.UTC(2026, 6, 1);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clock += 10 * 60 * 1000;
+    vi.setSystemTime(clock);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('adds a loose file to the prefix it landed in', () => {
+    store().addUpload(
+      'u1',
+      upload({
+        status: 'uploading',
+        key: 'docs/a.txt',
+        size: 120,
+        destinationPrefix: 'docs/',
+      })
+    );
+
+    store().updateUpload('u1', { status: 'completed' });
+
+    expect(addFile).toHaveBeenCalledWith('docs/', { key: 'docs/a.txt', size: 120 });
+    // The whole point: the folder the user is standing in is not re-listed
+    // just because something finished somewhere else.
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('clears any row the upload replaced before adding the new one', () => {
+    store().addUpload(
+      'u1',
+      upload({ status: 'uploading', key: 'docs/a.txt', size: 9, destinationPrefix: 'docs/' })
+    );
+
+    store().updateUpload('u1', { status: 'completed' });
+
+    // Answering the duplicate prompt with "replace" overwrites an object that
+    // is already listed. Inserting alone would find the key present and leave
+    // the row describing the version that was replaced.
+    expect(removeFiles).toHaveBeenCalledWith(['docs/a.txt']);
+    expect(removeFiles.mock.invocationCallOrder[0]).toBeLessThan(
+      addFile.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it('places every file of a batch, however fast they land', () => {
+    const ids = Array.from({ length: 10 }, (_, index) => `u${index}`);
+
+    for (const id of ids) {
+      store().addUpload(
+        id,
+        upload({
+          id,
+          status: 'uploading',
+          key: `docs/${id}.txt`,
+          size: 1,
+          destinationPrefix: 'docs/',
+        })
+      );
+    }
+
+    // No clock movement between them: this is ten uploads finishing inside the
+    // same instant, which is exactly what the 3s debounce used to swallow. Nine
+    // of these rows would simply never have appeared.
+    for (const id of ids) store().updateUpload(id, { status: 'completed' });
+
+    expect(addFile).toHaveBeenCalledTimes(10);
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('adds one folder row rather than a row per file', () => {
+    store().addUpload(
+      'folder',
+      upload({
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        status: 'uploading',
+        destinationPrefix: 'docs/',
+      })
+    );
+
+    store().updateUpload('folder', { status: 'completed' });
+
+    expect(addFolder).toHaveBeenCalledWith('docs/', 'photos');
+    expect(addFile).not.toHaveBeenCalled();
+  });
+
+  it('adds nothing for a file still inside an unfinished folder', () => {
+    store().addUpload(
+      'folder',
+      upload({ id: 'folder', type: 'folder', fileIds: ['a', 'b'], destinationPrefix: 'docs/' })
+    );
+    store().addUpload('a', upload({ id: 'a', parentFolderId: 'folder', key: 'docs/p/a.txt' }));
+    store().addUpload('b', upload({ id: 'b', parentFolderId: 'folder', key: 'docs/p/b.txt' }));
+
+    store().updateUpload('a', { status: 'completed' });
+
+    expect(addFile).not.toHaveBeenCalled();
+    expect(addFolder).not.toHaveBeenCalled();
+  });
+
+  it('adds the folder row once its last file lands', () => {
+    store().addUpload(
+      'folder',
+      upload({
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        fileIds: ['a', 'b'],
+        destinationPrefix: 'docs/',
+      })
+    );
+    store().addUpload('a', upload({ id: 'a', parentFolderId: 'folder', status: 'completed' }));
+    store().addUpload('b', upload({ id: 'b', parentFolderId: 'folder' }));
+
+    store().updateUpload('b', { status: 'completed' });
+
+    expect(addFolder).toHaveBeenCalledWith('docs/', 'photos');
+    expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a re-read when the card cannot say where it landed', async () => {
+    // A card raised for a dispatch the manager refused never reached the
+    // executor, so it has no key and no destination to place anything with.
+    store().addUpload('u1', upload({ status: 'uploading' }));
+
+    store().updateUpload('u1', { status: 'completed' });
+
+    expect(addFile).not.toHaveBeenCalled();
+    expect(refreshCurrentData).toHaveBeenCalledOnce();
+    await Promise.resolve();
+  });
+
+  it('re-reads silently, over rows that are already up', async () => {
+    store().addUpload('u1', upload({ status: 'uploading' }));
+
+    store().updateUpload('u1', { status: 'completed' });
+
+    // Announcing it as loading, or letting a failure write an error over a
+    // listing the user is reading, is the blanking this change exists to avoid.
+    expect(refreshCurrentData).toHaveBeenCalledWith({ silent: true });
+    await Promise.resolve();
   });
 });

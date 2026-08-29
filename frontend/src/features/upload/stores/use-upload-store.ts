@@ -50,6 +50,57 @@ interface UploadProgress {
   error?: string;
   parentFolderId?: string; // For files that belong to a folder
   fileIds?: string[]; // For folders, track their file IDs
+
+  /**
+   * Where this upload lands, and what it will be once it has.
+   *
+   * A card used to carry nothing but progress, which is why finishing one could
+   * do no better than re-list whatever prefix the user happened to be standing
+   * in - the wrong folder entirely once they had walked away from the one they
+   * uploaded into, and two full listings of a thousand objects either way.
+   * These three are what let a finished upload add its own row instead.
+   *
+   * `destinationPrefix` is the listing that gains a row: for a file the prefix
+   * holding it, for a folder the prefix *above* it, since the folder's own name
+   * is already in `name`. `key` and `size` describe the object itself and are a
+   * file's alone.
+   *
+   * All optional, because a card can exist without ever having reached the
+   * executor - the one raised for a dispatch the manager refused has no
+   * destination to speak of, and falls back to a re-read.
+   */
+  key?: string;
+  size?: number;
+  destinationPrefix?: string;
+}
+
+/**
+ * Adds the row a finished upload produced to the listing it landed in.
+ *
+ * @returns false when the card does not carry enough to place a row, leaving
+ * the caller to fall back to a re-read.
+ */
+function placeFinishedUpload(upload: UploadProgress): boolean {
+  if (upload.destinationPrefix === undefined) return false;
+
+  const { addFile, addFolder, removeFiles } = useDriveStore.getState();
+
+  if (upload.type === 'folder') {
+    addFolder(upload.destinationPrefix, upload.name);
+    return true;
+  }
+
+  if (upload.key === undefined) return false;
+
+  // Out and back in rather than a plain insert. An upload that answered the
+  // duplicate prompt with "replace" has overwritten an object that is already
+  // listed, and inserting would find the key present and leave that row showing
+  // the size and time of the version it replaced. Removing first is a no-op
+  // when there was nothing there, which is the ordinary case.
+  removeFiles([upload.key]);
+  addFile(upload.destinationPrefix, { key: upload.key, size: upload.size });
+
+  return true;
 }
 
 interface DeleteProgress {
@@ -57,13 +108,30 @@ interface DeleteProgress {
   name: string;
   status: 'queued' | 'deleting' | 'completed' | 'failed' | 'cancelled';
   progress: number;
-  type: 'file' | 'folder';
+  /**
+   * What is being deleted, which is what picks the card's icon.
+   *
+   * 'mixed' exists because a multi-select is not necessarily either. Batch
+   * deletes used to hardcode 'folder' here to get *an* icon, so deleting a
+   * single photo drew a folder - and a selection of eight files drew a folder
+   * too, next to a label that correctly read "Deleting 8 files".
+   */
+  type: 'file' | 'folder' | 'mixed';
   size?: number;
   totalFiles?: number;
   completedFiles?: number;
   operationLabel?: string;
   extension?: string;
   isCalculatingSize?: boolean;
+  /**
+   * The names of what is being deleted, for a card that would otherwise only
+   * say how many.
+   *
+   * Precomputed to a single string rather than an array: the operations panel
+   * memoises each row on shallow-equal props, and an array rebuilt on every
+   * render defeats that for every row at once.
+   */
+  detail?: string;
   /**
    * Created and owned by the store, never by a component. See
    * `startDeleteOperation` for why.
@@ -208,19 +276,28 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     }));
 
-    // Smart refresh on upload completion
+    // A finished upload adds its own row. Only a card that cannot say where it
+    // landed falls back to re-listing.
     if (updates.status === 'completed') {
       const { refreshDataAfterUploadBatch } = get();
       const state = get();
       const completedUpload = state.uploads[id];
 
-      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
-        // Individual file completed (not part of a folder) - refresh immediately
+      const placeOrRefresh = (upload: UploadProgress) => {
+        if (placeFinishedUpload(upload)) return;
+
         refreshDataAfterUploadBatch().catch(() => {
           // Silently handle refresh errors
         });
+      };
+
+      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
+        // A loose file, which is one row in the prefix it was dropped into.
+        placeOrRefresh(completedUpload);
       } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
-        // File is part of a folder - check if entire folder is complete
+        // A file inside a folder. Nothing is added for it on its own: the
+        // listing that changes is the one *above* the folder, and it gains a
+        // single row for the folder itself, once every file in it has landed.
         const parentFolderId = completedUpload.parentFolderId;
         const folderUpload = state.uploads[parentFolderId];
 
@@ -231,17 +308,10 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
             return fileUpload && fileUpload.status === 'completed';
           });
 
-          if (allFilesCompleted) {
-            refreshDataAfterUploadBatch().catch(() => {
-              // Silently handle refresh errors
-            });
-          }
+          if (allFilesCompleted) placeOrRefresh(folderUpload);
         }
       } else if (completedUpload.type === 'folder') {
-        // Folder upload completed - refresh immediately
-        refreshDataAfterUploadBatch().catch(() => {
-          // Silently handle refresh errors
-        });
+        placeOrRefresh(completedUpload);
       }
     }
   },
@@ -469,7 +539,17 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       duplicateQueue: state.duplicateQueue.slice(1),
     })),
 
-  // Simple immediate data refresh on upload completion
+  /**
+   * The fallback, for an upload that finished without enough on its card to
+   * place a row of its own.
+   *
+   * Still throttled, because this is the expensive path - two full listings of
+   * the prefix - and several landing together would each pay for it.
+   *
+   * Nothing throttles the row placement this now stands behind, and nothing
+   * may: ten files finishing inside the same second each add their own row, and
+   * a throttle there would silently drop nine of them.
+   */
   refreshDataAfterUploadBatch: async (): Promise<void> => {
     const now = Date.now();
 
@@ -487,7 +567,11 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     try {
       // Get refreshCurrentData function from data context
       const { refreshCurrentData } = useDriveStore.getState();
-      await refreshCurrentData();
+
+      // Silent: this runs over a listing that is already on screen, so it must
+      // not announce itself as loading, and a failure must not replace those
+      // rows with an error notice.
+      await refreshCurrentData({ silent: true });
     } finally {
       refreshState.isRefreshing = false;
     }
@@ -498,7 +582,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
     try {
       const { refreshCurrentData } = useDriveStore.getState();
-      await refreshCurrentData();
+      await refreshCurrentData({ silent: true });
     } finally {
       refreshState.isRefreshing = false;
       refreshState.lastRefreshAttempt = Date.now();

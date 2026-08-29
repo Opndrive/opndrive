@@ -16,6 +16,41 @@ import {
   isFolderMarker,
 } from '@/shared/utils/drive-item';
 
+/**
+ * How many names the confirmation lists before the rest become a count.
+ *
+ * Eight fits a dialog without scrolling it. There was no cap at all before, so
+ * selecting four hundred files built a four-hundred-name paragraph and asked
+ * the user to read it.
+ */
+const MAX_LISTED_NAMES = 8;
+
+/**
+ * What is about to be deleted, one name per line.
+ *
+ * Comma-joined and quoted, the way this used to read, eight names arrive as a
+ * single run-on line that has to be parsed rather than scanned - which is the
+ * one thing a destructive confirmation must not ask of anyone.
+ *
+ * Folders keep a trailing slash. In a plain list it is the only thing that says
+ * a name is a folder, and a folder is the one entry here that takes more than
+ * itself with it.
+ */
+function listNames(items: (FileItem | Folder)[], folders: readonly (FileItem | Folder)[]): string {
+  // Not Folder[]: a folder marker is a FileItem that happens to be a folder,
+  // which is exactly why isFolderLike is not a type predicate. Identity is all
+  // this needs anyway - the set only answers "was this one of them?".
+  const isFolder = new Set<FileItem | Folder>(folders);
+
+  const named = items
+    .slice(0, MAX_LISTED_NAMES)
+    .map((item) => (isFolder.has(item) ? `${item.name}/` : item.name));
+
+  const remaining = items.length - named.length;
+
+  return remaining > 0 ? `${named.join('\n')}\nand ${remaining} more` : named.join('\n');
+}
+
 interface UseMultiSelectActionsProps {
   openMultiShareDialog: (files: FileItem[]) => void;
 }
@@ -93,11 +128,25 @@ export function useMultiSelectActions({ openMultiShareDialog }: UseMultiSelectAc
       const folders = items.filter(isFolderLike);
 
       // Show confirmation dialog
-      const itemNames = items.map((item) => `"${item.name}"`).join(', ');
-      const confirmMessage =
-        items.length === 1
-          ? `${itemNames} will be deleted forever. This action cannot be undone.`
-          : `${items.length} items will be deleted forever. This action cannot be undone.\n\nItems: ${itemNames}`;
+      const single = items.length === 1 ? items[0]! : undefined;
+
+      // Deleting a folder takes everything underneath it. The single-folder
+      // dialog has always said so; this one never did, so a selection with a
+      // folder in it asked for confirmation without mentioning the part that
+      // cannot be taken back - and the count alone gives no hint that one of
+      // those five items might hold ten thousand more.
+      const consequence =
+        folders.length > 0
+          ? 'Deleting a folder also deletes everything inside it. This action cannot be undone.'
+          : 'This action cannot be undone.';
+
+      const confirmMessage = single
+        ? folders.length > 0
+          ? `"${single.name}" and everything inside it will be deleted forever. This action cannot be undone.`
+          : `"${single.name}" will be deleted forever. This action cannot be undone.`
+        : // The count is already in the title; repeating it here spent the
+          // first line of the body saying nothing new.
+          `${consequence}\n\n${listNames(items, folders)}`;
 
       const confirmDelete = await confirmAction({
         title: items.length === 1 ? 'Delete forever?' : `Delete ${items.length} items forever?`,

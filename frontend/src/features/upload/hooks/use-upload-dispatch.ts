@@ -29,6 +29,7 @@ import { useUploadStore } from '../stores/use-upload-store';
 import { useUploadExecutor } from '../context/upload-context';
 import type { DispatchResult } from '../services/upload-executor';
 import { objectExists, objectKey } from '@/services/object-existence';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateUniqueFileName } from '../utils/unique-filename';
 
 export interface DropOutcome {
@@ -213,6 +214,9 @@ export function useUploadDispatch() {
             progress: 0,
             type: 'folder',
             fileIds: result.files.map((file) => file.uploadId),
+            // A folder plan's prefix already ends with the folder's resolved
+            // name, so the listing that gains a row for it is the one above.
+            destinationPrefix: getParentPrefix(result.plan.prefix),
           });
 
           for (const file of result.files) {
@@ -225,6 +229,11 @@ export function useUploadDispatch() {
               progress: 0,
               type: 'file',
               parentFolderId: result.taskId,
+              key: file.key,
+              size: file.file.size,
+              // Deliberately no destinationPrefix. These files are not added to
+              // any listing one at a time - the folder card above adds a single
+              // row for all of them once the last one lands.
             });
           }
         } else {
@@ -236,6 +245,12 @@ export function useUploadDispatch() {
               status: 'queued',
               progress: 0,
               type: 'file',
+              key: file.key,
+              size: file.file.size,
+              // Read back off the key that will actually be written rather than
+              // taken from the plan, so the prefix is the one the finished row
+              // will be looked up under whatever the key turned out to be.
+              destinationPrefix: getParentPrefix(file.key),
             });
           }
         }

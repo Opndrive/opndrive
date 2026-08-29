@@ -456,3 +456,99 @@ describe('planning without an api', () => {
     expect(manager.added.map((a) => a.key)).toEqual(['photos/a.jpg']);
   });
 });
+
+/**
+ * What a card carries about where it is going.
+ *
+ * A finished upload adds its own row to the listing it landed in rather than
+ * re-reading whatever prefix the user happens to be standing in. These three
+ * fields are the only thing that makes that possible, and getting the prefix
+ * wrong puts the row in the wrong folder - or in no folder at all.
+ */
+describe('destination on the card', () => {
+  it('points a loose file at the prefix holding it', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), 'docs', apiS3);
+
+    expect(uploads()['upload-0']).toMatchObject({
+      key: 'docs/notes.txt',
+      size: 10,
+      destinationPrefix: 'docs/',
+    });
+  });
+
+  it('points a loose file at the root with an empty prefix', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+
+    // toCacheKey turns '' into '/', which is how the root listing is keyed.
+    expect(uploads()['upload-0']).toMatchObject({
+      key: 'notes.txt',
+      destinationPrefix: '',
+    });
+  });
+
+  it('points a folder at the listing above it', async () => {
+    const dispatchDrop = dispatch();
+
+    const { dispatched } = await dispatchDrop(
+      drop({ folderStructures: [folder('photos')] }),
+      'docs',
+      apiS3
+    );
+
+    // The plan's own prefix is 'docs/photos/' - it already ends with the
+    // folder's name. The row for it goes one level up.
+    expect(uploads()[dispatched[0]!.taskId]).toMatchObject({
+      name: 'photos',
+      destinationPrefix: 'docs/',
+    });
+  });
+
+  it('points a folder dropped at the root at the root', async () => {
+    const dispatchDrop = dispatch();
+
+    const { dispatched } = await dispatchDrop(
+      drop({ folderStructures: [folder('photos')] }),
+      '',
+      apiS3
+    );
+
+    expect(uploads()[dispatched[0]!.taskId]).toMatchObject({
+      name: 'photos',
+      destinationPrefix: '',
+    });
+  });
+
+  it('names a renamed folder by the name it was actually stored under', async () => {
+    mockFolderExists.mockImplementation(async (_api, prefix: string) => prefix === 'photos/');
+    const dispatchDrop = dispatch();
+
+    const { dispatched } = await dispatchDrop(
+      drop({ folderStructures: [folder('photos')] }),
+      '',
+      apiS3
+    );
+
+    // Adding a row called "photos" for a folder stored as "photos (1)" would
+    // put a folder in the listing that nobody can open.
+    expect(uploads()[dispatched[0]!.taskId]).toMatchObject({
+      name: 'photos (1)',
+      destinationPrefix: '',
+    });
+  });
+
+  it('gives a file inside a folder no destination of its own', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ folderStructures: [folder('photos')] }), 'docs', apiS3);
+
+    // These are never added one at a time: the folder card adds a single row
+    // for all of them once the last one lands. A destination here would put a
+    // loose file row into a folder listing that is about to be created.
+    expect(uploads()['upload-0']).toMatchObject({ key: 'docs/photos/a.jpg', size: 10 });
+    expect(uploads()['upload-0']!.destinationPrefix).toBeUndefined();
+  });
+});
