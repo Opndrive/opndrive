@@ -61,10 +61,13 @@ export const useDownloadActions = () => {
          *
          * Starting, cancelling and failing are all written to the operations
          * card as they happen, so a toast saying the same thing was the same
-         * news twice, in two corners of the screen at once. This branch is
-         * different: it runs only if the download threw before the service
-         * could record it, which means there is no row on the card to read and
-         * staying quiet here would lose the failure altogether.
+         * news twice, in two corners of the screen at once.
+         *
+         * This branch is different, and rare: the service reports its own
+         * failures through `onProgress` and never rejects, so the only way here
+         * is something throwing before it takes over - building the service for
+         * a new provider, say. That leaves no row on the card to read, and it is
+         * the one failure that would otherwise pass in silence.
          */
         showError(`Failed to download ${file.name}, ${error}`);
       }

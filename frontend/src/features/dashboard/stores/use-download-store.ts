@@ -88,18 +88,39 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   startDownload: async (api, file, handlers) => {
     const { getService, setProgress, removeDownload } = get();
 
+    /**
+     * Clears the row when its linger is up, unless it is no longer the row this
+     * timer was set for.
+     *
+     * A retry reuses the file id, so an unguarded timer left over from an
+     * attempt that already settled would delete the row of the one now running:
+     * the panel would drop a live transfer, `isDownloading` would go false for
+     * a file still being fetched, and starting it a third time would overwrite
+     * the abort controller of the second, leaving that one uncancellable. Easy
+     * to hit now that a failure lingers eight seconds and can be retried at
+     * once, but the shorter delays could always race the same way.
+     */
+    const clearWhenSettled = (
+      fileId: string,
+      settledAs: DownloadProgress['status'],
+      delay: number
+    ) =>
+      setTimeout(() => {
+        if (get().downloads.get(fileId)?.status === settledAs) removeDownload(fileId);
+      }, delay);
+
     await getService(api).downloadFile(file, {
       onProgress: (progress) => {
         setProgress(progress);
         if (progress.status === 'cancelled') {
-          setTimeout(() => removeDownload(file.id), CANCELLED_LINGER_MS);
+          clearWhenSettled(file.id, 'cancelled', CANCELLED_LINGER_MS);
         }
         if (progress.status === 'error') {
-          setTimeout(() => removeDownload(file.id), ERROR_LINGER_MS);
+          clearWhenSettled(file.id, 'error', ERROR_LINGER_MS);
         }
       },
       onComplete: (fileId) => {
-        setTimeout(() => removeDownload(fileId), COMPLETED_LINGER_MS);
+        clearWhenSettled(fileId, 'completed', COMPLETED_LINGER_MS);
       },
       onError: handlers?.onError,
     });

@@ -225,6 +225,28 @@ describe('startDownload', () => {
     expect(store().downloads.has('file-1')).toBe(false);
   });
 
+  it('does not let a settled row clear the retry that reuses its id', async () => {
+    vi.useFakeTimers();
+    const service = fakeService();
+    service.downloadFile.mockImplementation(async (_f, opts) => {
+      opts.onProgress(progress({ status: 'error', error: 'Network error' }));
+    });
+    createDownloadServiceMock.mockReturnValue(service as never);
+
+    await store().startDownload(apiA, file);
+
+    // Retried while the failed row is still on screen, which is exactly what
+    // eight seconds of linger invites the reader to do.
+    vi.advanceTimersByTime(2000);
+    store().setProgress(progress({ status: 'downloading', progress: 10 }));
+
+    // The timer left over from the failure must not take the live row with it:
+    // the panel would drop a transfer still in flight, and the file would read
+    // as not downloading while it was.
+    vi.advanceTimersByTime(10_000);
+    expect(store().downloads.get('file-1')?.status).toBe('downloading');
+  });
+
   it('does not schedule removal for ordinary progress updates', async () => {
     vi.useFakeTimers();
     const service = fakeService();
