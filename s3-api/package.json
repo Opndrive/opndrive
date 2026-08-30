@@ -28,8 +28,8 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^26.1.2",
-    "@typescript-eslint/eslint-plugin": "^8.67.0",
-    "@typescript-eslint/parser": "^8.67.0",
+    "@typescript-eslint/eslint-plugin": "^8.68.0",
+    "@typescript-eslint/parser": "^8.68.0",
     "@vitest/coverage-v8": "^4.1.10",
     "aws-sdk-client-mock": "^4.1.0",
     "aws-sdk-client-mock-vitest": "^7.1.0",
@@ -40,8 +40,8 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1110.0",
-    "@aws-sdk/s3-request-presigner": "3.1110.0",
+    "@aws-sdk/client-s3": "^3.1119.0",
+    "@aws-sdk/s3-request-presigner": "3.1119.0",
     "dotenv": "^17.2.1",
     "uuid": "^14.0.1"
   }
