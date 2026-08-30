@@ -16,7 +16,6 @@ import { DetailsManager } from '@/features/dashboard/components/ui/details/detai
 import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
-import { DownloadProgressManager } from '@/features/dashboard/components/ui/download-progress-manager';
 import { useAuth } from '@/hooks/use-auth';
 import { UploadCard } from '@/features/upload/components/upload-card';
 import { useDeleteUnloadGuard } from '@/features/upload/hooks/use-delete-unload-guard';
@@ -150,9 +149,9 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
         <DetailsManager />
       </div>
 
+      {/* Downloads report into this same card. They used to have a second one
+          of their own in the opposite corner, showing the same transfer twice. */}
       <UploadCard />
-
-      <DownloadProgressManager />
 
       <FilePreviewModal />
 
