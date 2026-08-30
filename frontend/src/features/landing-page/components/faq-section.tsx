@@ -25,7 +25,10 @@ export default function FAQSection() {
   };
 
   return (
-    <section id="faq" className="bg-background py-12 sm:py-16 md:py-20 lg:py-24">
+    <section
+      id="faq"
+      className="scroll-mt-14 sm:scroll-mt-16 lg:scroll-mt-24 bg-background py-12 sm:py-16 md:py-20 lg:py-24"
+    >
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 md:mb-16">

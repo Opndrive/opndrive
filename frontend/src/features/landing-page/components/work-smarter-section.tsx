@@ -166,7 +166,11 @@ export default function WorkSmarterSection() {
   const active = features[activeFeature];
 
   return (
-    <section ref={sectionRef} id="tools" className="bg-background py-12 sm:py-16 md:py-20 lg:py-24">
+    <section
+      ref={sectionRef}
+      id="tools"
+      className="scroll-mt-14 sm:scroll-mt-16 lg:scroll-mt-24 bg-background py-12 sm:py-16 md:py-20 lg:py-24"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 md:mb-16">

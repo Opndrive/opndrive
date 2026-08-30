@@ -160,7 +160,7 @@ export default function FeaturesSection() {
     <section
       ref={sectionRef}
       id="features"
-      className="py-12 sm:py-16 md:py-20 lg:py-24 bg-background"
+      className="scroll-mt-14 sm:scroll-mt-16 lg:scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-24 bg-background"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}

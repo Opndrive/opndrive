@@ -8,9 +8,6 @@ import { useEffect, useState } from 'react';
  * so watching for it costs nothing per frame. What this replaced was a `scroll`
  * handler calling `getBoundingClientRect()`, which forces a synchronous layout
  * every time the page moves - and the landing page ran two of them at once.
- *
- * False both before the sentinel is reached and while it is on screen; the
- * difference between "not there yet" and "gone past" is the sign of `top`.
  */
 export function useScrolledPast(sentinelId: string): boolean {
   const [scrolledPast, setScrolledPast] = useState(false);
@@ -19,8 +16,30 @@ export function useScrolledPast(sentinelId: string): boolean {
     const sentinel = document.getElementById(sentinelId);
     if (!sentinel) return;
 
-    const observer = new IntersectionObserver(([entry]) => {
-      setScrolledPast(!entry.isIntersecting && entry.boundingClientRect.top < 0);
+    const observer = new IntersectionObserver(([entry]) => setScrolledPast(!entry.isIntersecting), {
+      /**
+       * The root is grown downward until the page cannot be longer than it,
+       * so the sentinel counts as intersecting from the moment the page
+       * loads right up until it leaves over the top edge.
+       *
+       * That is what makes the one transition this hook cares about a real
+       * one. An observer only reports when a target's intersecting state
+       * changes, and against the bare viewport a sentinel below the fold and
+       * a sentinel above it are both simply "not intersecting" - so a jump
+       * straight from one to the other, with no frame in between where the
+       * sentinel was on screen, changed nothing to report and the callback
+       * never ran. The bar stayed hidden on a page that had scrolled well
+       * past the hero.
+       *
+       * Reaching that took no trickery: a `#faq` deep link, the scroll
+       * position a browser restores on a back navigation, or any hero taller
+       * than the viewport - which is every phone once the address bar has
+       * taken its cut - starts the sentinel below the fold and lands past it.
+       *
+       * With the root extended there is only ever one crossing, at the top
+       * edge, and `isIntersecting` alone is the answer.
+       */
+      rootMargin: '0px 0px 100000px 0px',
     });
 
     // Observing fires the callback once with the current position, so a reload

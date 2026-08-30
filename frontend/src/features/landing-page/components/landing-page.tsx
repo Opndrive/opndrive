@@ -72,6 +72,17 @@ export default function LandingPage() {
     router.push(hasSession ? '/dashboard' : '/connect');
   };
 
+  /**
+   * Jump to a section, or leave the page for the ones that are not on it.
+   *
+   * `scrollIntoView` puts the target's top edge at the top of the viewport,
+   * which is the one place a fixed navbar is guaranteed to be - so every link
+   * in this menu landed its own destination's heading underneath the bar the
+   * reader had just tapped. "Curious about Opndrive?" arrived sliced in half.
+   * The sections carry `scroll-mt` matching each navbar's height for that, so
+   * the browser stops short by exactly the bar it is scrolling under; there is
+   * nothing to do here beyond asking for the scroll.
+   */
   const handleNavClick = (href: string) => {
     setIsMobileMenuOpen(false);
     if (href.startsWith('http')) {
@@ -90,9 +101,15 @@ export default function LandingPage() {
 
   return (
     <main>
-      {/* Simple Mobile Navbar - Hidden in hero, visible after */}
+      {/* Simple Mobile Navbar - Hidden in hero, visible after.
+
+          The hairline along the bottom is a shadow rather than `border-b`, so
+          the bar is exactly the `h-14 sm:h-16` it says it is. As a border it
+          measured a pixel taller than that, and the strip below the hero that
+          reserves room for it was sized off the stated height, so the bar sat
+          a pixel over the section it was supposed to stop above. */}
       <div
-        className={`lg:hidden fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border transition-all duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md shadow-[0_1px_0_0_var(--border)] transition-all duration-300 ${
           scrolledPastHero
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 -translate-y-full pointer-events-none'
@@ -121,9 +138,17 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Mobile Menu Dropdown */}
+        {/* Mobile Menu Dropdown.
+
+            Capped at what is left of the viewport below the bar, and scrollable
+            past that. Six links, three action rows and a button come to roughly
+            620px, which clears a tall phone and does not clear a short one once
+            the browser's own chrome has taken its cut - and with nothing to
+            scroll, the "Get Started" button at the bottom simply could not be
+            reached. `dvh` rather than `vh` because the cut the address bar takes
+            is exactly what this needs to measure. */}
         {isMobileMenuOpen && scrolledPastHero && (
-          <div className="border-t border-border bg-card/98 backdrop-blur-md">
+          <div className="border-t border-border bg-card/98 backdrop-blur-md max-h-[calc(100dvh-3.5rem)] sm:max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
               {/* Navigation Links */}
               <div className="space-y-3 mb-4">
@@ -194,21 +219,38 @@ export default function LandingPage() {
       )}
 
       <HeroSection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
+
       {/* Room for the fixed mobile bar, reserved always rather than at the
-          moment it appears. Toggling this padding pushed everything below the
-          hero down by 56px on the exact scroll position where the bar faded in
-          - and an inline style beats `lg:pt-0`, so desktop got the shove too.
-          Held open permanently it costs nothing to look at: the hero is
-          min-h-screen, so this padding is below the fold until the very scroll
-          position where the bar arrives to cover it. */}
-      <div className="pt-14 sm:pt-16 lg:pt-0">
-        <Navbar scrolledPastHero={scrolledPastHero} />
-        <FeaturesSection />
-        <WorkSmarterSection />
-        <FAQSection />
-        <CTASection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
-        <SiteFooter />
+          moment it appears. Toggling it pushed everything below the hero down
+          by 56px on the exact scroll position where the bar faded in - and an
+          inline style beats `lg:pt-0`, so desktop got the shove too.
+
+          Held open permanently it is not, as first written here, hidden until
+          the bar covers it. The bar only arrives once the hero is entirely
+          past, but this strip enters the viewport from the bottom edge a whole
+          screen before that, and it was padding on a transparent wrapper, so
+          what showed through was `body` - `--secondary`, a lighter band than
+          the `--background` on either side of it. It read as a seam in the
+          wrong colour sliding up the page ahead of the navbar.
+
+          So it is a strip of its own now, painted `--background` like its
+          neighbours and carrying the divider artwork, which makes the same
+          56px read as the deliberate join between hero and page that the
+          reader is about to scroll through. Exactly the height of the bar that
+          lands on it, and gone at `lg` where there is no bar to make room for. */}
+      <div
+        aria-hidden="true"
+        className="relative isolate h-14 overflow-hidden bg-background sm:h-16 lg:hidden"
+      >
+        <div className="hero-divider-art absolute inset-0" />
       </div>
+
+      <Navbar scrolledPastHero={scrolledPastHero} />
+      <FeaturesSection />
+      <WorkSmarterSection />
+      <FAQSection />
+      <CTASection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
+      <SiteFooter />
     </main>
   );
 }
