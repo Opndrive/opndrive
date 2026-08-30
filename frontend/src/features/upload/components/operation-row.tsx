@@ -167,8 +167,11 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'downloading' && (
+          // With the percentage, which is the one thing the separate download
+          // card said that this row did not. The ring beside it has always
+          // shown the same figure as a shape; this puts a number on it.
           <p className="text-xs" style={{ color: 'var(--primary)' }}>
-            Downloading...
+            Downloading... {Math.round(progress)}%
           </p>
         )}
         {status === 'pending' && (
@@ -375,7 +378,13 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
                 <HiOutlineXMark className="w-3 h-3" />
               </button>
             </div>
-          ) : status === 'cancelled' ? (
+          ) : status === 'cancelled' || status === 'error' || status === 'failed' ? (
+            // A settled row that did not succeed, which until now meant no
+            // control at all: the chain ran active, then completed, then
+            // cancelled, and anything that had gone wrong fell past all three
+            // to null. So the one row a reader most wants rid of was the only
+            // one with nothing to press. ('failed' is what a delete reports;
+            // uploads and downloads say 'error'.)
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onRemove(id, operationType)}

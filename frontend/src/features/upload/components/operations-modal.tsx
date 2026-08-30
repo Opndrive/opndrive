@@ -32,6 +32,20 @@ interface OperationItem {
   queuePosition?: number;
 }
 
+/**
+ * The statuses that mean an operation is still going, for every kind of it.
+ *
+ * Uploads report `uploading`, deletes `deleting`, downloads `downloading` or
+ * `pending`, and any of the three can sit in `queued`. The three places that
+ * asked this question each carried their own list of upload and delete statuses
+ * only, so a running download read as settled - which mattered once the close
+ * button below learned to remove downloads, because it would otherwise have
+ * dropped the row of a transfer that was still in flight.
+ */
+const ACTIVE_STATUSES = ['uploading', 'deleting', 'downloading', 'pending', 'queued'];
+
+const isActiveOperation = (op: { status: string }) => ACTIVE_STATUSES.includes(op.status);
+
 // Upload speed tracking for better time estimation
 interface SpeedTracker {
   speeds: number[]; // bytes per second samples
@@ -154,7 +168,7 @@ export const OperationsModal: React.FC = () => {
 
   // Only the oldest pending duplicate is shown; answering it reveals the next.
   const currentDuplicate = duplicateQueue[0] ?? null;
-  const { getAllDownloads, cancelDownload } = useDownloadList();
+  const { getAllDownloads, cancelDownload, removeDownload } = useDownloadList();
   const downloads = getAllDownloads();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -243,9 +257,15 @@ export const OperationsModal: React.FC = () => {
         removeUpload(itemId);
       } else if (operationType === 'delete') {
         removeDeleteOperation(itemId);
+      } else if (operationType === 'download') {
+        // The branch this was missing. A download that failed could not be
+        // removed by the row's own button or by the panel's close button, and
+        // the panel only hides once the list is empty - so it stayed up, and
+        // pressing the X did nothing at all, until the page was reloaded.
+        removeDownload(itemId);
       }
     },
-    [removeUpload, removeDeleteOperation]
+    [removeUpload, removeDeleteOperation, removeDownload]
   );
 
   const pauseOperation = useCallback(
@@ -645,20 +665,15 @@ export const OperationsModal: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  const hasActiveOperations = sortedOperations.some((op) =>
-                    ['uploading', 'queued', 'deleting'].includes(op.status)
-                  );
-                  if (hasActiveOperations) {
+                  if (sortedOperations.some(isActiveOperation)) {
                     setShowCancelDialog(true);
                   } else {
-                    // Close the modal by removing all operations
-                    sortedOperations.forEach((op) => {
-                      if (op.operationType === 'upload') {
-                        removeUpload(op.id);
-                      } else if (op.operationType === 'delete') {
-                        removeDeleteOperation(op.id);
-                      }
-                    });
+                    // Close the modal by removing all operations. Through
+                    // removeOperation rather than a second copy of the mapping,
+                    // so a kind of operation cannot be handled in one and
+                    // forgotten in the other, which is how downloads were left
+                    // out of this in the first place.
+                    sortedOperations.forEach((op) => removeOperation(op.id, op.operationType));
                   }
                 }}
                 className="p-2 sm:p-1 rounded transition-colors duration-200"
@@ -692,7 +707,7 @@ export const OperationsModal: React.FC = () => {
                 onClick={() => {
                   // Cancel all active operations (uploads and deletes)
                   sortedOperations
-                    .filter((op) => ['uploading', 'queued', 'deleting'].includes(op.status))
+                    .filter(isActiveOperation)
                     .forEach((op) =>
                       cancelOperation(op.id, op.operationType, op.type === 'folder')
                     );
@@ -787,7 +802,7 @@ export const OperationsModal: React.FC = () => {
                 onClick={() => {
                   // Cancel all active operations
                   sortedOperations
-                    .filter((op) => ['uploading', 'queued', 'deleting'].includes(op.status))
+                    .filter(isActiveOperation)
                     .forEach((op) =>
                       cancelOperation(op.id, op.operationType, op.type === 'folder')
                     );

@@ -19,10 +19,6 @@ import {
 } from '../services/download-service';
 import type { FileItem } from '../types/file';
 
-/** How long a finished row lingers before it clears itself from the list. */
-const COMPLETED_LINGER_MS = 3000;
-const CANCELLED_LINGER_MS = 2000;
-
 interface DownloadState {
   downloads: Map<string, DownloadProgress>;
   /**
@@ -77,19 +73,21 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       return { downloads };
     }),
 
+  /**
+   * A settled row stays until someone removes it.
+   *
+   * Downloads used to clear themselves on a timer - three seconds for a
+   * completion, two for a cancel - which read as tidy until a failure needed
+   * the same treatment. A reason for the failure that takes itself off the
+   * screen is no use to anyone who was not looking at that moment, and the
+   * panel can be collapsed. Uploads and deletes have always waited to be
+   * dismissed; downloads now do too, and every settled row has a button on it.
+   */
   startDownload: async (api, file, handlers) => {
-    const { getService, setProgress, removeDownload } = get();
+    const { getService, setProgress } = get();
 
     await getService(api).downloadFile(file, {
-      onProgress: (progress) => {
-        setProgress(progress);
-        if (progress.status === 'cancelled') {
-          setTimeout(() => removeDownload(file.id), CANCELLED_LINGER_MS);
-        }
-      },
-      onComplete: (fileId) => {
-        setTimeout(() => removeDownload(fileId), COMPLETED_LINGER_MS);
-      },
+      onProgress: setProgress,
       onError: handlers?.onError,
     });
   },

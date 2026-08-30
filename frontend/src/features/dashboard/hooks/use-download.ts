@@ -40,18 +40,11 @@ async function withConcurrency<T>(
  * row in the listing on every chunk of every download.
  */
 export const useDownloadActions = () => {
-  const { error: showError, info } = useNotification();
+  const { error: showError } = useNotification();
   const { apiS3 } = useAuthGuard();
 
   const startDownload = useDownloadStore((state) => state.startDownload);
-  const cancelInStore = useDownloadStore((state) => state.cancelDownload);
-
-  const handleError = useCallback(
-    (_fileId: string, error: string) => {
-      showError(error);
-    },
-    [showError]
-  );
+  const cancelDownload = useDownloadStore((state) => state.cancelDownload);
 
   const downloadFile = useCallback(
     async (file: FileItem) => {
@@ -61,30 +54,34 @@ export const useDownloadActions = () => {
       if (!apiS3) return;
 
       try {
-        await startDownload(apiS3, file, { onError: handleError });
+        await startDownload(apiS3, file);
       } catch (error) {
+        /**
+         * The last download toast, and the only one worth keeping.
+         *
+         * Starting, cancelling and failing are all written to the operations
+         * card as they happen, so a toast saying the same thing was the same
+         * news twice, in two corners of the screen at once.
+         *
+         * This branch is different, and rare: the service reports its own
+         * failures through `onProgress` and never rejects, so the only way here
+         * is something throwing before it takes over - building the service for
+         * a new provider, say. That leaves no row on the card to read, and it is
+         * the one failure that would otherwise pass in silence.
+         */
         showError(`Failed to download ${file.name}, ${error}`);
       }
     },
-    [apiS3, startDownload, handleError, showError]
+    [apiS3, startDownload, showError]
   );
 
   const downloadMultipleFiles = useCallback(
     async (files: FileItem[]) => {
       if (!apiS3 || files.length === 0) return;
 
-      info(`Downloading ${files.length} file${files.length > 1 ? 's' : ''}...`);
       await withConcurrency(files, MULTI_DOWNLOAD_CONCURRENCY, downloadFile);
     },
-    [apiS3, downloadFile, info]
-  );
-
-  const cancelDownload = useCallback(
-    (fileId: string) => {
-      cancelInStore(fileId);
-      info('Download cancelled');
-    },
-    [cancelInStore, info]
+    [apiS3, downloadFile]
   );
 
   return { downloadFile, downloadMultipleFiles, cancelDownload };
@@ -109,6 +106,13 @@ export const useIsFileDownloading = (fileId: string): boolean =>
 export const useDownloadList = () => {
   const downloads = useDownloadStore((state) => state.downloads);
   const { cancelDownload } = useDownloadActions();
+  /**
+   * Drops a settled row without touching the transfer, which is what a failed
+   * download needs: cancelling one is a no-op because there is nothing left in
+   * flight to abort, so the panels had no way to clear it. Selecting the action
+   * on its own is free - zustand action identities are stable.
+   */
+  const removeDownload = useDownloadStore((state) => state.removeDownload);
 
   const downloadProgress = useMemo(() => Array.from(downloads.values()), [downloads]);
   const getAllDownloads = useCallback(
@@ -116,5 +120,5 @@ export const useDownloadList = () => {
     [downloadProgress]
   );
 
-  return { downloadProgress, getAllDownloads, cancelDownload };
+  return { downloadProgress, getAllDownloads, cancelDownload, removeDownload };
 };

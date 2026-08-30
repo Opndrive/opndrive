@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
@@ -15,34 +14,12 @@ const navItems = [
 ];
 
 export default function BlogNavbar() {
-  const [isSticky, setIsSticky] = useState(false);
-  const [_showSticky, setShowSticky] = useState(false);
-
   // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
 
-  useEffect(() => {
-    const handleScroll = () => {
-      const staticNavbar = document.getElementById('static-navbar');
-      if (staticNavbar) {
-        const staticNavbarRect = staticNavbar.getBoundingClientRect();
-        const shouldBeSticky = staticNavbarRect.bottom <= 0;
-
-        if (shouldBeSticky && !isSticky) {
-          setIsSticky(true);
-          setTimeout(() => setShowSticky(true), 50);
-        } else if (!shouldBeSticky && isSticky) {
-          setShowSticky(false);
-          setTimeout(() => setIsSticky(false), 200);
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    handleScroll();
-
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isSticky]);
+  // This navbar does not stick, and never did. It used to track a sentinel on
+  // every scroll event - forcing a layout each time, on every blog page - into
+  // two state values that nothing below reads.
 
   return (
     <>

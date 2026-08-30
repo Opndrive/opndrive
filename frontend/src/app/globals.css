@@ -359,6 +359,72 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/**
+ * The artwork in the strip that joins the hero to the page below it.
+ *
+ * That strip is the room the fixed mobile bar drops into, so its height is the
+ * bar's and cannot grow. The source is 3.5:1 in a box nearer 7:1, so `cover`
+ * crops to the middle band - which is where the filaments run and where the
+ * mark sits - rather than letterboxing it.
+ *
+ * The file is not the transparent PNG it looks like: every pixel is opaque, and
+ * what should have been transparency was flattened into a flat grey at
+ * luminance 43, with the drawing itself only reaching about 110. Dropped in as
+ * an image it would have replaced the wrong-coloured band this strip exists to
+ * remove with another one, a shade lighter still.
+ *
+ * So the flat grey is turned back into nothing. `contrast(1.62)` pivots on 128
+ * and lands the whole flat field, which wanders up to 47, at or under 0 - black - and `screen` composites black as no
+ * change at all, so the page's own `--background` is what shows between the
+ * filaments. `brightness` afterwards only lifts what survived; it cannot raise
+ * black off zero, so the background stays put however far it is pushed. Replace
+ * the file with a genuinely transparent export and these two filters come off
+ * together.
+ *
+ * The mask is what stops the rest looking like a pasted-in rectangle. It fades
+ * hard on the vertical, where the strip's own edges would otherwise be a pair
+ * of seams across the page, and only gently on the horizontal, where the
+ * artwork runs full-bleed off both sides of the screen the way it is drawn to.
+ *
+ * `-webkit-mask-image` alongside the standard property for Safari, which only
+ * took the unprefixed one in 15.4 and is still worth carrying on a phone-only
+ * decoration.
+ */
+.hero-divider-art {
+  background-image: url('/hero-divider.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: contrast(1.62) brightness(1.5);
+  mix-blend-mode: screen;
+  opacity: 0.85;
+  -webkit-mask-image: radial-gradient(130% 70% at 50% 50%, #000 10%, transparent 80%);
+  mask-image: radial-gradient(130% 70% at 50% 50%, #000 10%, transparent 80%);
+}
+
+/**
+ * The same drawing against a light page.
+ *
+ * Inverting first puts the flat background at 212 and the artwork below it, so
+ * the pairing flips with it: `contrast` lands 212 on white instead of black,
+ * and `multiply` is the mode that composites white as no change. The filaments
+ * come out dark on white, reading the same way round as they do on the dark
+ * page rather than as a photographic negative of it.
+ */
+:root[data-theme='light'] .hero-divider-art {
+  filter: invert(1) contrast(1.62);
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .hero-divider-art {
+    filter: invert(1) contrast(1.62);
+    mix-blend-mode: multiply;
+    opacity: 0.6;
+  }
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: var(--secondary-foreground) transparent;
