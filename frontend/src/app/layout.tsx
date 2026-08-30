@@ -76,9 +76,18 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  verification: {
-    google: 'your-google-verification-code', // Add your Google Search Console verification code
-  },
+  /**
+   * Only emitted once a real code is configured.
+   *
+   * The placeholder that stood here put
+   * `<meta name="google-site-verification" content="your-google-verification-code">`
+   * on every page: a claim to own the site, backed by a token that verifies
+   * nothing. Read from the server environment, so it never reaches the client
+   * bundle, and left off entirely when unset.
+   */
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
 };
 
 export default async function RootLayout({

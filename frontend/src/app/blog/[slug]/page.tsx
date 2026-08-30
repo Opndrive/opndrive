@@ -213,7 +213,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <BlogNavbar />
 
       {/* Static Header Spacer */}
-      <div id="static-navbar" className="h-1"></div>
+      <div className="h-1"></div>
 
       {/* Article Container */}
       <article className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">

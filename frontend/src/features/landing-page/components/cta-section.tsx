@@ -25,7 +25,10 @@ export default function CTASection({
   ctaLabel = 'Get Started',
 }: CTASectionProps) {
   return (
-    <section id="get-started" className="py-12 sm:py-16 md:py-20 lg:py-24 bg-background">
+    <section
+      id="get-started"
+      className="scroll-mt-14 sm:scroll-mt-16 lg:scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-24 bg-background"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-8">
         <div className="bg-card/30 rounded-lg sm:rounded-xl shadow-md p-6 sm:p-8 md:p-12 lg:p-16 text-center">
           <div className="mx-auto mb-4 sm:mb-6 w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 flex items-center justify-center">
