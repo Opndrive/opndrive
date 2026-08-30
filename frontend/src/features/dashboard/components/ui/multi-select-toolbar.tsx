@@ -15,6 +15,7 @@ import {
 import { FolderOpen } from 'lucide-react';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectActions } from '../../hooks/use-multi-select-actions';
+import { useDeleteKey } from '../../hooks/use-delete-key';
 import { FileItem } from '../../types/file';
 import { Folder } from '../../types/folder';
 import { generateFolderUrl } from '@/features/folder-navigation/folder-navigation';
@@ -126,6 +127,16 @@ export function MultiSelectToolbar({
     setMoreMenuAnchor(event.currentTarget as HTMLElement);
     setIsMoreMenuOpen(true);
   };
+
+  /**
+   * Delete does what the toolbar's own delete button does, confirmation and
+   * all. Declared above the `count === 0` return below, because a hook cannot
+   * sit behind one - and gated on `canDelete` instead, which is the same
+   * condition the button is disabled by.
+   */
+  useDeleteKey(() => {
+    void handleDeleteItems(selectedItems);
+  }, canDelete);
 
   const handleMoreMenuClose = () => {
     setIsMoreMenuOpen(false);
