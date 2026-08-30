@@ -31,6 +31,8 @@ import type { DispatchResult } from '../services/upload-executor';
 import { objectExists, objectKey } from '@/services/object-existence';
 import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateUniqueFileName } from '../utils/unique-filename';
+import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
+import type { DuplicatePolicy } from '../types';
 
 export interface DropOutcome {
   dispatched: DispatchResult[];
@@ -48,7 +50,15 @@ type FileVerdict =
   | { kind: 'upload'; file: File }
   | { kind: 'replace'; file: File }
   | { kind: 'skip' }
+  // Told not to upload, which is a different thing from being unable to.
+  | { kind: 'cancelled' }
   | { kind: 'unverified'; file: File; reason: string };
+
+/** What the prompt came back with, and whether it stands for the rest. */
+type DuplicateAnswer = {
+  choice: 'replace' | 'keepBoth' | 'cancel';
+  applyToAll: boolean;
+};
 
 /**
  * Decides what to do with each loose file before anything is dispatched.
@@ -65,7 +75,8 @@ async function decideLooseFiles(
   files: readonly File[],
   destination: string,
   apiS3: BYOS3ApiProvider,
-  ask: (file: File) => Promise<'replace' | 'keepBoth'>
+  ask: (file: File, remaining: number) => Promise<DuplicateAnswer>,
+  policy: DuplicatePolicy
 ): Promise<FileVerdict[]> {
   const verdicts: FileVerdict[] = new Array(files.length);
   const collisions: number[] = [];
@@ -96,11 +107,40 @@ async function decideLooseFiles(
   );
   await Promise.all(runners);
 
-  // Prompts are sequential on purpose: the dialog shows one question at a time,
-  // and firing them all at once would queue five modals at the user.
-  for (const index of collisions.sort((a, b) => a - b)) {
+  /**
+   * Prompts stay sequential: the dialog shows one question at a time, and
+   * firing them all at once would stack five modals on the user.
+   *
+   * Which is why an answer the user asked to stand for the rest is honoured
+   * here, by not asking again, rather than by answering a queue - the queue
+   * never holds more than one, because the line below waits for each answer
+   * before the next question exists. Ten files dropped onto ten that already
+   * exist used to mean ten identical questions and ten clicks.
+   */
+  const ordered = collisions.sort((a, b) => a - b);
+
+  /**
+   * A settings policy is the same thing as ticking "do the same for the rest"
+   * before the first question is asked, so it seeds this rather than being
+   * threaded through the loop separately.
+   */
+  let standing: DuplicateAnswer['choice'] | null = policy === 'ask' ? null : policy;
+
+  for (let position = 0; position < ordered.length; position++) {
+    const index = ordered[position]!;
     const file = files[index]!;
-    const choice = await ask(file);
+
+    let choice = standing;
+    if (!choice) {
+      const answer = await ask(file, ordered.length - position);
+      choice = answer.choice;
+      if (answer.applyToAll) standing = answer.choice;
+    }
+
+    if (choice === 'cancel') {
+      verdicts[index] = { kind: 'cancelled' };
+      continue;
+    }
 
     if (choice === 'replace') {
       verdicts[index] = { kind: 'replace', file };
@@ -122,26 +162,55 @@ async function decideLooseFiles(
   return verdicts;
 }
 
+/**
+ * One line on the card when a policy answered for the user.
+ *
+ * Replacing without being asked is the case that needs saying: the file that
+ * was there is gone, and a setting chosen weeks ago is not something anyone
+ * remembers at the moment it acts. Keeping both takes nothing away and the new
+ * name is already on the card, so it passes without a notice.
+ */
+function policyNotice(policy: DuplicatePolicy, count: number): QueueNotice | null {
+  if (policy !== 'replace' || count === 0) return null;
+
+  return {
+    id: `dup-policy-${Date.now()}`,
+    kind: 'replaced',
+    path: '',
+    count,
+    detail:
+      count === 1
+        ? 'A file that already existed here was replaced, because your upload setting is set to replace.'
+        : `${count} files that already existed here were replaced, because your upload setting is set to replace.`,
+  };
+}
+
 export function useUploadDispatch() {
   const executor = useUploadExecutor();
   const addUpload = useUploadStore((state) => state.addUpload);
   const showDuplicateDialog = useUploadStore((state) => state.showDuplicateDialog);
   const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
 
-  /** Shows the existing replace / keep-both prompt and resolves with the answer. */
+  /**
+   * Shows the replace / keep-both prompt and resolves with the answer.
+   *
+   * Cancel resolves too. It used to close the dialog and nothing else, so the
+   * promise below stayed pending forever and the whole drop stalled: every file
+   * behind the cancelled one was never asked about and never uploaded.
+   */
   const askAboutDuplicate = useCallback(
-    (file: File) =>
-      new Promise<'replace' | 'keepBoth'>((resolve) => {
+    (file: File, remaining: number) =>
+      new Promise<DuplicateAnswer>((resolve) => {
+        const answer = (choice: DuplicateAnswer['choice']) => (applyToAll: boolean) => {
+          hideDuplicateDialog();
+          resolve({ choice, applyToAll });
+        };
+
         showDuplicateDialog(
           { name: file.name, type: 'file', size: file.size },
-          () => {
-            hideDuplicateDialog();
-            resolve('replace');
-          },
-          () => {
-            hideDuplicateDialog();
-            resolve('keepBoth');
-          }
+          answer('replace'),
+          answer('keepBoth'),
+          { onCancel: answer('cancel'), remaining }
         );
       }),
     [showDuplicateDialog, hideDuplicateDialog]
@@ -163,15 +232,39 @@ export function useUploadDispatch() {
       const looseNotices: QueueNotice[] = [];
 
       if (apiS3 && individualFiles.length > 0) {
+        // Read at drop time rather than closed over, so changing the setting
+        // takes effect on the next drop instead of the next remount.
+        const policy = useUploadSettingsStore.getState().duplicatePolicy;
+
         const verdicts = await decideLooseFiles(
           individualFiles,
           destinationPrefix,
           apiS3,
-          askAboutDuplicate
+          askAboutDuplicate,
+          policy
         );
+
+        // Every collision was answered by the policy when it is not `ask`, so
+        // the replacements are exactly the ones nobody was asked about.
+        const replaced = policyNotice(
+          policy,
+          policy === 'replace' ? verdicts.filter((v) => v.kind === 'replace').length : 0
+        );
+        if (replaced) looseNotices.push(replaced);
 
         individualFiles = [];
         verdicts.forEach((verdict, index) => {
+          if (verdict.kind === 'cancelled') {
+            looseNotices.push({
+              id: `dup-cancelled-${Date.now()}-${index}`,
+              kind: 'skipped',
+              path: data.individualFiles[index]!.name,
+              count: 1,
+              detail: `"${data.individualFiles[index]!.name}" already exists here and was not uploaded.`,
+            });
+            return;
+          }
+
           if (verdict.kind === 'skip') {
             looseNotices.push({
               id: `dup-skip-${Date.now()}-${index}`,

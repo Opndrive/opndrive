@@ -115,7 +115,7 @@ export interface PlannedUpload {
  */
 export interface QueueNotice {
   id: string;
-  kind: 'skipped' | 'renamed' | 'unverified';
+  kind: 'skipped' | 'renamed' | 'replaced' | 'unverified';
   path: string;
   detail: string;
   /** How many underlying entries this notice stands for. >1 means aggregated. */

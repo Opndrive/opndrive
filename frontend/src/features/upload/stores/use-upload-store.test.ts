@@ -592,6 +592,54 @@ describe('duplicate prompt queue', () => {
     expect(() => store().hideDuplicateDialog()).not.toThrow();
     expect(store().duplicateQueue).toEqual([]);
   });
+
+  it('hands the choice back with whether it should stand for the rest', () => {
+    const onReplace = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, vi.fn());
+
+    store().resolveDuplicate('replace', true);
+
+    // Not acted on here. Prompts are raised one at a time, so the only thing
+    // that can honour "apply to all" is the loop that decides whether to ask
+    // again - this just carries the answer back to it.
+    expect(onReplace).toHaveBeenCalledWith(true);
+  });
+
+  it('defaults to answering for this file only', () => {
+    const onKeepBoth = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), onKeepBoth);
+
+    store().resolveDuplicate('keepBoth');
+
+    expect(onKeepBoth).toHaveBeenCalledWith(false);
+  });
+
+  it('answers a cancel through its own handler', () => {
+    const onCancel = vi.fn();
+    const onReplace = vi.fn();
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, onReplace, vi.fn(), { onCancel });
+
+    store().resolveDuplicate('cancel', true);
+
+    // Cancelling used to close the dialog and resolve nothing, leaving whoever
+    // was awaiting the answer waiting for good.
+    expect(onCancel).toHaveBeenCalledWith(true);
+    expect(onReplace).not.toHaveBeenCalled();
+  });
+
+  it('carries how many collisions are left', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn(), {
+      remaining: 7,
+    });
+
+    expect(store().duplicateQueue[0]!.remaining).toBe(7);
+  });
+
+  it('counts a lone prompt as the only one left', () => {
+    store().showDuplicateDialog({ name: 'a.txt', type: 'file' }, vi.fn(), vi.fn());
+
+    expect(store().duplicateQueue[0]!.remaining).toBe(1);
+  });
 });
 
 /**

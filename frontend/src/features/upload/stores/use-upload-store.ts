@@ -36,8 +36,16 @@ export interface DuplicateItem {
 export interface DuplicatePrompt {
   id: string;
   duplicateItem: DuplicateItem;
-  onReplace: () => void;
-  onKeepBoth: () => void;
+  onReplace: (applyToAll: boolean) => void;
+  onKeepBoth: (applyToAll: boolean) => void;
+  /**
+   * Cancelling used to close the dialog and nothing else, leaving the promise
+   * the caller was awaiting unresolved - so the rest of the drop was never
+   * asked about and never uploaded. It is an answer like the other two now.
+   */
+  onCancel?: (applyToAll: boolean) => void;
+  /** Collisions left in this drop, this one included. */
+  remaining: number;
 }
 
 interface UploadProgress {
@@ -223,15 +231,25 @@ interface UploadStore {
   // Duplicate dialog methods
   showDuplicateDialog: (
     duplicateItem: DuplicateItem,
-    onReplace: () => void,
-    onKeepBoth: () => void
+    onReplace: (applyToAll: boolean) => void,
+    onKeepBoth: (applyToAll: boolean) => void,
+    options?: {
+      onCancel?: (applyToAll: boolean) => void;
+      /** Collisions left in this drop, this one included. */
+      remaining?: number;
+    }
   ) => void;
   /**
    * Runs the head prompt's chosen callback. Deliberately does NOT dequeue: the
    * dialog component calls the choice handler and then onClose, so dequeuing
    * here as well would skip the next prompt.
+   *
+   * `applyToAll` is handed back to whoever raised the prompt rather than acted
+   * on here. Prompts are raised one at a time - the loop in use-upload-dispatch
+   * awaits each answer before asking the next - so honouring it means not
+   * asking again, which only that loop is in a position to do.
    */
-  resolveDuplicate: (choice: 'replace' | 'keepBoth') => void;
+  resolveDuplicate: (choice: 'replace' | 'keepBoth' | 'cancel', applyToAll?: boolean) => void;
   /** Dismisses the head prompt, revealing the next one. */
   hideDuplicateDialog: () => void;
 
@@ -510,7 +528,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   },
 
   // Duplicate dialog methods
-  showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth) =>
+  showDuplicateDialog: (duplicateItem, onReplace, onKeepBoth, options) =>
     set((state) => ({
       duplicateQueue: [
         ...state.duplicateQueue,
@@ -519,19 +537,22 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
           duplicateItem,
           onReplace,
           onKeepBoth,
+          onCancel: options?.onCancel,
+          remaining: options?.remaining ?? 1,
         },
       ],
     })),
 
-  resolveDuplicate: (choice) => {
+  resolveDuplicate: (choice, applyToAll = false) => {
     const prompt = get().duplicateQueue[0];
     if (!prompt) return;
 
     // Only invokes; hideDuplicateDialog does the dequeue. The dialog component
     // calls the choice handler and then onClose, so dequeuing here too would
     // drop the prompt behind this one.
-    if (choice === 'replace') prompt.onReplace();
-    else prompt.onKeepBoth();
+    if (choice === 'replace') prompt.onReplace(applyToAll);
+    else if (choice === 'keepBoth') prompt.onKeepBoth(applyToAll);
+    else prompt.onCancel?.(applyToAll);
   },
 
   hideDuplicateDialog: () =>

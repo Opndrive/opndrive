@@ -99,13 +99,17 @@ export const SidebarCreateButton: React.FC<SidebarCreateButtonProps> = ({ onClic
       {duplicateDialog.isOpen && (
         <DuplicateDialog
           isOpen={duplicateDialog.isOpen}
-          onClose={hideDuplicateDialog}
           duplicateItem={{
             name: duplicateDialog.folderName,
             type: 'folder',
           }}
-          onReplace={duplicateDialog.onReplace || (() => {})}
-          onKeepBoth={duplicateDialog.onKeepBoth || (() => {})}
+          // One folder, so there is never a rest of the drop to apply an answer
+          // to and the bulk controls stay hidden. Both handlers close the dialog
+          // themselves once the folder is created.
+          onResolve={(choice) =>
+            choice === 'replace' ? duplicateDialog.onReplace?.() : duplicateDialog.onKeepBoth?.()
+          }
+          onCancel={hideDuplicateDialog}
         />
       )}
     </>

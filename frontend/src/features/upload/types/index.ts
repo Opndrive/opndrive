@@ -38,3 +38,4 @@ export interface UploadProgress {
 export type UploadMethod = 'auto' | 'signed-url' | 'multipart' | 'multipart-concurrent';
 
 export * from './upload-mode';
+export * from './duplicate-policy';
