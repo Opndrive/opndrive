@@ -41,7 +41,26 @@ let mockPathname = '/privacy';
 import { AuthProvider } from '@/context/auth-context';
 import PrivacyPolicyPage from './page';
 import TermsOfServicePage from '../terms/page';
-import LandingPage from '../page';
+// The client half of the landing page. `app/page.tsx` is a server shell around
+// it that only adds the FAQ structured data, and being async it cannot go
+// through renderToStaticMarkup - while everything this file is checking for,
+// and the AuthProvider gate it checks against, lives in here.
+import LandingPage from '@/features/landing-page/components/landing-page';
+import { faqData } from '@/features/landing-page/config/faq-section';
+
+/**
+ * React escapes apostrophes and ampersands on the way into the markup, and the
+ * FAQ answers are full of both, so they have to be compared against text that
+ * has been turned back. `&amp;` last, or it would decode the others twice.
+ */
+function decodeEntities(markup: string): string {
+  return markup
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
 
 function renderThroughProviders(pathname: string, page: React.ReactElement): string {
   mockPathname = pathname;
@@ -118,6 +137,18 @@ describe('the landing page renders for crawlers', () => {
   // is what a crawler would index in its place.
   it('renders a real call to action rather than a loading state', () => {
     expect(html).toContain('Get Started');
+  });
+
+  // The answers used to be mounted only once their question was clicked, so
+  // the eight most substantial paragraphs on the page - the permissions, where
+  // the credentials live - reached a crawler as nothing at all. They are in the
+  // markup now, collapsed by CSS rather than dropped from the tree.
+  it('renders every FAQ answer into the markup, not just the questions', () => {
+    const text = decodeEntities(html);
+    for (const { question, answer } of faqData) {
+      expect(text).toContain(question);
+      expect(text).toContain(answer);
+    }
   });
 });
 

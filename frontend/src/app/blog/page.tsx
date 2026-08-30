@@ -129,7 +129,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
       <BlogNavbar />
 
       {/* Static Header Spacer */}
-      <div id="static-navbar" className="h-1"></div>
+      <div className="h-1"></div>
 
       {/* Hero Section */}
       <section className="pt-16 bg-background">
