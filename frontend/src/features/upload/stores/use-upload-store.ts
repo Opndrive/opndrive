@@ -151,6 +151,58 @@ interface DeleteProgress {
 /** A delete in one of these states has already stopped; nothing left to abort. */
 const FINISHED_DELETE_STATUSES: DeleteProgress['status'][] = ['completed', 'failed', 'cancelled'];
 
+/** An upload in one of these states has already stopped; nothing left to cancel. */
+const FINISHED_UPLOAD_STATUSES: UploadStatus[] = ['completed', 'failed', 'cancelled'];
+
+/**
+ * How much of the session's work is still live, by kind.
+ *
+ * Counts rather than a boolean, so a caller about to cancel all of it can say
+ * what it is throwing away - "2 uploads and 1 delete" rather than "some work".
+ */
+export interface ActiveWork {
+  /**
+   * Queued, uploading, or paused. Paused counts: it is work the user still
+   * expects to finish, and disposing the manager ends it just as finally.
+   */
+  uploads: number;
+  /** Queued or running. */
+  deletes: number;
+}
+
+/**
+ * Reads live work off the records the operations card already renders, rather
+ * than tracking it separately: the upload manager owns the transfers and this
+ * store owns the deletes, and a second tally of either is one more thing that
+ * can fall out of step with them.
+ *
+ * Pure, and takes the state instead of reading the store itself, so a
+ * component can subscribe through a selector while a one-off caller passes
+ * `useUploadStore.getState()`.
+ *
+ * Does not count a drop still waiting on a duplicate prompt: those uploads
+ * have no record here until they reach the executor. Nothing is lost by that -
+ * an unanswered prompt has uploaded nothing yet - but it does mean the answer
+ * is "what is running", not "what has been asked for".
+ */
+export function countActiveWork(state: {
+  uploads: Record<string, { status: UploadStatus }>;
+  deletes: Record<string, { status: DeleteProgress['status'] }>;
+}): ActiveWork {
+  let uploads = 0;
+  let deletes = 0;
+
+  for (const upload of Object.values(state.uploads)) {
+    if (!FINISHED_UPLOAD_STATUSES.includes(upload.status)) uploads++;
+  }
+
+  for (const operation of Object.values(state.deletes)) {
+    if (!FINISHED_DELETE_STATUSES.includes(operation.status)) deletes++;
+  }
+
+  return { uploads, deletes };
+}
+
 /**
  * Why a delete was aborted, when the reason was the session ending rather than
  * the user asking.

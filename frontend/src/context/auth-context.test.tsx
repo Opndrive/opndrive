@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useContext } from 'react';
+import { useContext, type ContextType } from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { AuthContext, AuthProvider } from './auth-context';
+import { useDriveStore } from './data-context';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
-import type { SearchResult } from '@opndrive/s3-api';
+import type { Credentials, SearchResult } from '@opndrive/s3-api';
 
 /**
  * Regression test for the search cache surviving a session change.
@@ -47,25 +48,64 @@ const s3 = vi.hoisted(() => ({
   })),
 }));
 
+/**
+ * What the s3-api mock recorded.
+ *
+ * A bucket switch is only correct if it builds a *new* provider, so the
+ * credentials each one was constructed from are kept, and `setBucketName` -
+ * the in-place path a switch must never take - is a spy that should stay
+ * untouched.
+ */
+const api = vi.hoisted(() => ({
+  /** Credentials of every provider constructed, in order. */
+  created: [] as Record<string, unknown>[],
+  /** Made to throw once from the provider constructor, the way a bad endpoint would. */
+  constructorError: null as Error | null,
+  setBucketName: vi.fn(),
+  disposeUploadManager: vi.fn(async () => {}),
+  disposeSignedUrlManager: vi.fn(async () => {}),
+  uploadManagers: 0,
+  signedUrlManagers: 0,
+}));
+
 vi.mock('@opndrive/s3-api', () => ({
   BYOS3ApiProvider: class {
+    creds: Record<string, unknown>;
+
+    constructor(creds: Record<string, unknown>) {
+      if (api.constructorError) {
+        const error = api.constructorError;
+        api.constructorError = null;
+        throw error;
+      }
+      this.creds = creds;
+      api.created.push(creds);
+    }
     getS3Client() {
       return {};
     }
     getBucketName() {
-      return 'test-bucket';
+      return (this.creds?.bucketName as string) ?? 'test-bucket';
+    }
+    getPrefix() {
+      return (this.creds?.prefix as string) ?? '';
+    }
+    setBucketName(bucketName: string) {
+      api.setBucketName(bucketName);
     }
     fetchDirectoryStructure(prefix: string, maxKeys?: number) {
       return s3.fetchDirectoryStructure(prefix, maxKeys);
     }
   },
+  // Fresh objects per call, so "the managers were rebuilt" is an identity
+  // check rather than an act of faith.
   UploadManager: {
-    getInstance: () => ({}),
-    disposeInstance: async () => {},
+    getInstance: () => ({ id: `upload-${++api.uploadManagers}` }),
+    disposeInstance: api.disposeUploadManager,
   },
   SignedUrlUploadManager: {
-    getInstance: () => ({}),
-    disposeInstance: async () => {},
+    getInstance: () => ({ id: `signed-${++api.signedUrlManagers}` }),
+    disposeInstance: api.disposeSignedUrlManager,
   },
 }));
 
@@ -572,4 +612,718 @@ describe('createSession does not navigate', () => {
       expect(pushMock).not.toHaveBeenCalled();
     }
   );
+});
+
+/**
+ * Switching bucket is a new session on the same keys, not a rename.
+ *
+ * The provider exposes `setBucketName`, and reaching for it is the obvious
+ * mistake: it keeps the same object identity, and identity is what every
+ * bucket-scoped thing downstream watches to know its world has changed. The
+ * search service is memoised on it, the download store keys off it, the upload
+ * executor compares against it. Renaming the bucket underneath them leaves all
+ * three serving bucket A while the app says bucket B.
+ *
+ * The second half of the contract is order. Everything that proves the new
+ * bucket happens before anything that destroys the old one, so a bucket that
+ * turns out not to exist costs the user nothing.
+ */
+describe('switching bucket rebuilds the session around a new provider', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: 'foo/bar/',
+    endpoint: 'https://s3.example.com',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  /**
+   * Restores a session on bucket-a and hands back what it started with, so a
+   * test can assert against the identities the switch is supposed to replace.
+   *
+   * The restore builds managers of its own, which means it also disposes the
+   * previous ones - those calls are cleared here so the disposal a switch does
+   * is the only one on record.
+   */
+  async function renderSessionOnBucketA() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    const before = {
+      apiS3: auth?.apiS3,
+      uploadManager: auth?.uploadManager,
+      signedUrlUploadManager: auth?.signedUrlUploadManager,
+      providers: api.created.length,
+    };
+
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+    s3.fetchDirectoryStructure.mockClear();
+    pushMock.mockClear();
+
+    return before;
+  }
+
+  /** The credentials the most recently constructed provider was built from. */
+  function lastCandidate() {
+    return api.created[api.created.length - 1];
+  }
+
+  beforeEach(() => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.setBucketName.mockClear();
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useSearchStore.getState().clearCache();
+    useSearchStore.getState().setLoading(false);
+    useUploadStore.getState().clearSessionData();
+    useDriveStore.getState().clearAllData();
+  });
+
+  it('keeps the keys and endpoint, takes the new bucket and region', async () => {
+    await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', 'eu-west-1');
+    });
+
+    expect(lastCandidate()).toEqual({
+      accessKeyId: 'AKIA_A',
+      secretAccessKey: 'secret-a',
+      endpoint: 'https://s3.example.com',
+      bucketName: 'bucket-b',
+      region: 'eu-west-1',
+      prefix: '',
+    });
+    // The credentials it was handed are not the credentials it edited.
+    expect(BUCKET_A.bucketName).toBe('bucket-a');
+    expect(BUCKET_A.prefix).toBe('foo/bar/');
+  });
+
+  it('drops the old prefix rather than carrying it into the new bucket', async () => {
+    await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    // 'foo/bar/' names a folder in bucket-a. Asked of bucket-b it lists empty,
+    // which reads as "this bucket is empty" rather than "wrong place".
+    expect(lastCandidate().prefix).toBe('');
+    expect(auth?.userCreds?.prefix).toBe('');
+    // And the verification listing went to the root, not the old folder.
+    expect(s3.fetchDirectoryStructure).toHaveBeenCalledWith('', 1);
+  });
+
+  it('stays in the current region when none is supplied', async () => {
+    await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    expect(lastCandidate().region).toBe('us-east-1');
+  });
+
+  it('builds a new provider instead of renaming the current one', async () => {
+    const before = await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', 'eu-west-1');
+    });
+
+    // The whole reason this is not `apiS3.setBucketName('bucket-b')`.
+    expect(api.setBucketName).not.toHaveBeenCalled();
+    expect(api.created.length).toBe(before.providers + 1);
+    // Consumers memoise on this identity; an unchanged one is a stale search
+    // service and a stale download store.
+    expect(auth?.apiS3).not.toBe(before.apiS3);
+    expect(auth?.apiS3?.getBucketName()).toBe('bucket-b');
+  });
+
+  it('proves the new bucket before anything of the old one is torn down', async () => {
+    const seen: { disposed?: boolean; cached?: number } = {};
+
+    await renderSessionOnBucketA();
+
+    useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
+    useDriveStore.getState().setPrefixData('foo/bar/', {
+      files: [],
+      folders: [],
+      isTruncated: false,
+    });
+
+    s3.fetchDirectoryStructure.mockImplementation(async () => {
+      seen.disposed = api.disposeUploadManager.mock.calls.length > 0;
+      seen.cached = Object.keys(useDriveStore.getState().cache).length;
+      return { files: [], folders: [] };
+    });
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    // Verification happens while the old session is still whole. If either of
+    // these has already moved, a bucket that fails to verify has cost the user
+    // their upload managers and their caches for nothing.
+    expect(seen.disposed).toBe(false);
+    expect(seen.cached).toBe(1);
+  });
+
+  it('disposes both managers and rebuilds them', async () => {
+    const before = await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    // getInstance() hands back the first instance ever built and ignores the
+    // config, so without disposal the new session keeps uploading to bucket-a.
+    expect(api.disposeUploadManager).toHaveBeenCalledTimes(1);
+    expect(api.disposeSignedUrlManager).toHaveBeenCalledTimes(1);
+    expect(auth?.uploadManager).not.toBe(before.uploadManager);
+    expect(auth?.signedUrlUploadManager).not.toBe(before.signedUrlUploadManager);
+  });
+
+  it('clears every cache that still describes the old bucket', async () => {
+    await renderSessionOnBucketA();
+
+    useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
+    useDriveStore.getState().setPrefixData('foo/bar/', {
+      files: [],
+      folders: [],
+      isTruncated: false,
+    });
+    useDriveStore.getState().setRootPrefix('foo/bar/');
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    // Both hold object keys from bucket-a. Left behind, the dashboard shows
+    // bucket-a's files under bucket-b's name until something refetches.
+    expect(useSearchStore.getState().getCachedOrNull('payroll', '')).toBeNull();
+    expect(useDriveStore.getState().cache).toEqual({});
+    expect(useDriveStore.getState().rootPrefix).toBeNull();
+  });
+
+  it('aborts deletes authorised against the old bucket', async () => {
+    await renderSessionOnBucketA();
+
+    const signal = useUploadStore.getState().startDeleteOperation('d1', {
+      id: 'd1',
+      name: 'd1.pdf',
+      status: 'deleting',
+      progress: 0,
+      type: 'file',
+    });
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', undefined, { discardActiveWork: true });
+    });
+
+    // The loop holds the old provider in a closure, so the signal is the only
+    // thing that can stop it deleting from bucket-a.
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('persists the new session and lands at the dashboard root', async () => {
+    await renderSessionOnBucketA();
+
+    const result = await act(async () => auth!.switchBucket('bucket-b', 'eu-west-1'));
+
+    expect(result).toEqual({ status: 'switched', bucketName: 'bucket-b' });
+    expect(auth?.userCreds?.bucketName).toBe('bucket-b');
+    expect(auth?.userCreds?.region).toBe('eu-west-1');
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual({
+      accessKeyId: 'AKIA_A',
+      secretAccessKey: 'secret-a',
+      endpoint: 'https://s3.example.com',
+      bucketName: 'bucket-b',
+      region: 'eu-west-1',
+      prefix: '',
+    });
+    // /dashboard/browse carries a prefix in its URL, and that prefix belongs
+    // to a bucket the session has just left.
+    expect(pushMock).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('does nothing when the bucket picked is the one already open', async () => {
+    const before = await renderSessionOnBucketA();
+
+    const result = await act(async () => auth!.switchBucket('bucket-a'));
+
+    // A dropdown makes re-picking the current bucket easy, and answering that
+    // with a teardown would cancel every upload in flight for nothing.
+    expect(result).toEqual({ status: 'unchanged', bucketName: 'bucket-a' });
+    expect(api.created.length).toBe(before.providers);
+    expect(api.disposeUploadManager).not.toHaveBeenCalled();
+    expect(auth?.apiS3).toBe(before.apiS3);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('treats a region correction on the same bucket as a real switch', async () => {
+    const before = await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-a', 'eu-west-1');
+    });
+
+    // Same name, different region, so the client has to be rebuilt: the old
+    // one answers with a redirect for every request.
+    expect(api.created.length).toBe(before.providers + 1);
+    expect(lastCandidate().region).toBe('eu-west-1');
+  });
+
+  it('refuses when there is no session to switch', async () => {
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    await expect(auth!.switchBucket('bucket-b')).rejects.toThrow(/no session/);
+  });
+
+  it('refuses an empty bucket name', async () => {
+    const before = await renderSessionOnBucketA();
+
+    await expect(auth!.switchBucket('   ')).rejects.toThrow(/bucketName is required/);
+    expect(api.created.length).toBe(before.providers);
+  });
+});
+
+/**
+ * A switch that cannot be verified must cost nothing.
+ *
+ * This is the half that makes the ordering worth writing down: the session
+ * being replaced is a working one, so a bucket that is missing, in another
+ * region, or simply not readable by these keys has to leave the user exactly
+ * where they were - still on bucket-a, caches intact, uploads untouched.
+ */
+describe('a bucket switch that fails verification leaves the session alone', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: 'foo/bar/',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  const denied = () =>
+    Object.assign(new Error('AccessDenied'), {
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+
+  beforeEach(async () => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.setBucketName.mockClear();
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useSearchStore.getState().clearCache();
+    useSearchStore.getState().setLoading(false);
+    useUploadStore.getState().clearSessionData();
+    useDriveStore.getState().clearAllData();
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+    pushMock.mockClear();
+  });
+
+  it('reports what went wrong instead of a bare failure', async () => {
+    s3.fetchDirectoryStructure.mockRejectedValue(denied());
+
+    // Classified the same way /connect classifies it, so a caller can say
+    // whether the bucket is missing, elsewhere, or just not readable.
+    await expect(auth!.switchBucket('bucket-b')).rejects.toMatchObject({
+      name: 'ConnectionFailureError',
+      failure: { kind: 'permissions' },
+    });
+  });
+
+  it('keeps the current bucket, its provider and its stored session', async () => {
+    const before = auth?.apiS3;
+    s3.fetchDirectoryStructure.mockRejectedValue(denied());
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', 'eu-west-1').catch(() => {});
+    });
+
+    expect(auth?.userCreds).toEqual(BUCKET_A);
+    expect(auth?.apiS3).toBe(before);
+    expect(auth?.apiS3?.getBucketName()).toBe('bucket-a');
+    // Storage must never claim a bucket the running app is not on: the next
+    // reload would restore it.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual(BUCKET_A);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('destroys none of the bucket-scoped state', async () => {
+    useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
+    useDriveStore.getState().setPrefixData('foo/bar/', {
+      files: [],
+      folders: [],
+      isTruncated: false,
+    });
+    const signal = useUploadStore.getState().startDeleteOperation('d1', {
+      id: 'd1',
+      name: 'd1.pdf',
+      status: 'deleting',
+      progress: 0,
+      type: 'file',
+    });
+
+    s3.fetchDirectoryStructure.mockRejectedValue(denied());
+
+    await act(async () => {
+      // Explicitly allowed to cancel work, so nothing here is spared by the
+      // in-flight guard: what spares it is the failed verification.
+      await auth!.switchBucket('bucket-b', undefined, { discardActiveWork: true }).catch(() => {});
+    });
+
+    expect(useSearchStore.getState().getCachedOrNull('payroll', '')).not.toBeNull();
+    expect(Object.keys(useDriveStore.getState().cache)).toEqual(['foo/bar/']);
+    expect(signal.aborted).toBe(false);
+    expect(api.disposeUploadManager).not.toHaveBeenCalled();
+    expect(api.disposeSignedUrlManager).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Switching cancels every upload and delete in flight, so it asks first.
+ *
+ * Not with a dialog - that belongs to whatever UI ends up driving this. The
+ * contract here is only that the switch refuses to throw away running work
+ * unless it has been told it may, and that it says how much work that is.
+ */
+describe('a bucket switch does not discard work in flight behind the user', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: '',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  beforeEach(async () => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useUploadStore.getState().clearSessionData();
+    useSearchStore.getState().clearCache();
+    useDriveStore.getState().clearAllData();
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    api.disposeUploadManager.mockClear();
+    pushMock.mockClear();
+  });
+
+  it('reports what is running rather than switching', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'holiday.mov',
+      status: 'uploading',
+      progress: 12,
+      type: 'file',
+    });
+    useUploadStore.getState().startDeleteOperation('d1', {
+      id: 'd1',
+      name: 'old/',
+      status: 'deleting',
+      progress: 0,
+      type: 'folder',
+    });
+
+    const result = await act(async () => auth!.switchBucket('bucket-b'));
+
+    // Counts, not a boolean: whoever asks the user should be able to say what
+    // they are about to lose.
+    expect(result).toEqual({ status: 'blocked', activeWork: { uploads: 1, deletes: 1 } });
+    expect(api.disposeUploadManager).not.toHaveBeenCalled();
+    expect(auth?.userCreds?.bucketName).toBe('bucket-a');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('counts a paused upload as work worth asking about', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'holiday.mov',
+      status: 'paused',
+      progress: 12,
+      type: 'file',
+    });
+
+    const result = await act(async () => auth!.switchBucket('bucket-b'));
+
+    // Disposal ends a paused upload as finally as a running one.
+    expect(result).toEqual({ status: 'blocked', activeWork: { uploads: 1, deletes: 0 } });
+  });
+
+  it('ignores work that has already finished', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'done.txt',
+      status: 'completed',
+      progress: 100,
+      type: 'file',
+    });
+
+    const result = await act(async () => auth!.switchBucket('bucket-b'));
+
+    expect(result).toMatchObject({ status: 'switched' });
+  });
+
+  it('goes ahead once cancelling has been authorised', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'holiday.mov',
+      status: 'uploading',
+      progress: 12,
+      type: 'file',
+    });
+
+    const result = await act(async () =>
+      auth!.switchBucket('bucket-b', undefined, { discardActiveWork: true })
+    );
+
+    expect(result).toEqual({ status: 'switched', bucketName: 'bucket-b' });
+    // Disposal is what actually cancels the transfer; the flag only says it
+    // may.
+    expect(api.disposeUploadManager).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The failure modes either side of the verification step.
+ *
+ * Acquiring the in-flight flag is the easy half; releasing it on every exit is
+ * the half that breaks. A switch that throws before the flag is cleared leaves
+ * the picker permanently answering "already in progress" - dead until the page
+ * is reloaded - so the release is tested through the failures rather than
+ * inferred from the happy path.
+ */
+describe('a bucket switch cleans up after itself whatever happens', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: '',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  const denied = () =>
+    Object.assign(new Error('AccessDenied'), {
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+
+  beforeEach(async () => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.constructorError = null;
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useUploadStore.getState().clearSessionData();
+    useSearchStore.getState().clearCache();
+    useDriveStore.getState().clearAllData();
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    api.disposeUploadManager.mockClear();
+    pushMock.mockClear();
+  });
+
+  it('refuses a second switch while the first is still verifying', async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    s3.fetchDirectoryStructure.mockImplementation(async () => {
+      await held;
+      return { files: [], folders: [] };
+    });
+
+    let first: Promise<unknown> = Promise.resolve();
+    let second: unknown;
+
+    await act(async () => {
+      first = auth!.switchBucket('bucket-b');
+      second = await auth!.switchBucket('bucket-c').catch((error: unknown) => error);
+      release();
+      await first;
+    });
+
+    expect(second).toBeInstanceOf(Error);
+    expect((second as Error).message).toMatch(/already in progress/);
+    // The loser never got as far as building anything: no provider, no
+    // teardown, nothing of bucket-c anywhere.
+    expect(api.created.some((creds) => creds.bucketName === 'bucket-c')).toBe(false);
+    expect(api.disposeUploadManager).toHaveBeenCalledTimes(1);
+    // One winner, and it is the same one in memory and in storage.
+    expect(auth?.userCreds?.bucketName).toBe('bucket-b');
+    expect(auth?.apiS3?.getBucketName()).toBe('bucket-b');
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}').bucketName).toBe('bucket-b');
+  });
+
+  it('can still switch after one that failed verification', async () => {
+    s3.fetchDirectoryStructure.mockRejectedValueOnce(denied());
+
+    await expect(auth!.switchBucket('bucket-b')).rejects.toThrow();
+
+    // The flag is released on the way out of the failure, not only on success.
+    // Left set, every later switch would answer "already in progress" for the
+    // life of the page.
+    const result = await act(async () => auth!.switchBucket('bucket-c'));
+
+    expect(result).toEqual({ status: 'switched', bucketName: 'bucket-c' });
+    expect(auth?.userCreds?.bucketName).toBe('bucket-c');
+  });
+
+  it('does not hold the loading gate up after a failed switch', async () => {
+    s3.fetchDirectoryStructure.mockRejectedValueOnce(denied());
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b').catch(() => {});
+    });
+
+    // A switch that never got as far as tearing anything down must not have
+    // raised the gate either: the dashboard is still bucket-a's and still has
+    // to render.
+    expect(auth?.isLoading).toBe(false);
+    expect(screen.getByText('ready')).toBeDefined();
+  });
+
+  it('reports a switch that happened but could not be saved', async () => {
+    const original = localStorage.setItem.bind(localStorage);
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation((key: string, value: string) => {
+        // Only the session key, so the stores that persist their own state are
+        // not dragged into this.
+        if (key === STORAGE_KEY) throw new DOMException('quota', 'QuotaExceededError');
+        original(key, value);
+      });
+
+    try {
+      const result = await act(async () => auth!.switchBucket('bucket-b'));
+
+      // The managers are rebuilt and the dashboard is on bucket-b: calling
+      // that a failed switch would be untrue. The cost is a reload landing
+      // back on bucket-a, which is what the warning says.
+      expect(result).toEqual({ status: 'switched', bucketName: 'bucket-b' });
+      expect(auth?.userCreds?.bucketName).toBe('bucket-b');
+      expect(auth?.apiS3?.getBucketName()).toBe('bucket-b');
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}').bucketName).toBe('bucket-a');
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('releases the flag when building the provider itself throws', async () => {
+    // The S3 client is constructed from the candidate's region and endpoint,
+    // which is the one step between taking the in-flight flag and the block
+    // that releases it. A throw here used to escape past the release and jam
+    // every later switch with "already in progress" until a reload.
+    api.constructorError = new Error('Invalid endpoint URL');
+
+    await expect(auth!.switchBucket('bucket-b')).rejects.toThrow(/Invalid endpoint/);
+
+    const result = await act(async () => auth!.switchBucket('bucket-c'));
+
+    expect(result).toEqual({ status: 'switched', bucketName: 'bucket-c' });
+    expect(auth?.userCreds?.bucketName).toBe('bucket-c');
+  });
 });

@@ -11,7 +11,8 @@ import {
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
 import { ConnectionFailureError, classifyConnectionFailure } from '@/lib/s3/connection-failure';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { countActiveWork, useUploadStore } from '@/features/upload/stores/use-upload-store';
+import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 /**
@@ -41,6 +42,37 @@ async function verifyCredentials(api: BYOS3ApiProvider, creds: Credentials): Pro
  */
 const UPLOAD_CONCURRENCY = 3;
 
+/**
+ * What `switchBucket` did, for the one outcome that is not an error.
+ *
+ * A structured result rather than a throw, on the same reasoning as the
+ * s3-api's `deleteBucket`: "there is work in flight, ask first" is an expected
+ * answer a caller has to render, not an exception. Anything that genuinely
+ * went wrong still throws.
+ *
+ * - `switched`  - the session is now on `bucketName`.
+ * - `unchanged` - already there. Nothing was torn down; see `switchBucket`.
+ * - `blocked`   - uploads or deletes are still running, and cancelling them
+ *   was not authorised. Nothing was touched. Confirm with the user, then call
+ *   again with `{ discardActiveWork: true }`.
+ */
+export type BucketSwitchResult =
+  | { status: 'switched'; bucketName: string }
+  | { status: 'unchanged'; bucketName: string }
+  | { status: 'blocked'; activeWork: ActiveWork };
+
+export interface SwitchBucketOptions {
+  /**
+   * Proceed even though uploads or deletes are running, cancelling them.
+   *
+   * Off by default: switching disposes the upload managers and aborts every
+   * delete, so a switch taken without asking silently destroys work the user
+   * started. The confirmation itself belongs to whoever has a UI; this only
+   * refuses to do it behind their back.
+   */
+  discardActiveWork?: boolean;
+}
+
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
   uploadManager: UploadManager | null;
@@ -48,6 +80,11 @@ interface AuthContextType {
   userCreds: Credentials | null;
   isLoading: boolean;
   createSession: (creds: Credentials) => Promise<void>;
+  switchBucket: (
+    bucketName: string,
+    region?: string,
+    options?: SwitchBucketOptions
+  ) => Promise<BucketSwitchResult>;
   clearSession: () => void;
 }
 
@@ -161,12 +198,41 @@ export const AuthContext = createContext<AuthContextType>({
   createSession: async () => {
     throw new Error('AuthContext not initialized');
   },
+  switchBucket: async () => {
+    throw new Error('AuthContext not initialized');
+  },
   clearSession: () => {
     throw new Error('AuthContext not initialized');
   },
 });
 
 const STORAGE_KEY = 's3_user_session';
+
+/**
+ * Writes the session to storage, treating a refusal as non-fatal.
+ *
+ * `setItem` throws on a full quota and in browsers set to refuse site data
+ * outright. For a switch that has *already happened* - managers rebuilt, state
+ * updated, dashboard about to render the new bucket - reporting that as a
+ * failed switch would be a lie, and rolling back to undo a write that never
+ * landed would be worse. The one real consequence is that a reload restores
+ * the previous bucket, so it is logged rather than swallowed in silence.
+ *
+ * Deliberately not used by `createSession`, where a storage failure happens
+ * before anything is live and is genuinely fatal to the session it was
+ * establishing.
+ */
+function persistSession(creds: Credentials): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+  } catch (error) {
+    console.warn(
+      '[opndrive] The session could not be saved to this browser. The switch ' +
+        'has taken effect, but a reload will return to the previous bucket.',
+      error
+    );
+  }
+}
 
 /**
  * Routes that must render before a session has been looked for.
@@ -231,6 +297,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
    * they land after the DOM has gone and throw `window is not defined`.
    */
   const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Whether a bucket switch is mid-flight. See `switchBucket`. */
+  const isSwitching = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -347,6 +416,164 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  /**
+   * Moves the session to another bucket on the credentials it already has.
+   *
+   * Deliberately not `apiS3.setBucketName()`, even though the provider offers
+   * it. Mutating the bucket in place keeps the same object identity, and
+   * identity is what everything downstream watches to know its context has
+   * changed: `useSearch` memoises its service on it, the download store keys
+   * off it, the upload executor compares against it. Changing the bucket
+   * underneath them leaves every one of them serving bucket A's caches while
+   * the app says bucket B. So a switch builds a new provider, and the same
+   * teardown that a new session gets runs against the old one.
+   *
+   * Order is the whole point: the candidate is proved against the network
+   * before anything belonging to the current bucket is disposed. A bucket that
+   * turns out not to exist, or that these keys cannot read, leaves the session
+   * exactly as it was.
+   */
+  const switchBucket = async (
+    bucketName: string,
+    region?: string,
+    options?: SwitchBucketOptions
+  ): Promise<BucketSwitchResult> => {
+    const current = userCreds;
+
+    if (!current) {
+      throw new Error('switchBucket: there is no session to switch');
+    }
+
+    const nextBucket = bucketName.trim();
+
+    if (!nextBucket) {
+      throw new Error('switchBucket: bucketName is required');
+    }
+
+    // Only the region we were handed, or the one we already have. No guessing:
+    // a bucket's real region comes from whoever listed it, and inventing one
+    // here would just move the redirect error somewhere harder to read.
+    const nextRegion = region?.trim() || current.region;
+
+    // Cheap comparisons before any network call. Re-picking the bucket you are
+    // already on is a thing a dropdown makes very easy to do, and answering it
+    // with a full teardown would cancel every upload in flight for nothing.
+    if (nextBucket === current.bucketName && nextRegion === current.region) {
+      return { status: 'unchanged', bucketName: nextBucket };
+    }
+
+    if (!options?.discardActiveWork) {
+      const activeWork = countActiveWork(useUploadStore.getState());
+
+      if (activeWork.uploads > 0 || activeWork.deletes > 0) {
+        return { status: 'blocked', activeWork };
+      }
+    }
+
+    // Two switches running at once would each dispose the other's managers and
+    // race to persist their own credentials, and the loser's provider would
+    // outlive the winner's session. The loading gate below hides the UI that
+    // could start a second one, so this only has to catch a programmatic
+    // caller - refusing is enough.
+    //
+    // Everything above returns before the flag is taken, so a `blocked` or
+    // `unchanged` answer can never leave it set.
+    if (isSwitching.current) {
+      throw new Error('switchBucket: a bucket switch is already in progress');
+    }
+
+    isSwitching.current = true;
+
+    /**
+     * Whether this call is the one holding the loading gate up.
+     *
+     * The gate is lowered only by the path that raised it. A switch that fails
+     * verification never raises it at all, and lowering it unconditionally
+     * would lift a gate the startup restore is still holding.
+     */
+    let gateRaised = false;
+
+    try {
+      // Built immutably from the current credentials: the keys, the endpoint
+      // and anything else the provider needs stay exactly as they are, and the
+      // existing object is never edited, so a failure below leaves nothing
+      // half-rewritten.
+      //
+      // The prefix is dropped rather than carried over. It names a folder in
+      // the bucket being left, and the odds that the same path means anything
+      // in the new one are poor - a prefix that does not exist lists empty,
+      // which reads as "this bucket is empty" rather than "you are looking in
+      // the wrong place". Every switch therefore lands at the bucket root.
+      const candidate: Credentials = {
+        ...current,
+        bucketName: nextBucket,
+        region: nextRegion,
+        prefix: '',
+      };
+
+      // Inside the try for the flag's sake. This builds an S3Client from the
+      // candidate's region and endpoint, and a throw out here with the flag
+      // still set would refuse every later switch for the life of the page -
+      // one bad endpoint and the bucket picker is dead until a reload.
+      const api = new BYOS3ApiProvider(candidate, 'BYO');
+
+      try {
+        // The same one-object listing /connect uses, and for the same reason -
+        // except here the cost of skipping it is higher, because the session
+        // it would replace is a working one.
+        await verifyCredentials(api, candidate);
+      } catch (error) {
+        console.error('Bucket switch failed', error);
+
+        // Classified like createSession's, so the caller can say whether the
+        // bucket is missing, in another region, or simply not readable by
+        // these keys. Nothing has been torn down at this point.
+        throw new ConnectionFailureError(classifyConnectionFailure(error));
+      }
+
+      // Verified. Everything past here belongs to the new bucket, so the gate
+      // goes up: children are replaced by the placeholder for the length of
+      // the swap rather than being handed a session that is half of each.
+      setIsLoading(true);
+      gateRaised = true;
+
+      // Nothing in here rejects, which is what makes the teardown safe to
+      // start: `disposeInstance` clears the singleton synchronously and
+      // swallows its own cancellation errors, `getInstance` only assigns
+      // fields, and the three store resets are plain zustand writes. So there
+      // is no path that disposes the old managers and then fails to build the
+      // new ones - the half-switched state this ordering would otherwise have
+      // to recover from cannot arise.
+      const { manager, signedUrlManager } = await initializeUploadManagers(api, candidate);
+
+      // Applied in one continuation, so React commits them as a single update
+      // and a consumer of the context never reads the new credentials against
+      // the old provider. What makes that hold rather than merely usually hold
+      // is downstream: the effects that react to a switch key off `apiS3` and
+      // read the prefix back off that same object, never off `userCreds`, so
+      // none of them can pair one bucket's provider with another's session.
+      setUserCreds(candidate);
+      setApiS3(api);
+      setUploadManager(manager);
+      setSignedUrlUploadManager(signedUrlManager);
+
+      // Persisted only once the live session is actually on the new bucket.
+      // Written any earlier, a failure above would leave storage claiming a
+      // bucket the app is not on, and the next reload would restore it.
+      persistSession(candidate);
+
+      // The old prefix is gone with the old bucket, and the browse route
+      // carries one in its URL. Sending the user to the dashboard root is what
+      // stops the app asking the new bucket for the old bucket's folder.
+      router.push('/dashboard');
+
+      return { status: 'switched', bucketName: nextBucket };
+    } finally {
+      if (gateRaised) setIsLoading(false);
+      isSwitching.current = false;
+    }
+  };
+
   // Clear session completely
   const clearSession = () => {
     try {
@@ -417,6 +644,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         userCreds,
         isLoading,
         createSession,
+        switchBucket,
         clearSession,
       }}
     >
