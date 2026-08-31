@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
 import NavbarUserProfile from './navbar-user-profile';
+import { BucketSwitcher } from './bucket-switcher';
 import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
 import { useEffect, useState } from 'react';
@@ -87,6 +88,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               <Menu size={20} />
             </Button>
           </AriaLabel>
+          <BucketSwitcher />
         </div>
 
         <div className="flex flex-1 justify-center">
@@ -131,6 +133,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
                 <Menu size={18} />
               </Button>
             </AriaLabel>
+            <BucketSwitcher />
             <Link
               href="/dashboard"
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"

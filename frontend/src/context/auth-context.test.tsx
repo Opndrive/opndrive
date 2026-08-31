@@ -1327,3 +1327,105 @@ describe('a bucket switch cleans up after itself whatever happens', () => {
     expect(auth?.userCreds?.bucketName).toBe('bucket-c');
   });
 });
+
+/**
+ * The operations card must not describe a bucket the session has left.
+ *
+ * Switching aborted the deletes in flight but left every record of them, and of
+ * every upload, sitting in the store - so the card carried the previous
+ * bucket's rows across, naming files that are not in the bucket now on screen.
+ * The rows are not merely cosmetic: they are the app's account of what happened
+ * to that data.
+ *
+ * The fix is one call inside the shared teardown rather than a second cleanup
+ * path, so it holds for connecting a different bucket at /connect too.
+ */
+describe('a switch leaves no trace of the previous bucket on the operations card', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: '',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  beforeEach(async () => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.constructorError = null;
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useUploadStore.getState().clearSessionData();
+    useSearchStore.getState().clearCache();
+    useDriveStore.getState().clearAllData();
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+  });
+
+  it('clears the rows a finished upload and a cancelled delete left behind', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'bucket-a-report.pdf',
+      status: 'completed',
+      progress: 100,
+      type: 'file',
+    });
+    const signal = useUploadStore.getState().startDeleteOperation('d1', {
+      id: 'd1',
+      name: 'bucket-a-old/',
+      status: 'deleting',
+      progress: 0,
+      type: 'folder',
+    });
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', undefined, { discardActiveWork: true });
+    });
+
+    // Both halves matter, and in this order: the delete is stopped before the
+    // record holding its abort controller is dropped, or it could never be
+    // stopped at all.
+    expect(signal.aborted).toBe(true);
+    expect(useUploadStore.getState().uploads).toEqual({});
+    expect(useUploadStore.getState().deletes).toEqual({});
+  });
+
+  it('leaves nothing behind when a different bucket is connected either', async () => {
+    useUploadStore.getState().addUpload('u1', {
+      id: 'u1',
+      name: 'bucket-a-report.pdf',
+      status: 'completed',
+      progress: 100,
+      type: 'file',
+    });
+
+    // /connect is reachable without logging out first, so this is the same
+    // bucket change by another route - and it goes through the same teardown.
+    await act(async () => {
+      await auth!.createSession({ ...BUCKET_A, bucketName: 'bucket-c' });
+    });
+
+    expect(useUploadStore.getState().uploads).toEqual({});
+  });
+});

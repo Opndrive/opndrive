@@ -155,7 +155,15 @@ async function initializeUploadManagers(
   // And on the same reasoning, a delete authorised for the previous bucket
   // must not still be running against it once a new session has begun. A no-op
   // on the restore-at-startup path, where nothing is in flight yet.
-  useUploadStore.getState().abortAllDeleteOperations();
+  //
+  // `clearSessionData` rather than `abortAllDeleteOperations` alone, which is
+  // all this used to do. Aborting stopped the work but left every record of it
+  // on the operations card, so switching bucket carried the previous bucket's
+  // uploads and deletes across with it - rows naming files that are not in the
+  // bucket now on screen. It aborts first and then wipes, in that order,
+  // because the map it clears holds the only reference to each abort
+  // controller; see the note on the store.
+  useUploadStore.getState().clearSessionData();
 
   // The listing cache needs it most of all, and was the one thing this did not
   // clear. `fetchData` returns early when a prefix is already 'ready' or has
