@@ -64,6 +64,43 @@ sequenceDiagram
    Opndrive-operated server, because there isn't one.
 4. You're redirected to the dashboard.
 
+## Switching Buckets
+
+One connection can work with more than one bucket. The bucket you are in is
+named in the top bar, next to the menu button - open it to switch.
+
+Opening it lists the buckets those credentials can see. Type to narrow the list;
+if there are more than fit in one page, **Load more** fetches the next. The
+bucket you are currently in is ticked, and each bucket shows its region when
+your provider reports one. Nothing is listed until you open the switcher, so
+connecting and browsing never spends a request on it.
+
+Choosing a bucket checks it before anything changes. If the bucket does not
+exist, sits in another region, or those keys cannot read it, you stay exactly
+where you are and the reason is shown.
+
+A switch starts you at the top of the new bucket. Any prefix you had configured
+belongs to the bucket you are leaving, so it is not carried across, and you land
+at the new bucket's root rather than at a folder path that probably means
+nothing there.
+
+**Uploads and deletes in progress are not thrown away silently.** If any are
+still running, switching asks first and tells you how many; they are only
+cancelled if you say so. Finished uploads and deletes are cleared from the
+operations list when you switch, because they describe the bucket you have left.
+
+### If the bucket list is empty or unavailable
+
+Listing buckets needs an account-level permission that browsing a single bucket
+does not (see below), and some S3-compatible providers do not implement bucket
+listing at all. Either way your connection is fine - everything else keeps
+working.
+
+When that happens the switcher offers a box to type a bucket name into instead.
+That path needs no extra permission: the name you type is checked the same way
+the connect form checks one, using the same bucket-level access you already
+have.
+
 ## Disconnecting
 
 User icon → **Clear Session** removes the stored credentials immediately and
@@ -77,6 +114,25 @@ you're using one). If you see permission errors after connecting successfully,
 check the bucket policy or IAM policy attached to the access key first - a
 successful connection only confirms the credentials are valid, not that every
 operation is permitted.
+
+### Listing your buckets is a separate, optional permission
+
+The bucket switcher's **list** needs `s3:ListAllMyBuckets`, which is granted on
+the account rather than on a bucket, and which none of the permissions above
+imply. It is genuinely optional:
+
+| What you want                           | What the key needs                             |
+| --------------------------------------- | ---------------------------------------------- |
+| Browse and manage one bucket            | The four bucket-level permissions above        |
+| See a list of your buckets to pick from | `s3:ListAllMyBuckets` as well                  |
+| Switch to a bucket by typing its name   | Nothing extra - `s3:ListBucket` on that bucket |
+
+Without it the switcher says the list is unavailable and offers a box to type a
+bucket name into, which works with the bucket-level permissions you already
+have. Switching itself never needs the account-level permission: the check
+Opndrive runs against the bucket you are moving to is the same single listing
+the connect form makes, so `s3:ListBucket` on that bucket is what decides
+whether the switch succeeds.
 
 Large uploads also use `s3:AbortMultipartUpload` and `s3:ListMultipartUploads`.
 Opndrive calls the abort itself when an upload is cancelled, but it cannot do so

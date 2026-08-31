@@ -7,7 +7,7 @@ export const faqData = [
   {
     question: 'What AWS S3 permissions does Opndrive require?',
     answer:
-      'Opndrive requires these S3 permissions: s3:GetObject (to download files), s3:PutObject (to upload files), s3:DeleteObject (to delete files), and s3:ListBucket (to browse folders). These permissions allow full file management capabilities within your S3 bucket.',
+      'Opndrive requires these S3 permissions: s3:GetObject (to download files), s3:PutObject (to upload files), s3:DeleteObject (to delete files), and s3:ListBucket (to browse folders). These permissions allow full file management capabilities within your S3 bucket. Listing your buckets in the bucket switcher additionally needs s3:ListAllMyBuckets, which is granted on the account rather than the bucket - without it you can still switch buckets by typing the name.',
   },
   {
     question: 'What file types can I preview in Opndrive?',
