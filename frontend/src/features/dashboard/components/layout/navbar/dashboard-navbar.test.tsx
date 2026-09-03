@@ -40,6 +40,18 @@ vi.mock('@/context/notification-context', () => ({
   useNotification: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }),
 }));
 
+vi.mock('@/features/dashboard/hooks/use-bucket-mutations', () => ({
+  useBucketMutations: () => ({
+    region: 'us-east-1',
+    canChooseRegion: true,
+    regionOptions: [],
+    isCreating: false,
+    deletingBucket: null,
+    createBucket: vi.fn(),
+    deleteBucket: vi.fn(),
+  }),
+}));
+
 vi.mock('@/features/dashboard/hooks/use-buckets', () => ({
   useBuckets: () => ({
     buckets: [],

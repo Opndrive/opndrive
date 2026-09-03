@@ -92,6 +92,24 @@ interface BucketsStore {
 
   load: (api: BYOS3ApiProvider, searchTerm: string, options?: { force?: boolean }) => Promise<void>;
   loadMore: (api: BYOS3ApiProvider) => Promise<void>;
+  /**
+   * Records a bucket this session has just created.
+   *
+   * Written into the loaded list rather than triggering a re-list, because
+   * ListBuckets is billed and the answer is already known: the create call
+   * that just succeeded is the only thing that could have changed it.
+   *
+   * Ignored when the list belongs to another provider, and when the name is
+   * already there - the second is not a conflict, it is a create that raced a
+   * listing which already picked the bucket up.
+   */
+  addBucket: (api: BYOS3ApiProvider, bucket: BucketOption) => void;
+  /**
+   * Forgets a bucket this session has just deleted, on the same reasoning as
+   * `addBucket`. Never called on a failed delete: a row that vanishes from a
+   * switcher is a promise that the bucket is gone.
+   */
+  removeBucket: (api: BYOS3ApiProvider, bucketName: string) => void;
   reset: () => void;
 }
 
@@ -162,6 +180,23 @@ function toOptions(buckets: readonly ApiBucket[]): BucketOption[] {
   }
 
   return options;
+}
+
+/**
+ * Places a bucket where a listing would have put it.
+ *
+ * S3 returns buckets in name order, so a created bucket dropped at the end of
+ * the list would sit in the wrong place until the next listing moved it - the
+ * row a user just made would appear to jump. Sorting the whole list instead
+ * would be worse: a provider that orders its listing differently would have
+ * its order rewritten by an unrelated create.
+ */
+function insertSorted(buckets: BucketOption[], bucket: BucketOption): BucketOption[] {
+  const at = buckets.findIndex((existing) => existing.name.localeCompare(bucket.name) > 0);
+
+  if (at === -1) return [...buckets, bucket];
+
+  return [...buckets.slice(0, at), bucket, ...buckets.slice(at)];
 }
 
 /** Appends a page, dropping names already listed. See `loadMore` for why. */
@@ -415,6 +450,27 @@ export const useBucketsStore = create<BucketsStore>((set, get) => ({
       // and the list stays on screen. Only the attempt to extend it failed.
       set({ isLoadingMore: false, error: describeDiscoveryFailure(error) });
     }
+  },
+
+  addBucket: (api, bucket) => {
+    set((current) => {
+      if (current.owner !== api) return current;
+      if (current.buckets.some((existing) => existing.name === bucket.name)) return current;
+
+      return { buckets: insertSorted(current.buckets, bucket) };
+    });
+  },
+
+  removeBucket: (api, bucketName) => {
+    set((current) => {
+      if (current.owner !== api) return current;
+
+      const remaining = current.buckets.filter((bucket) => bucket.name !== bucketName);
+
+      // Same array back when nothing matched, so a delete of something this
+      // page never listed does not re-render every subscriber for no change.
+      return remaining.length === current.buckets.length ? current : { buckets: remaining };
+    });
   },
 
   /**

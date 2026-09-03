@@ -67,7 +67,14 @@ export interface S3Provider {
   };
 }
 
-const AWS_REGIONS: RegionOption[] = [
+/**
+ * Every region AWS S3 can hold a bucket in.
+ *
+ * Exported because the connect form is no longer the only place that has to
+ * name one: creating a bucket picks a region too, and a second hand-kept list
+ * would be a second list to forget to update.
+ */
+export const AWS_REGIONS: RegionOption[] = [
   { value: 'us-east-1', label: 'US East (N. Virginia) - us-east-1' },
   { value: 'us-east-2', label: 'US East (Ohio) - us-east-2' },
   { value: 'us-west-1', label: 'US West (N. California) - us-west-1' },

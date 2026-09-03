@@ -10,18 +10,24 @@
  *
  * Both are mocked for that reason: a real `useBuckets` would make this a test
  * of discovery, and a real `switchBucket` would make it a test of session
- * lifecycle.
+ * lifecycle. `useBucketMutations` is mocked on the same grounds: what this
+ * component owes a create or a delete is the name and the region it was asked
+ * for, not what the request then does with them.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BucketSwitcher } from './bucket-switcher';
 import type { UseBucketsResult } from '@/features/dashboard/hooks/use-buckets';
+import type { UseBucketMutationsResult } from '@/features/dashboard/hooks/use-bucket-mutations';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 
 const switchBucket = vi.fn();
 const notifyError = vi.fn();
 const hookState = vi.fn();
+const createBucket = vi.fn();
+const deleteBucket = vi.fn();
+const mutationState = vi.fn();
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ switchBucket }),
@@ -29,6 +35,10 @@ vi.mock('@/hooks/use-auth', () => ({
 
 vi.mock('@/features/dashboard/hooks/use-buckets', () => ({
   useBuckets: () => hookState(),
+}));
+
+vi.mock('@/features/dashboard/hooks/use-bucket-mutations', () => ({
+  useBucketMutations: () => mutationState(),
 }));
 
 vi.mock('@/context/notification-context', () => ({
@@ -69,8 +79,29 @@ const READY = {
   ],
 };
 
-function renderSwitcher(state: UseBucketsResult) {
+/** The mutations hook's shape, defaulting to a session free to pick a region. */
+function mutations(overrides: Partial<UseBucketMutationsResult> = {}): UseBucketMutationsResult {
+  return {
+    region: 'us-east-1',
+    canChooseRegion: true,
+    regionOptions: [
+      { value: 'us-east-1', label: 'US East (N. Virginia) - us-east-1' },
+      { value: 'eu-west-1', label: 'Europe (Ireland) - eu-west-1' },
+    ],
+    isCreating: false,
+    deletingBucket: null,
+    createBucket,
+    deleteBucket,
+    ...overrides,
+  };
+}
+
+function renderSwitcher(
+  state: UseBucketsResult,
+  mutationOverrides: Partial<UseBucketMutationsResult> = {}
+) {
   hookState.mockReturnValue(state);
+  mutationState.mockReturnValue(mutations(mutationOverrides));
   return render(
     <>
       <BucketSwitcher />
@@ -111,6 +142,11 @@ beforeEach(() => {
   switchBucket.mockResolvedValue({ status: 'switched', bucketName: 'staging-assets' });
   notifyError.mockReset();
   hookState.mockReset();
+  mutationState.mockReset();
+  createBucket.mockReset();
+  createBucket.mockResolvedValue(true);
+  deleteBucket.mockReset();
+  deleteBucket.mockResolvedValue(true);
 });
 
 describe('the closed control', () => {
@@ -681,5 +717,165 @@ describe('typing in the search field is typing, not menu navigation', () => {
     // it. Reaching the list, that keystroke would move focus to "backups"
     // instead of putting a "b" in the field.
     expect(document.activeElement).toBe(field);
+  });
+});
+
+/**
+ * Making a bucket.
+ *
+ * The footer used to open a field for typing the name of a bucket that already
+ * existed. It now opens a form that makes one, so what these check is the two
+ * things the component decides and the hook cannot: which name, and which
+ * region.
+ */
+describe('making a bucket', () => {
+  /** Opens the menu, then the create form, and hands back its name field. */
+  async function openCreateForm() {
+    await open();
+    fireEvent.click(screen.getByRole('menuitem', { name: /new bucket/i }));
+    return screen.findByLabelText(/bucket name/i);
+  }
+
+  it('offers making one where it used to offer typing a name', async () => {
+    renderSwitcher(buckets(READY));
+
+    await open();
+
+    expect(screen.getByRole('menuitem', { name: /new bucket/i })).toBeDefined();
+  });
+
+  it('creates it in the session region when none is picked', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'brand-new-bucket');
+    fireEvent.click(screen.getByRole('button', { name: /create bucket/i }));
+
+    await waitFor(() => expect(createBucket).toHaveBeenCalledWith('brand-new-bucket', 'us-east-1'));
+  });
+
+  it('creates it in the region that was picked', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'frankfurt-bucket');
+    type(screen.getByLabelText(/^region$/i), 'eu-west-1');
+    fireEvent.click(screen.getByRole('button', { name: /create bucket/i }));
+
+    // A bucket cannot be moved afterwards, so the region the form was left on
+    // is the one that has to reach the request - not the session's.
+    await waitFor(() => expect(createBucket).toHaveBeenCalledWith('frankfurt-bucket', 'eu-west-1'));
+  });
+
+  it('names the region rather than offering one when the endpoint decides it', async () => {
+    // Every provider but AWS stores a resolved endpoint, and that URL sets the
+    // location. A list there would be a choice the request cannot honour.
+    renderSwitcher(buckets(READY), { canChooseRegion: false, region: 'eu-west-1' });
+
+    await openCreateForm();
+
+    expect(screen.queryByLabelText(/^region$/i)).toBeNull();
+    expect(screen.getByText(/endpoint sets the location/i)).toBeDefined();
+  });
+
+  it('refuses a name S3 would refuse, before spending a request on it', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'No_Caps_Allowed');
+
+    expect(screen.getByText(/cannot contain uppercase/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /create bucket/i })).toHaveProperty('disabled', true);
+
+    // Enter, not just the disabled button - a form submits either way.
+    fireEvent.submit(field.closest('form') as HTMLFormElement);
+
+    expect(createBucket).not.toHaveBeenCalled();
+  });
+
+  it('warns about a dot without refusing it', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'my.bucket');
+
+    // Legal, and always has been. It only breaks HTTPS for some tools, which
+    // is worth saying and not worth blocking.
+    expect(screen.getByText(/dots break https/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /create bucket/i })).toHaveProperty(
+      'disabled',
+      false
+    );
+  });
+
+  it('goes back to the list once the bucket exists', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'brand-new-bucket');
+    fireEvent.click(screen.getByRole('button', { name: /create bucket/i }));
+
+    expect(await screen.findByLabelText(/search buckets/i)).toBeDefined();
+  });
+
+  it('stays on the form when the bucket was not made', async () => {
+    createBucket.mockResolvedValue(false);
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'brand-new-bucket');
+    fireEvent.click(screen.getByRole('button', { name: /create bucket/i }));
+
+    // The name is still there to correct. Dropping back to the list would make
+    // a failed create look like a successful one.
+    await waitFor(() => expect(createBucket).toHaveBeenCalled());
+    expect(screen.getByLabelText(/bucket name/i)).toHaveProperty('value', 'brand-new-bucket');
+  });
+
+  it('does not switch to a bucket it has just made', async () => {
+    renderSwitcher(buckets(READY));
+
+    const field = await openCreateForm();
+    type(field, 'brand-new-bucket');
+    fireEvent.click(screen.getByRole('button', { name: /create bucket/i }));
+
+    // A switch cancels every upload and delete in flight. Making a bucket for
+    // later is not asking for that.
+    await waitFor(() => expect(createBucket).toHaveBeenCalled());
+    expect(switchBucket).not.toHaveBeenCalled();
+  });
+});
+
+describe('removing a bucket', () => {
+  it('offers it on every bucket except the one in use', async () => {
+    renderSwitcher(buckets(READY));
+
+    await open();
+
+    // Deleting the bucket the session is pointed at would leave every later
+    // request addressing something that is not there.
+    expect(
+      screen.queryByRole('menuitem', { name: /delete bucket my-production-bucket/i })
+    ).toBeNull();
+    expect(screen.getByRole('menuitem', { name: /delete bucket staging-assets/i })).toBeDefined();
+  });
+
+  it('deletes the bucket whose row it belongs to', async () => {
+    renderSwitcher(buckets(READY));
+
+    await open();
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete bucket backups/i }));
+
+    await waitFor(() => expect(deleteBucket).toHaveBeenCalledWith('backups'));
+  });
+
+  it('does not switch to the bucket it was asked to delete', async () => {
+    renderSwitcher(buckets(READY));
+
+    await open();
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete bucket staging-assets/i }));
+
+    await waitFor(() => expect(deleteBucket).toHaveBeenCalledWith('staging-assets'));
+    expect(switchBucket).not.toHaveBeenCalled();
   });
 });

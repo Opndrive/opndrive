@@ -810,3 +810,86 @@ describe('a region is reported only when the provider stated one', () => {
     expect(store().buckets).toEqual([{ name: 'plain', region: undefined, createdAt: undefined }]);
   });
 });
+
+/**
+ * Recording a create or a delete without re-listing.
+ *
+ * ListBuckets is billed, and after a create or a delete the answer is already
+ * known - the call that just succeeded is the only thing that could have
+ * changed it. So the store is patched instead, and these are the rules that
+ * keep that patch from lying: it belongs to one provider, it does not
+ * duplicate, and it puts a new bucket where a listing would have.
+ */
+describe('recording a bucket that was just created or deleted', () => {
+  it('places a created bucket where a listing would have put it', async () => {
+    const { api } = provider(async () => page(['alpha', 'charlie']));
+
+    await store().load(api, '');
+    store().addBucket(api, { name: 'bravo' });
+
+    // S3 lists buckets in name order. Appending would leave the row a user
+    // just made sitting in the wrong place until the next listing moved it.
+    expect(store().buckets.map((bucket) => bucket.name)).toEqual(['alpha', 'bravo', 'charlie']);
+  });
+
+  it('appends one that sorts last', async () => {
+    const { api } = provider(async () => page(['alpha', 'bravo']));
+
+    await store().load(api, '');
+    store().addBucket(api, { name: 'zulu' });
+
+    expect(store().buckets.map((bucket) => bucket.name)).toEqual(['alpha', 'bravo', 'zulu']);
+  });
+
+  it('keeps the region it was created in', async () => {
+    const { api } = provider(async () => page(['alpha']));
+
+    await store().load(api, '');
+    store().addBucket(api, { name: 'bravo', region: 'eu-west-1' });
+
+    // What a later switch needs to rebuild the client for the right place.
+    expect(store().buckets[1]).toMatchObject({ name: 'bravo', region: 'eu-west-1' });
+  });
+
+  it('ignores a name the listing already picked up', async () => {
+    const { api } = provider(async () => page(['alpha', 'bravo']));
+
+    await store().load(api, '');
+    store().addBucket(api, { name: 'bravo' });
+
+    // Not a conflict - a create that raced a listing which already has it.
+    expect(store().buckets.map((bucket) => bucket.name)).toEqual(['alpha', 'bravo']);
+  });
+
+  it('drops a deleted bucket', async () => {
+    const { api } = provider(async () => page(['alpha', 'bravo', 'charlie']));
+
+    await store().load(api, '');
+    store().removeBucket(api, 'bravo');
+
+    expect(store().buckets.map((bucket) => bucket.name)).toEqual(['alpha', 'charlie']);
+  });
+
+  it('hands back the same array when the delete matched nothing', async () => {
+    const { api } = provider(async () => page(['alpha']));
+
+    await store().load(api, '');
+    const before = store().buckets;
+    store().removeBucket(api, 'never-listed');
+
+    // A new array would re-render every subscriber for no change at all.
+    expect(store().buckets).toBe(before);
+  });
+
+  it('touches nothing when the list belongs to another provider', async () => {
+    const { api } = provider(async () => page(['alpha']));
+    const { api: other } = provider(async () => page([]));
+
+    await store().load(api, '');
+    store().addBucket(other, { name: 'bravo' });
+    store().removeBucket(other, 'alpha');
+
+    // Another account's buckets are not this one's, in either direction.
+    expect(store().buckets.map((bucket) => bucket.name)).toEqual(['alpha']);
+  });
+});
