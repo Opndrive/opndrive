@@ -2,6 +2,8 @@
 
 ## 3.1.1
 
+- See `frontend/CHANGELOG.md` and `s3-api/CHANGELOG.md` for detailed release notes.
+
 ## 3.1.0
 
 Notable changes to the Opndrive frontend app. `s3-api` has its own
