@@ -319,6 +319,85 @@ describe('pause, resume, and cancel', () => {
     expect(manager.getStatus(last)!.status).toBe('queued');
   });
 
+  it('starts nothing new when a whole batch is cancelled', async () => {
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const ids = Array.from({ length: 40 }, (_, i) =>
+      manager.addUpload(makeFile(`f${i}.txt`), { key: `k${i}` })
+    );
+    await settle();
+
+    const startedBefore = uploaderInstances.filter((u) => u.start.mock.calls.length > 0).length;
+    expect(startedBefore).toBe(3);
+
+    // What cancelling a folder card does: every file, in one pass.
+    await Promise.allSettled(ids.map(async (id) => manager.cancelUpload(id)));
+    await settle();
+
+    // Cancelling used to pump the queue synchronously, handing the slots the
+    // running uploads had just given up to files that were themselves about to
+    // be cancelled. Roughly half the folder was started - a CreateMultipartUpload
+    // and a CORS preflight each - purely so it could be aborted again, and for a
+    // few thousand files that is what froze the tab.
+    const startedAfter = uploaderInstances.filter((u) => u.start.mock.calls.length > 0).length;
+    expect(startedAfter).toBe(startedBefore);
+    expect(ids.every((id) => manager.getStatus(id)!.status === 'cancelled')).toBe(true);
+  });
+
+  it('starts nothing new when a batch is cancelled without awaiting', async () => {
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const ids = Array.from({ length: 40 }, (_, i) =>
+      manager.addUpload(makeFile(`f${i}.txt`), { key: `k${i}` })
+    );
+    await settle();
+
+    // The folder cards cancel like this - fire and forget, no await anywhere -
+    // so the fix cannot rely on the caller pausing between files.
+    ids.forEach((id) => void manager.cancelUpload(id));
+    await settle();
+
+    expect(uploaderInstances.filter((u) => u.start.mock.calls.length > 0)).toHaveLength(3);
+  });
+
+  it('still fills every slot a cancelled batch freed', async () => {
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const doomed = Array.from({ length: 5 }, (_, i) =>
+      manager.addUpload(makeFile(`doomed${i}.txt`), { key: `doomed${i}` })
+    );
+    const survivor = manager.addUpload(makeFile('survivor.txt'), { key: 'survivor' });
+    await settle();
+
+    await Promise.allSettled(doomed.map(async (id) => manager.cancelUpload(id)));
+    await settle();
+
+    // Deferring the pump must not mean dropping it: work that was NOT cancelled
+    // has to take the freed slot, or a cancelled folder would leave everything
+    // queued behind it stuck until something else happened to finish.
+    expect(manager.getStatus(survivor)!.status).toBe('uploading');
+  });
+
+  it('fills more than one freed slot at a time', async () => {
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const doomed = Array.from({ length: 3 }, (_, i) =>
+      manager.addUpload(makeFile(`doomed${i}.txt`), { key: `doomed${i}` })
+    );
+    const survivors = Array.from({ length: 3 }, (_, i) =>
+      manager.addUpload(makeFile(`s${i}.txt`), { key: `s${i}` })
+    );
+    await settle();
+
+    await Promise.allSettled(doomed.map(async (id) => manager.cancelUpload(id)));
+    await settle();
+
+    // One pump per slot the cancellations freed. A single processQueue() call
+    // starts one upload, so cancelling three would otherwise restart only one
+    // and leave two slots idle.
+    expect(survivors.map((id) => manager.getStatus(id)!.status)).toEqual([
+      'uploading',
+      'uploading',
+      'uploading',
+    ]);
+  });
+
   it('cancels a queued upload without touching the uploader', async () => {
     const manager = UploadManager.getInstance({ ...config, maxConcurrency: 1 });
     manager.addUpload(makeFile('a.txt'), { key: 'a' });

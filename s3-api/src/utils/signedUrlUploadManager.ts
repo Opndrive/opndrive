@@ -39,6 +39,8 @@ export class SignedUrlUploadManager {
   private listeners = new Map<UploadEvent, Set<EventListener>>();
   // See UploadManager.isDisposed for why this exists.
   private isDisposed = false;
+  // Whether a deferred queue pump is already booked. See schedulePump().
+  private pumpScheduled = false;
 
   private constructor(config: SignedUrlUploadManagerConfig) {
     this.apiProvider = config.apiProvider;
@@ -186,7 +188,7 @@ export class SignedUrlUploadManager {
 
     this.updateItemStatus(id, 'cancelled');
     this.releaseResources(id);
-    this.processQueue();
+    this.schedulePump();
   }
 
   /** See UploadManager.releaseResources - same leak, same reasoning. */
@@ -236,6 +238,24 @@ export class SignedUrlUploadManager {
       allStatuses[id] = { status: item.status, progress: item.progress };
     }
     return allStatuses;
+  }
+
+  /**
+   * See UploadManager.schedulePump. The reason bites harder here: nothing in
+   * this cancelUpload() awaits, so a synchronous pump ran while the caller was
+   * still only part-way through the folder - and every remaining file was
+   * started before its own cancellation arrived, not merely half of them.
+   */
+  private schedulePump(): void {
+    if (this.pumpScheduled) return;
+    this.pumpScheduled = true;
+
+    queueMicrotask(() => {
+      this.pumpScheduled = false;
+      for (let slot = this.activeUploads; slot < this.maxConcurrency; slot++) {
+        this.processQueue();
+      }
+    });
   }
 
   /**

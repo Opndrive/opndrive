@@ -571,6 +571,79 @@ describe('cancel', () => {
     expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
   });
 
+  it('opens nothing at all when it was cancelled before it started', async () => {
+    stubHappyPath();
+    const uploader = makeUploader();
+
+    await uploader.cancel();
+    await uploader.start(makeFile(1 * MB));
+
+    // The manager cancels queued files it never got round to starting. Opening
+    // a multipart upload just to abort it on the next line is a round-trip
+    // nobody asked for, and a few thousand of them is what the queue holds
+    // when a folder is cancelled.
+    expect(s3Mock).not.toHaveReceivedCommand(CreateMultipartUploadCommand);
+  });
+
+  it('aborts a session that was opened while the cancel was in flight', async () => {
+    stubHappyPath();
+    const uploader = makeUploader();
+
+    // A create that has not answered yet, exactly as it is when a cancel
+    // arrives in the same tick the upload started.
+    let answerCreate!: () => void;
+    s3Mock.on(CreateMultipartUploadCommand).callsFake(async () => {
+      await new Promise<void>((resolve) => {
+        answerCreate = resolve;
+      });
+      return { UploadId: 'upload-1' };
+    });
+
+    const started = uploader.start(makeFile(1 * MB));
+    await settle();
+
+    // cancel() finds no uploadId to abort with, so it cannot clean up itself.
+    await uploader.cancel();
+    answerCreate();
+    await started;
+
+    // Without start() aborting on its own behalf, S3 is left holding an
+    // incomplete multipart upload that no listing shows and nothing ever
+    // closes - billed until a lifecycle rule expires it.
+    expect(s3Mock).toHaveReceivedCommandExactlyOnceWith(AbortMultipartUploadCommand, {
+      Bucket: 'test-bucket',
+      Key: 'users/alice/big.bin',
+      UploadId: 'upload-1',
+    });
+    expect(s3Mock).not.toHaveReceivedCommand(UploadPartCommand);
+    expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
+  });
+
+  it('reports a failed clean-up rather than losing it', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    stubHappyPath();
+    s3Mock.on(AbortMultipartUploadCommand).rejects(new Error('abort failed'));
+    const uploader = makeUploader();
+
+    let answerCreate!: () => void;
+    s3Mock.on(CreateMultipartUploadCommand).callsFake(async () => {
+      await new Promise<void>((resolve) => {
+        answerCreate = resolve;
+      });
+      return { UploadId: 'upload-1' };
+    });
+
+    const started = uploader.start(makeFile(1 * MB));
+    await settle();
+    await uploader.cancel();
+    answerCreate();
+
+    // Nothing is waiting on this path, and the manager reads a rejection from a
+    // cancelled upload as expected noise, so it has to say so itself.
+    await expect(started).resolves.toBeUndefined();
+    expect(error.mock.calls.flat().join(' ')).toMatch(/orphaned/);
+  });
+
   it('clears the resume state', async () => {
     stubHappyPath();
     const uploader = makeUploader();
