@@ -10,6 +10,10 @@
 :root {
   --background: #ffffff;
   --card: #ffffff;
+  /* Elevated surfaces that float over the page: menus, dropdowns, popovers.
+     The shared dropdown primitive asks for this by name and nothing defined
+     it, so every menu rendered with no background at all. */
+  --popover: #ffffff;
   --secondary: #f8fafd;
   --accent: #e8f0fe;
 
@@ -17,6 +21,7 @@
   --secondary-foreground: #5f6368;
   --accent-foreground: #1a73e8;
   --card-foreground: #3c4043;
+  --popover-foreground: #3c4043;
 
   --primary: #1a73e8;
   --primary-foreground: #ffffff;
@@ -130,6 +135,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-geo-map: var(--geo-map);
@@ -182,6 +189,8 @@
   --accent-foreground: #8ab4f8;
   --card: #292a2d;
   --card-foreground: #e8eaed;
+  --popover: #292a2d;
+  --popover-foreground: #e8eaed;
   --border: #3c4043;
   --input: #303134;
   --geo-map: #5f6368;
@@ -255,6 +264,8 @@
     --accent-foreground: #8ab4f8;
     --card: #292a2d;
     --card-foreground: #e8eaed;
+    --popover: #292a2d;
+    --popover-foreground: #e8eaed;
     --border: #3c4043;
     --input: #303134;
     --geo-map: #5f6368;

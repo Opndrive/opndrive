@@ -39,6 +39,7 @@ multiply requests rather than help.
 | `renameFolder(params)`                                              | Bulk rename - see below                                       |
 | `createFolder(key)`                                                 | Writes a zero-byte object as a folder marker                  |
 | `search(params)`                                                    | Client-side name matching over one listing page               |
+| `getBuckets(params)`                                                | One page of the account's buckets - see below                 |
 | `getBucketName()` / `getPrefix()` / `getRegion()` / `getS3Client()` | Accessors                                                     |
 
 ### `deleteBatch` and the `Errors` array
@@ -69,6 +70,45 @@ an already-copied key is a no-op. If deletion partially fails after a successful
 copy+verify, it returns `status: 'copied-not-cleaned'`: the rename itself
 succeeded (the data is complete and correct at the new name), and what's left is
 a cleanup problem, not a failed rename.
+
+### `getBuckets`: listing the buckets a connection can reach
+
+Backs the dashboard's bucket switcher. It returns one page of buckets, with an
+optional `searchTerm` and a `nextToken` for continuing.
+
+Four things about it are worth knowing before you rely on it.
+
+**The search is a prefix match, and a literal one.** `searchTerm` becomes
+ListBuckets' `Prefix`, which S3 compares byte for byte. Searching `prod` finds
+`production-eu` and never `my-production`, and searching `PROD` finds nothing at
+all, because bucket names are lowercase. Callers are expected to narrow further
+themselves - the frontend sends the term only when it is already lowercase and
+applies a case-insensitive `includes` match to whatever comes back.
+
+**Pagination is the server's word.** `isTruncated` and `nextToken` describe the
+listing, and `totalBuckets` counts the buckets **in that page**, not in the
+account. Do not derive "is there more?" from it, or from how many rows survived
+a client-side filter.
+
+**Every request carries `MaxBuckets`, and not to page with.** It is 10,000, the
+same page size S3 applies by default, so it changes nothing about how much comes
+back. It is there because S3 fills in each bucket's `BucketRegion` only when the
+request contains at least one valid parameter: without it a plain unfiltered
+listing returned no regions at all, and a caller could not build a client for a
+bucket in another region. A search happened to work, because a prefix is a
+parameter; not searching did not.
+
+**Regions are best-effort, and `undefined` means "not stated".** Several
+S3-compatible providers do not report regions, and some ignore `Prefix` and
+`ContinuationToken` too. None of that is special-cased anywhere - there is no
+provider sniffing in this layer or above it. A caller that reads an absent
+region as "the same region I am on" will build a client for the wrong place, so
+absent must stay absent all the way to whoever acts on it.
+
+Errors propagate raw. `AccessDenied` here means the credentials cannot list the
+account's buckets - which is a different thing from a broken connection, since
+listing needs an account-level permission that browsing a single bucket does
+not.
 
 ## Upload Managers
 

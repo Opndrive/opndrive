@@ -61,6 +61,13 @@ const RENAME_COPY_CONCURRENCY = 8;
 /** Cap on how many missing/failed keys we enumerate in a result, to keep error payloads bounded. */
 const MAX_REPORTED_KEYS = 10;
 
+/**
+ * Page size sent with every ListBuckets request. See `getBuckets` for why it
+ * is sent at all - it matches the size S3 uses by default, so it changes what
+ * comes back rather than how much.
+ */
+const LIST_BUCKETS_PAGE_SIZE = 10_000;
+
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
 
@@ -623,9 +630,28 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     return this.credentials.region;
   }
 
+  /**
+   * Lists buckets, with each bucket's region where the provider reports one.
+   *
+   * `MaxBuckets` is sent on every request, and not in order to page: 10,000 is
+   * the same page size S3 applies on its own. It is there because of what its
+   * presence does to the *response*. S3 fills in `BucketRegion` per bucket only
+   * "if the request contains at least one valid parameter", so a plain
+   * unfiltered listing - no prefix, no continuation token - came back with no
+   * regions at all. A caller switching to a bucket in another region then had
+   * nothing to build the client with, and the switch failed against the region
+   * it had come from. Searching happened to work, because a prefix is a
+   * parameter; not searching did not.
+   *
+   * Providers other than S3 ignore query parameters they do not implement, so
+   * this is the same request to them as it was before, and they report regions
+   * or not exactly as they did. `BucketRegion` stays undefined when unreported,
+   * which callers must read as "not stated" rather than "same region as now".
+   */
   async getBuckets(params: ListBucketParams): Promise<ListBucketResult> {
     const response = await this.s3.send(
       new ListBucketsCommand({
+        MaxBuckets: LIST_BUCKETS_PAGE_SIZE,
         Prefix: params.searchTerm,
         ContinuationToken: params.nextToken,
       })

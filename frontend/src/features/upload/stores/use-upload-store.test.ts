@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useUploadStore } from './use-upload-store';
+import { countActiveWork, useUploadStore } from './use-upload-store';
 
 const { refreshCurrentData, addFile, addFolder, removeFiles } = vi.hoisted(() => ({
   refreshCurrentData: vi.fn(async () => {}),
@@ -797,5 +797,76 @@ describe('placing the finished row', () => {
     // listing the user is reading, is the blanking this change exists to avoid.
     expect(refreshCurrentData).toHaveBeenCalledWith({ silent: true });
     await Promise.resolve();
+  });
+});
+
+/**
+ * What counts as work a bucket switch would destroy.
+ *
+ * The distinction that matters is that this store keeps history: a finished
+ * upload stays in `uploads` with a terminal status rather than being removed,
+ * and disposing the managers turns everything in flight into a 'cancelled' row
+ * that also stays. Counting rows instead of statuses would therefore mean the
+ * first switch leaves behind enough debris to block the second one, and the
+ * bucket picker stops working after one use.
+ */
+describe('counting the work a switch would cancel', () => {
+  beforeEach(() => {
+    store().clearSessionData();
+  });
+
+  it('counts nothing when nothing has happened', () => {
+    expect(countActiveWork(store())).toEqual({ uploads: 0, deletes: 0 });
+  });
+
+  it.each(['queued', 'uploading', 'paused'] as const)('counts a %s upload', (status) => {
+    store().addUpload('u1', upload({ status }));
+
+    // Paused included on purpose: disposal ends it as finally as a running
+    // one, and it is work the user still expects to finish.
+    expect(countActiveWork(store()).uploads).toBe(1);
+  });
+
+  it.each(['completed', 'failed', 'cancelled'] as const)('ignores a %s upload', (status) => {
+    store().addUpload('u1', upload({ status }));
+
+    expect(countActiveWork(store()).uploads).toBe(0);
+  });
+
+  it.each(['queued', 'deleting'] as const)('counts a %s delete', (status) => {
+    store().startDeleteOperation('d1', deletion({ status }));
+
+    expect(countActiveWork(store()).deletes).toBe(1);
+  });
+
+  it.each(['completed', 'failed', 'cancelled'] as const)('ignores a %s delete', (status) => {
+    store().startDeleteOperation('d1', deletion({ status }));
+
+    expect(countActiveWork(store()).deletes).toBe(0);
+  });
+
+  it('counts each kind separately', () => {
+    store().addUpload('u1', upload({ status: 'uploading' }));
+    store().addUpload('u2', upload({ id: 'u2', status: 'queued' }));
+    store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
+
+    // Counts rather than a boolean, so whoever asks the user can say what they
+    // are about to lose.
+    expect(countActiveWork(store())).toEqual({ uploads: 2, deletes: 1 });
+  });
+
+  it('drops back to nothing once the debris of a switch is all that is left', () => {
+    store().addUpload('u1', upload({ status: 'uploading' }));
+    const signal = store().startDeleteOperation('d1', deletion({ status: 'deleting' }));
+
+    // What a switch actually does to work in flight: the manager cancels the
+    // transfers and the store aborts the deletes, and both leave a row behind.
+    store().abortAllDeleteOperations();
+    store().updateUpload('u1', { status: 'cancelled' });
+
+    expect(signal.aborted).toBe(true);
+    // If these rows still counted, the next switch would be blocked by the
+    // wreckage of the last one.
+    expect(countActiveWork(store())).toEqual({ uploads: 0, deletes: 0 });
   });
 });

@@ -119,6 +119,73 @@ describe('getBuckets', () => {
 
     await expect(makeApi().getBuckets({ nextToken: undefined })).rejects.toThrow();
   });
+
+  it('asks in a way that makes S3 report each bucket region', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({ Buckets: [] });
+
+    await makeApi().getBuckets({ nextToken: undefined });
+
+    // The point of the parameter is the response, not the page size: S3
+    // includes BucketRegion only when the request carries at least one valid
+    // parameter, so an unfiltered listing used to come back with no regions at
+    // all - and a caller could not switch to a bucket in another region.
+    expect(s3Mock).toHaveReceivedCommandWith(ListBucketsCommand, {
+      MaxBuckets: 10_000,
+    });
+  });
+
+  it('keeps each region with the bucket it belongs to', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({
+      Buckets: [
+        { Name: 'bucket-a', BucketRegion: 'us-east-1' },
+        { Name: 'bucket-b', BucketRegion: 'eu-west-1' },
+        { Name: 'bucket-c' },
+      ],
+    });
+
+    const result = await makeApi().getBuckets({ nextToken: undefined });
+
+    // Regions must never be smeared across the list: switching to bucket-b
+    // with us-east-1 builds a client for the wrong region and every request
+    // comes back a redirect.
+    expect(result.buckets).toEqual([
+      { Name: 'bucket-a', BucketRegion: 'us-east-1' },
+      { Name: 'bucket-b', BucketRegion: 'eu-west-1' },
+      { Name: 'bucket-c' },
+    ]);
+  });
+
+  it('leaves the region undefined when the provider reported none', async () => {
+    s3Mock.on(ListBucketsCommand).resolves({ Buckets: [{ Name: 'bucket-a' }] });
+
+    const result = await makeApi().getBuckets({ nextToken: undefined });
+
+    // Undefined means "not stated". A provider that does not report regions -
+    // several S3-compatible ones do not - must not have one invented for it
+    // here or anywhere above.
+    expect(result.buckets[0]?.BucketRegion).toBeUndefined();
+  });
+
+  it('carries regions on a continued page too', async () => {
+    s3Mock
+      .on(ListBucketsCommand)
+      .resolvesOnce({
+        Buckets: [{ Name: 'bucket-a', BucketRegion: 'us-east-1' }],
+        ContinuationToken: 'page-2',
+      })
+      .resolvesOnce({ Buckets: [{ Name: 'bucket-b', BucketRegion: 'ap-south-1' }] });
+
+    const api = makeApi();
+    const first = await api.getBuckets({ nextToken: undefined });
+    const second = await api.getBuckets({ nextToken: first.nextToken });
+
+    expect(first.buckets[0]?.BucketRegion).toBe('us-east-1');
+    expect(second.buckets[0]?.BucketRegion).toBe('ap-south-1');
+    expect(s3Mock).toHaveReceivedCommandWith(ListBucketsCommand, {
+      MaxBuckets: 10_000,
+      ContinuationToken: 'page-2',
+    });
+  });
 });
 
 describe('createBucket', () => {
