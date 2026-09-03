@@ -1,5 +1,7 @@
 # Changelog
 
+## 3.1.1
+
 ## 3.1.0
 
 Notable changes to the Opndrive frontend app. `s3-api` has its own
