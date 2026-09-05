@@ -57,24 +57,21 @@ export function EmptyStateDropzone({ onFilesDropped, className = '' }: EmptyStat
         ></div>
       ) : null}
 
-      {/* Empty State Content */}
-      <div className="text-center mx-auto py-16">
+      {/* Empty State Content. Purely decorative, so it never swallows a drag:
+          the artwork is a background image (an <img> can be picked up and
+          dragged around by the browser) and the whole block ignores pointers. */}
+      <div className="text-center mx-auto py-16 pointer-events-none select-none">
         {/* Home Image */}
         <div className="mb-2 flex justify-center">
-          <div
-            className="relative w-80 rounded-lg overflow-hidden"
-            style={
-              {
-                //   background: 'var(--muted)',
-                //   border: '1px solid var(--border)'
-              }
-            }
-          >
-            <img
-              src="/home.png"
-              alt="Welcome to Opndrive"
-              className="w-full h-full object-contain p-4"
-              style={{ filter: 'brightness(0.9)' }}
+          <div className="w-80 p-4">
+            <div
+              role="img"
+              aria-label="Welcome to Opndrive"
+              className="w-full aspect-[1024/853] bg-contain bg-center bg-no-repeat"
+              style={{
+                backgroundImage: 'url(/home.png)',
+                filter: 'brightness(0.9)',
+              }}
             />
           </div>
         </div>
