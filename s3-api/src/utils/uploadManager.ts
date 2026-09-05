@@ -26,6 +26,8 @@ export class UploadManager {
   // over from a previous session/bucket must refuse new work rather than upload to
   // credentials the caller no longer intends to use.
   private isDisposed = false;
+  // Whether a deferred queue pump is already booked. See schedulePump().
+  private pumpScheduled = false;
 
   // --- Part Concurrency ---
   // This is the max parts for a SINGLE file upload.
@@ -270,7 +272,7 @@ export class UploadManager {
       this.releaseResources(id);
     }
 
-    this.processQueue();
+    this.schedulePump();
   }
 
   public getStatus(id: string): { status: UploadStatus; progress: number } | undefined {
@@ -286,11 +288,49 @@ export class UploadManager {
     return allStatuses;
   }
 
+  /**
+   * Refills the slots a cancellation freed - but not until the caller has
+   * finished cancelling.
+   *
+   * Cancelling a folder means cancelling its files one after another, and for
+   * the whole of that pass the queue is still full of files that are about to
+   * be cancelled too. Pumping the queue from inside cancelUpload() handed the
+   * freed slots straight to them: each one STARTED - CreateMultipartUpload,
+   * CORS preflight and all - a moment before its own cancellation reached it.
+   * Cancelling a few thousand files therefore fired off roughly half that many
+   * uploads it then had to abort, which is what locked the tab up for a moment,
+   * and the ones still waiting on CreateMultipartUpload had no uploadId for
+   * cancel() to abort with, so they were left orphaned in the bucket accruing
+   * storage charges.
+   *
+   * A microtask is late enough to land after any synchronous cancel pass, by
+   * which point every cancelled file has been marked and spliced out of the
+   * queue so only somebody else's work is left to start, and early enough that
+   * a single cancel still refills its slot within the same tick. Deferring
+   * rather than skipping is what makes this hold for callers that cancel
+   * without awaiting, which the folder cards do.
+   */
+  private schedulePump(): void {
+    if (this.pumpScheduled) return;
+    this.pumpScheduled = true;
+
+    queueMicrotask(() => {
+      this.pumpScheduled = false;
+      // processQueue() starts at most one upload, so it takes one call per
+      // slot the cancellations freed. The bound is read once, before any of
+      // them runs; calls beyond what the queue can fill return immediately.
+      for (let slot = this.activeUploads; slot < this.maxConcurrency; slot++) {
+        this.processQueue();
+      }
+    });
+  }
+
   private async processQueue(): Promise<void> {
-    // cancelUpload() calls this after every cancellation, including the mass
-    // cancellation inside disposeInstance(). Without this guard, cancelling a
-    // queued item would pull the NEXT queued item off and start uploading it to
-    // the very bucket being torn down.
+    // Every cancellation books a pump, including the mass cancellation inside
+    // disposeInstance(). Without this guard that pump would pull the next
+    // queued item off and start uploading it to the very bucket being torn
+    // down - and since the pump is deferred, it lands after disposal rather
+    // than during it, so the guard is doing more work than it used to.
     if (this.isDisposed) return;
 
     if (this.activeUploads >= this.maxConcurrency || this.queue.length === 0) {
