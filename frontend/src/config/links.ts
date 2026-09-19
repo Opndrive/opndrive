@@ -21,7 +21,7 @@ export const DOCS_URL = process.env.NEXT_PUBLIC_DOCS_URL || 'https://docs.opndri
  * Community Discord invite. Override via NEXT_PUBLIC_DISCORD_URL so the invite
  * can be rotated without a code change.
  */
-export const DISCORD_URL = process.env.NEXT_PUBLIC_DISCORD_URL || 'https://discord.gg/sTVSZUumz';
+export const DISCORD_URL = process.env.NEXT_PUBLIC_DISCORD_URL || 'https://discord.gg/5t5yMy5NUd';
 
 /**
  * Where a request for a new provider goes.

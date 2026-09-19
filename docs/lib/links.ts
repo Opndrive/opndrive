@@ -4,6 +4,6 @@
  * each app needs NEXT_PUBLIC_DISCORD_URL set in its own environment for the
  * override to apply.
  */
-export const DISCORD_URL = process.env.NEXT_PUBLIC_DISCORD_URL || 'https://discord.gg/sTVSZUumz';
+export const DISCORD_URL = process.env.NEXT_PUBLIC_DISCORD_URL || 'https://discord.gg/5t5yMy5NUd';
 
 export const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://opndrive.app';
