@@ -214,6 +214,48 @@ describe('queue', () => {
 });
 
 describe('cancel', () => {
+  it('starts nothing new when a whole batch is cancelled', async () => {
+    const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const ids = Array.from({ length: 40 }, (_, i) =>
+      manager.addUpload(makeFile(`f${i}.txt`), { key: `k${i}` })
+    );
+    await settle();
+
+    expect(uploaderInstances.filter((u) => u.upload.mock.calls.length > 0)).toHaveLength(3);
+
+    await Promise.allSettled(ids.map(async (id) => manager.cancelUpload(id)));
+    await settle();
+
+    // Worse here than in UploadManager: nothing in this cancelUpload() awaits,
+    // so the synchronous pump ran while the caller was still part-way through
+    // the folder and EVERY remaining file was started - a signed-URL request
+    // and a PUT each - before its own cancellation arrived.
+    expect(uploaderInstances.filter((u) => u.upload.mock.calls.length > 0)).toHaveLength(3);
+    expect(ids.every((id) => manager.getStatus(id)!.status === 'cancelled')).toBe(true);
+  });
+
+  it('still fills every slot a cancelled batch freed', async () => {
+    const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 3 });
+    const doomed = Array.from({ length: 3 }, (_, i) =>
+      manager.addUpload(makeFile(`doomed${i}.txt`), { key: `doomed${i}` })
+    );
+    const survivors = Array.from({ length: 3 }, (_, i) =>
+      manager.addUpload(makeFile(`s${i}.txt`), { key: `s${i}` })
+    );
+    await settle();
+
+    await Promise.allSettled(doomed.map(async (id) => manager.cancelUpload(id)));
+    await settle();
+
+    // Deferring the pump must not mean dropping it, and one pump per freed slot
+    // rather than one in total.
+    expect(survivors.map((id) => manager.getStatus(id)!.status)).toEqual([
+      'uploading',
+      'uploading',
+      'uploading',
+    ]);
+  });
+
   it('cancels an in-flight upload and frees its slot', async () => {
     const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 1 });
     const first = manager.addUpload(makeFile('a.txt'), { key: 'a' });

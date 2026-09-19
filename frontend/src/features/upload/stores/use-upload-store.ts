@@ -82,6 +82,12 @@ interface UploadProgress {
   destinationPrefix?: string;
 }
 
+/** One entry of a batched `updateUploads` call. */
+export interface UploadChange {
+  id: string;
+  changes: Partial<UploadProgress>;
+}
+
 /**
  * Adds the row a finished upload produced to the listing it landed in.
  *
@@ -226,6 +232,19 @@ interface UploadStore {
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
+  /**
+   * Applies changes to many uploads in a single write.
+   *
+   * The manager reports one event per file, and a folder holds as many files as
+   * the user dropped. Applied one at a time, each event copied the whole
+   * `uploads` record and woke every subscriber - so a burst of N events cost N
+   * copies of an N-entry object, which is quadratic in the size of the drop.
+   * Cancelling a few thousand files was several million property copies in one
+   * go, and that is the half of the freeze that had nothing to do with the
+   * network. `upload-context` coalesces a tick's worth of events and sends them
+   * through here instead.
+   */
+  updateUploads: (changes: readonly UploadChange[]) => void;
   removeUpload: (id: string) => void;
   clearCompleted: () => void;
   clearAll: () => void;
@@ -329,60 +348,74 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     })),
 
-  updateUpload: (id: string, updates: Partial<UploadProgress>) => {
+  updateUpload: (id: string, updates: Partial<UploadProgress>) =>
+    get().updateUploads([{ id, changes: updates }]),
+
+  updateUploads: (changes: readonly UploadChange[]) => {
+    const current = get().uploads;
+
     // Ignore events for uploads we are no longer tracking. Disposing the upload
     // managers on logout emits a trailing 'cancelled' per in-flight item, which
     // can arrive after clearSessionData() has already run - spreading onto an
     // absent entry would resurrect it as a malformed card with no name or type.
-    if (!get().uploads[id]) return;
+    const applicable = changes.filter(({ id }) => current[id]);
+    if (applicable.length === 0) return;
 
-    set((state) => ({
-      uploads: {
-        ...state.uploads,
-        [id]: {
-          ...state.uploads[id],
-          ...updates,
-        },
-      },
-    }));
+    // One copy of the record and one notification, however many files the batch
+    // carries. Mutating `next` is safe because it is not the state object - it
+    // is a fresh copy nothing has been handed yet.
+    const next = { ...current };
+    for (const { id, changes: updates } of applicable) {
+      next[id] = { ...next[id]!, ...updates };
+    }
+    set({ uploads: next });
 
-    // A finished upload adds its own row. Only a card that cannot say where it
-    // landed falls back to re-listing.
-    if (updates.status === 'completed') {
-      const { refreshDataAfterUploadBatch } = get();
-      const state = get();
-      const completedUpload = state.uploads[id];
+    const completed = applicable.filter(({ changes: updates }) => updates.status === 'completed');
+    if (completed.length === 0) return;
 
-      const placeOrRefresh = (upload: UploadProgress) => {
-        if (placeFinishedUpload(upload)) return;
+    // Read back after the write, so a folder's "are all my files in yet?" check
+    // sees the whole batch rather than the part of it applied so far.
+    const settled = get().uploads;
+    const { refreshDataAfterUploadBatch } = get();
 
-        refreshDataAfterUploadBatch().catch(() => {
-          // Silently handle refresh errors
-        });
-      };
+    // Two files of the same folder finishing in the same batch both find the
+    // folder complete, and both would add its row. Only the first one does.
+    const placed = new Set<string>();
+    const placeOrRefresh = (upload: UploadProgress) => {
+      if (placed.has(upload.id)) return;
+      placed.add(upload.id);
 
-      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
-        // A loose file, which is one row in the prefix it was dropped into.
-        placeOrRefresh(completedUpload);
-      } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
-        // A file inside a folder. Nothing is added for it on its own: the
-        // listing that changes is the one *above* the folder, and it gains a
-        // single row for the folder itself, once every file in it has landed.
-        const parentFolderId = completedUpload.parentFolderId;
-        const folderUpload = state.uploads[parentFolderId];
+      // A finished upload adds its own row. Only a card that cannot say where
+      // it landed falls back to re-listing.
+      if (placeFinishedUpload(upload)) return;
 
-        if (folderUpload && folderUpload.fileIds) {
-          // Check if all files in the folder are completed
-          const allFilesCompleted = folderUpload.fileIds.every((fileId) => {
-            const fileUpload = state.uploads[fileId];
-            return fileUpload && fileUpload.status === 'completed';
-          });
+      refreshDataAfterUploadBatch().catch(() => {
+        // Silently handle refresh errors
+      });
+    };
 
-          if (allFilesCompleted) placeOrRefresh(folderUpload);
-        }
-      } else if (completedUpload.type === 'folder') {
-        placeOrRefresh(completedUpload);
+    for (const { id } of completed) {
+      const upload = settled[id];
+      if (!upload) continue;
+
+      if (upload.type === 'folder' || !upload.parentFolderId) {
+        // A folder, or a loose file - one row in the prefix it was dropped
+        // into, either way.
+        placeOrRefresh(upload);
+        continue;
       }
+
+      // A file inside a folder. Nothing is added for it on its own: the listing
+      // that changes is the one *above* the folder, and it gains a single row
+      // for the folder itself, once every file in it has landed.
+      const folderUpload = settled[upload.parentFolderId];
+      if (!folderUpload?.fileIds) continue;
+
+      const allFilesCompleted = folderUpload.fileIds.every(
+        (fileId) => settled[fileId]?.status === 'completed'
+      );
+
+      if (allFilesCompleted) placeOrRefresh(folderUpload);
     }
   },
 

@@ -21,6 +21,7 @@ vi.mock('@/hooks/use-auth', () => ({
 }));
 
 import { UploadProvider, useUploadExecutor } from './upload-context';
+import { useUploadStore } from '../stores/use-upload-store';
 import { useUploadQueueStore, type PlannedUpload } from '../stores/use-upload-queue-store';
 import type { UploadExecutor } from '../services/upload-executor';
 
@@ -145,5 +146,81 @@ describe('executor lifecycle', () => {
     const { executor } = mountProvider(false);
 
     expect(executor()).toBeNull();
+  });
+});
+
+describe('manager events into the store', () => {
+  /** One queued card per id, so the store has something to update. */
+  const seedUploads = (count: number) => {
+    const { addUpload } = useUploadStore.getState();
+    for (let i = 0; i < count; i++) {
+      addUpload(`u-${i}`, {
+        id: `u-${i}`,
+        name: `f${i}.txt`,
+        status: 'queued',
+        progress: 0,
+        type: 'file',
+      });
+    }
+  };
+
+  beforeEach(() => {
+    useUploadStore.setState({ uploads: {} });
+  });
+
+  it('writes one batch for a burst of events', async () => {
+    mountProvider(false);
+    seedUploads(50);
+
+    let writes = 0;
+    const stop = useUploadStore.subscribe(() => {
+      writes++;
+    });
+
+    // What cancelling a folder looks like from here: every file reporting in,
+    // one after another, inside a single tick.
+    await act(async () => {
+      for (let i = 0; i < 50; i++) {
+        manager.emit('statusChange', { id: `u-${i}`, status: 'cancelled', progress: 0 });
+      }
+    });
+    stop();
+
+    // Fifty separate writes each copied the whole uploads record and woke every
+    // subscriber. That is the quadratic cost that froze the tab.
+    expect(writes).toBe(1);
+    expect(
+      Object.values(useUploadStore.getState().uploads).every((u) => u.status === 'cancelled')
+    ).toBe(true);
+  });
+
+  it('keeps only the last state a file reported in a tick', async () => {
+    mountProvider(false);
+    seedUploads(1);
+
+    await act(async () => {
+      manager.emit('statusChange', { id: 'u-0', status: 'uploading', progress: 0 });
+      manager.emit('progress', { id: 'u-0', status: 'uploading', progress: 60 });
+      manager.emit('statusChange', { id: 'u-0', status: 'completed', progress: 100 });
+    });
+
+    const upload = useUploadStore.getState().uploads['u-0']!;
+    expect(upload.status).toBe('completed');
+    expect(upload.progress).toBe(100);
+  });
+
+  it('writes what is still buffered when the manager goes away', () => {
+    const { unmount } = mountProvider(false);
+    seedUploads(1);
+
+    // No tick between the event and the teardown, which is what disposing the
+    // managers on logout does. Dropping it would leave the card at 'uploading'
+    // with nothing left to move it.
+    act(() => {
+      manager.emit('statusChange', { id: 'u-0', status: 'cancelled', progress: 0 });
+      unmount();
+    });
+
+    expect(useUploadStore.getState().uploads['u-0']!.status).toBe('cancelled');
   });
 });

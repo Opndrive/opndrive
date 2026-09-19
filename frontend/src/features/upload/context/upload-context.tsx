@@ -25,7 +25,7 @@ const UploadContext = createContext<UploadContextValue>({ executor: null });
 export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Field selector: this provider wraps the whole dashboard, so subscribing to
   // the entire upload store would re-render every page on each progress tick.
-  const updateUpload = useUploadStore((state) => state.updateUpload);
+  const updateUploads = useUploadStore((state) => state.updateUploads);
   const uploadManager = useActiveUploadManager();
 
   const [executor, setExecutor] = useState<UploadExecutor | null>(null);
@@ -63,8 +63,48 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, [uploadManager]);
 
+  /**
+   * Manager events into the store, a tick at a time.
+   *
+   * One event arrives per file, and the manager can emit thousands of them in a
+   * single synchronous burst - cancelling a folder is exactly that. Writing
+   * each one straight into the store copied the whole `uploads` record and woke
+   * every subscriber, once per file, which is quadratic work in the size of the
+   * drop and is what made the tab stop responding.
+   *
+   * So events are collected and written once per tick instead. A microtask is
+   * late enough to catch a whole synchronous burst and early enough that a
+   * single upload's progress still lands in the same tick it happened, so
+   * nothing on screen lags behind.
+   */
   useEffect(() => {
     if (!uploadManager) return;
+
+    let pending = new Map<string, { status: UploadStatus; progress: number }>();
+    let flushScheduled = false;
+
+    const flush = () => {
+      flushScheduled = false;
+      if (pending.size === 0) return;
+
+      const batch = [...pending].map(([id, changes]) => ({ id, changes }));
+      // Swapped rather than cleared, so an event emitted by a subscriber
+      // reacting to this write starts a fresh batch instead of being dropped
+      // from the one being sent.
+      pending = new Map();
+      updateUploads(batch);
+    };
+
+    const record = (id: string, status: UploadStatus, progress: number) => {
+      // Last write wins per file: within one tick an upload can go queued ->
+      // uploading -> completed, and only where it ended up matters.
+      pending.set(id, { status, progress });
+
+      if (flushScheduled) return;
+      flushScheduled = true;
+      queueMicrotask(flush);
+    };
+
     const handleStatusChange = ({
       id,
       status,
@@ -74,7 +114,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       status: UploadStatus;
       progress: number;
     }) => {
-      updateUpload(id, { status, progress });
+      record(id, status, progress);
     };
 
     const handleProgress = ({
@@ -86,7 +126,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       progress: number;
       status: UploadStatus;
     }) => {
-      updateUpload(id, { progress, status });
+      record(id, status, progress);
     };
 
     uploadManager.on('statusChange', handleStatusChange);
@@ -96,8 +136,12 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => {
       uploadManager.off('statusChange', handleStatusChange);
       uploadManager.off('progress', handleProgress);
+      // Whatever is still buffered is usually the terminal event for an upload
+      // the manager has just given up on, so it is written rather than dropped
+      // - otherwise a card sits at 'uploading' with nothing left to move it.
+      flush();
     };
-  }, [uploadManager, updateUpload]);
+  }, [uploadManager, updateUploads]);
 
   const value = useMemo(() => ({ executor }), [executor]);
 

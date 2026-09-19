@@ -52,6 +52,11 @@ export class MultipartUploader {
   }
 
   async start(file: File, onProgress?: (p: number) => void) {
+    // Cancelled before the queue ever reached this file. Opening a multipart
+    // upload only to abort it on the next line is a round-trip nobody asked
+    // for.
+    if (this.isCancelled) return;
+
     if (!this.uploadId) {
       const { UploadId } = await this.s3.send(
         new CreateMultipartUploadCommand({
@@ -71,6 +76,31 @@ export class MultipartUploader {
       }
 
       this.uploadId = UploadId;
+
+      // cancel() ran while that request was in flight. It looked for an
+      // uploadId, found none, and returned having aborted nothing - so unless
+      // this cleans up now, the upload S3 has just opened is never closed. It
+      // stays in the bucket as an incomplete multipart upload, invisible in
+      // any listing and billed for, until a lifecycle rule expires it. The
+      // window is not theoretical: cancelling a queued file used to start the
+      // next one, so uploads were routinely opened and cancelled inside the
+      // same tick.
+      if (this.isCancelled) {
+        // Reported here rather than thrown on: the cancel that set the flag
+        // resolved long ago and the manager treats a rejection from a cancelled
+        // upload as expected noise, so a failure would otherwise leave the
+        // orphan with nothing said about it anywhere.
+        try {
+          await this.abortUpload();
+        } catch (err) {
+          console.error(
+            `Failed to abort the multipart upload for ${this.key} after it was ` +
+              'cancelled mid-start. It may now be orphaned in the bucket:',
+            err
+          );
+        }
+        return;
+      }
     }
 
     await this.uploadParts(file, onProgress);
@@ -201,19 +231,34 @@ export class MultipartUploader {
     this.controllers = [];
   }
 
+  /**
+   * Tells S3 to throw away the upload it has open, if it has one yet.
+   *
+   * Shared with start(), which has to send this itself when a cancel lands
+   * while CreateMultipartUpload is still in flight - at that point cancel()
+   * has no uploadId to work with.
+   */
+  private async abortUpload() {
+    if (!this.uploadId) return;
+
+    await this.s3.send(
+      new AbortMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.key,
+        UploadId: this.uploadId,
+      })
+    );
+  }
+
   async cancel() {
     this.isCancelled = true;
     this.controllers.forEach((c) => c.abort());
     this.controllers = [];
-    if (this.uploadId) {
-      await this.s3.send(
-        new AbortMultipartUploadCommand({
-          Bucket: this.bucket,
-          Key: this.key,
-          UploadId: this.uploadId,
-        })
-      );
-    }
+    // Deliberately not awaiting an in-flight CreateMultipartUpload to learn its
+    // uploadId first: cancelling a folder cancels its files one after another,
+    // and a network round-trip per file is exactly the wait that made this feel
+    // frozen. start() sends the abort for that case instead, on its own time.
+    await this.abortUpload();
     localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
 }

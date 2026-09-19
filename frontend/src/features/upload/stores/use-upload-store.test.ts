@@ -131,6 +131,85 @@ describe('upload tracking', () => {
   });
 });
 
+describe('updating many uploads at once', () => {
+  it('applies every change in a single write', () => {
+    for (let i = 0; i < 20; i++) {
+      store().addUpload(`u${i}`, upload({ id: `u${i}`, status: 'uploading' }));
+    }
+
+    let writes = 0;
+    const stop = useUploadStore.subscribe(() => {
+      writes++;
+    });
+
+    store().updateUploads(
+      Array.from({ length: 20 }, (_, i) => ({ id: `u${i}`, changes: { status: 'cancelled' } }))
+    );
+    stop();
+
+    // One copy of the record and one notification, not twenty of each. Applied
+    // one at a time this is quadratic in the size of the drop, which is what
+    // locked the tab up when a large folder was cancelled.
+    expect(writes).toBe(1);
+    expect(Object.values(store().uploads).every((u) => u.status === 'cancelled')).toBe(true);
+  });
+
+  it('ignores changes for uploads it is no longer tracking', () => {
+    store().addUpload('u1', upload({ status: 'uploading' }));
+
+    store().updateUploads([
+      { id: 'u1', changes: { status: 'cancelled' } },
+      { id: 'gone', changes: { status: 'cancelled' } },
+    ]);
+
+    // Disposing the managers on logout emits a trailing 'cancelled' per
+    // in-flight item, and those can land after the session was wiped. Merging
+    // one onto nothing would resurrect it as a card with no name or type.
+    expect(store().uploads.gone).toBeUndefined();
+    expect(store().uploads.u1!.status).toBe('cancelled');
+  });
+
+  it('does not write at all when nothing in the batch applies', () => {
+    let writes = 0;
+    const stop = useUploadStore.subscribe(() => {
+      writes++;
+    });
+
+    store().updateUploads([{ id: 'gone', changes: { status: 'cancelled' } }]);
+    stop();
+
+    expect(writes).toBe(0);
+  });
+
+  it('adds a folder row once when its last files finish together', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 6, 2));
+
+    store().addUpload(
+      'folder',
+      upload({
+        id: 'folder',
+        type: 'folder',
+        name: 'photos',
+        destinationPrefix: '',
+        fileIds: ['a', 'b'],
+      })
+    );
+    store().addUpload('a', upload({ id: 'a', parentFolderId: 'folder', key: 'photos/a.jpg' }));
+    store().addUpload('b', upload({ id: 'b', parentFolderId: 'folder', key: 'photos/b.jpg' }));
+
+    store().updateUploads([
+      { id: 'a', changes: { status: 'completed' } },
+      { id: 'b', changes: { status: 'completed' } },
+    ]);
+
+    // Both files see a folder with everything in, because the batch is written
+    // before any of them looks. Only the first of them places the row.
+    expect(addFolder).toHaveBeenCalledTimes(1);
+    expect(addFolder).toHaveBeenCalledWith('', 'photos');
+  });
+});
+
 describe('clearing', () => {
   beforeEach(() => {
     store().addUpload('done', upload({ id: 'done', status: 'completed' }));
