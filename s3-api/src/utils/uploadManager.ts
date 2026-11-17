@@ -12,6 +12,18 @@ import {
   EventPayload,
 } from '../core/types.js';
 
+/**
+ * One worker's run of an upload.
+ *
+ * Owning the upload and holding a concurrency slot are separate. A failed
+ * worker still holds its slot while it aborts the upload on the server, and
+ * Retry can be pressed in that time: the upload moves on to a new worker, and
+ * the old one still has to give its slot back when the abort ends.
+ */
+interface Worker {
+  holdsSlot: boolean;
+}
+
 export class UploadManager {
   private static instance: UploadManager | undefined;
   private s3: S3Client;
@@ -45,7 +57,7 @@ export class UploadManager {
    * pause and resume during a retry's wait left two workers sending the same
    * file, each finishing it and each handing back a concurrency slot.
    */
-  private workers = new Map<string, symbol>();
+  private workers = new Map<string, Worker>();
 
   private constructor(config: UploadManagerConfig) {
     this.s3 = config.s3;
@@ -260,8 +272,7 @@ export class UploadManager {
     // Non-null: resources are released only on terminal states, and this item
     // is 'uploading'.
     item.uploader!.pause();
-    this.workers.delete(id);
-    this.activeUploads--;
+    this.takeFromWorker(id);
     this.updateItemStatus(id, 'paused');
     this.processQueue();
   }
@@ -283,8 +294,8 @@ export class UploadManager {
 
     const previousStatus = item.status;
 
-    // Already terminal - nothing to cancel, and re-running the bookkeeping
-    // below would double-decrement activeUploads.
+    // Already terminal - nothing to cancel, and going on would announce a
+    // second, contradictory end for it.
     if (previousStatus === 'completed' || previousStatus === 'failed') return;
     if (previousStatus === 'cancelled') return;
 
@@ -299,13 +310,7 @@ export class UploadManager {
     // see status 'uploading' and transition the item to 'completed', emitting a
     // bogus success event for an upload the caller just cancelled.
     this.updateItemStatus(id, 'cancelled');
-    this.workers.delete(id);
-
-    // The worker's `finally` only decrements for completed/failed, so once the
-    // status is 'cancelled' this bookkeeping becomes ours.
-    if (previousStatus === 'uploading') {
-      this.activeUploads--;
-    }
+    this.takeFromWorker(id);
 
     try {
       if (previousStatus === 'uploading' || previousStatus === 'paused') {
@@ -354,7 +359,7 @@ export class UploadManager {
       return;
     }
 
-    const worker = Symbol(id);
+    const worker: Worker = { holdsSlot: true };
     this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
@@ -399,29 +404,35 @@ export class UploadManager {
         // Not owned any more means paused or cancelled, which is no failure.
         if (ownsUpload()) {
           console.error(`Upload failed for ${id}:`, err);
+
+          // Failed, the upload is free to be retried, so it is no longer this
+          // worker's: let go of it before saying so, and a retry gets a worker
+          // of its own. The slot is kept until the abort below is done.
+          this.workers.delete(id);
+          const uploader = item.uploader;
           this.updateItemStatus(
             id,
             'failed',
             item.progress,
             err instanceof Error ? err.message : String(err)
           );
-          await this.abandon(id, item);
+          await this.abandon(id, uploader);
+
+          // Done with. The file stays, so it can be retried - unless a retry
+          // has already given the item an uploader of its own.
+          if (item.uploader === uploader) item.uploader = undefined;
         }
       } finally {
-        const finalStatus = this.uploads.get(id)?.status;
-        // A worker that lost its upload has nothing to settle: whatever took
-        // the upload away gave its slot back, and a resumed upload is the new
-        // worker's to finish.
-        if (ownsUpload() && (finalStatus === 'completed' || finalStatus === 'failed')) {
+        // 'cancelled' and 'paused' are not handled here: they took the upload
+        // and freed the slot themselves. 'paused' keeps its resources so it
+        // can resume.
+        if (ownsUpload() && this.uploads.get(id)?.status === 'completed') {
           this.workers.delete(id);
+          this.releaseResources(id);
+        }
 
-          // 'cancelled' is not handled here: cancelUpload() already released
-          // this item. 'paused' deliberately keeps its resources so it can
-          // resume, and 'failed' keeps its file so it can be retried.
-          if (finalStatus === 'completed') this.releaseResources(id);
-          else item.uploader = undefined;
-
-          this.activeUploads--;
+        if (worker.holdsSlot) {
+          this.freeSlot(worker);
           this.processQueue();
         }
       }
@@ -443,6 +454,27 @@ export class UploadManager {
     } else {
       await uploader.start(item.file!, onProgress);
     }
+  }
+
+  /**
+   * Takes an upload off its worker for a pause or a cancel, and frees the
+   * slot that worker held. The worker sees it has lost the upload and stops.
+   *
+   * A failed worker has already let go of its upload, so a retry cancelled
+   * while that worker is still aborting leaves the slot with it: freeing it
+   * here would start the next upload before the abort was done.
+   */
+  private takeFromWorker(id: string): void {
+    const worker = this.workers.get(id);
+    this.workers.delete(id);
+    if (worker) this.freeSlot(worker);
+  }
+
+  /** Gives back a worker's concurrency slot, once. */
+  private freeSlot(worker: Worker): void {
+    if (!worker.holdsSlot) return;
+    worker.holdsSlot = false;
+    this.activeUploads--;
   }
 
   /** Whether a failed attempt gets another go. */
@@ -469,9 +501,9 @@ export class UploadManager {
    * connection that failed it is the likeliest reason the abort cannot get
    * through either.
    */
-  private async abandon(id: string, item: UploadItem): Promise<void> {
+  private async abandon(id: string, uploader: MultipartUploader | undefined): Promise<void> {
     try {
-      await item.uploader?.cancel();
+      await uploader?.cancel();
     } catch (err) {
       console.error(
         `Could not abort failed upload ${id}. Its parts may be left in the bucket:`,

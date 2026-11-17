@@ -769,6 +769,79 @@ describe('retryUpload', () => {
     expect(manager.retryUpload('no-such-id')).toBe(false);
   });
 
+  /**
+   * Retried while the failed attempt's abort is still on the wire. 'failed'
+   * is announced before that abort finishes, so Retry is already on screen.
+   * The failed attempt still holds its slot then, and has to give it back
+   * when the abort ends, whatever the upload has moved on to.
+   */
+  describe('while the failed attempt is still being aborted', () => {
+    async function failedWithAbortHeld(maxConcurrency: number) {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const manager = UploadManager.getInstance({ ...config, maxConcurrency });
+      const id = manager.addUpload(makeFile('a.txt'), { key: 'a' });
+      await settle();
+      let finishAbort!: () => void;
+      uploaderInstances[0]!.cancel.mockImplementationOnce(
+        () => new Promise<void>((resolve) => (finishAbort = resolve))
+      );
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+
+      return { manager, id, finishAbort: () => finishAbort() };
+    }
+
+    it('starts the retry once the abort gives its slot back', async () => {
+      const { manager, id, finishAbort } = await failedWithAbortHeld(1);
+
+      expect(manager.retryUpload(id)).toBe(true);
+      await settle();
+      // The only slot is still the abort's.
+      expect(manager.getStatus(id)).toMatchObject({ status: 'queued' });
+
+      finishAbort();
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+    });
+
+    it('keeps the concurrency limit when the retry starts straight away', async () => {
+      const { manager, id, finishAbort } = await failedWithAbortHeld(2);
+
+      manager.retryUpload(id);
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+      finishAbort();
+      uploaderInstances[1]!.gate.resolve();
+      await settle();
+
+      const more = ['b', 'c', 'd'].map((key) => manager.addUpload(makeFile(), { key }));
+      await settle();
+      expect(more.map((other) => manager.getStatus(other)!.status)).toEqual([
+        'uploading',
+        'uploading',
+        'queued',
+      ]);
+    });
+
+    it('aborts the failed attempt, not the retry', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const manager = UploadManager.getInstance(config);
+      // Retried the moment it is reported failed, before its abort is sent.
+      manager.on('statusChange', (payload) => {
+        if (payload.status === 'failed') manager.retryUpload(payload.id);
+      });
+      manager.addUpload(makeFile('a.txt'), { key: 'a' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      expect(uploaderInstances[0]!.cancel).toHaveBeenCalledTimes(1);
+      expect(uploaderInstances[1]!.cancel).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses on a disposed manager', async () => {
     const manager = UploadManager.getInstance(config);
     const id = await failedUpload(manager);
