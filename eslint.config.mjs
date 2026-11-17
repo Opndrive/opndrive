@@ -140,38 +140,6 @@ export default [
     },
   },
 
-  // Known rules-of-hooks debt, downgraded to a warning so `next build` stays
-  // green while it is worked off. Every file below has the same defect #82 was
-  // filed for: an early return (usually on `useAuthGuard()`) with more hooks
-  // declared after it, which throws "Rendered fewer hooks than expected" the
-  // moment the guarded value changes on a mounted instance.
-  //
-  // This is a ratchet, not an amnesty. It is 'warn', never 'off', because
-  // lint-staged runs `eslint --max-warnings=0` - so touching any of these
-  // files still forces a fix, and no NEW file can join the list. Delete
-  // entries as they are fixed; delete the whole block when the list is empty.
-  // Tracked in the follow-up issue for hook-order violations.
-  {
-    files: [
-      'frontend/src/context/rename-context.tsx',
-      'frontend/src/app/dashboard/browse/page.tsx',
-      'frontend/src/app/dashboard/page.tsx',
-      'frontend/src/features/dashboard/hooks/use-download.ts',
-      'frontend/src/features/dashboard/hooks/use-folder-creation.ts',
-      'frontend/src/features/dashboard/hooks/use-file-metadata.ts',
-      'frontend/src/features/dashboard/components/ui/menus/create-menu.tsx',
-      'frontend/src/features/upload/components/operations-modal.tsx',
-      'frontend/src/components/file-preview/viewers/image-viewer.tsx',
-      'frontend/src/components/file-preview/viewers/audio-viewer.tsx',
-      'frontend/src/components/file-preview/viewers/video-viewer.tsx',
-      'frontend/src/components/file-preview/viewers/excel-viewer.tsx',
-      'frontend/src/components/file-preview/viewers/code-viewer.tsx',
-    ],
-    rules: {
-      'react-hooks/rules-of-hooks': 'warn',
-    },
-  },
-
   // s3-api configuration
   {
     files: ['s3-api/**/*.{js,ts}'],

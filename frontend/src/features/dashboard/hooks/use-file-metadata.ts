@@ -21,16 +21,17 @@ export const useFileMetadata = (file: FileItem | null) => {
   const [error, setError] = useState<string | null>(null);
   const { apiS3 } = useAuthGuard();
 
-  if (!apiS3) {
-    return { metadata: null, isLoading: true, error: null };
-  }
-
   useEffect(() => {
+    if (!apiS3) return;
+
     if (!file) {
       setMetadata(null);
       setError(null);
       return;
     }
+
+    // An answer for a file no longer selected must not land on the next one.
+    let cancelled = false;
 
     const fetchMetadata = async () => {
       setIsLoading(true);
@@ -39,6 +40,7 @@ export const useFileMetadata = (file: FileItem | null) => {
       try {
         const key = file.Key || file.name;
         const s3Metadata: HeadObjectCommandOutput | null = await apiS3.fetchMetadata(key);
+        if (cancelled) return;
 
         if (s3Metadata) {
           const metadata: FileMetadata = {
@@ -58,53 +60,48 @@ export const useFileMetadata = (file: FileItem | null) => {
 
           setMetadata(metadata);
         } else {
-          const fallbackMetadata: FileMetadata = {
-            size:
-              typeof file.size === 'object'
-                ? `${file.size.value} ${file.size.unit}`
-                : file.size || '0 B',
-            rawSize: 0,
-            lastModified: file.lastModified || null,
-            created: file.lastModified || null,
-            contentType: getContentTypeFromExtension(file.extension || ''),
-            etag: '',
-            storageClass: 'STANDARD',
-            location: 'My Drive',
-            owner: 'me',
-          };
-
-          setMetadata(fallbackMetadata);
+          setMetadata(fallbackMetadataFor(file));
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('Failed to fetch file metadata:', err);
         setError('Failed to load file details');
-
-        const fallbackMetadata: FileMetadata = {
-          size:
-            typeof file.size === 'object'
-              ? `${file.size.value} ${file.size.unit}`
-              : file.size || '0 B',
-          rawSize: 0,
-          lastModified: file.lastModified || null,
-          created: file.lastModified || null,
-          contentType: getContentTypeFromExtension(file.extension || ''),
-          etag: '',
-          storageClass: 'STANDARD',
-          location: 'My Drive',
-          owner: 'me',
-        };
-
-        setMetadata(fallbackMetadata);
+        setMetadata(fallbackMetadataFor(file));
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchMetadata();
-  }, [file]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, file]);
+
+  // Below the effect, so the hook calls the same hooks whether or not a
+  // session has arrived yet.
+  if (!apiS3) {
+    return { metadata: null, isLoading: true, error: null };
+  }
 
   return { metadata, isLoading, error };
 };
+
+/** What can be said about a file without asking S3: what the listing knew. */
+function fallbackMetadataFor(file: FileItem): FileMetadata {
+  return {
+    size:
+      typeof file.size === 'object' ? `${file.size.value} ${file.size.unit}` : file.size || '0 B',
+    rawSize: 0,
+    lastModified: file.lastModified || null,
+    created: file.lastModified || null,
+    contentType: getContentTypeFromExtension(file.extension || ''),
+    etag: '',
+    storageClass: 'STANDARD',
+    location: 'My Drive',
+    owner: 'me',
+  };
+}
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';

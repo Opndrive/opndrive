@@ -20,8 +20,53 @@ export function VideoViewer({ file }: VideoViewerProps) {
   );
   const [isPortrait, setIsPortrait] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Bumped by Retry, which the effect below reruns on. Retry used to reset the
+  // state and nothing else, so nothing asked again and it stayed on "Loading".
+  const [attempt, setAttempt] = useState(0);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
+  // Primitives, so the effect reruns when the file changes and not merely
+  // when the object describing it is rebuilt.
+  const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+
+  useEffect(() => {
+    if (!apiS3) return;
+    const api = apiS3;
+    let cancelled = false;
+
+    async function loadVideo() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        if (!fileKey) {
+          throw new Error('No file key found');
+        }
+
+        const url = await api.getSignedUrl({
+          key: fileKey,
+          expiryInSeconds: 3600,
+          isPreview: true,
+          responseContentType: getContentTypeForS3(fileKey),
+        });
+
+        if (cancelled) return;
+        setSignedUrl(url);
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load video');
+        setLoading(false);
+      }
+    }
+
+    loadVideo();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, fileKey, attempt]);
+
+  // Below every hook, so the number of hooks never depends on the session.
   if (isLoading) {
     return <PreviewLoading message="Authenticating..." />;
   }
@@ -30,43 +75,11 @@ export function VideoViewer({ file }: VideoViewerProps) {
     return null;
   }
 
-  useEffect(() => {
-    async function loadVideo() {
-      try {
-        if (!apiS3) return;
-        setLoading(true);
-        setError(null);
-
-        // Get the file key (handle both Key and key properties)
-        const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
-
-        if (!fileKey) {
-          throw new Error('No file key found');
-        }
-
-        const url = await apiS3.getSignedUrl({
-          key: fileKey,
-          expiryInSeconds: 3600,
-          isPreview: true,
-          responseContentType: getContentTypeForS3(fileKey),
-        });
-
-        setSignedUrl(url);
-        setLoading(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load video');
-        setLoading(false);
-      }
-    }
-
-    loadVideo();
-  }, [file]);
-
   const handleRetry = () => {
     setError(null);
     setVideoError(false);
     setSignedUrl(null);
-    setLoading(true);
+    setAttempt((count) => count + 1);
     setVideoDimensions(null);
     setIsPortrait(false);
   };

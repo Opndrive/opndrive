@@ -58,8 +58,75 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Bumped by Retry, which the effect below reruns on. Retry used to reset the
+  // state and nothing else, so nothing asked again and it stayed on "Loading".
+  const [attempt, setAttempt] = useState(0);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
+  // Primitives, so the effect reruns when the file changes and not merely
+  // when the object describing it is rebuilt.
+  const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+  const fileName = file.name;
+
+  useEffect(() => {
+    if (!apiS3) return;
+    const api = apiS3;
+    let cancelled = false;
+
+    async function loadSpreadsheet() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const s3PreviewService = createS3PreviewService(api);
+        const signedUrl = await s3PreviewService.getSignedUrl({
+          id: fileKey,
+          key: fileKey,
+          name: fileName,
+          size: 0,
+        });
+
+        const extension = getFileExtension(fileName);
+        const response = await fetch(signedUrl);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch file: ${response.statusText}`);
+        }
+
+        let rows: string[][];
+        if (extension === '.csv') {
+          rows = parseCSV(await response.text());
+        } else if (isFileInCategory(fileName, 'spreadsheet')) {
+          const arrayBuffer = await response.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          rows = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            raw: false,
+            defval: '',
+          }) as string[][];
+        } else {
+          throw new Error('Unsupported spreadsheet format');
+        }
+
+        if (cancelled) return;
+        setSpreadsheetData(rows);
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to load spreadsheet:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load spreadsheet');
+        setLoading(false);
+      }
+    }
+
+    loadSpreadsheet();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, fileKey, fileName, attempt]);
+
+  // Below every hook, so the number of hooks never depends on the session.
   if (isLoading) {
     return <PreviewLoading message="Authenticating..." />;
   }
@@ -68,56 +135,10 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
     return null;
   }
 
-  useEffect(() => {
-    async function loadSpreadsheet() {
-      if (!apiS3) return; // Additional safety check
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        const s3PreviewService = createS3PreviewService(apiS3);
-        const signedUrl = await s3PreviewService.getSignedUrl(file);
-
-        const extension = getFileExtension(file.name);
-        const response = await fetch(signedUrl);
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.statusText}`);
-        }
-
-        if (extension === '.csv') {
-          const csvText = await response.text();
-          setSpreadsheetData(parseCSV(csvText));
-        } else if (isFileInCategory(file.name, 'spreadsheet') && extension !== '.csv') {
-          const arrayBuffer = await response.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            raw: false,
-            defval: '',
-          }) as string[][];
-          setSpreadsheetData(jsonData);
-        } else {
-          throw new Error('Unsupported spreadsheet format');
-        }
-
-        setLoading(false);
-      } catch (err) {
-        console.error('Failed to load spreadsheet:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load spreadsheet');
-        setLoading(false);
-      }
-    }
-
-    loadSpreadsheet();
-  }, [file.key, file.name]);
-
   const handleRetry = () => {
     setError(null);
     setSpreadsheetData(null);
-    setLoading(true);
+    setAttempt((count) => count + 1);
   };
 
   if (loading) {

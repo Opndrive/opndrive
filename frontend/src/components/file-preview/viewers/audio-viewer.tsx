@@ -40,50 +40,45 @@ export function AudioViewer({ file }: AudioViewerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Bumped by Retry, which the effect below reruns on. Retry used to reset the
+  // state and nothing else, so nothing asked again and it stayed on "Loading".
+  const [attempt, setAttempt] = useState(0);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (isLoading) {
-    return <PreviewLoading message="Authenticating..." />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
-
-  const getFileSize = (): number => {
-    const fileWithSizeProps = file as PreviewableFile & {
-      Size?: number;
-      ContentLength?: number;
-    };
-
-    const size = file.size || fileWithSizeProps.Size || fileWithSizeProps.ContentLength || 0;
-    return typeof size === 'number' ? size : 0;
-  };
+  // Primitives, so the effect reruns when the file changes and not merely
+  // when the object describing it is rebuilt.
+  const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+  const fileWithSizeProps = file as PreviewableFile & { Size?: number; ContentLength?: number };
+  const knownSize = file.size || fileWithSizeProps.Size || fileWithSizeProps.ContentLength || 0;
 
   useEffect(() => {
+    if (!apiS3) return;
+    const api = apiS3;
+    let cancelled = false;
+
     const loadAudio = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        setFileSize(getFileSize());
-
-        const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+        setFileSize(typeof knownSize === 'number' ? knownSize : 0);
 
         if (!fileKey) {
           throw new Error('No file key found');
         }
 
-        const url = await apiS3.getSignedUrl({
+        const url = await api.getSignedUrl({
           key: fileKey,
           expiryInSeconds: 3600,
           isPreview: true,
           responseContentType: getContentTypeForS3(fileKey),
         });
 
+        if (cancelled) return;
         setAudioUrl(url);
         setLoading(false);
       } catch (err: unknown) {
+        if (cancelled) return;
         console.error('Error loading audio:', err);
         const errorMessage = err instanceof Error ? err.message : 'Failed to load audio file';
         setError(errorMessage);
@@ -92,7 +87,29 @@ export function AudioViewer({ file }: AudioViewerProps) {
     };
 
     loadAudio();
-  }, [file, apiS3]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, fileKey, knownSize, attempt]);
+
+  // Stops the progress timer if the viewer goes away mid-playback. Reads the
+  // ref itself rather than calling stopTimeUpdates, which is declared below
+  // the early returns and so may never have been reached.
+  useEffect(() => {
+    const timer = timeUpdateIntervalRef;
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
+  }, []);
+
+  // Below every hook, so the number of hooks never depends on the session.
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
@@ -214,12 +231,6 @@ export function AudioViewer({ file }: AudioViewerProps) {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      stopTimeUpdates();
-    };
-  }, []);
-
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
@@ -229,7 +240,7 @@ export function AudioViewer({ file }: AudioViewerProps) {
   const handleRetry = () => {
     setError(null);
     setAudioUrl(null);
-    setLoading(true);
+    setAttempt((count) => count + 1);
   };
 
   if (loading) {
