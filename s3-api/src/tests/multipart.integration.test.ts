@@ -206,6 +206,38 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
 
       expect(await openUploadsFor(key)).toEqual([]);
     });
+
+    it('arrive from a folder upload too, and a dropped folder entry does not', async () => {
+      const base = keyFor('package/');
+      const inFolder = (name: string, path: string) => {
+        const file = new File([], name);
+        Object.defineProperty(file, 'webkitRelativePath', { value: path });
+        return file;
+      };
+      const manager = UploadManager.getInstance({ s3: client, bucket: BUCKET, prefix: '' });
+
+      const { fileIds } = manager.addFolderUpload(
+        [
+          inFolder('__init__.py', 'pkg/__init__.py'),
+          inFolder('LICENSE', 'pkg/LICENSE'),
+          // What dropping the folder itself adds: no path, no type.
+          new File([], 'pkg'),
+        ] as unknown as FileList,
+        { basePrefix: base }
+      );
+      await Promise.all(fileIds.map((id) => waitForStatus(manager, id, 'completed')));
+
+      expect(fileIds).toHaveLength(2);
+      expect((await head(`${base}pkg/__init__.py`)).ContentLength).toBe(0);
+      expect((await head(`${base}pkg/LICENSE`)).ContentLength).toBe(0);
+      const { Contents } = await client.send(
+        new ListObjectsV2Command({ Bucket: BUCKET, Prefix: base })
+      );
+      expect((Contents ?? []).map((object) => object.Key).sort()).toEqual([
+        `${base}pkg/LICENSE`,
+        `${base}pkg/__init__.py`,
+      ]);
+    });
   });
 
   describe('small files', () => {

@@ -3,6 +3,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { MultipartUploader } from './multipartUploader.js';
 import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
+import { folderUploadKey, isDroppedFolderEntry } from './folder-entries.js';
 import {
   UploadItem,
   UploadStatus,
@@ -224,17 +225,9 @@ export class UploadManager {
     const fileIds: string[] = [];
 
     for (const file of Array.from(files)) {
-      if (file.size === 0 && file.type === '') continue;
+      if (isDroppedFolderEntry(file)) continue;
 
-      let key = '';
-
-      if (!config.basePrefix) {
-        key = file.webkitRelativePath;
-      } else {
-        key = `${config.basePrefix}${file.webkitRelativePath}`;
-      }
-
-      const fileId = this.addUpload(file, { key });
+      const fileId = this.addUpload(file, { key: folderUploadKey(file, config.basePrefix) });
       fileIds.push(fileId);
     }
 

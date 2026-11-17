@@ -915,19 +915,47 @@ describe('addFolderUpload', () => {
     expect(folderId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('skips the zero-byte entries browsers emit for directories', () => {
+  it('uploads the empty files in a folder, such as __init__.py and LICENSE', () => {
+    // A folder picker lists files only, each with its path. Every zero-byte
+    // file with no type used to be skipped as if it were a folder, so a
+    // Python package arrived without its __init__.py.
     const manager = UploadManager.getInstance(config);
-    const directoryEntry = new File([], 'subdir');
-    Object.defineProperty(directoryEntry, 'webkitRelativePath', { value: 'docs/subdir' });
 
     const { fileIds } = manager.addFolderUpload(
-      fileList([directoryEntry, withPath('a.txt', 'docs/a.txt')]),
+      fileList([
+        withPath('__init__.py', 'pkg/__init__.py', 0),
+        withPath('LICENSE', 'pkg/LICENSE', 0),
+      ]),
       {}
     );
 
-    // Uploading these would create phantom zero-byte objects shadowing real
-    // folder prefixes.
-    expect(fileIds).toHaveLength(1);
+    expect(fileIds).toHaveLength(2);
+    expect(uploaderInstances.map((u) => u.config.key)).toEqual(['pkg/__init__.py', 'pkg/LICENSE']);
+  });
+
+  it('skips the entry a dropped folder adds, which has no path and no type', () => {
+    // A folder dropped onto a page shows up in `dataTransfer.files` as an
+    // entry of its own: no path, no type, and zero bytes or a few, by system.
+    const manager = UploadManager.getInstance(config);
+
+    const { fileIds } = manager.addFolderUpload(
+      fileList([new File([], 'photos'), new File([new Uint8Array(96)], 'videos')]),
+      { basePrefix: 'docs/' }
+    );
+
+    // Uploaded, it would write over the folder's own key.
+    expect(fileIds).toEqual([]);
+  });
+
+  it('keys a file with no path by its name, not by the folder', () => {
+    const manager = UploadManager.getInstance(config);
+
+    manager.addFolderUpload(fileList([new File(['x'], 'notes.txt', { type: 'text/plain' })]), {
+      basePrefix: 'docs/',
+    });
+
+    // Keyed by its path, which it has none of, it went to 'docs/' itself.
+    expect(uploaderInstances[0]!.config.key).toBe('docs/notes.txt');
   });
 });
 

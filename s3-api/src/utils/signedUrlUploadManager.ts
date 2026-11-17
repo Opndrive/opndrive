@@ -4,6 +4,7 @@ import { SignedUrlUploader } from './signedUrlUploader.js';
 import { BYOS3ApiProvider } from '../index.js';
 import { UploadStatus, UploadEvent, EventListener, EventPayload } from '../core/types.js';
 import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
+import { folderUploadKey, isDroppedFolderEntry } from './folder-entries.js';
 
 interface SignedUrlUploadItem {
   id: string;
@@ -172,17 +173,10 @@ export class SignedUrlUploadManager {
     const fileIds: string[] = [];
 
     for (const file of Array.from(files)) {
-      if (file.size === 0 && file.type === '') continue;
+      // See folder-entries: only the entry a dropped folder adds is skipped.
+      if (isDroppedFolderEntry(file)) continue;
 
-      let key = '';
-
-      if (!config.basePrefix) {
-        key = file.webkitRelativePath;
-      } else {
-        key = `${config.basePrefix}${file.webkitRelativePath}`;
-      }
-
-      const fileId = this.addUpload(file, { key });
+      const fileId = this.addUpload(file, { key: folderUploadKey(file, config.basePrefix) });
       fileIds.push(fileId);
     }
 

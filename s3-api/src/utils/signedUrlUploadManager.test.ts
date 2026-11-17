@@ -524,17 +524,41 @@ describe('addFolderUpload', () => {
     expect(folderId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('skips the zero-byte entries browsers emit for directories', () => {
+  // See UploadManager's addFolderUpload suite for each of these.
+  it('uploads the empty files in a folder, such as __init__.py and LICENSE', () => {
     const manager = SignedUrlUploadManager.getInstance(config);
-    const directoryEntry = new File([], 'subdir');
-    Object.defineProperty(directoryEntry, 'webkitRelativePath', { value: 'docs/subdir' });
 
     const { fileIds } = manager.addFolderUpload(
-      fileList([directoryEntry, withPath('a.txt', 'docs/a.txt')]),
+      fileList([
+        withPath('__init__.py', 'pkg/__init__.py', 0),
+        withPath('LICENSE', 'pkg/LICENSE', 0),
+      ]),
       {}
     );
 
-    expect(fileIds).toHaveLength(1);
+    expect(fileIds).toHaveLength(2);
+    expect(uploaderInstances.map((u) => u.config.key)).toEqual(['pkg/__init__.py', 'pkg/LICENSE']);
+  });
+
+  it('skips the entry a dropped folder adds, which has no path and no type', () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+
+    const { fileIds } = manager.addFolderUpload(
+      fileList([new File([], 'photos'), new File([new Uint8Array(96)], 'videos')]),
+      { basePrefix: 'docs/' }
+    );
+
+    expect(fileIds).toEqual([]);
+  });
+
+  it('keys a file with no path by its name, not by the folder', () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+
+    manager.addFolderUpload(fileList([new File(['x'], 'notes.txt', { type: 'text/plain' })]), {
+      basePrefix: 'docs/',
+    });
+
+    expect(uploaderInstances[0]!.config.key).toBe('docs/notes.txt');
   });
 });
 
