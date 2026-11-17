@@ -37,7 +37,7 @@ multiply requests rather than help.
 | `deleteBatch(batch)`                                                | Up to 1000 objects per call - see below                                     |
 | `listFromPrefix(prefix)`                                            | Exhaustive, paginated key listing under a prefix                            |
 | `listPagesFromPrefix(prefix)`                                       | The same keys one page at a time, as each arrives (async iterator)          |
-| `moveFile(params)` / `renameFile(params)`                           | Copy + delete for a single object                                           |
+| `moveFile(params)` / `renameFile(params)`                           | Copy + delete for a single object, of any size (copied in parts past 5 GiB) |
 | `renameFolder(params)`                                              | Bulk rename - see below                                                     |
 | `createFolder(key)`                                                 | Writes a zero-byte object as a folder marker                                |
 | `search(params)`                                                    | Client-side name matching over one listing page                             |
@@ -59,7 +59,8 @@ this in three phases, in this order, specifically so a failure at any point
 leaves the source **fully intact**:
 
 1. **Copy** every key to the new prefix (bounded concurrency, one `CopyObject`
-   per key). Nothing is deleted yet.
+   per key, or a multipart copy of `UploadPartCopy` ranges for an object over
+   CopyObject's 5 GiB limit). Nothing is deleted yet.
 2. **Verify** every expected key actually exists at the destination - comparing
    the real key set, not just a count, because a partially pre-populated
    destination could otherwise mask missing copies.

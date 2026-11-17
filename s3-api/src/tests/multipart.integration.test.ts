@@ -31,10 +31,12 @@ import {
   PutObjectCommand,
   S3Client,
   UploadPartCommand,
+  UploadPartCopyCommand,
 } from '@aws-sdk/client-s3';
 import { FetchHttpHandler } from '@smithy/fetch-http-handler';
 import { MultipartUploader } from '../utils/multipartUploader.js';
 import { UploadManager } from '../utils/uploadManager.js';
+import { copyObject } from '../utils/copyObject.js';
 import type { EventPayload } from '../core/types.js';
 
 const ENDPOINT = process.env.S3_IT_ENDPOINT;
@@ -429,6 +431,89 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       expect(sent.filter((name) => name === 'UploadPartCommand').length).toBe(partsWhenFailed);
       expect(partsWhenFailed).toBeLessThan(6);
       expect(await readObjectOrNull(key)).toBeNull();
+    });
+  });
+
+  /**
+   * A server-side copy in parts, which renames and moves use past CopyObject's
+   * 5 GiB limit. Exercised here with the limit lowered, since a real 5 GiB
+   * object would make this suite take minutes: the requests are the same
+   * ones, only smaller.
+   */
+  describe('copying past the single-copy limit', () => {
+    const asIfHuge = { maxSingleCopyBytes: 1, partSizeBytes: 5 * MiB };
+
+    it('makes a byte-identical copy that keeps its type and metadata', async () => {
+      const source = keyFor('film.mkv');
+      const destination = keyFor('film-renamed.mkv');
+      const bytes = randomBytes(12 * MiB + 7);
+      await client.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: source,
+          Body: bytes,
+          ContentType: 'video/x-matroska',
+          Metadata: { camera: 'x100' },
+        })
+      );
+
+      await copyObject(client, BUCKET, source, destination, asIfHuge);
+
+      expect(sha256(await readBack(destination))).toBe(sha256(bytes));
+      const copied = await head(destination);
+      expect(copied.ContentType).toBe('video/x-matroska');
+      expect(copied.Metadata).toEqual({ camera: 'x100' });
+      // Three parts of up to 5 MiB, and the upload is closed.
+      expect(copied.ETag).toMatch(/-3"$/);
+      expect(await openUploadsFor(destination)).toEqual([]);
+    });
+
+    it('fails, and leaves no upload behind, when a part cannot be copied', async () => {
+      const source = keyFor('changing.bin');
+      const destination = keyFor('changing-copy.bin');
+      await client.send(
+        new PutObjectCommand({ Bucket: BUCKET, Key: source, Body: randomBytes(11 * MiB) })
+      );
+      const { s3 } = interceptedClient((command) =>
+        command instanceof UploadPartCopyCommand && command.input.PartNumber === 2
+          ? Promise.reject(
+              Object.assign(new Error('PreconditionFailed'), { name: 'PreconditionFailed' })
+            )
+          : undefined
+      );
+
+      await expect(copyObject(s3, BUCKET, source, destination, asIfHuge)).rejects.toThrow(
+        'PreconditionFailed'
+      );
+
+      expect(await readObjectOrNull(destination)).toBeNull();
+      expect(await openUploadsFor(destination)).toEqual([]);
+    });
+
+    it('refuses to stitch a copy from a source replaced mid-copy', async () => {
+      const source = keyFor('replaced.bin');
+      const destination = keyFor('replaced-copy.bin');
+      await client.send(
+        new PutObjectCommand({ Bucket: BUCKET, Key: source, Body: randomBytes(11 * MiB) })
+      );
+      // The source changes after the copy has read its ETag, before part 2.
+      let replaced = false;
+      const { s3 } = interceptedClient((command) => {
+        if (command instanceof UploadPartCopyCommand && !replaced) {
+          replaced = true;
+          return client
+            .send(
+              new PutObjectCommand({ Bucket: BUCKET, Key: source, Body: randomBytes(11 * MiB) })
+            )
+            .then(() => client.send(command));
+        }
+        return undefined;
+      });
+
+      await expect(copyObject(s3, BUCKET, source, destination, asIfHuge)).rejects.toThrow();
+
+      expect(await readObjectOrNull(destination)).toBeNull();
+      expect(await openUploadsFor(destination)).toEqual([]);
     });
   });
 });
