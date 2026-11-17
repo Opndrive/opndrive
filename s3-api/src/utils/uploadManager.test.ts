@@ -258,6 +258,74 @@ describe('queue', () => {
     expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
   });
 
+  it('aborts a failed upload on the server, so its parts are not left billing', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(new Error('network died'));
+    await settle();
+
+    // Nothing resumes a failed upload, so the parts it sent would otherwise
+    // stay in the bucket, invisible, until a lifecycle rule removed them.
+    expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    expect(uploaderInstances[0]!.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('still fails cleanly, and frees the slot, when that abort fails too', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 1 });
+    const failing = manager.addUpload(makeFile('a.txt'), { key: 'a' });
+    const next = manager.addUpload(makeFile('b.txt'), { key: 'b' });
+    await settle();
+    uploaderInstances[0]!.cancel.mockRejectedValueOnce(new Error('still offline'));
+
+    uploaderInstances[0]!.gate.reject(new Error('network died'));
+    await settle();
+
+    expect(manager.getStatus(failing)).toMatchObject({ status: 'failed' });
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining('Its parts may be left in the bucket'),
+      expect.any(Error)
+    );
+    expect(manager.getStatus(next)).toMatchObject({ status: 'uploading' });
+  });
+
+  it('does not start the next upload until the abort is done', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 1 });
+    manager.addUpload(makeFile('a.txt'), { key: 'a' });
+    const next = manager.addUpload(makeFile('b.txt'), { key: 'b' });
+    await settle();
+    let finishAbort!: () => void;
+    uploaderInstances[0]!.cancel.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishAbort = resolve))
+    );
+
+    uploaderInstances[0]!.gate.reject(new Error('network died'));
+    await settle();
+    expect(manager.getStatus(next)).toMatchObject({ status: 'queued' });
+
+    finishAbort();
+    await settle();
+    expect(manager.getStatus(next)).toMatchObject({ status: 'uploading' });
+  });
+
+  it('does not abort an upload that was paused rather than failed', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    manager.pauseUpload(id);
+    // A paused part ends in a rejection too. It is still resumable.
+    uploaderInstances[0]!.gate.reject(new Error('aborted'));
+    await settle();
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'paused' });
+    expect(uploaderInstances[0]!.cancel).not.toHaveBeenCalled();
+  });
+
   it('resumes an upload that already has an uploadId', async () => {
     const manager = UploadManager.getInstance({ ...config, maxConcurrency: 1 });
     manager.addUpload(makeFile('a.txt'), { key: 'a' });

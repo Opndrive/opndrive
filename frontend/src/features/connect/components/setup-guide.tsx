@@ -3,6 +3,14 @@
 import { useState } from 'react';
 import { BookOpen, Check, ChevronDown, Copy, ExternalLink } from 'lucide-react';
 import type { S3Provider } from '@/config/providers';
+import { DOCS_URL } from '@/config/links';
+
+/**
+ * The docs section that explains the lifecycle rule, step by step and per
+ * provider. Linked rather than repeated: the console steps differ by provider
+ * and change over time, and one copy is easier to keep right than six.
+ */
+const INCOMPLETE_UPLOADS_GUIDE = `${DOCS_URL}/guides/uploading-files#required-clean-up-incomplete-multipart-uploads`;
 
 interface SetupGuideProps {
   provider: S3Provider;
@@ -97,6 +105,27 @@ export function SetupGuide({ provider, corsConfig }: SetupGuideProps) {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section>
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+            4. Clean up interrupted uploads
+          </h3>
+          <p>
+            Large files go up in parts. If an upload stops part way, the parts already sent stay in
+            the bucket: billed, and missing from every listing. Opndrive removes them when an upload
+            fails or is cancelled and it can still reach your bucket, but a closed tab or a dropped
+            connection gives it no chance. A lifecycle rule that deletes incomplete multipart
+            uploads after a few days takes care of the rest.{' '}
+            <a
+              href={INCOMPLETE_UPLOADS_GUIDE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary hover:underline"
+            >
+              How to add the rule
+            </a>
+          </p>
         </section>
 
         {provider.setup.gotcha && (

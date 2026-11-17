@@ -337,6 +337,7 @@ export class UploadManager {
             item.progress,
             err instanceof Error ? err.message : String(err)
           );
+          await this.abandon(id, item);
         }
       } finally {
         const finalStatus = this.uploads.get(id)?.status;
@@ -350,6 +351,31 @@ export class UploadManager {
         }
       }
     })();
+  }
+
+  /**
+   * Aborts a failed upload on the server.
+   *
+   * Nothing resumes a failed upload - its uploader is released straight after
+   * this - so the parts it had already sent would otherwise sit in the bucket
+   * for good: billed, and invisible to every listing. Only a lifecycle rule
+   * would ever remove them.
+   *
+   * Awaited before the concurrency slot is freed, so the next upload does not
+   * start while this one's cleanup is still on the wire. A failed abort is
+   * reported, not thrown: the upload has already failed, and the dropped
+   * connection that failed it is the likeliest reason the abort cannot get
+   * through either.
+   */
+  private async abandon(id: string, item: UploadItem): Promise<void> {
+    try {
+      await item.uploader?.cancel();
+    } catch (err) {
+      console.error(
+        `Could not abort failed upload ${id}. Its parts may be left in the bucket:`,
+        err
+      );
+    }
   }
 
   private updateItemStatus(

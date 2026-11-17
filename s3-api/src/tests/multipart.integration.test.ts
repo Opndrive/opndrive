@@ -18,7 +18,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   AbortMultipartUploadCommand,
   CreateBucketCommand,
@@ -34,6 +34,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { FetchHttpHandler } from '@smithy/fetch-http-handler';
 import { MultipartUploader } from '../utils/multipartUploader.js';
+import { UploadManager } from '../utils/uploadManager.js';
+import type { EventPayload } from '../core/types.js';
 
 const ENDPOINT = process.env.S3_IT_ENDPOINT;
 const ACCESS_KEY_ID = process.env.S3_IT_ACCESS_KEY_ID;
@@ -132,6 +134,19 @@ function uploader(key: string, s3: S3Client = client, extra: Record<string, unkn
   });
 }
 
+function waitForStatus(manager: UploadManager, id: string, status: string, timeoutMs = 30_000) {
+  return new Promise<EventPayload>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out waiting for ${status}`)), timeoutMs);
+    const listener = (payload: EventPayload) => {
+      if (payload.id !== id || payload.status !== status) return;
+      clearTimeout(timer);
+      manager.off('statusChange', listener);
+      resolve(payload);
+    };
+    manager.on('statusChange', listener);
+  });
+}
+
 // Real uploads of a few tens of MiB. Quick against a local server, but not
 // within the 5 second default on a slow one.
 describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60_000 }, () => {
@@ -142,6 +157,10 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       const name = (error as { name?: string }).name;
       if (name !== 'BucketAlreadyOwnedByYou' && name !== 'BucketAlreadyExists') throw error;
     }
+  });
+
+  afterEach(async () => {
+    await UploadManager.disposeInstance();
   });
 
   afterAll(async () => {
@@ -324,4 +343,58 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       expect(partsSent).toBe(4);
     });
   });
+
+  describe('a failed upload', () => {
+    function managerFailingOnPart(partNumber: number) {
+      const { s3, sent } = interceptedClient((command) =>
+        command instanceof UploadPartCommand && command.input.PartNumber === partNumber
+          ? Promise.reject(Object.assign(new Error('connection reset'), { name: 'NetworkError' }))
+          : undefined
+      );
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        maxConcurrency: 1,
+        partSizeMB: 5,
+      });
+      return { manager, sent };
+    }
+
+    it('is aborted on the server, so its parts are not left billing', async () => {
+      const key = keyFor('fails.bin');
+      const { manager } = managerFailingOnPart(2);
+
+      const id = manager.addUpload(new File([randomBytes(16 * MiB)], 'fails.bin'), { key });
+      await waitForStatus(manager, id, 'failed');
+      // The abort follows the failure; give it its round trip.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
+    it('stops sending parts once one has failed', async () => {
+      const key = keyFor('stops.bin');
+      const { manager, sent } = managerFailingOnPart(1);
+
+      const id = manager.addUpload(new File([randomBytes(26 * MiB)], 'stops.bin'), { key });
+      await waitForStatus(manager, id, 'failed');
+      const partsWhenFailed = sent.filter((name) => name === 'UploadPartCommand').length;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Six parts in this file and three at a time per upload. Nothing new may
+      // start after the failure is reported.
+      expect(sent.filter((name) => name === 'UploadPartCommand').length).toBe(partsWhenFailed);
+      expect(partsWhenFailed).toBeLessThan(6);
+      expect(await readObjectOrNull(key)).toBeNull();
+    });
+  });
 });
+
+async function readObjectOrNull(key: string) {
+  try {
+    return await head(key);
+  } catch {
+    return null;
+  }
+}

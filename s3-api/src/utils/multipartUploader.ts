@@ -215,8 +215,22 @@ export class MultipartUploader {
     // at 10,000 parts.
     const uploadedNumbers = new Set(this.completedParts.map((p) => p.PartNumber));
 
+    /**
+     * The first real failure, held until every worker has stopped.
+     *
+     * One part failing used to reject this immediately while the other
+     * workers carried on: they sent every remaining part of an upload that
+     * had already been reported as failed, to a session nothing would ever
+     * complete. Now the first failure stops the rest and aborts what they
+     * have in flight, and the caller hears about it only once nothing is
+     * still running.
+     */
+    // Typed through `as` so the check after the await is not narrowed to
+    // `null`: the compiler cannot see the workers assigning it.
+    let failure = null as { error: unknown } | null;
+
     const worker = async () => {
-      while (nextPart <= totalParts && !this.isPaused && !this.isCancelled) {
+      while (nextPart <= totalParts && !this.isPaused && !this.isCancelled && !failure) {
         const partNumber = nextPart++;
         if (uploadedNumbers.has(partNumber)) continue;
 
@@ -249,10 +263,13 @@ export class MultipartUploader {
 
           onProgress?.(Math.min(100, (uploadedNumbers.size / totalParts) * 100));
         } catch (err) {
-          if (this.isCancelled || this.isPaused) {
-            return; // ignore
-          }
-          throw err;
+          // Our own abort - from pause(), cancel(), or a failure below - is
+          // not a failure of its own.
+          if (this.isCancelled || this.isPaused || failure) return;
+
+          failure = { error: err };
+          this.abortInFlight();
+          return;
         } finally {
           this.controllers = this.controllers.filter((c) => c !== controller);
         }
@@ -261,6 +278,17 @@ export class MultipartUploader {
 
     const workers = Array.from({ length: this.concurrency }, () => worker());
     await Promise.all(workers);
+
+    // The session and the finished parts are kept, so a caller can still
+    // resume() this. UploadManager does not: it aborts a failed upload, since
+    // nothing there will ever resume it.
+    if (failure) throw failure.error;
+  }
+
+  /** Aborts every request still in flight. */
+  private abortInFlight() {
+    this.controllers.forEach((c) => c.abort());
+    this.controllers = [];
   }
 
   private async completeUpload() {
@@ -328,14 +356,12 @@ export class MultipartUploader {
 
   pause() {
     this.isPaused = true;
-    this.controllers.forEach((c) => c.abort());
-    this.controllers = [];
+    this.abortInFlight();
   }
 
   async cancel() {
     this.isCancelled = true;
-    this.controllers.forEach((c) => c.abort());
-    this.controllers = [];
+    this.abortInFlight();
     if (this.uploadId) {
       await this.s3.send(
         new AbortMultipartUploadCommand({

@@ -729,6 +729,108 @@ describe('start', () => {
   });
 });
 
+/**
+ * One part failing.
+ *
+ * It used to reject start() at once while the other workers carried on, so an
+ * upload already reported as failed went on sending every part it had left,
+ * to a session nothing would ever complete.
+ */
+describe('a part that fails', () => {
+  /** The abort signal of the part currently being sent with this number. */
+  function signalOf(uploader: MultipartUploader) {
+    return controllersOf(uploader)[controllersOf(uploader).length - 1]!.signal;
+  }
+
+  /**
+   * Part 1 fails once parts 2 and 3 are on the wire; those two stay open
+   * until aborted. Six parts in all, three at a time.
+   */
+  function failFirstPartWhileOthersAreInFlight(uploader: MultipartUploader) {
+    const inFlight: AbortSignal[] = [];
+    let release!: () => void;
+    const othersStarted = new Promise<void>((resolve) => (release = resolve));
+
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    s3Mock.on(UploadPartCommand).callsFake(async (input: { PartNumber?: number }) => {
+      if (input.PartNumber === 1) {
+        await othersStarted;
+        throw new Error('connection reset');
+      }
+
+      const signal = signalOf(uploader);
+      inFlight.push(signal);
+      if (inFlight.length === 2) release();
+
+      return new Promise((_, reject) => {
+        const aborted = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        if (signal.aborted) return aborted();
+        signal.addEventListener('abort', aborted, { once: true });
+      });
+    });
+
+    return inFlight;
+  }
+
+  it("rejects with that part's error", async () => {
+    const uploader = makeUploader({ concurrency: 3 });
+    failFirstPartWhileOthersAreInFlight(uploader);
+
+    // Not the "aborted" the other parts end with: that is our doing.
+    await expect(uploader.start(makeFile(30 * MB))).rejects.toThrow('connection reset');
+  });
+
+  it('stops the other parts instead of sending the rest', async () => {
+    const uploader = makeUploader({ concurrency: 3 });
+    const inFlight = failFirstPartWhileOthersAreInFlight(uploader);
+
+    await uploader.start(makeFile(30 * MB)).catch(() => {});
+
+    // The two already on the wire are aborted, and parts 4 to 6 never go.
+    expect(inFlight.every((signal) => signal.aborted)).toBe(true);
+    expect(s3Mock).toHaveReceivedCommandTimes(UploadPartCommand, 3);
+    expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
+  });
+
+  it('has nothing left in flight by the time it rejects', async () => {
+    const uploader = makeUploader({ concurrency: 3 });
+    failFirstPartWhileOthersAreInFlight(uploader);
+
+    await uploader.start(makeFile(30 * MB)).catch(() => {});
+
+    expect(controllersOf(uploader)).toEqual([]);
+  });
+
+  it('keeps the session, so the caller can still resume', async () => {
+    const uploader = makeUploader({ concurrency: 3 });
+    failFirstPartWhileOthersAreInFlight(uploader);
+    await uploader.start(makeFile(30 * MB)).catch(() => {});
+
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"etag"' });
+    s3Mock.on(ListPartsCommand).resolves({ Parts: [] });
+    await uploader.resume(makeFile(30 * MB));
+
+    // Aborting a failed upload is the caller's choice: UploadManager makes it,
+    // because it never resumes one. The uploader does not decide for everyone.
+    expect(uploadIdOf(uploader)).toBe('upload-1');
+    expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
+    expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 1);
+  });
+
+  it('still lets a pause win over a failure that follows it', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    const uploader = makeUploader();
+    s3Mock.on(UploadPartCommand).callsFake(async () => {
+      uploader.pause();
+      throw new Error('connection reset');
+    });
+
+    // A paused upload is not a failed one, whatever its last request did.
+    await expect(uploader.start(makeFile(15 * MB))).resolves.toBeUndefined();
+  });
+});
+
 describe('pause', () => {
   it('stops after the in-flight part and does not complete the upload', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
