@@ -191,6 +191,19 @@ const FINISHED_DELETE_STATUSES: DeleteProgress['status'][] = ['completed', 'fail
 const FINISHED_UPLOAD_STATUSES: UploadStatus[] = ['completed', 'failed', 'cancelled'];
 
 /**
+ * Whether an upload card stands for work not yet finished: queued, uploading
+ * or paused.
+ *
+ * A folder card never does. It stands for its files, whose cards are in the
+ * same map with statuses of their own, and its own status is never moved on
+ * from 'queued' - the panel works a folder's status out from its files.
+ * Counted, every folder upload read as one upload still running, for good.
+ */
+export function isUnfinishedUpload(upload: { status: UploadStatus; type?: string }): boolean {
+  return upload.type !== 'folder' && !FINISHED_UPLOAD_STATUSES.includes(upload.status);
+}
+
+/**
  * How much of the session's work is still live, by kind.
  *
  * Counts rather than a boolean, so a caller about to cancel all of it can say
@@ -222,14 +235,15 @@ export interface ActiveWork {
  * is "what is running", not "what has been asked for".
  */
 export function countActiveWork(state: {
-  uploads: Record<string, { status: UploadStatus }>;
+  uploads: Record<string, { status: UploadStatus; type?: string }>;
   deletes: Record<string, { status: DeleteProgress['status'] }>;
 }): ActiveWork {
   let uploads = 0;
   let deletes = 0;
 
+  // Files, not folders: see isUnfinishedUpload.
   for (const upload of Object.values(state.uploads)) {
-    if (!FINISHED_UPLOAD_STATUSES.includes(upload.status)) uploads++;
+    if (isUnfinishedUpload(upload)) uploads++;
   }
 
   for (const operation of Object.values(state.deletes)) {

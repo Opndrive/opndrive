@@ -998,6 +998,38 @@ describe('counting the work a switch would cancel', () => {
     expect(countActiveWork(store()).deletes).toBe(0);
   });
 
+  /**
+   * A folder's card stands for its files, whose cards are counted already,
+   * and it is never moved on from 'queued' itself. Counted, every folder
+   * upload left one "upload" running for good, and the switch dialog said
+   * so for the rest of the session.
+   */
+  function folderOf(...fileStatuses: Upload['status'][]) {
+    const fileIds = fileStatuses.map((_, i) => `f${i}`);
+    store().addUpload(
+      'folder',
+      upload({ id: 'folder', type: 'folder', status: 'queued', fileIds })
+    );
+    fileStatuses.forEach((status, i) =>
+      store().addUpload(
+        `f${i}`,
+        upload({ id: `f${i}`, name: `photos/${i}.jpg`, status, parentFolderId: 'folder' })
+      )
+    );
+  }
+
+  it('counts a folder by its files, not as an upload of its own', () => {
+    folderOf('uploading', 'queued', 'completed');
+
+    expect(countActiveWork(store()).uploads).toBe(2);
+  });
+
+  it('counts nothing for a folder whose files have all finished', () => {
+    folderOf('completed', 'failed');
+
+    expect(countActiveWork(store()).uploads).toBe(0);
+  });
+
   it('counts each kind separately', () => {
     store().addUpload('u1', upload({ status: 'uploading' }));
     store().addUpload('u2', upload({ id: 'u2', status: 'queued' }));

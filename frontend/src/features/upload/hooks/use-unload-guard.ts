@@ -1,22 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import type { UploadStatus } from '@opndrive/s3-api';
-import { useUploadStore } from '../stores/use-upload-store';
+import { isUnfinishedUpload, useUploadStore } from '../stores/use-upload-store';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
-
-/**
- * Upload states that closing the tab ends for good.
- *
- * Paused is one of them: nothing is moving, but the file handle lives in this
- * tab and the upload cannot be picked up again without it. An upload waiting
- * between automatic retries stays 'uploading', so it is covered too.
- */
-const UNFINISHED_UPLOAD_STATUSES: ReadonlySet<UploadStatus> = new Set([
-  'queued',
-  'uploading',
-  'paused',
-]);
 
 /**
  * Warns before the tab closes while work would be lost by it.
@@ -34,14 +20,16 @@ const UNFINISHED_UPLOAD_STATUSES: ReadonlySet<UploadStatus> = new Set([
 export function useUnloadGuard(): void {
   // Booleans, so the many progress updates of a large drop do not re-render
   // the layout this sits in. The loop stops at the first live upload.
+  //
+  // Queued, uploading or paused, and files rather than folders: see
+  // isUnfinishedUpload. Paused counts: nothing is moving, but the file handle
+  // lives in this tab and the upload cannot be picked up again without it. An
+  // upload waiting between automatic retries stays 'uploading', so it counts
+  // too. A folder's card, which is never moved on from 'queued', does not:
+  // counting it kept the prompt up after every folder upload.
   const hasUnfinishedUpload = useUploadStore((state) => {
     for (const id in state.uploads) {
-      const upload = state.uploads[id]!;
-      // A folder card stands for its files and is never moved on from
-      // 'queued' itself, so counting it kept the prompt up after every
-      // folder upload. Its files' cards are here too, with real statuses.
-      if (upload.type === 'folder') continue;
-      if (UNFINISHED_UPLOAD_STATUSES.has(upload.status)) return true;
+      if (isUnfinishedUpload(state.uploads[id]!)) return true;
     }
     return false;
   });
