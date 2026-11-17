@@ -214,6 +214,17 @@ interface UploadQueueState {
   releaseClaim: (taskId: string) => void;
   /** Gives back a single uncommitted prefix. */
   releasePrefix: (prefix: string) => void;
+  /**
+   * Gives back every name at or below `prefix`, committed or not, once that
+   * folder has been deleted from the bucket.
+   *
+   * A committed claim is kept for the session so a second drop cannot land on
+   * an upload's files. Once the folder is gone, there is nothing left to
+   * protect, and holding on renamed the next drop of that name to "photos (1)"
+   * beside nothing at all. Claims of tasks still uploading are kept: their
+   * files are still arriving under that prefix.
+   */
+  forgetClaimsUnder: (prefix: string, isStillUploading: (taskId: string) => boolean) => void;
   /** Every prefix currently spoken for, committed or not. */
   claimedPrefixes: () => string[];
 
@@ -654,6 +665,18 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
     set((state) => ({
       claims: state.claims.filter((claim) => claim.prefix !== target || claim.committed),
     }));
+  },
+
+  forgetClaimsUnder: (prefix, isStillUploading) => {
+    const target = normalisePrefix(prefix);
+    // The root holds everything; no folder delete removes it.
+    if (!target) return;
+
+    const claims = get().claims;
+    const kept = claims.filter(
+      (claim) => !claim.prefix.startsWith(target) || isStillUploading(claim.taskId)
+    );
+    if (kept.length !== claims.length) set({ claims: kept });
   },
 
   claimedPrefixes: () => get().claims.map((claim) => claim.prefix),

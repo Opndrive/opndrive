@@ -19,6 +19,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useDeleteOperations } from './use-delete-operations';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useUploadStore } from '../stores/use-upload-store';
+import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
 
@@ -241,6 +242,22 @@ describe('after the folder is gone', () => {
     });
 
     expect(removeDeletedFolder).toHaveBeenCalledWith('docs/');
+  });
+
+  it('gives back the name an upload this session was holding for it', async () => {
+    // Uploaded earlier, so the name was reserved. Kept after the delete, the
+    // next "docs" dropped here would have become "docs (1)".
+    const queue = useUploadQueueStore.getState();
+    queue.reset();
+    queue.reservePrefix('docs', '', 'task-1');
+    queue.commitClaim('task-1');
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    expect(useUploadQueueStore.getState().claimedPrefixes()).toEqual([]);
   });
 
   it('corrects the listing in place when the user was somewhere else', async () => {
