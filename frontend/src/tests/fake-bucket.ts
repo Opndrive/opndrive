@@ -78,6 +78,8 @@ export interface FakeBucket {
   failExistenceChecks(error: Error): void;
   /** Counts listing calls, to prove a failed check is not retried in a loop. */
   listingCalls(): number;
+  /** How many single-object existence checks (HEADs) have been made. */
+  existenceCheckCalls(): number;
 }
 
 export function createFakeBucket(): FakeBucket {
@@ -88,6 +90,7 @@ export function createFakeBucket(): FakeBucket {
 
   let uploadSeq = 0;
   let listings = 0;
+  let existenceChecks = 0;
   let listingError: Error | null = null;
   let existenceError: Error | null = null;
 
@@ -204,20 +207,41 @@ export function createFakeBucket(): FakeBucket {
     },
   };
 
-  /** Serves the listing edge that `folderExists` uses. */
-  const fetchDirectoryStructure = async (prefix: string, _maxKeys?: number) => {
+  /**
+   * Serves the listing edge that `folderExists` and `findExistingNames` use.
+   *
+   * Paged the way S3 pages: entries in key order, objects and folders alike
+   * counting towards `maxKeys`, and a token that picks up where the last page
+   * stopped. A fake that always answered in one page could not tell a caller
+   * that reads every page from one that reads only the first.
+   */
+  const fetchDirectoryStructure = async (prefix: string, maxKeys = 1000, token?: string) => {
     listings++;
     if (listingError) throw listingError;
 
-    const files: { Key: string }[] = [];
-    const folders: { Prefix: string }[] = [];
+    const entries = new Map<string, { Key: string } | { Prefix: string }>();
     for (const key of objects.keys()) {
       if (!key.startsWith(prefix)) continue;
       const rest = key.slice(prefix.length);
-      if (rest.includes('/')) folders.push({ Prefix: prefix + rest.split('/')[0] + '/' });
-      else files.push({ Key: key });
+      if (rest.includes('/')) {
+        const folder = prefix + rest.split('/')[0] + '/';
+        entries.set(folder, { Prefix: folder });
+      } else {
+        entries.set(key, { Key: key });
+      }
     }
-    return { files, folders, nextToken: undefined, isTruncated: false };
+
+    const ordered = [...entries.keys()].sort();
+    const start = token ? Number(token) : 0;
+    const page = ordered.slice(start, start + maxKeys).map((name) => entries.get(name)!);
+    const isTruncated = start + maxKeys < ordered.length;
+
+    return {
+      files: page.filter((entry): entry is { Key: string } => 'Key' in entry),
+      folders: page.filter((entry): entry is { Prefix: string } => 'Prefix' in entry),
+      nextToken: isTruncated ? String(start + maxKeys) : undefined,
+      isTruncated,
+    };
   };
 
   /**
@@ -228,6 +252,7 @@ export function createFakeBucket(): FakeBucket {
    * ran pass for a name that was free.
    */
   const objectExists = async (key: string) => {
+    existenceChecks++;
     if (existenceError) throw existenceError;
 
     return objects.has(key);
@@ -272,5 +297,6 @@ export function createFakeBucket(): FakeBucket {
       existenceError = error;
     },
     listingCalls: () => listings,
+    existenceCheckCalls: () => existenceChecks,
   };
 }

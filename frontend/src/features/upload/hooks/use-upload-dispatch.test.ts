@@ -23,7 +23,7 @@ import { useUploadStore } from '../stores/use-upload-store';
 import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
 import type { ProcessedDragData, FolderStructure } from '../types/folder-upload-types';
 import { folderExists } from '@/services/folder-existence';
-import { objectExists } from '@/services/object-existence';
+import { findExistingNames, objectExists } from '@/services/object-existence';
 import { generateUniqueFileName } from '../utils/unique-filename';
 import { createUploadExecutor, type UploadExecutor } from '../services/upload-executor';
 
@@ -35,6 +35,7 @@ vi.mock('@/services/folder-existence', () => ({
 vi.mock('@/services/object-existence', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/object-existence')>()),
   objectExists: vi.fn(),
+  findExistingNames: vi.fn(),
 }));
 
 vi.mock('../utils/unique-filename', () => ({
@@ -50,6 +51,7 @@ vi.mock('../context/upload-context', () => ({
 
 const mockFolderExists = vi.mocked(folderExists);
 const mockObjectExists = vi.mocked(objectExists);
+const mockFindExisting = vi.mocked(findExistingNames);
 const mockUniqueName = vi.mocked(generateUniqueFileName);
 const queue = () => useUploadQueueStore.getState();
 const uploads = () => useUploadStore.getState().uploads;
@@ -100,6 +102,13 @@ beforeEach(() => {
   mockFolderExists.mockResolvedValue(false);
   mockObjectExists.mockReset();
   mockObjectExists.mockResolvedValue(false);
+  // A listing that rules nothing out, so every file still gets its HEAD. The
+  // tests about the listing itself say otherwise.
+  mockFindExisting.mockReset();
+  mockFindExisting.mockImplementation(async (_api, _prefix, names) => ({
+    existing: new Set<string>(),
+    unknown: [...names],
+  }));
   mockUniqueName.mockReset();
   useUploadStore.setState({ uploads: {}, duplicateQueue: [] });
   // The prompt is the default; the tests that care set their own.
@@ -435,6 +444,90 @@ describe('loose file collisions', () => {
 
     expect(peak).toBeGreaterThan(1);
     expect(mockObjectExists).toHaveBeenCalledTimes(8);
+  });
+
+  describe('many files at once', () => {
+    const many = (count: number) => Array.from({ length: count }, (_, i) => makeFile(`f${i}.txt`));
+
+    it('checks them against one listing instead of a HEAD each', async () => {
+      mockFindExisting.mockResolvedValue({ existing: new Set(), unknown: [] });
+      const dispatchDrop = dispatch();
+
+      await dispatchDrop(drop({ individualFiles: many(500) }), 'docs', apiS3);
+
+      expect(mockFindExisting).toHaveBeenCalledOnce();
+      expect(mockFindExisting.mock.calls[0]!.slice(1, 3)).toEqual([
+        'docs',
+        many(500).map((f) => f.name),
+      ]);
+      expect(mockObjectExists).not.toHaveBeenCalled();
+      expect(manager.added).toHaveLength(500);
+    });
+
+    it('asks about the ones the listing found', async () => {
+      mockFindExisting.mockResolvedValue({ existing: new Set(['f3.txt']), unknown: [] });
+      const dispatchDrop = dispatch();
+
+      const dropping = dispatchDrop(drop({ individualFiles: many(8) }), '', apiS3);
+      await answer('replace');
+      await dropping;
+
+      expect(mockObjectExists).not.toHaveBeenCalled();
+      expect(manager.added.map((a) => a.key)).toContain('f3.txt');
+      expect(manager.added).toHaveLength(8);
+    });
+
+    it('checks one by one only what the listing could not rule out', async () => {
+      // A destination too big to list within budget: the listing found f1,
+      // and could not say anything about f6 and f7.
+      mockFindExisting.mockResolvedValue({
+        existing: new Set(['f1.txt']),
+        unknown: ['f6.txt', 'f7.txt'],
+      });
+      mockObjectExists.mockImplementation(async (_api, key: string) => key === 'f7.txt');
+      useUploadSettingsStore.setState({ duplicatePolicy: 'replace' });
+      const dispatchDrop = dispatch();
+
+      const { notices } = await dispatchDrop(drop({ individualFiles: many(8) }), '', apiS3);
+
+      expect(mockObjectExists.mock.calls.map(([, key]) => key).sort()).toEqual([
+        'f6.txt',
+        'f7.txt',
+      ]);
+      // f1 from the listing and f7 from its HEAD were both replaced.
+      expect(notices.find((n) => n.kind === 'replaced')?.count).toBe(2);
+    });
+
+    it('reads no more pages than the HEADs it saves would take', async () => {
+      mockFindExisting.mockResolvedValue({ existing: new Set(), unknown: [] });
+      const dispatchDrop = dispatch();
+
+      await dispatchDrop(drop({ individualFiles: many(12) }), '', apiS3);
+      await dispatchDrop(drop({ individualFiles: many(5000) }), '', apiS3);
+
+      // 12 files are three rounds of five HEADs; 5,000 would be 1,000 rounds,
+      // but a listing stops at 20 pages.
+      expect(mockFindExisting.mock.calls.map((call) => call[3])).toEqual([3, 20]);
+    });
+
+    it('falls back to a HEAD each when the listing fails', async () => {
+      mockFindExisting.mockRejectedValue(new Error('AccessDenied'));
+      const dispatchDrop = dispatch();
+
+      await dispatchDrop(drop({ individualFiles: many(8) }), '', apiS3);
+
+      expect(mockObjectExists).toHaveBeenCalledTimes(8);
+      expect(manager.added).toHaveLength(8);
+    });
+
+    it('still uses HEADs for a drop small enough for one round of them', async () => {
+      const dispatchDrop = dispatch();
+
+      await dispatchDrop(drop({ individualFiles: many(5) }), '', apiS3);
+
+      expect(mockFindExisting).not.toHaveBeenCalled();
+      expect(mockObjectExists).toHaveBeenCalledTimes(5);
+    });
   });
 
   it('asks once when the answer is meant for the rest of the drop', async () => {

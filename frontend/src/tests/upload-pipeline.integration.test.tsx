@@ -16,7 +16,7 @@
  * is genuinely found by the next drop's collision check.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
@@ -42,6 +42,7 @@ import { UploadProvider } from '@/features/upload/context/upload-context';
 import { QueueNotices } from '@/features/upload/components/queue-notices';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
 import type { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 
 const queue = () => useUploadQueueStore.getState();
@@ -380,6 +381,41 @@ describe('1d. retrying', () => {
     await until(() => uploads()[uploadId]?.status === 'completed', 'the retry to complete');
 
     expect(bucket.objects.get('report.pdf')).toEqual({ size: 10, contentType: 'application/pdf' });
+  });
+});
+
+describe('1f. checking loose files for duplicates', () => {
+  afterEach(() => {
+    useUploadSettingsStore.setState({ duplicatePolicy: 'ask' });
+  });
+
+  it('checks a big drop against a listing, not a HEAD per file', async () => {
+    // A destination of 2,500 objects is three listing pages. One of the 30
+    // files dropped onto it is already there.
+    for (let i = 0; i < 2_500; i++) bucket.put(`docs/existing-${i}.txt`);
+    bucket.put('docs/f7.txt', 99);
+    useUploadSettingsStore.setState({ duplicatePolicy: 'replace' });
+    const dispatch = mountPipeline();
+
+    let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
+    await act(async () => {
+      outcome = await dispatch.current(
+        {
+          individualFiles: Array.from({ length: 30 }, (_, i) => makeFile(`f${i}.txt`, 10)),
+          folderStructures: [],
+          skipped: [],
+        },
+        'docs/',
+        bucket.apiS3
+      );
+    });
+    await untilIdle(bucket);
+
+    expect(bucket.existenceCheckCalls()).toBe(0);
+    expect(bucket.listingCalls()).toBe(3);
+    // The collision was still found, and the setting replaced it.
+    expect(outcome.notices.find((n) => n.kind === 'replaced')?.count).toBe(1);
+    expect(bucket.objects.get('docs/f7.txt')).toMatchObject({ size: 10 });
   });
 });
 
