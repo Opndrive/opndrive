@@ -18,6 +18,7 @@ const { manager, executor } = vi.hoisted(() => ({
   },
   executor: {
     retry: vi.fn((_id: string): RetryOutcome => ({ ok: true })),
+    canRetry: vi.fn((_id: string) => true),
     uploadsFor: vi.fn((_taskId: string): string[] => []),
     cancelTask: vi.fn(),
   },
@@ -56,6 +57,9 @@ const renderPanel = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps what a test told a mock to return.
+  executor.retry.mockImplementation(() => ({ ok: true }));
+  executor.canRetry.mockImplementation(() => true);
   useUploadStore.setState({ uploads: {}, deletes: {}, duplicateQueue: [] });
   useUploadQueueStore.setState({ preparingDrops: 0, readingDrops: 0, filesFound: 0, notices: [] });
 });
@@ -85,6 +89,26 @@ describe('Retry', () => {
     expect(manager.retryUpload).not.toHaveBeenCalled();
     // The reason described the attempt being replaced.
     expect(useUploadStore.getState().uploads.u1!.error).toBeUndefined();
+  });
+
+  it('offers no Retry on a card with no upload behind it', () => {
+    // The card a plan gets when the manager refused it outright, after a
+    // logout mid-drop: the task's id, no files, nothing to send again.
+    executor.canRetry.mockReturnValue(false);
+    seed({
+      'task-1': {
+        id: 'task-1',
+        name: 'photos',
+        type: 'folder',
+        status: 'failed',
+        progress: 0,
+        error: 'This UploadManager instance has been disposed.',
+      },
+    });
+    renderPanel();
+
+    expect(screen.getByText('This UploadManager instance has been disposed.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Retry/ })).toBeNull();
   });
 
   it('says why, on the card, when a retry is refused', () => {

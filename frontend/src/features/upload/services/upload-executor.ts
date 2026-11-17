@@ -180,6 +180,11 @@ export interface UploadExecutor {
    */
   retry(uploadId: string): RetryOutcome;
   /**
+   * Whether `retry` could send this upload again: it failed, it is ours, and
+   * its folder was not cancelled. For deciding whether to offer Retry at all.
+   */
+  canRetry(uploadId: string): boolean;
+  /**
    * Where an upload stands right now, by the manager's own account.
    *
    * For whoever creates the upload's card, which can only happen after
@@ -470,6 +475,15 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
       record.failed.delete(uploadId);
       retriable.delete(uploadId);
       return { ok: true };
+    },
+
+    canRetry(uploadId) {
+      if (manager.getStatus(uploadId)?.status !== 'failed') return false;
+
+      const taskId = taskByUpload.get(uploadId);
+      if (taskId) return !tasks.get(taskId)!.cancelled;
+
+      return retriable.has(uploadId);
     },
 
     statusOf: (uploadId) => manager.getStatus(uploadId),

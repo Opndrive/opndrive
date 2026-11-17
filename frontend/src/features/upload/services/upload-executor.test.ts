@@ -858,6 +858,49 @@ describe('retry', () => {
   it('refuses an upload it never dispatched', () => {
     expect(executor.retry('someone-elses-upload')).toMatchObject({ ok: false });
   });
+
+  /**
+   * Whether Retry is worth offering. A card that failed because the manager
+   * refused its whole plan, after a logout mid-drop, has no upload behind it,
+   * and a Retry there did nothing at all.
+   */
+  describe('canRetry', () => {
+    it('is true for a failed upload, before and after its task settles', () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-1');
+      expect(executor.canRetry('upload-1')).toBe(true);
+
+      completed('upload-0');
+      expect(executor.canRetry('upload-1')).toBe(true);
+    });
+
+    it('is false for an upload that has not failed', () => {
+      startFolder('a.jpg');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false once it has been retried', () => {
+      startFolder('a.jpg');
+      failed('upload-0');
+      executor.retry('upload-0');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false for a failed file of a cancelled folder', async () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-0');
+      await executor.cancelTask('task-folder');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false for anything it did not dispatch, such as a refused plan', () => {
+      // A refused plan's card carries the task id, which is no upload at all.
+      expect(executor.canRetry('task-folder')).toBe(false);
+    });
+  });
 });
 
 describe('routing state is not kept forever', () => {

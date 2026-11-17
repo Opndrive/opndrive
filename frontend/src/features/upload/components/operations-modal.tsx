@@ -31,6 +31,8 @@ interface OperationItem {
   error?: string;
   extension?: FileExtension;
   queuePosition?: number;
+  /** For a failed upload: whether there is something Retry can send. */
+  retriable?: boolean;
 }
 
 /**
@@ -342,26 +344,43 @@ export const OperationsModal: React.FC = () => {
   // Derivation lives above the `uploadManager` guard because useMemo is a
   // hook and hooks cannot follow an early return.
   const sortedOperations = useMemo(() => {
+    // Whether Retry has anything to send. A card for a plan the manager
+    // refused outright carries the task's id and no files, and the executor
+    // knows no upload by either.
+    const canRetryCard = (upload: UploadProgress) =>
+      executor !== null &&
+      (upload.type === 'folder'
+        ? (upload.fileIds ?? []).some((fileId) => executor.canRetry(fileId))
+        : executor.canRetry(upload.id));
+
     // Combine and transform operations into unified format
     const allOperations: OperationItem[] = [
       // Upload operations
       ...Object.values(uploads)
         .filter((u) => u.type === 'folder' || (u.type === 'file' && !u.parentFolderId))
-        .map((upload) => ({
-          id: upload.id,
-          name: upload.name,
-          type: upload.type,
-          operationType: 'upload' as const,
+        .map((upload) => {
           // With the reason it failed. Left out, every failed upload said
           // only "Failed", whether its key was refused or its connection
           // dropped, which want different things from the person reading it.
-          ...(upload.type === 'folder'
-            ? summariseFolder(uploads, upload.id)
-            : { status: upload.status, progress: upload.progress, error: upload.error }),
-          fileIds: upload.fileIds,
-          parentFolderId: upload.parentFolderId,
-          extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
-        })),
+          const summary =
+            upload.type === 'folder'
+              ? summariseFolder(uploads, upload.id)
+              : { status: upload.status, progress: upload.progress, error: upload.error };
+
+          return {
+            id: upload.id,
+            name: upload.name,
+            type: upload.type,
+            operationType: 'upload' as const,
+            ...summary,
+            // Asked only of a failed card, so a folder's files are not
+            // walked again on every update for nothing.
+            retriable: summary.status === 'failed' && canRetryCard(upload),
+            fileIds: upload.fileIds,
+            parentFolderId: upload.parentFolderId,
+            extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
+          };
+        }),
       // Delete operations
       ...Object.values(deletes).map((deleteOp) => ({
         id: deleteOp.id,
@@ -441,7 +460,7 @@ export const OperationsModal: React.FC = () => {
       // This means newer operations with the same status will appear after older ones
       return 0;
     });
-  }, [uploads, deletes, downloads]);
+  }, [uploads, deletes, downloads, executor]);
 
   if (!uploadManager) {
     return 'Loading...';
@@ -830,6 +849,7 @@ export const OperationsModal: React.FC = () => {
                   onPause={pauseOperation}
                   onResume={resumeOperation}
                   onRetry={retryOperation}
+                  retriable={operation.retriable}
                 />
               ))}
             </div>

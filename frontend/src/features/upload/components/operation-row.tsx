@@ -58,6 +58,12 @@ export interface OperationRowProps {
    * failed has nothing kept to send.
    */
   onRetry?: (id: string, isFolder: boolean) => void;
+  /**
+   * Whether there is something to send again, which only the executor knows:
+   * a card for a plan the manager refused outright has no upload behind it.
+   * Retry is offered only when this is true.
+   */
+  retriable?: boolean;
 }
 
 const CANCELLABLE = ['uploading', 'queued', 'deleting', 'paused', 'downloading', 'pending'];
@@ -84,13 +90,18 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
   onPause,
   onResume,
   onRetry,
+  retriable = false,
 }) => {
   const canCancel = CANCELLABLE.includes(status);
   // An upload can fail and still be sent again: the manager keeps its file
   // for exactly this. Failures that might clear by themselves have already
-  // been retried by then, so this is for the rest.
+  // been retried by then, so this is for the rest - when there is an upload
+  // behind the card to send.
   const canRetry =
-    operationType === 'upload' && (status === 'failed' || status === 'error') && Boolean(onRetry);
+    operationType === 'upload' &&
+    (status === 'failed' || status === 'error') &&
+    retriable &&
+    Boolean(onRetry);
   const isActive = ACTIVE.includes(status);
   const isFileUpload = operationType === 'upload' && type === 'file';
 

@@ -40,7 +40,13 @@ describe('retrying a failed upload', () => {
     const onRetry = vi.fn();
     render(
       <OperationRow
-        {...props({ operationType: 'upload', status: 'failed', error: 'Access Denied', onRetry })}
+        {...props({
+          operationType: 'upload',
+          status: 'failed',
+          error: 'Access Denied',
+          retriable: true,
+          onRetry,
+        })}
       />
     );
 
@@ -58,6 +64,7 @@ describe('retrying a failed upload', () => {
           type: 'folder',
           name: 'photos',
           status: 'failed',
+          retriable: true,
           onRetry,
         })}
       />
@@ -68,8 +75,29 @@ describe('retrying a failed upload', () => {
     expect(onRetry).toHaveBeenCalledWith('op-1', true);
   });
 
+  it('does not offer it for a failed upload that cannot be sent again', () => {
+    // A plan the manager refused outright, after a logout mid-drop: there is
+    // no upload behind the card, and a Retry there did nothing at all.
+    render(
+      <OperationRow
+        {...props({
+          operationType: 'upload',
+          status: 'failed',
+          retriable: false,
+          onRetry: vi.fn(),
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Retry/ })).toBeNull();
+  });
+
   it.each(['delete', 'download'] as const)('does not offer it for a failed %s', (operationType) => {
-    render(<OperationRow {...props({ operationType, status: 'failed', onRetry: vi.fn() })} />);
+    render(
+      <OperationRow
+        {...props({ operationType, status: 'failed', retriable: true, onRetry: vi.fn() })}
+      />
+    );
 
     // Nothing was kept to send again. A button that cannot work is worse
     // than no button.
@@ -79,7 +107,12 @@ describe('retrying a failed upload', () => {
   it('does not offer it for an upload that did not fail', () => {
     render(
       <OperationRow
-        {...props({ operationType: 'upload', status: 'completed', onRetry: vi.fn() })}
+        {...props({
+          operationType: 'upload',
+          status: 'completed',
+          retriable: true,
+          onRetry: vi.fn(),
+        })}
       />
     );
 
