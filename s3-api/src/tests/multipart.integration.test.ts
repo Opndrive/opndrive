@@ -25,6 +25,7 @@ import {
   CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   ListMultipartUploadsCommand,
   ListObjectsV2Command,
@@ -384,6 +385,72 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       expect(sha256(await readBack(key))).toBe(sha256(bytes));
       expect(await openUploadsFor(key)).toEqual([]);
     });
+
+    it('survives a pause and resume during the wait, and finishes once', async () => {
+      const key = keyFor('paused-while-waiting.bin');
+      const bytes = randomBytes(16 * MiB);
+      let failedOnce = false;
+      let resumed = false;
+      let heldOnce = false;
+      const { s3, sent } = interceptedClient((command) => {
+        if (!(command instanceof UploadPartCommand)) return undefined;
+        if (!failedOnce && command.input.PartNumber === 2) {
+          failedOnce = true;
+          return Promise.reject(
+            Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' })
+          );
+        }
+        // The resumed attempt's first part is slow, so it is still going when
+        // the wait it interrupted runs out. Only a part sent after the resume:
+        // holding one of the failed attempt's would hold up the failure.
+        if (resumed && !heldOnce) {
+          heldOnce = true;
+          return new Promise((resolve) => setTimeout(resolve, 1200)).then(() =>
+            client.send(command)
+          );
+        }
+        return undefined;
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        maxConcurrency: 1,
+        partSizeMB: 5,
+        retryDelaysMs: [300],
+      });
+      const statuses: string[] = [];
+      let retrying = false;
+      const { warn, error } = console;
+      console.warn = () => (retrying = true);
+      console.error = () => {};
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'paused-while-waiting.bin'), { key });
+        manager.on('statusChange', (payload) => {
+          if (payload.id === id) statuses.push(payload.status);
+        });
+        while (!retrying) await new Promise((resolve) => setTimeout(resolve, 10));
+
+        manager.pauseUpload(id);
+        resumed = true;
+        await manager.resumeUpload(id);
+        await waitForStatus(manager, id, 'completed');
+        // Long enough for anything a second worker would do to have happened.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } finally {
+        console.warn = warn;
+        console.error = error;
+      }
+
+      // Finished once, and still finished: a second worker completing the
+      // same session left the first one's completion refused, and the upload
+      // marked failed.
+      expect(sent.filter((name) => name === 'CompleteMultipartUploadCommand')).toHaveLength(1);
+      expect(statuses[statuses.length - 1]).toBe('completed');
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
   });
 
   describe('a failed upload', () => {
@@ -414,6 +481,59 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       // The abort follows the failure; give it its round trip.
       await new Promise((resolve) => setTimeout(resolve, 500));
 
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
+    it('can be retried while its abort is on the wire, and the queue keeps moving', async () => {
+      const key = keyFor('retried-mid-abort.bin');
+      const bytes = randomBytes(16 * MiB);
+      let failedOnce = false;
+      const { s3 } = interceptedClient((command) => {
+        if (command instanceof UploadPartCommand && !failedOnce && command.input.PartNumber === 2) {
+          failedOnce = true;
+          return Promise.reject(
+            Object.assign(new Error('Access Denied'), {
+              name: 'AccessDenied',
+              $metadata: { httpStatusCode: 403 },
+            })
+          );
+        }
+        // A slow abort, as on the bad connection that failed the upload.
+        if (command instanceof AbortMultipartUploadCommand) {
+          return new Promise((resolve) => setTimeout(resolve, 800)).then(() =>
+            client.send(command)
+          );
+        }
+        return undefined;
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        maxConcurrency: 1,
+        partSizeMB: 5,
+        retryDelaysMs: [],
+      });
+      const { error } = console;
+      console.error = () => {};
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'retried-mid-abort.bin'), { key });
+        await waitForStatus(manager, id, 'failed');
+        // Pressed while the abort is still going.
+        expect(manager.retryUpload(id)).toBe(true);
+        await waitForStatus(manager, id, 'completed', 10_000);
+
+        // The one slot came back: the next upload runs too.
+        const after = manager.addUpload(new File([randomBytes(1024)], 'after.bin'), {
+          key: keyFor('after.bin'),
+        });
+        await waitForStatus(manager, after, 'completed', 10_000);
+      } finally {
+        console.error = error;
+      }
+
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
       expect(await openUploadsFor(key)).toEqual([]);
     });
 
@@ -466,6 +586,62 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       // Three parts of up to 5 MiB, and the upload is closed.
       expect(copied.ETag).toMatch(/-3"$/);
       expect(await openUploadsFor(destination)).toEqual([]);
+    });
+
+    it('keeps its tags, as CopyObject would', async () => {
+      const source = keyFor('tagged.bin');
+      const destination = keyFor('tagged-copy.bin');
+      await client.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: source,
+          Body: randomBytes(11 * MiB),
+          // A space and a "+" both, which a query string can confuse.
+          Tagging: 'project=x&note=two%20words%20%2B%20a%3Db',
+        })
+      );
+
+      await copyObject(client, BUCKET, source, destination, asIfHuge);
+
+      const { TagSet } = await client.send(
+        new GetObjectTaggingCommand({ Bucket: BUCKET, Key: destination })
+      );
+      const tags = (TagSet ?? []).map(({ Key, Value }) => [Key, Value]).sort();
+      expect(tags).toEqual([
+        ['note', 'two words + a=b'],
+        ['project', 'x'],
+      ]);
+    });
+
+    it('copies all of a source that has grown since it was listed', async () => {
+      // A folder rename hands over each object's size from its listing, which
+      // is older than the version the copy pins. Here the listing said 6 MiB
+      // and the object is now 12 MiB and a bit.
+      const source = keyFor('grown.bin');
+      const destination = keyFor('grown-copy.bin');
+      const bytes = randomBytes(12 * MiB + 7);
+      await client.send(new PutObjectCommand({ Bucket: BUCKET, Key: source, Body: bytes }));
+
+      await copyObject(client, BUCKET, source, destination, { ...asIfHuge, size: 6 * MiB });
+
+      expect(sha256(await readBack(destination))).toBe(sha256(bytes));
+    });
+
+    it('copies in one request a source that has shrunk under the limit since', async () => {
+      const source = keyFor('shrunk.bin');
+      const destination = keyFor('shrunk-copy.bin');
+      const bytes = randomBytes(6 * MiB);
+      await client.send(new PutObjectCommand({ Bucket: BUCKET, Key: source, Body: bytes }));
+
+      await copyObject(client, BUCKET, source, destination, {
+        maxSingleCopyBytes: 8 * MiB,
+        partSizeBytes: 5 * MiB,
+        size: 20 * MiB,
+      });
+
+      expect(sha256(await readBack(destination))).toBe(sha256(bytes));
+      // One CopyObject keeps the source's own ETag; a multipart one ends "-N".
+      expect((await head(destination)).ETag).not.toMatch(/-\d+"$/);
     });
 
     it('fails, and leaves no upload behind, when a part cannot be copied', async () => {
