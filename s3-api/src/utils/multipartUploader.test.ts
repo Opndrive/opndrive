@@ -21,6 +21,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   ListPartsCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { MultipartUploader } from './multipartUploader.js';
 
@@ -146,7 +147,7 @@ describe('browser storage', () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(UploadPartCommand).rejects(new Error('boom'));
 
-    await expect(makeUploader().start(makeFile(5 * MB))).rejects.toThrow('boom');
+    await expect(makeUploader().start(makeFile(6 * MB))).rejects.toThrow('boom');
 
     // The path that used to leave an entry behind for good: written as the
     // parts went up, with no success and no cancel to clear it afterwards.
@@ -160,7 +161,7 @@ describe('browser storage', () => {
     expect(typeof localStorage).toBe('undefined');
     stubHappyPath();
 
-    await makeUploader().start(makeFile(5 * MB));
+    await makeUploader().start(makeFile(6 * MB));
 
     expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 1);
   });
@@ -209,6 +210,169 @@ describe('construction', () => {
   });
 });
 
+/**
+ * A file that fits in one part goes up as a single PutObject.
+ *
+ * Empty files are the reason this exists: a multipart upload needs at least one
+ * part, an empty file has none, and S3 refuses to complete it. Small files come
+ * along because multipart would spend three requests on what one does.
+ */
+describe('files that fit in one part', () => {
+  /** A request that stays open until the uploader aborts it. */
+  function heldUntilAborted(uploader: MultipartUploader) {
+    const signal = controllersOf(uploader)[0]?.signal;
+    return new Promise<never>((_, reject) => {
+      const aborted = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      if (!signal || signal.aborted) return aborted();
+      signal.addEventListener('abort', aborted, { once: true });
+    });
+  }
+
+  it('sends an empty file as one PutObject, with no multipart session', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader().start(makeFile(0));
+
+    expect(s3Mock).toHaveReceivedCommandWith(PutObjectCommand, {
+      Bucket: 'test-bucket',
+      Key: 'users/alice/big.bin',
+    });
+    expect((s3Mock.commandCalls(PutObjectCommand)[0]!.args[0].input.Body as Blob).size).toBe(0);
+    expect(s3Mock).not.toHaveReceivedCommand(CreateMultipartUploadCommand);
+    expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
+  });
+
+  it('sends a file of exactly one part the same way', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader().start(makeFile(5 * MB));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(PutObjectCommand, 1);
+    expect(s3Mock).not.toHaveReceivedCommand(CreateMultipartUploadCommand);
+  });
+
+  it('switches to multipart one byte past a part', async () => {
+    stubHappyPath();
+
+    await makeUploader().start(makeFile(5 * MB + 1));
+
+    expect(s3Mock).not.toHaveReceivedCommand(PutObjectCommand);
+    expect(s3Mock).toHaveReceivedCommandTimes(UploadPartCommand, 2);
+  });
+
+  it('measures "one part" against the configured part size', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader({ partSizeBytes: 8 * MB }).start(makeFile(8 * MB));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(PutObjectCommand, 1);
+  });
+
+  it('reports 100% once the file is stored, and not before', async () => {
+    const progress: number[] = [];
+    s3Mock.on(PutObjectCommand).callsFake(async () => {
+      expect(progress).toEqual([]);
+      return {};
+    });
+
+    await makeUploader().start(makeFile(1024), (p) => progress.push(p));
+
+    expect(progress).toEqual([100]);
+  });
+
+  it('propagates a failure', async () => {
+    s3Mock.on(PutObjectCommand).rejects(new Error('503 slow down'));
+
+    await expect(makeUploader().start(makeFile(1024))).rejects.toThrow('503 slow down');
+  });
+
+  it('passes an abort signal so pause and cancel can interrupt the request', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader().start(makeFile(1024));
+
+    const args = s3Mock.commandCalls(PutObjectCommand)[0]!.args as unknown as [
+      unknown,
+      { abortSignal?: AbortSignal } | undefined,
+    ];
+    expect(args[1]?.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('pauses by aborting, and sends the whole file again when started again', async () => {
+    const uploader = makeUploader();
+    const progress: number[] = [];
+    let calls = 0;
+    s3Mock.on(PutObjectCommand).callsFake(async () => {
+      if (++calls === 1) {
+        const held = heldUntilAborted(uploader);
+        uploader.pause();
+        return held;
+      }
+      return {};
+    });
+
+    // A pause is not a failure, so the first attempt resolves quietly.
+    await expect(uploader.start(makeFile(1024), (p) => progress.push(p))).resolves.toBeUndefined();
+    expect(progress).toEqual([]);
+
+    await uploader.start(makeFile(1024), (p) => progress.push(p));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(PutObjectCommand, 2);
+    expect(progress).toEqual([100]);
+    expect(controllersOf(uploader)).toEqual([]);
+  });
+
+  it('still reports a real failure on the attempt after a pause', async () => {
+    const uploader = makeUploader();
+    let calls = 0;
+    s3Mock.on(PutObjectCommand).callsFake(async () => {
+      if (++calls === 1) {
+        const held = heldUntilAborted(uploader);
+        uploader.pause();
+        return held;
+      }
+      throw new Error('AccessDenied');
+    });
+
+    await uploader.start(makeFile(1024));
+
+    // A pause left standing from the first attempt would read this failure as
+    // "paused" and resolve, and the upload would be reported as finished.
+    await expect(uploader.start(makeFile(1024))).rejects.toThrow('AccessDenied');
+  });
+
+  it('can be picked back up with resume() as well', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    // There is no session to resume, so this is a fresh send, not a refusal.
+    await makeUploader().resume(makeFile(1024));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(PutObjectCommand, 1);
+  });
+
+  it('cancels by aborting, with no multipart session to abort', async () => {
+    const uploader = makeUploader();
+    s3Mock.on(PutObjectCommand).callsFake(async () => {
+      const held = heldUntilAborted(uploader);
+      void uploader.cancel();
+      return held;
+    });
+
+    await expect(uploader.start(makeFile(1024))).resolves.toBeUndefined();
+
+    expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
+  });
+
+  it('sends nothing once cancelled', async () => {
+    const uploader = makeUploader();
+    await uploader.cancel();
+
+    await uploader.start(makeFile(1024));
+
+    expect(s3Mock).not.toHaveReceivedCommand(PutObjectCommand);
+  });
+});
+
 describe('start', () => {
   it('creates a session, uploads the parts, and completes it', async () => {
     stubHappyPath();
@@ -242,7 +406,7 @@ describe('start', () => {
   it('passes an abort signal with every part so cancel can interrupt it', async () => {
     stubHappyPath();
 
-    await makeUploader().start(makeFile(5 * MB));
+    await makeUploader().start(makeFile(6 * MB));
 
     // The stub types `args` as a 1-tuple of the command, but `send` is really
     // called as `send(command, options)` and sinon records both.
@@ -312,7 +476,7 @@ describe('start', () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(UploadPartCommand).rejects(new Error('503 slow down'));
 
-    await expect(makeUploader().start(makeFile(5 * MB))).rejects.toThrow('503 slow down');
+    await expect(makeUploader().start(makeFile(6 * MB))).rejects.toThrow('503 slow down');
 
     // A silently swallowed failure would complete the upload with missing parts.
     expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
@@ -323,7 +487,7 @@ describe('start', () => {
     s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
     s3Mock.on(CompleteMultipartUploadCommand).resolves({});
 
-    await expect(makeUploader().start(makeFile(5 * MB))).rejects.toThrow(
+    await expect(makeUploader().start(makeFile(6 * MB))).rejects.toThrow(
       /did not return an UploadId/
     );
 
@@ -408,7 +572,7 @@ describe('pause', () => {
 
 describe('resume', () => {
   it('refuses to resume an upload that was never started', async () => {
-    await expect(makeUploader().resume(makeFile(5 * MB))).rejects.toThrow(
+    await expect(makeUploader().resume(makeFile(6 * MB))).rejects.toThrow(
       'No uploadId found. Start a new upload.'
     );
   });

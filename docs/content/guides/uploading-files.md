@@ -11,6 +11,11 @@ choice is remembered (`upload-settings-storage` in `localStorage`).
 Both modes upload directly from your browser to S3 - no Opndrive-operated server
 sits in between.
 
+In multipart mode, a file that fits in a single 5 MiB part is sent in one
+request rather than as a one-part multipart upload. That is fewer round trips
+for small files, and it is the only way to upload an empty file at all: S3
+refuses to complete a multipart upload that has no parts.
+
 ## How the Mode Switch Actually Works
 
 Switching modes in Settings updates a Zustand store

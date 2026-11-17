@@ -418,15 +418,16 @@ describe('processFileList', () => {
     expect(result.folderStructures).toEqual([]);
   });
 
-  it('skips the zero-byte entries browsers emit for directories', () => {
-    const directoryMarker = new File([], 'subdir');
+  it('keeps an empty file that has no extension', () => {
+    // LICENSE, Makefile, CODEOWNERS. These used to be skipped without a word,
+    // mistaken for the zero-byte entry a browser makes for a dropped folder -
+    // which a file picker, the only caller, never produces.
+    const license = new File([], 'LICENSE');
     const real = makeFile('a.txt');
 
-    const result = FolderStructureProcessor.processFileList([directoryMarker, real]);
+    const result = FolderStructureProcessor.processFileList([license, real]);
 
-    // Uploading these would create phantom zero-byte objects shadowing real
-    // folder prefixes.
-    expect(result.individualFiles).toEqual([real]);
+    expect(result.individualFiles).toEqual([license, real]);
   });
 
   it('keeps a genuinely empty file that has an extension', () => {
@@ -434,7 +435,6 @@ describe('processFileList', () => {
 
     const result = FolderStructureProcessor.processFileList([empty]);
 
-    // Only extension-less, type-less, zero-byte entries look like directories.
     expect(result.individualFiles).toEqual([empty]);
   });
 

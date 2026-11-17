@@ -47,6 +47,12 @@ import type { ProcessedDragData } from '@/features/upload/types/folder-upload-ty
 const queue = () => useUploadQueueStore.getState();
 const uploads = () => useUploadStore.getState().uploads;
 
+/**
+ * Over one 5 MiB part, so a file this size goes up as a multipart upload. Under
+ * it, a file goes up in a single request and has no multipart session to abort.
+ */
+const MULTIPART_SIZE = 6 * 1024 * 1024;
+
 let bucket: FakeBucket;
 let manager: UploadManager;
 
@@ -100,12 +106,12 @@ async function untilIdle(bucketRef: FakeBucket, label = 'uploads to finish') {
 /** Builds a real drop payload by running extraction over mocked entry APIs. */
 async function dropOfFolder(
   name: string,
-  files: { path: string; failWith?: Error }[]
+  files: { path: string; size?: number; failWith?: Error }[]
 ): Promise<ProcessedDragData> {
   // Group by the first segment below the folder so nested directories are real
   // directories, not flattened names.
   const children = files.map((f) =>
-    mockFileEntry(makeFile(f.path.split('/').pop()!), { failWith: f.failWith })
+    mockFileEntry(makeFile(f.path.split('/').pop()!, f.size), { failWith: f.failWith })
   );
   const entry = mockDirectoryEntry(name, children);
   const list = mockDataTransferItemList([mockDataTransferItem(entry)]);
@@ -129,7 +135,11 @@ beforeEach(async () => {
 
 describe('1. the full happy path', () => {
   it('carries a nested folder from drop to stored object', async () => {
-    const data = await dropOfFolder('photos', [{ path: 'a.jpg' }, { path: 'b.jpg' }]);
+    // One file of each kind: a.jpg fits in one request, b.jpg needs multipart.
+    const data = await dropOfFolder('photos', [
+      { path: 'a.jpg' },
+      { path: 'b.jpg', size: MULTIPART_SIZE },
+    ]);
     const dispatch = mountPipeline();
 
     let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
@@ -143,7 +153,9 @@ describe('1. the full happy path', () => {
     // Not one key repeats the dropped folder name - the Part 1 nesting bug.
     expect([...bucket.objects.keys()].every((k) => !k.includes('photos/photos'))).toBe(true);
 
-    // A real multipart round trip happened, not a shortcut.
+    // The small file went up in one request, and the large one made a real
+    // multipart round trip.
+    expect(bucket.commands).toContain('PutObjectCommand');
     expect(bucket.commands).toContain('CreateMultipartUploadCommand');
     expect(bucket.commands).toContain('UploadPartCommand');
     expect(bucket.commands).toContain('CompleteMultipartUploadCommand');
@@ -182,6 +194,84 @@ describe('1. the full happy path', () => {
     // A clean drop produces no notices, so nothing here should have rendered.
     expect(queue().notices).toEqual([]);
     expect(commits).toBe(baseline);
+  });
+});
+
+describe('1b. empty and small files', () => {
+  it('stores an empty file inside a dropped folder', async () => {
+    // The project-folder case: every package has an empty __init__.py, and
+    // S3 refuses to complete a multipart upload that has no parts.
+    const data = await dropOfFolder('project', [
+      { path: '__init__.py', size: 0 },
+      { path: 'main.py', size: 20 },
+    ]);
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(data, '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+
+    expect(bucket.objects.get('project/__init__.py')).toEqual({ size: 0 });
+    expect(bucket.objects.get('project/main.py')).toEqual({ size: 20 });
+    // File cards only. A folder card's status is worked out from its files
+    // when the panel draws it, so the stored one stays where it started.
+    const fileCards = Object.values(uploads()).filter((u) => u.type === 'file');
+    expect(fileCards.map((c) => c.status)).toEqual(['completed', 'completed']);
+  });
+
+  it('stores a loose empty file', async () => {
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(
+        { individualFiles: [makeFile('.gitkeep', 0)], folderStructures: [], skipped: [] },
+        '',
+        bucket.apiS3
+      );
+    });
+    await untilIdle(bucket);
+
+    expect(bucket.objects.get('.gitkeep')).toEqual({ size: 0 });
+  });
+
+  it('sends a small file as one request, with no multipart session', async () => {
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(await dropOfFolder('docs', [{ path: 'a.txt' }]), '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+
+    expect(bucket.commands).toContain('PutObjectCommand');
+    expect(bucket.commands).not.toContain('CreateMultipartUploadCommand');
+    expect([...bucket.objects.keys()]).toEqual(['docs/a.txt']);
+  });
+
+  it('can cancel a small file while its one request is in flight', async () => {
+    bucket.holdParts();
+    const dispatch = mountPipeline();
+    let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
+    await act(async () => {
+      outcome = await dispatch.current(
+        await dropOfFolder('docs', [{ path: 'a.txt' }]),
+        '',
+        bucket.apiS3
+      );
+    });
+    await until(() => bucket.commands.includes('PutObjectCommand'), 'the request to go out');
+
+    await act(async () => {
+      await manager.cancelUpload(outcome.dispatched[0]!.files[0]!.uploadId);
+    });
+    bucket.release();
+    await untilIdle(bucket);
+
+    // Nothing was stored, there was no multipart session to abort, and the
+    // folder's name is free again.
+    expect(bucket.objects.size).toBe(0);
+    expect(bucket.commands).not.toContain('AbortMultipartUploadCommand');
+    expect(queue().claimedPrefixes()).toEqual([]);
   });
 });
 
@@ -301,7 +391,10 @@ describe('3. the permission lock and skip path', () => {
 describe('4. the cancellation and claim release path', () => {
   it('aborts the multipart upload and frees the prefix', async () => {
     bucket.holdParts();
-    const data = await dropOfFolder('photos', [{ path: 'a.jpg' }, { path: 'b.jpg' }]);
+    const data = await dropOfFolder('photos', [
+      { path: 'a.jpg', size: MULTIPART_SIZE },
+      { path: 'b.jpg', size: MULTIPART_SIZE },
+    ]);
     const dispatch = mountPipeline();
 
     let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
@@ -338,7 +431,7 @@ describe('4. the cancellation and claim release path', () => {
     let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
     await act(async () => {
       outcome = await dispatch.current(
-        await dropOfFolder('photos', [{ path: 'a.jpg' }]),
+        await dropOfFolder('photos', [{ path: 'a.jpg', size: MULTIPART_SIZE }]),
         '',
         bucket.apiS3
       );

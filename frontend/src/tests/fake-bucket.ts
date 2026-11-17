@@ -22,8 +22,17 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   ListPartsCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
+
+/** S3's floor for every part of a multipart upload but the last. */
+const MIN_PART_SIZE = 5 * 1024 * 1024;
+
+/** An error shaped the way the SDK throws one for an S3 error response. */
+function s3Error(name: string, message: string, httpStatusCode = 400) {
+  return Object.assign(new Error(message), { name, $metadata: { httpStatusCode } });
+}
 
 export interface FakeBucket {
   /** Committed objects, keyed by S3 key. */
@@ -41,7 +50,11 @@ export interface FakeBucket {
 
   /** Seeds an object as if a previous session had uploaded it. */
   put(key: string, size?: number): void;
-  /** Holds every UploadPart until `release()` is called. */
+  /**
+   * Holds every request that carries file bytes until `release()` is called:
+   * each UploadPart, and the PutObject a file small enough for one request
+   * goes up in.
+   */
   holdParts(): void;
   release(): void;
   /** Makes the listing edge throw, simulating a dead network during planning. */
@@ -66,9 +79,30 @@ export function createFakeBucket(): FakeBucket {
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
 
+  /**
+   * What every byte-carrying request goes through: the gate, which models a
+   * request still on the wire and is what makes a mid-stream cancel testable at
+   * all, and then the abort a pause or cancel sends while it waits.
+   */
+  async function onTheWire(options?: { abortSignal?: AbortSignal }) {
+    if (gate) await gate;
+
+    if (options?.abortSignal?.aborted) {
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+  }
+
   const s3Client = {
     async send(command: unknown, options?: { abortSignal?: AbortSignal }) {
       commands.push((command as object).constructor.name);
+
+      if (command instanceof PutObjectCommand) {
+        await onTheWire(options);
+
+        const body = command.input.Body as Blob | undefined;
+        objects.set(command.input.Key as string, { size: body?.size ?? 0 });
+        return { ETag: '"etag-single"' };
+      }
 
       if (command instanceof CreateMultipartUploadCommand) {
         const id = `mpu-${uploadSeq++}`;
@@ -77,29 +111,44 @@ export function createFakeBucket(): FakeBucket {
       }
 
       if (command instanceof UploadPartCommand) {
-        // The gate models a part still on the wire, which is what makes a
-        // mid-stream cancel testable at all.
-        if (gate) await gate;
-
-        const signal = options?.abortSignal;
-        if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+        await onTheWire(options);
 
         const upload = openUploads.get(command.input.UploadId as string);
+        if (!upload) throw s3Error('NoSuchUpload', 'The specified upload does not exist.', 404);
+
         const partNumber = command.input.PartNumber as number;
         const body = command.input.Body as Blob | undefined;
-        upload?.parts.set(partNumber, body?.size ?? 0);
+        upload.parts.set(partNumber, body?.size ?? 0);
         return { ETag: `"etag-${partNumber}"` };
       }
 
       if (command instanceof CompleteMultipartUploadCommand) {
         const id = command.input.UploadId as string;
         const upload = openUploads.get(id);
-        if (upload) {
-          let size = 0;
-          for (const partSize of upload.parts.values()) size += partSize;
-          objects.set(upload.key, { size });
-          openUploads.delete(id);
+        if (!upload) throw s3Error('NoSuchUpload', 'The specified upload does not exist.', 404);
+
+        // The rules S3 checks here, which a lenient fake let slide. An empty
+        // file once reached this point with no parts at all, and every test
+        // passed while real S3 refused it.
+        const listed = command.input.MultipartUpload?.Parts ?? [];
+        if (listed.length === 0) {
+          throw s3Error('InvalidRequest', 'You must specify at least one part');
         }
+
+        let size = 0;
+        listed.forEach((part, index) => {
+          const partSize = upload.parts.get(part.PartNumber as number);
+          if (partSize === undefined) {
+            throw s3Error('InvalidPart', `Part ${part.PartNumber} was never uploaded.`);
+          }
+          if (index < listed.length - 1 && partSize < MIN_PART_SIZE) {
+            throw s3Error('EntityTooSmall', 'Your proposed upload is smaller than the minimum.');
+          }
+          size += partSize;
+        });
+
+        objects.set(upload.key, { size });
+        openUploads.delete(id);
         return {};
       }
 
@@ -112,10 +161,18 @@ export function createFakeBucket(): FakeBucket {
       }
 
       if (command instanceof ListPartsCommand) {
-        return { Parts: [] };
+        const upload = openUploads.get(command.input.UploadId as string);
+        return {
+          Parts: [...(upload?.parts.keys() ?? [])].map((PartNumber) => ({
+            PartNumber,
+            ETag: `"etag-${PartNumber}"`,
+          })),
+        };
       }
 
-      return {};
+      // Answering `{}` to anything unrecognised is how a fake hides a code
+      // path it does not model. Say so instead.
+      throw new Error(`fake bucket does not implement ${(command as object).constructor.name}`);
     },
   };
 

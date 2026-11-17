@@ -163,9 +163,14 @@ export class FolderStructureProcessor {
           folderMap.set(folderName, []);
         }
         folderMap.get(folderName)?.push(file);
-      } else if (file.size === 0 && !file.type && !file.name.includes('.')) {
-        // Likely an empty folder - skip for now
       } else {
+        // Every loose file is kept, empty ones included. This used to skip any
+        // empty file with no extension and no type, on the theory that it was
+        // a folder the browser had turned into a file. A picker never does
+        // that: the folder picker gives every file a path, which the branch
+        // above groups, and the file picker cannot select a folder at all. So
+        // the only things it ever skipped were real files - LICENSE,
+        // Makefile, CODEOWNERS - and it skipped them without a word.
         individualFiles.push(file);
       }
     });

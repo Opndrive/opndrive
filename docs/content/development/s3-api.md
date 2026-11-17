@@ -30,7 +30,7 @@ multiply requests rather than help.
 | `fetchMetadata(path)`                                               | `HeadObject`; `null` on 404 and on any other failure          |
 | `objectExists(key)`                                                 | `HeadObject` as yes/no; throws when it could not check        |
 | `uploadWithPreSignedUrl(params)`                                    | Single-request presigned PUT URL                              |
-| `uploadMultipartParallely(params)`                                  | Returns a `MultipartUploader` for large files                 |
+| `uploadMultipartParallely(params)`                                  | Returns a `MultipartUploader`; one-part files use one PUT     |
 | `getSignedUrl(params)`                                              | Presigned GET URL, with an inline-preview mode                |
 | `downloadFile(params)`                                              | Streams a GET body to `Buffer`/`Blob` with progress callbacks |
 | `deleteFile(key)`                                                   | Single-object delete                                          |

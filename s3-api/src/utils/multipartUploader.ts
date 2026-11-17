@@ -7,8 +7,24 @@ import {
   AbortMultipartUploadCommand,
   ListPartsCommand,
   CompletedPart,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 
+/**
+ * Uploads one file to S3.
+ *
+ * A file larger than one part goes up as a multipart upload: parts in
+ * parallel, resumable after a pause. A file that fits in a single part goes up
+ * as one PutObject instead, for two reasons.
+ *
+ * An empty file cannot be sent as a multipart upload at all. It has no parts,
+ * and S3 refuses to complete an upload with none ("You must specify at least
+ * one part"), so every `__init__.py` or `.gitkeep` in a dropped project failed.
+ *
+ * And a small file gains nothing from multipart. It is one part either way, so
+ * multipart costs three round trips (create, upload, complete) to do the work
+ * of one, and a folder of small files pays that on every file.
+ */
 export class MultipartUploader {
   private s3: S3Client;
   private bucket: string;
@@ -42,6 +58,11 @@ export class MultipartUploader {
   }
 
   async start(file: File, onProgress?: (p: number) => void) {
+    if (!this.uploadId && this.fitsInOneRequest(file)) {
+      await this.uploadInOneRequest(file, onProgress);
+      return;
+    }
+
     if (!this.uploadId) {
       const { UploadId } = await this.s3.send(
         new CreateMultipartUploadCommand({
@@ -68,6 +89,50 @@ export class MultipartUploader {
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
     }
+  }
+
+  /** Whether the whole file fits in a single part. An empty file always does. */
+  private fitsInOneRequest(file: File): boolean {
+    return file.size <= this.partSize;
+  }
+
+  /**
+   * Sends the whole file in one PutObject.
+   *
+   * Pausing aborts the request. Nothing of a single request is kept on the
+   * server, so there is no session to pick up: starting again sends the file
+   * again from the beginning, which for a file of one part is all a multipart
+   * resume would have done anyway.
+   */
+  private async uploadInOneRequest(file: File, onProgress?: (p: number) => void) {
+    if (this.isCancelled) return;
+
+    // Any earlier pause belongs to an attempt that has already been thrown
+    // away. Left set, it would also hide a genuine failure of this attempt:
+    // the catch below would read it as "paused" and report success.
+    this.isPaused = false;
+
+    const controller = new AbortController();
+    this.controllers.push(controller);
+
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+          Body: file,
+        }),
+        { abortSignal: controller.signal }
+      );
+    } catch (err) {
+      // Our own abort, from pause() or cancel().
+      if (this.isPaused || this.isCancelled) return;
+      throw err;
+    } finally {
+      this.controllers = this.controllers.filter((c) => c !== controller);
+    }
+
+    onProgress?.(100);
   }
 
   private async uploadParts(file: File, onProgress?: (p: number) => void) {
@@ -148,7 +213,13 @@ export class MultipartUploader {
   }
 
   async resume(file: File, onProgress?: (p: number) => void) {
-    if (!this.uploadId) throw new Error('No uploadId found. Start a new upload.');
+    if (!this.uploadId) {
+      // A single-request upload has no session to resume. Sending it again
+      // is what resuming means for it.
+      if (this.fitsInOneRequest(file)) return this.uploadInOneRequest(file, onProgress);
+
+      throw new Error('No uploadId found. Start a new upload.');
+    }
     this.isPaused = false;
     this.isCancelled = false;
 
