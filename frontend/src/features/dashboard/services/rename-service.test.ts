@@ -28,7 +28,7 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
       errors: [],
       completed: true,
     })),
-    fetchMetadata: vi.fn(async () => null),
+    objectExists: vi.fn(async () => false),
     fetchDirectoryStructure: vi.fn(async () => ({ files: [], folders: [] })),
     ...overrides,
   } as unknown as BYOS3ApiProvider;
@@ -427,16 +427,42 @@ describe('unique name generation', () => {
 });
 
 describe('existence checks', () => {
-  it('reports a file as existing when metadata comes back', async () => {
-    const api = fakeApi({ fetchMetadata: vi.fn(async () => ({ ContentLength: 10 })) });
+  it('reports a file as existing when it is there', async () => {
+    const api = fakeApi({ objectExists: vi.fn(async () => true) });
 
     await expect(createRenameService(api).checkFileExists('a.md', 'docs')).resolves.toBe(true);
   });
 
-  it('reports a file as missing when metadata is null', async () => {
-    const api = fakeApi({ fetchMetadata: vi.fn(async () => null) });
+  it('reports a file as missing only when it is definitely not there', async () => {
+    const api = fakeApi({ objectExists: vi.fn(async () => false) });
 
     await expect(createRenameService(api).checkFileExists('a.md', 'docs')).resolves.toBe(false);
+  });
+
+  it('refuses to call the name free when the check itself failed', async () => {
+    // A refused, throttled or timed-out check used to read as "nothing there",
+    // and the rename went on to copy over whatever was.
+    const api = fakeApi({
+      objectExists: vi.fn(async () => {
+        throw Object.assign(new Error('AccessDenied'), { $metadata: { httpStatusCode: 403 } });
+      }),
+    });
+
+    await expect(createRenameService(api).checkFileExists('a.md', 'docs')).rejects.toThrow(
+      /Could not check whether that name is already taken/
+    );
+  });
+
+  it('checks the key next to the file being renamed', async () => {
+    const objectExists = vi.fn(async (_key: string) => false);
+
+    await createRenameService(fakeApi({ objectExists })).checkFileExists(
+      'b.md',
+      'ignored',
+      'docs/2026/a.md'
+    );
+
+    expect(objectExists).toHaveBeenCalledWith('docs/2026/b.md');
   });
 
   it('reports a folder as existing when the prefix holds anything', async () => {
@@ -459,7 +485,7 @@ describe('existence checks', () => {
 
 describe('findUniqueFileName', () => {
   it('starts numbering at (1) rather than offering the bare name', async () => {
-    const api = fakeApi({ fetchMetadata: vi.fn(async () => null) });
+    const api = fakeApi({ objectExists: vi.fn(async () => false) });
 
     // This is the "Keep both" path, so the caller already knows the original is
     // taken. Returning it unchanged would overwrite the file the user chose to
@@ -472,7 +498,7 @@ describe('findUniqueFileName', () => {
   it('walks the counter past every taken name', async () => {
     const taken = new Set(['docs/report (1).pdf', 'docs/report (2).pdf']);
     const api = fakeApi({
-      fetchMetadata: vi.fn(async (key: string) => (taken.has(key) ? { ContentLength: 1 } : null)),
+      objectExists: vi.fn(async (key: string) => taken.has(key)),
     });
 
     await expect(createRenameService(api).findUniqueFileName('report.pdf', 'docs')).resolves.toBe(
@@ -481,7 +507,7 @@ describe('findUniqueFileName', () => {
   });
 
   it('falls back to a timestamp once 100 numbers are taken', async () => {
-    const api = fakeApi({ fetchMetadata: vi.fn(async () => ({ ContentLength: 1 })) });
+    const api = fakeApi({ objectExists: vi.fn(async () => true) });
 
     const name = await createRenameService(api).findUniqueFileName('report.pdf', 'docs');
 
