@@ -154,6 +154,9 @@ describe('returning to a folder whose request is still open', () => {
     fetchDirectoryStructure.mockReturnValueOnce(initial.promise);
 
     const loading = store().fetchData({ sync: false });
+    // A turn later, as a refresh after a rename or delete always is. Reads
+    // started in the same turn share one request, which cannot be stale.
+    await Promise.resolve();
 
     const refresh = deferred();
     fetchDirectoryStructure.mockReturnValueOnce(refresh.promise);
@@ -177,6 +180,7 @@ describe('returning to a folder whose request is still open', () => {
     const initial = deferred();
     fetchDirectoryStructure.mockReturnValueOnce(initial.promise);
     const loading = store().fetchData({ sync: false });
+    await Promise.resolve();
 
     fetchDirectoryStructure.mockResolvedValueOnce(page(['fresh.txt']));
     await store().fetchData({ sync: true });
@@ -326,6 +330,9 @@ describe('recent items on the home page', () => {
     const listing = deferred();
     fetchDirectoryStructure.mockReturnValueOnce(listing.promise);
     const loadingListing = store().fetchData({ sync: false });
+    // Apart, so each goes out on its own. Issued in the same turn they would
+    // share one read, which 'two lists for one prefix' covers.
+    await Promise.resolve();
 
     // Same prefix, different cache. One must not be treated as superseding the
     // other just because they were issued for the same folder.
@@ -482,6 +489,7 @@ describe('a listing that fails', () => {
     const slowFailure = deferred();
     fetchDirectoryStructure.mockReturnValueOnce(slowFailure.promise);
     const first = store().fetchData({ sync: true });
+    await Promise.resolve();
 
     fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
     await store().fetchData({ sync: true });
@@ -495,13 +503,15 @@ describe('a listing that fails', () => {
 });
 
 /**
- * The directory listing and the recent-items list are two different requests
- * against the same prefix, and refreshCurrentData runs them together. Their
- * outcomes have to stay apart: one succeeding must not erase why the other
- * failed, or the page that failed loses the specific reason it exists to show
- * and falls back to "something went wrong".
+ * The directory listing and the recent-items list come from the same listing
+ * of the same prefix. refreshCurrentData asks for both at once, and used to
+ * send that listing twice; now the two share one read when they start
+ * together. Reads that start apart still go out separately, because a refresh
+ * must not be answered by a read from before the change it is looking for -
+ * and then their outcomes have to stay apart: one succeeding must not erase
+ * why the other failed.
  */
-describe('two requests for one prefix', () => {
+describe('two lists for one prefix', () => {
   function sdkError(name: string, httpStatusCode?: number) {
     const error = new Error(name);
     error.name = name;
@@ -509,37 +519,87 @@ describe('two requests for one prefix', () => {
     return Object.assign(error, { $metadata: { httpStatusCode } });
   }
 
-  it('keeps the recent failure when the directory listing succeeds', async () => {
-    // What refreshCurrentData does: both in flight at once, same prefix.
+  it('lists the prefix once when both are refreshed together', async () => {
+    fetchDirectoryStructure.mockResolvedValue(page(['a.txt', 'b.txt']));
+
+    await store().refreshCurrentData();
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledOnce();
+    const state = useDriveStore.getState();
+    expect(state.cache['/']?.files.map((f) => f.id)).toEqual(['a.txt', 'b.txt']);
+    expect(state.recentCache['/']?.files.map((f) => f.id).sort()).toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('gives both lists the reason when their shared listing fails', async () => {
+    fetchDirectoryStructure.mockRejectedValue(sdkError('AccessDenied', 403));
+
+    await store().refreshAll();
+
+    const state = useDriveStore.getState();
+    expect(fetchDirectoryStructure).toHaveBeenCalledOnce();
+    expect(state.directory['/']?.failure?.kind).toBe('permissions');
+    expect(state.recent['/']?.failure?.kind).toBe('permissions');
+  });
+
+  it('does not let one list change the shared page under the other', async () => {
+    // Both filter out the folder's own marker. They used to do it by
+    // reassigning the response's arrays, which is fine for a response of
+    // one's own and not for one that is shared.
+    const shared = page(['a.txt']);
+    const { files, folders } = shared;
+    fetchDirectoryStructure.mockResolvedValue(shared);
+
+    await store().refreshCurrentData();
+
+    expect(shared.files).toBe(files);
+    expect(shared.folders).toBe(folders);
+  });
+
+  it('reads again for a refresh asked for after another read began', async () => {
+    const earlier = deferred();
+    fetchDirectoryStructure
+      .mockReturnValueOnce(earlier.promise)
+      .mockResolvedValueOnce(page(['after-the-change.txt']));
+
+    const first = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
+    await Promise.resolve();
+    const second = store().fetchData({ sync: true });
+
+    earlier.resolve(page(['before-the-change.txt']));
+    await Promise.all([first, second]);
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+    expect(cachedKeys()).toEqual(['after-the-change.txt']);
+  });
+
+  it('keeps the recent failure when a separate directory listing succeeds', async () => {
     fetchDirectoryStructure
       .mockRejectedValueOnce(sdkError('AccessDenied', 403))
       .mockResolvedValueOnce(page(['a.txt']));
 
-    await Promise.all([
-      store().fetchRecentItems({ sync: true, itemsPerType: 10 }),
-      store().fetchData({ sync: true }),
-    ]);
+    const recent = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
+    await Promise.resolve();
+    await Promise.all([recent, store().fetchData({ sync: true })]);
 
     const state = useDriveStore.getState();
-
     expect(state.recent['/']?.status).toBe('error');
     // Not 'unknown': the recent list still has to be able to say it was denied.
     expect(state.recent['/']?.failure?.kind).toBe('permissions');
+    expect(state.directory['/']?.status).toBe('ready');
   });
 
-  it('keeps the directory failure when the recent listing succeeds', async () => {
+  it('keeps the directory failure when a separate recent listing succeeds', async () => {
     fetchDirectoryStructure
       .mockResolvedValueOnce(page(['a.txt']))
       .mockRejectedValueOnce(sdkError('NoSuchBucket', 404));
 
-    await Promise.all([
-      store().fetchRecentItems({ sync: true, itemsPerType: 10 }),
-      store().fetchData({ sync: true }),
-    ]);
+    const recent = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
+    await Promise.resolve();
+    await Promise.all([recent, store().fetchData({ sync: true })]);
 
     const state = useDriveStore.getState();
-
     expect(state.directory['/']?.status).toBe('error');
     expect(state.directory['/']?.failure?.kind).toBe('bucket');
+    expect(state.recent['/']?.status).toBe('ready');
   });
 });

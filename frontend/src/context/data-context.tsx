@@ -174,6 +174,40 @@ function discardOpenRequests(key: string): void {
  * because the user asked for fresh data, not for whatever was already being
  * read before they asked.
  */
+/**
+ * The first listing page of a prefix, shared by reads that start together.
+ *
+ * `fetchData` and `fetchRecentItems` both list the same prefix, and the two
+ * refreshes run them side by side, so every refresh - after an upload, a new
+ * folder, a rename - sent the same listing twice.
+ *
+ * Shared only between reads started in the same turn, and on purpose. A
+ * refresh exists to see a change that has just happened, and joining a read
+ * that was already under way could hand it an answer from before the change.
+ * Two reads issued together cannot have that problem.
+ */
+type ListingPage = ReturnType<BYOS3ApiProvider['fetchDirectoryStructure']>;
+const listingsThisTurn = new WeakMap<BYOS3ApiProvider, Map<string, ListingPage>>();
+
+function readFirstPage(apiS3: BYOS3ApiProvider, prefix: string): ListingPage {
+  let listings = listingsThisTurn.get(apiS3);
+  if (!listings) {
+    listings = new Map();
+    listingsThisTurn.set(apiS3, listings);
+  }
+
+  const shared = listings.get(prefix);
+  if (shared) return shared;
+
+  const read = apiS3.fetchDirectoryStructure(prefix, 1000);
+  listings.set(prefix, read);
+  const owned = listings;
+  queueMicrotask(() => {
+    if (owned.get(prefix) === read) owned.delete(prefix);
+  });
+  return read;
+}
+
 function runDeduped(
   inFlight: Map<string, Promise<void>>,
   key: string,
@@ -1140,16 +1174,18 @@ export const useDriveStore = create<Store>((set, get) => ({
         // yet or a sync was forced, and either way the result replaces the cache
         // wholesale - so passing the stored continuation token would have
         // replaced a fully paged folder with nothing but its last page.
-        const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
+        const data = await readFirstPage(apiS3, formattedPrefix);
 
         if (isSuperseded(latestRequestId, keyPrefix, requestId)) return;
 
-        data.folders = data.folders.filter((obj) => obj.Prefix != '');
-        data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
+        // Filtered into new arrays: the page may be shared with the recent
+        // list's read, and is not this function's to change.
+        const folders = data.folders.filter((obj) => obj.Prefix != '');
+        const files = data.files.filter((obj) => obj.Key != formattedPrefix);
 
         setPrefixData(keyPrefix, {
-          files: data.files.map((obj) => enrichFile(obj)),
-          folders: data.folders.map((obj) => enrichFolder(obj)),
+          files: files.map((obj) => enrichFile(obj)),
+          folders: folders.map((obj) => enrichFolder(obj)),
           nextToken: data.nextToken,
           isTruncated: data.isTruncated,
         });
@@ -1235,16 +1271,18 @@ export const useDriveStore = create<Store>((set, get) => ({
       try {
         if (!opts.silent) setRecentState(keyPrefix, 'loading');
 
-        // Fetch up to 1000 items from current directory
-        const data = await apiS3.fetchDirectoryStructure(formattedPrefix, 1000);
+        // Up to 1000 items from the current directory, from the same read as
+        // the directory listing when the two are asked for together.
+        const data = await readFirstPage(apiS3, formattedPrefix);
 
         if (isSuperseded(latestRecentRequestId, keyPrefix, requestId)) return;
 
-        data.folders = data.folders.filter((obj) => obj.Prefix != '');
-        data.files = data.files.filter((obj) => obj.Key != formattedPrefix);
-
-        const folders = data.folders.map((obj) => enrichFolder(obj));
-        const files = data.files.map((obj) => enrichFile(obj));
+        const folders = data.folders
+          .filter((obj) => obj.Prefix != '')
+          .map((obj) => enrichFolder(obj));
+        const files = data.files
+          .filter((obj) => obj.Key != formattedPrefix)
+          .map((obj) => enrichFile(obj));
 
         // Sort by lastModified in descending order (most recent first)
         // Note: Folders from CommonPrefix don't have LastModified, so we'll use creation time as fallback
