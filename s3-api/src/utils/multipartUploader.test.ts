@@ -23,7 +23,13 @@ import {
   ListPartsCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
-import { MultipartUploader } from './multipartUploader.js';
+import {
+  MAX_PART_SIZE,
+  MAX_PARTS,
+  MIN_PART_SIZE,
+  MultipartUploader,
+  partSizeFor,
+} from './multipartUploader.js';
 
 const s3Mock = mockClient(S3Client);
 const MB = 1024 * 1024;
@@ -69,6 +75,29 @@ function makeUploader(
     concurrency: overrides.concurrency ?? 1,
     contentType: overrides.contentType,
   });
+}
+
+const GiB = 1024 * MB;
+const TiB = 1024 * GiB;
+
+/**
+ * A stand-in for a file far too large to allocate: it has a size, and slicing
+ * it records the byte range asked for and hands back a Blob-shaped object of
+ * that size. The S3 client is mocked, so nothing ever reads the bytes.
+ */
+function hugeFile(size: number) {
+  const slices: [number, number][] = [];
+  const asFile = {
+    name: 'huge.bin',
+    size,
+    type: '',
+    slice: (start: number, end: number) => {
+      slices.push([start, end]);
+      return { size: end - start } as Blob;
+    },
+  } as unknown as File;
+
+  return { asFile, slices };
 }
 
 /** A File of exactly `size` bytes, without allocating a UTF-16 string twice its size. */
@@ -190,6 +219,18 @@ describe('construction', () => {
     await makeUploader({ partSizeBytes: 10 }).start(makeFile(10 * MB));
 
     expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(2);
+  });
+
+  it("clamps a part size above S3's 5 GiB maximum", async () => {
+    stubHappyPath();
+    const file = hugeFile(20 * GiB);
+
+    // S3 refuses any part over 5 GiB, so asking for 8 GiB parts would fail
+    // on the very first one.
+    await makeUploader({ partSizeBytes: 8 * GiB }).start(file.asFile);
+
+    expect(file.slices[0]).toEqual([0, 5 * GiB]);
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(4);
   });
 
   it.each([
@@ -373,6 +414,131 @@ describe('files that fit in one part', () => {
     await uploader.start(makeFile(1024));
 
     expect(s3Mock).not.toHaveReceivedCommand(PutObjectCommand);
+  });
+});
+
+/**
+ * Part sizes for large files.
+ *
+ * Parts used to be 5 MiB whatever the file, and S3 allows at most 10,000 of
+ * them, so anything over about 48.8 GiB uploaded for hours and then failed at
+ * part 10,001. Large files now get larger parts.
+ */
+describe('partSizeFor', () => {
+  it('keeps the preferred size for every file it can carry', () => {
+    expect(partSizeFor(1 * GiB, MIN_PART_SIZE)).toBe(MIN_PART_SIZE);
+    // Exactly 10,000 parts of 5 MiB: the largest file 5 MiB parts can hold.
+    expect(partSizeFor(MAX_PARTS * MIN_PART_SIZE, MIN_PART_SIZE)).toBe(MIN_PART_SIZE);
+  });
+
+  it('grows the part in whole MiB once a file would need more than 10,000', () => {
+    // One byte past the limit above.
+    expect(partSizeFor(MAX_PARTS * MIN_PART_SIZE + 1, MIN_PART_SIZE)).toBe(6 * MB);
+    // 100 GiB over 10,000 parts is 10.24 MiB, so 11 MiB.
+    expect(partSizeFor(100 * GiB, MIN_PART_SIZE)).toBe(11 * MB);
+  });
+
+  it('keeps a preferred size that is already large enough', () => {
+    expect(partSizeFor(100 * GiB, 64 * MB)).toBe(64 * MB);
+  });
+
+  it('never needs more than 10,000 parts, at any size up to the limit', () => {
+    const sizes = [
+      0,
+      1,
+      48 * GiB,
+      49 * GiB,
+      60 * GiB,
+      512 * GiB,
+      1 * TiB,
+      5 * TiB,
+      20 * TiB,
+      MAX_PARTS * MAX_PART_SIZE,
+    ];
+
+    for (const size of sizes) {
+      const partSize = partSizeFor(size, MIN_PART_SIZE)!;
+
+      expect(partSize, `size ${size}`).toBeGreaterThanOrEqual(MIN_PART_SIZE);
+      expect(partSize, `size ${size}`).toBeLessThanOrEqual(MAX_PART_SIZE);
+      expect(partSize % MB, `size ${size}`).toBe(0);
+      expect(Math.ceil(size / partSize), `size ${size}`).toBeLessThanOrEqual(MAX_PARTS);
+    }
+  });
+
+  it('gives up past what 10,000 parts of 5 GiB can hold', () => {
+    expect(partSizeFor(MAX_PARTS * MAX_PART_SIZE, MIN_PART_SIZE)).toBe(MAX_PART_SIZE);
+    expect(partSizeFor(MAX_PARTS * MAX_PART_SIZE + 1, MIN_PART_SIZE)).toBeNull();
+  });
+});
+
+describe('very large files', () => {
+  /** Every UploadPart sent so far, as [part number, bytes]. */
+  const partsSent = (slices: [number, number][]) =>
+    s3Mock
+      .commandCalls(UploadPartCommand)
+      .map((call, i) => [call.args[0].input.PartNumber!, slices[i]![1] - slices[i]![0]]);
+
+  it('uploads a 60 GiB file in under 10,000 parts', async () => {
+    stubHappyPath();
+    const file = hugeFile(60 * GiB);
+
+    await makeUploader().start(file.asFile);
+
+    // 60 GiB over 10,000 parts is 6.14 MiB, so 7 MiB parts: 8,778 of them.
+    const sent = partsSent(file.slices);
+    expect(sent).toHaveLength(8778);
+    expect(Math.max(...sent.map(([number]) => number))).toBe(8778);
+    expect(sent.slice(0, -1).every(([, bytes]) => bytes === 7 * MB)).toBe(true);
+    expect(sent.reduce((total, [, bytes]) => total + bytes, 0)).toBe(60 * GiB);
+
+    const completed = s3Mock.commandCalls(CompleteMultipartUploadCommand)[0]!.args[0].input;
+    expect(completed.MultipartUpload!.Parts).toHaveLength(8778);
+  });
+
+  it('resumes with the same part boundaries it started with', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+    const file = hugeFile(60 * GiB);
+    let calls = 0;
+    s3Mock.on(UploadPartCommand).callsFake(async () => {
+      if (++calls === 2) uploader.pause();
+      return { ETag: '"e"' };
+    });
+    await uploader.start(file.asFile);
+    s3Mock.on(ListPartsCommand).resolves({
+      Parts: [
+        { PartNumber: 1, ETag: '"e"' },
+        { PartNumber: 2, ETag: '"e"' },
+      ],
+    });
+
+    await uploader.resume(file.asFile);
+
+    // Part 3 starts exactly where part 2 ended. A resume that worked the part
+    // size out differently would cut the file in different places and stitch
+    // two incompatible halves together.
+    expect(file.slices[2]).toEqual([2 * 7 * MB, 3 * 7 * MB]);
+    expect(s3Mock).toHaveReceivedCommandTimes(UploadPartCommand, 8778);
+  });
+
+  it('refuses a file no part size could carry, before creating anything', async () => {
+    const file = hugeFile(MAX_PARTS * MAX_PART_SIZE + 1);
+
+    await expect(makeUploader().start(file.asFile)).rejects.toThrow(/too large to upload/);
+
+    // Refused up front. Failing at part 10,001 instead would leave every part
+    // before it stored, billed and invisible.
+    expect(s3Mock).not.toHaveReceivedAnyCommand();
+  });
+
+  it('names the file and the limit when it refuses', async () => {
+    const file = hugeFile(49 * TiB);
+
+    await expect(makeUploader().start(file.asFile)).rejects.toThrow(
+      'big.bin is too large to upload. A multipart upload can have at most 10,000 parts'
+    );
   });
 });
 

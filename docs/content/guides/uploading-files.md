@@ -16,6 +16,11 @@ request rather than as a one-part multipart upload. That is fewer round trips
 for small files, and it is the only way to upload an empty file at all: S3
 refuses to complete a multipart upload that has no parts.
 
+Parts are 5 MiB, except for very large files. S3 allows at most 10,000 parts in
+one upload, so from about 48.8 GiB the part size grows just enough to fit, for
+example 7 MiB for a 60 GiB file. A file too large for 10,000 parts of S3's 5 GiB
+maximum (about 48.8 TiB) is refused before anything is sent.
+
 Every upload records the file's Content-Type, in both modes. It is the type your
 browser reports, or, when the browser reports none (common for HEIC photos and
 some video formats on Windows), the type its extension implies. Without one, S3

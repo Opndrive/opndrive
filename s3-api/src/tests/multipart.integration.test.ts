@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AbortMultipartUploadCommand,
   CreateBucketCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -269,6 +270,31 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
 
       expect(sha256(await readBack(key))).toBe(sha256(bytes));
       expect((await head(key)).ETag).toMatch(/-3"$/);
+    });
+
+    it('are capped at 10,000 parts by the server', async () => {
+      // The limit that makes large files need larger parts. Checked against a
+      // real server rather than assumed: part 10,001 is refused outright.
+      const key = keyFor('part-limit.bin');
+      const { UploadId } = await client.send(
+        new CreateMultipartUploadCommand({ Bucket: BUCKET, Key: key })
+      );
+
+      try {
+        await expect(
+          client.send(
+            new UploadPartCommand({
+              Bucket: BUCKET,
+              Key: key,
+              UploadId,
+              PartNumber: 10_001,
+              Body: new Uint8Array(1),
+            })
+          )
+        ).rejects.toThrow();
+      } finally {
+        await client.send(new AbortMultipartUploadCommand({ Bucket: BUCKET, Key: key, UploadId }));
+      }
     });
 
     it('resume without sending the finished parts again', async () => {

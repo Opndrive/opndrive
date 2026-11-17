@@ -10,6 +10,39 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 
+const MiB = 1024 * 1024;
+
+/** S3's floor for every part of a multipart upload but the last. */
+export const MIN_PART_SIZE = 5 * MiB;
+
+/** S3's ceiling for one part, and for one PutObject. */
+export const MAX_PART_SIZE = 5 * 1024 * MiB;
+
+/** The most parts a single multipart upload may have. */
+export const MAX_PARTS = 10_000;
+
+/**
+ * The part size to upload a file of `fileSize` bytes with.
+ *
+ * The preferred size, unless the file is too large to fit in MAX_PARTS parts
+ * of it. Parts used to be 5 MiB whatever the file, so anything past 10,000 of
+ * them - about 48.8 GiB - uploaded for hours and then failed at part 10,001.
+ * Past that point the part grows, in whole MiB, to the smallest size that fits.
+ *
+ * Depends on nothing but its two arguments, which is what lets a resume work
+ * out the same part boundaries the upload started with.
+ *
+ * @returns null when even MAX_PART_SIZE parts cannot hold the file (about
+ *   48.8 TiB). Providers cap object size well below that anyway; this is the
+ *   limit of the multipart protocol itself.
+ */
+export function partSizeFor(fileSize: number, preferred: number): number | null {
+  const smallestThatFits = Math.ceil(fileSize / MAX_PARTS / MiB) * MiB;
+  const partSize = Math.max(preferred, smallestThatFits);
+
+  return partSize <= MAX_PART_SIZE ? partSize : null;
+}
+
 /**
  * Uploads one file to S3.
  *
@@ -24,6 +57,8 @@ import {
  * And a small file gains nothing from multipart. It is one part either way, so
  * multipart costs three round trips (create, upload, complete) to do the work
  * of one, and a folder of small files pays that on every file.
+ *
+ * A very large file uses larger parts. See partSizeFor.
  */
 export class MultipartUploader {
   private s3: S3Client;
@@ -37,7 +72,11 @@ export class MultipartUploader {
   // mid-way left it for good. See no-browser-storage.test.ts.
   private uploadId?: string;
   private completedParts: CompletedPart[] = [];
-  private partSize: number = 5 * 1024 * 1024;
+  /**
+   * The part size asked for, within S3's limits. Also the line between one
+   * request and multipart. A very large file may use bigger parts than this.
+   */
+  private partSize: number;
   private isPaused = false;
   private isCancelled = false;
   private concurrency = 3;
@@ -53,11 +92,9 @@ export class MultipartUploader {
     this.fileName = config.fileName;
     this.contentType = config.contentType || undefined;
     this.concurrency = config.concurrency && config.concurrency > 0 ? config.concurrency : 3;
-    // S3 rejects a multipart upload whose non-final parts are under 5 MiB.
-    this.partSize =
-      config.partSizeBytes && config.partSizeBytes >= 5 * 1024 * 1024
-        ? config.partSizeBytes
-        : 5 * 1024 * 1024;
+    // S3 rejects a non-final part under 5 MiB and any part over 5 GiB.
+    const requested = config.partSizeBytes > 0 ? config.partSizeBytes : MIN_PART_SIZE;
+    this.partSize = Math.min(MAX_PART_SIZE, Math.max(MIN_PART_SIZE, requested));
   }
 
   async start(file: File, onProgress?: (p: number) => void) {
@@ -65,6 +102,10 @@ export class MultipartUploader {
       await this.uploadInOneRequest(file, onProgress);
       return;
     }
+
+    // Worked out before anything is sent, so a file that cannot be uploaded
+    // at all fails here instead of leaving a multipart upload behind.
+    const partSize = this.partSizeForFile(file);
 
     if (!this.uploadId) {
       const { UploadId } = await this.s3.send(
@@ -90,11 +131,25 @@ export class MultipartUploader {
       this.uploadId = UploadId;
     }
 
-    await this.uploadParts(file, onProgress);
+    await this.uploadParts(file, partSize, onProgress);
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
     }
+  }
+
+  /** partSizeFor this file and the configured size, or why it cannot be uploaded. */
+  private partSizeForFile(file: File): number {
+    const partSize = partSizeFor(file.size, this.partSize);
+
+    if (partSize === null) {
+      throw new Error(
+        `${this.fileName} is too large to upload. A multipart upload can have at most ` +
+          `${MAX_PARTS.toLocaleString('en-US')} parts of up to 5 GiB each, about 48.8 TiB in all.`
+      );
+    }
+
+    return partSize;
   }
 
   /**
@@ -150,10 +205,14 @@ export class MultipartUploader {
     onProgress?.(100);
   }
 
-  private async uploadParts(file: File, onProgress?: (p: number) => void) {
-    const totalParts = Math.ceil(file.size / this.partSize);
+  private async uploadParts(file: File, partSize: number, onProgress?: (p: number) => void) {
+    const totalParts = Math.ceil(file.size / partSize);
     let nextPart = 1;
 
+    // Every part S3 holds for this upload, kept current as parts finish.
+    // Progress reads its size; rebuilding a set from completedParts after
+    // every part instead was quadratic, 50 million insertions for one file
+    // at 10,000 parts.
     const uploadedNumbers = new Set(this.completedParts.map((p) => p.PartNumber));
 
     const worker = async () => {
@@ -161,12 +220,12 @@ export class MultipartUploader {
         const partNumber = nextPart++;
         if (uploadedNumbers.has(partNumber)) continue;
 
-        const start = (partNumber - 1) * this.partSize;
-        const end = Math.min(start + this.partSize, file.size);
+        const start = (partNumber - 1) * partSize;
+        const end = Math.min(start + partSize, file.size);
         const blobPart = file.slice(start, end);
 
         // safety: only allow <5MB if it's the LAST part
-        if (end - start < 5 * 1024 * 1024 && partNumber !== totalParts) {
+        if (end - start < MIN_PART_SIZE && partNumber !== totalParts) {
           throw new Error(`Part ${partNumber} too small (<5MB). Only the last part can be <5MB.`);
         }
 
@@ -186,12 +245,9 @@ export class MultipartUploader {
           );
 
           this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
+          uploadedNumbers.add(partNumber);
 
-          if (onProgress) {
-            const uniqueCompleted = new Set(this.completedParts.map((p) => p.PartNumber));
-            const progressPercent = Math.min(100, (uniqueCompleted.size / totalParts) * 100);
-            onProgress(progressPercent);
-          }
+          onProgress?.(Math.min(100, (uploadedNumbers.size / totalParts) * 100));
         } catch (err) {
           if (this.isCancelled || this.isPaused) {
             return; // ignore
@@ -235,6 +291,10 @@ export class MultipartUploader {
 
       throw new Error('No uploadId found. Start a new upload.');
     }
+
+    // The same size the upload started with: partSizeFor depends only on the
+    // file and the configured size, so the parts S3 already holds line up.
+    const partSize = this.partSizeForFile(file);
     this.isPaused = false;
     this.isCancelled = false;
 
@@ -259,7 +319,7 @@ export class MultipartUploader {
     }
     this.completedParts = Array.from(deduped.values());
 
-    await this.uploadParts(file, onProgress);
+    await this.uploadParts(file, partSize, onProgress);
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
