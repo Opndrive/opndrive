@@ -7,7 +7,7 @@ import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
-import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
+import { readDroppedItems } from '@/features/upload/utils/drop-preparation';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
@@ -148,9 +148,7 @@ export function SuggestedFiles({
     if (!onFilesDropped) return;
 
     try {
-      const processedData = await FolderStructureProcessor.processDataTransferItems(
-        e.dataTransfer.items
-      );
+      const processedData = await readDroppedItems(e.dataTransfer.items);
 
       onFilesDropped(processedData);
     } catch (error) {

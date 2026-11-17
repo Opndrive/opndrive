@@ -43,9 +43,13 @@ export function useUnloadGuard(): void {
   const hasRunningDelete = useUploadStore((state) =>
     Object.values(state.deletes).some((operation) => operation.status === 'deleting')
   );
-  const isPlanningDrop = useUploadQueueStore((state) => state.isPlanning);
+  // Being read, checked or planned: the files are not on their way yet, and
+  // closing the tab loses the drop.
+  const isPreparingDrop = useUploadQueueStore(
+    (state) => state.preparingDrops > 0 || state.isPlanning
+  );
 
-  const shouldWarn = hasUnfinishedUpload || hasRunningDelete || isPlanningDrop;
+  const shouldWarn = hasUnfinishedUpload || hasRunningDelete || isPreparingDrop;
 
   useEffect(() => {
     if (!shouldWarn) return;

@@ -229,6 +229,34 @@ describe('loose files', () => {
   });
 });
 
+describe('while a drop is prepared', () => {
+  it('counts it as being prepared from the call until its uploads have started', async () => {
+    // Checking loose files and planning folders can take a while for a big
+    // drop, and the upload panel says so while this count is up.
+    let checkStarted!: () => void;
+    const started = new Promise<void>((resolve) => (checkStarted = resolve));
+    let releaseCheck!: () => void;
+    mockObjectExists.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          checkStarted();
+          releaseCheck = () => resolve(false);
+        })
+    );
+    const dispatchDrop = dispatch();
+
+    const dropping = dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+    await started;
+    expect(queue().preparingDrops).toBe(1);
+    expect(manager.added).toEqual([]);
+
+    releaseCheck();
+    await dropping;
+    expect(queue().preparingDrops).toBe(0);
+    expect(manager.added).toHaveLength(1);
+  });
+});
+
 describe('a card starts where its upload already is', () => {
   // The manager starts the first few files while it is still being handed
   // them, before any card exists, so their 'uploading' event goes nowhere.

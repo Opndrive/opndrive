@@ -24,6 +24,7 @@ import {
   mockDirectoryEntry,
   mockFileEntry,
   READ_ENTRIES_BATCH_SIZE,
+  readTracker,
 } from '@/tests/dnd-mocks';
 
 const process = (items: DataTransferItem[]) =>
@@ -254,6 +255,88 @@ describe('dropping a folder', () => {
     // structures with the same name, so both upload to the same prefix and the
     // second overwrites the first. Nothing here merges or disambiguates them.
     expect(result.folderStructures.map((f) => f.name)).toEqual(['photos', 'photos']);
+  });
+});
+
+describe('reading a big folder', () => {
+  it('reads its files several at a time, within a bound', async () => {
+    // Each file() is a round trip to the browser's file system. One at a
+    // time, a folder of thousands took thousands of round trips end to end.
+    const tracker = readTracker();
+    const children = Array.from({ length: 60 }, (_, i) =>
+      mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 3, tracker })
+    );
+
+    const result = await process([mockDataTransferItem(mockDirectoryEntry('big', children))]);
+
+    expect(result.folderStructures[0]!.files).toHaveLength(60);
+    expect(tracker.peak).toBeGreaterThan(1);
+    expect(tracker.peak).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps the bound across nested folders, not per folder', async () => {
+    const tracker = readTracker();
+    const folders = Array.from({ length: 10 }, (_, f) =>
+      mockDirectoryEntry(
+        `sub${f}`,
+        Array.from({ length: 10 }, (_, i) =>
+          mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 3, tracker })
+        )
+      )
+    );
+
+    await process([mockDataTransferItem(mockDirectoryEntry('root', folders))]);
+
+    expect(tracker.peak).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps entry order, however the reads finish', async () => {
+    // Earlier files take longer, so they finish last.
+    const children = Array.from({ length: 12 }, (_, i) =>
+      mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 12 - i })
+    );
+    const inner = mockDirectoryEntry('inner', [mockFileEntry(makeFile('deep.txt'))]);
+
+    const result = await process([
+      mockDataTransferItem(
+        mockDirectoryEntry('docs', [...children.slice(0, 6), inner, ...children.slice(6)])
+      ),
+    ]);
+
+    expect(pathsOf(result.folderStructures[0]!.files)).toEqual([
+      ...Array.from({ length: 6 }, (_, i) => `docs/f${i}.txt`),
+      'docs/inner/deep.txt',
+      ...Array.from({ length: 6 }, (_, i) => `docs/f${i + 6}.txt`),
+    ]);
+  });
+
+  it('reports skipped entries in entry order too', async () => {
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('a.txt'), { failWith: new Error('locked'), readDelayTicks: 8 }),
+      mockDirectoryEntry('broken', [], { failWith: new Error('SecurityError') }),
+      mockFileEntry(makeFile('c.txt'), { failWith: new Error('locked') }),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
+    expect(result.skipped.map((s) => s.path)).toEqual(['docs/a.txt', 'docs/broken', 'docs/c.txt']);
+  });
+
+  it('says as each file is found, for the progress shown while reading', async () => {
+    const onFileFound = vi.fn();
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('a.txt')),
+      mockFileEntry(makeFile('locked.txt'), { failWith: new Error('locked') }),
+      mockDirectoryEntry('inner', [mockFileEntry(makeFile('b.txt'))]),
+    ]);
+
+    await FolderStructureProcessor.processDataTransferItems(
+      mockDataTransferItemList([mockDataTransferItem(dir)]),
+      { onFileFound }
+    );
+
+    // Found means read: the locked file never was.
+    expect(onFileFound).toHaveBeenCalledTimes(2);
   });
 });
 

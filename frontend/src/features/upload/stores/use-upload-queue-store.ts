@@ -170,8 +170,20 @@ interface FolderReservation {
 }
 
 interface UploadQueueState {
-  /** True while a drop is being planned; the UI shows a "preparing" state. */
+  /** True while a drop is being planned. */
   isPlanning: boolean;
+  /**
+   * Drops between arriving and their uploads starting: being read, checked
+   * for duplicates or planned. A count, since drops can overlap. The upload
+   * panel shows a "preparing" line while it is above zero, because a large
+   * folder can take a while to get through all three and showed nothing.
+   * See `drop-preparation`.
+   */
+  preparingDrops: number;
+  /** Of `preparingDrops`, those still being read from disk. */
+  readingDrops: number;
+  /** Files found so far by the drops still being read. Zero when none is. */
+  filesFound: number;
   claims: PrefixClaim[];
   notices: QueueNotice[];
 
@@ -416,6 +428,9 @@ export function summariseSkipped(
 
 const initialState = {
   isPlanning: false,
+  preparingDrops: 0,
+  readingDrops: 0,
+  filesFound: 0,
   claims: [] as PrefixClaim[],
   notices: [] as QueueNotice[],
 };

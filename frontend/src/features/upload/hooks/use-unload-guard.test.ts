@@ -63,7 +63,7 @@ function unloadWasBlocked(): boolean {
 
 beforeEach(() => {
   useUploadStore.setState({ uploads: {}, deletes: {} });
-  useUploadQueueStore.setState({ isPlanning: false });
+  useUploadQueueStore.setState({ isPlanning: false, preparingDrops: 0 });
 });
 
 describe('while an upload is unfinished', () => {
@@ -129,6 +129,22 @@ describe('while a drop is being planned', () => {
     renderHook(() => useUnloadGuard());
 
     expect(unloadWasBlocked()).toBe(true);
+  });
+
+  it('blocks while a dropped folder is still being read or checked', () => {
+    // Before planning starts: reading the files from disk, and checking loose
+    // ones against the bucket. Closing then loses the drop just the same.
+    act(() => {
+      useUploadQueueStore.setState({ preparingDrops: 1 });
+    });
+    const { rerender } = renderHook(() => useUnloadGuard());
+    expect(unloadWasBlocked()).toBe(true);
+
+    act(() => {
+      useUploadQueueStore.setState({ preparingDrops: 0 });
+    });
+    rerender();
+    expect(unloadWasBlocked()).toBe(false);
   });
 
   it('stops blocking when planning ends with nothing to upload', () => {

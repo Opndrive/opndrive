@@ -35,13 +35,27 @@ export interface MockDirectoryEntry extends FileSystemDirectoryEntry {
   readCallCount: () => number;
 }
 
+/** Counts `file()` reads in flight across entries, for concurrency tests. */
+export interface ReadTracker {
+  inFlight: number;
+  peak: number;
+}
+
+export function readTracker(): ReadTracker {
+  return { inFlight: 0, peak: 0 };
+}
+
 /**
  * A file entry wrapping a real `File`.
  *
  * `failWith` makes `file()` reject the way a deleted or permission-denied file
- * does mid-drop.
+ * does mid-drop. `readDelayTicks` keeps a read in flight for that many
+ * microtasks, and `tracker` records how many are in flight at once.
  */
-export function mockFileEntry(file: File, options: { failWith?: Error } = {}): MockFileEntry {
+export function mockFileEntry(
+  file: File,
+  options: { failWith?: Error; readDelayTicks?: number; tracker?: ReadTracker } = {}
+): MockFileEntry {
   const entry = {
     isFile: true as const,
     isDirectory: false as const,
@@ -50,8 +64,14 @@ export function mockFileEntry(file: File, options: { failWith?: Error } = {}): M
     filesystem: {} as FileSystem,
     failWith: options.failWith,
     file(onSuccess: (f: File) => void, onError?: (e: DOMException) => void) {
+      const tracker = options.tracker;
+      if (tracker) tracker.peak = Math.max(tracker.peak, ++tracker.inFlight);
+
       // Callback based and asynchronous, like the real API.
-      queueMicrotask(() => {
+      let settled = Promise.resolve();
+      for (let i = 0; i < (options.readDelayTicks ?? 0); i++) settled = settled.then(() => {});
+      void settled.then(() => {
+        if (tracker) tracker.inFlight--;
         if (options.failWith) onError?.(options.failWith as unknown as DOMException);
         else onSuccess(file);
       });

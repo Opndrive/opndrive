@@ -32,6 +32,7 @@ import { findExistingNames, objectExists, objectKey } from '@/services/object-ex
 import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateUniqueFileName } from '../utils/unique-filename';
 import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
+import { whilePreparingDrop } from '../utils/drop-preparation';
 import type { DuplicatePolicy } from '../types';
 
 export interface DropOutcome {
@@ -291,7 +292,7 @@ export function useUploadDispatch() {
     [showDuplicateDialog, hideDuplicateDialog]
   );
 
-  return useCallback(
+  const dispatchDrop = useCallback(
     async (
       data: ProcessedDragData,
       destinationPrefix: string,
@@ -457,5 +458,14 @@ export function useUploadDispatch() {
       };
     },
     [executor, addUploads, askAboutDuplicate]
+  );
+
+  // Counted as a drop being prepared until its uploads have started. Checking
+  // a large drop against the bucket and planning it takes a while, and the
+  // upload panel says so instead of showing nothing.
+  return useCallback(
+    (data: ProcessedDragData, destinationPrefix: string, apiS3?: BYOS3ApiProvider | null) =>
+      whilePreparingDrop(() => dispatchDrop(data, destinationPrefix, apiS3)),
+    [dispatchDrop]
   );
 }

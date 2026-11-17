@@ -28,6 +28,7 @@ vi.mock('@/hooks/use-auth', async (importOriginal) => ({
 
 import { OperationsModal, summariseFolder } from './operations-modal';
 import { useUploadStore } from '../stores/use-upload-store';
+import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import { NotificationProvider } from '@/context/notification-context';
 
 type Uploads = ReturnType<typeof useUploadStore.getState>['uploads'];
@@ -41,6 +42,8 @@ const renderPanel = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useUploadStore.setState({ uploads: {}, deletes: {}, duplicateQueue: [] });
+  useUploadQueueStore.setState({ preparingDrops: 0, readingDrops: 0, filesFound: 0, notices: [] });
 });
 
 function seed(uploads: Uploads) {
@@ -109,6 +112,41 @@ describe('Retry', () => {
 
     // a.jpg already landed. Sending it again would only cost a request.
     expect(manager.retryUpload.mock.calls.map(([id]) => id)).toEqual(['b', 'c']);
+  });
+});
+
+describe('while a drop is being prepared', () => {
+  // Between a drop landing and its first card, a big folder is read, checked
+  // and planned. The panel used to stay away for all of it.
+  it('shows the panel, and how many files have been found so far', () => {
+    useUploadQueueStore.setState({ preparingDrops: 1, readingDrops: 1, filesFound: 1234 });
+    renderPanel();
+
+    expect(screen.getByText('Preparing upload')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Reading dropped files… 1,234 found');
+  });
+
+  it('says it is getting ready once reading is done and checking has begun', () => {
+    useUploadQueueStore.setState({ preparingDrops: 1, readingDrops: 0, filesFound: 0 });
+    renderPanel();
+
+    expect(screen.getByRole('status').textContent).toBe('Getting ready to upload…');
+  });
+
+  it('shows the line alongside cards already in the panel', () => {
+    seed({
+      u1: { id: 'u1', name: 'old.pdf', type: 'file', status: 'uploading', progress: 50 },
+    });
+    useUploadQueueStore.setState({ preparingDrops: 1, readingDrops: 1, filesFound: 0 });
+    renderPanel();
+
+    expect(screen.getByRole('status').textContent).toBe('Reading dropped files…');
+  });
+
+  it('goes away once there is nothing to prepare and nothing to show', () => {
+    const { container } = renderPanel();
+
+    expect(container.textContent).toBe('');
   });
 });
 

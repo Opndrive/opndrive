@@ -7,6 +7,7 @@ import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-
 import { DuplicateDialog } from './duplicate-dialog';
 import { OperationRow, type OperationType } from './operation-row';
 import { QueueNotices } from './queue-notices';
+import { PreparingRow } from './preparing-row';
 import { useUploadExecutor } from '../context/upload-context';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import type { FileExtension } from '@/config/file-extensions';
@@ -188,6 +189,8 @@ export const OperationsModal: React.FC = () => {
   // Only the count, so the panel re-renders when notices appear or disappear
   // but not when their contents change - QueueNotices owns that.
   const noticeCount = useUploadQueueStore((state) => state.notices.length);
+  // A drop being read or planned, before it has any cards to show.
+  const isPreparing = useUploadQueueStore((state) => state.preparingDrops > 0);
 
   // Check if pause/resume is supported in current mode
   const supportsPauseResume = uploadMode === 'multipart';
@@ -422,7 +425,7 @@ export const OperationsModal: React.FC = () => {
   // modal. Notices count: a drop where every folder was skipped starts no
   // uploads at all, and hiding the panel would leave the user with no
   // indication that anything happened.
-  if (sortedOperations.length === 0 && !currentDuplicate && noticeCount === 0) {
+  if (sortedOperations.length === 0 && !currentDuplicate && noticeCount === 0 && !isPreparing) {
     return null;
   }
 
@@ -460,6 +463,10 @@ export const OperationsModal: React.FC = () => {
     // If only duplicate dialog is open, show appropriate title
     if (sortedOperations.length === 0 && currentDuplicate) {
       return 'File Upload';
+    }
+
+    if (sortedOperations.length === 0 && isPreparing) {
+      return 'Preparing upload';
     }
 
     const hasActiveOperations = activeUploads > 0 || activeDeletes > 0 || activeDownloads > 0;
@@ -767,6 +774,8 @@ export const OperationsModal: React.FC = () => {
           {/* What the drop could not do quietly: renames, skipped files, and
               folders we could not verify against the bucket. Subscribes to the
               queue store, which no progress tick touches. */}
+          {isExpanded && isPreparing && <PreparingRow />}
+
           {isExpanded && <QueueNotices />}
 
           {/* Operations List */}

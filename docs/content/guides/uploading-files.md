@@ -67,7 +67,9 @@ sequenceDiagram
 <!-- SCREENSHOT: Upload panel showing multiple files with progress bars, one paused -->
 
 1. Click the upload button, or drag files onto the file list.
-2. Track progress per file in the upload panel.
+2. Track progress per file in the upload panel. A large dropped folder shows how
+   many files have been found while it is still being read, then **Getting ready
+   to upload** while it is checked against the bucket.
 3. With multipart mode, pause and resume an in-progress upload; with signed URL
    mode, cancel is the only control mid-upload.
 
