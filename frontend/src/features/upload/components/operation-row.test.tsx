@@ -35,6 +35,58 @@ function props(overrides: Partial<OperationRowProps> = {}): OperationRowProps {
   };
 }
 
+describe('retrying a failed upload', () => {
+  it('offers Retry on a failed upload, and says which one', () => {
+    const onRetry = vi.fn();
+    render(
+      <OperationRow
+        {...props({ operationType: 'upload', status: 'failed', error: 'Access Denied', onRetry })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry report.pdf' }));
+
+    expect(onRetry).toHaveBeenCalledWith('op-1', false);
+  });
+
+  it('tells the panel when the row is a folder', () => {
+    const onRetry = vi.fn();
+    render(
+      <OperationRow
+        {...props({
+          operationType: 'upload',
+          type: 'folder',
+          name: 'photos',
+          status: 'failed',
+          onRetry,
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry photos' }));
+
+    expect(onRetry).toHaveBeenCalledWith('op-1', true);
+  });
+
+  it.each(['delete', 'download'] as const)('does not offer it for a failed %s', (operationType) => {
+    render(<OperationRow {...props({ operationType, status: 'failed', onRetry: vi.fn() })} />);
+
+    // Nothing was kept to send again. A button that cannot work is worse
+    // than no button.
+    expect(screen.queryByRole('button', { name: /^Retry/ })).toBeNull();
+  });
+
+  it('does not offer it for an upload that did not fail', () => {
+    render(
+      <OperationRow
+        {...props({ operationType: 'upload', status: 'completed', onRetry: vi.fn() })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Retry/ })).toBeNull();
+  });
+});
+
 describe('a delete that failed says why', () => {
   it('shows the reason a delete reports', () => {
     const summary =

@@ -3,13 +3,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { SignedUrlUploader } from './signedUrlUploader.js';
 import { BYOS3ApiProvider } from '../index.js';
 import { UploadStatus, UploadEvent, EventListener, EventPayload } from '../core/types.js';
+import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
 
 interface SignedUrlUploadItem {
   id: string;
   /**
-   * Released once the item is terminal, so a finished upload stops pinning an
-   * OS file handle. See UploadManager.releaseResources for the full reasoning;
-   * the item itself is kept so getStatus() can still answer.
+   * Released once the item is finished, so it stops pinning an OS file
+   * handle. See UploadManager.releaseResources for the full reasoning; the
+   * item itself is kept so getStatus() can still answer. A failed item keeps
+   * its file so retryUpload() can send it again.
    */
   file?: File;
   uploader?: SignedUrlUploader;
@@ -27,6 +29,8 @@ export interface SignedUrlUploadManagerConfig {
   apiProvider: BYOS3ApiProvider;
   maxConcurrency?: number;
   expiresInSeconds?: number;
+  /** See UploadManagerConfig.retryDelaysMs. */
+  retryDelaysMs?: readonly number[];
 }
 
 export class SignedUrlUploadManager {
@@ -37,6 +41,7 @@ export class SignedUrlUploadManager {
   private activeUploads = 0;
   private maxConcurrency: number;
   private expiresInSeconds: number;
+  private retryDelaysMs: readonly number[];
   private listeners = new Map<UploadEvent, Set<EventListener>>();
   // See UploadManager.isDisposed for why this exists.
   private isDisposed = false;
@@ -45,6 +50,7 @@ export class SignedUrlUploadManager {
     this.apiProvider = config.apiProvider;
     this.maxConcurrency = config.maxConcurrency ?? 2;
     this.expiresInSeconds = config.expiresInSeconds ?? 3600;
+    this.retryDelaysMs = config.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   }
 
   public static getInstance(config: SignedUrlUploadManagerConfig): SignedUrlUploadManager {
@@ -109,18 +115,11 @@ export class SignedUrlUploadManager {
     }
 
     const id = uuidv4();
-    const uploader = new SignedUrlUploader({
-      apiProvider: this.apiProvider,
-      key: config.key,
-      fileName: file.name,
-      expiresInSeconds: this.expiresInSeconds,
-      contentType: config.contentType,
-    });
 
     const uploadItem: SignedUrlUploadItem = {
       id,
       file,
-      uploader,
+      uploader: this.uploaderFor(file, config),
       config,
       status: 'queued',
       progress: 0,
@@ -132,6 +131,33 @@ export class SignedUrlUploadManager {
     this.processQueue();
 
     return id;
+  }
+
+  private uploaderFor(file: File, config: SignedUrlUploadItem['config']): SignedUrlUploader {
+    return new SignedUrlUploader({
+      apiProvider: this.apiProvider,
+      key: config.key,
+      fileName: file.name,
+      expiresInSeconds: this.expiresInSeconds,
+      contentType: config.contentType,
+    });
+  }
+
+  /** See UploadManager.retryUpload - same contract. */
+  public retryUpload(id: string): boolean {
+    if (this.isDisposed) return false;
+
+    const item = this.uploads.get(id);
+    if (!item || item.status !== 'failed' || !item.file) return false;
+
+    item.uploader = this.uploaderFor(item.file, item.config);
+    item.error = undefined;
+
+    this.updateItemStatus(id, 'queued', 0);
+    this.queue.push(id);
+    this.processQueue();
+
+    return true;
   }
 
   /**
@@ -270,8 +296,25 @@ export class SignedUrlUploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        // Non-null: the item was just moved to 'uploading'.
-        await item.uploader!.upload(item.file!, onProgress);
+        // See UploadManager.processQueue. Each attempt signs a fresh URL, so
+        // a retry cannot be refused for an expired one.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            // Non-null: the item is 'uploading'.
+            await item.uploader!.upload(item.file!, onProgress);
+            break;
+          } catch (err) {
+            if (!this.shouldRetry(id, err, attempt)) throw err;
+
+            console.warn(
+              `Signed-url upload ${id} failed, retrying (${attempt + 1} of ${this.retryDelaysMs.length}):`,
+              err
+            );
+            await waitBeforeRetry(this.retryDelaysMs[attempt]!);
+
+            if (this.isDisposed || this.uploads.get(id)?.status !== 'uploading') return;
+          }
+        }
 
         if (this.uploads.get(id)?.status === 'uploading') {
           this.updateItemStatus(id, 'completed', 100);
@@ -290,13 +333,26 @@ export class SignedUrlUploadManager {
       } finally {
         const finalStatus = this.uploads.get(id)?.status;
         if (finalStatus === 'completed' || finalStatus === 'failed') {
-          // 'cancelled' is already released by cancelUpload().
-          this.releaseResources(id);
+          // 'cancelled' is already released by cancelUpload(). 'failed'
+          // keeps its file so it can be retried.
+          if (finalStatus === 'completed') this.releaseResources(id);
+          else item.uploader = undefined;
+
           this.activeUploads--;
           this.processQueue();
         }
       }
     })();
+  }
+
+  /** See UploadManager.shouldRetry. */
+  private shouldRetry(id: string, err: unknown, attempt: number): boolean {
+    return (
+      attempt < this.retryDelaysMs.length &&
+      !this.isDisposed &&
+      this.uploads.get(id)?.status === 'uploading' &&
+      isTransientUploadError(err)
+    );
   }
 
   /**

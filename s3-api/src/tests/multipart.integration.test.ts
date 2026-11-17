@@ -344,6 +344,46 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
     });
   });
 
+  describe('a dropped connection', () => {
+    it('is retried, and the file arrives whole with nothing left open', async () => {
+      const key = keyFor('retried.bin');
+      const bytes = randomBytes(16 * MiB);
+      let failedOnce = false;
+      const { s3 } = interceptedClient((command) => {
+        if (!(command instanceof UploadPartCommand) || command.input.PartNumber !== 2) {
+          return undefined;
+        }
+        if (failedOnce) return undefined;
+        failedOnce = true;
+        return Promise.reject(
+          Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' })
+        );
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        maxConcurrency: 1,
+        partSizeMB: 5,
+        retryDelaysMs: [0],
+      });
+      const warn = console.warn;
+      console.warn = () => {};
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'retried.bin'), { key });
+        await waitForStatus(manager, id, 'completed');
+      } finally {
+        console.warn = warn;
+      }
+
+      // Resumed, not restarted: the same session finished, so nothing is open
+      // and the object is exactly what was sent.
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+  });
+
   describe('a failed upload', () => {
     function managerFailingOnPart(partNumber: number) {
       const { s3, sent } = interceptedClient((command) =>
@@ -357,6 +397,8 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
         prefix: '',
         maxConcurrency: 1,
         partSizeMB: 5,
+        // These tests are about failing for good. See 'a dropped connection'.
+        retryDelaysMs: [],
       });
       return { manager, sent };
     }

@@ -278,6 +278,32 @@ export const OperationsModal: React.FC = () => {
     [uploadManager]
   );
 
+  /**
+   * Sends a failed upload again.
+   *
+   * A folder card has no upload of its own - it stands for its files - so it
+   * retries the ones that failed and leaves the rest alone. The folder's own
+   * status is worked out from its files, so it follows them back to active.
+   *
+   * The card's reason is cleared first: it describes the attempt that is
+   * being replaced.
+   */
+  const retryOperation = useCallback(
+    (itemId: string, isFolder: boolean) => {
+      if (!uploadManager) return;
+
+      const all = useUploadStore.getState().uploads;
+      const ids = isFolder
+        ? (all[itemId]?.fileIds ?? []).filter((fileId) => all[fileId]?.status === 'failed')
+        : [itemId];
+
+      for (const id of ids) {
+        if (uploadManager.retryUpload(id)) updateUpload(id, { error: undefined });
+      }
+    },
+    [uploadManager, updateUpload]
+  );
+
   // Derivation lives above the `uploadManager` guard because useMemo is a
   // hook and hooks cannot follow an early return.
   const sortedOperations = useMemo(() => {
@@ -748,6 +774,7 @@ export const OperationsModal: React.FC = () => {
                   onRemove={removeOperation}
                   onPause={pauseOperation}
                   onResume={resumeOperation}
+                  onRetry={retryOperation}
                 />
               ))}
             </div>

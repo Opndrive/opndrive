@@ -2,6 +2,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { MultipartUploader } from './multipartUploader.js';
+import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
 import {
   UploadItem,
   UploadStatus,
@@ -21,6 +22,7 @@ export class UploadManager {
   private activeUploads = 0;
   private maxConcurrency: number; // Max files to upload at once
   private partSize: number;
+  private retryDelaysMs: readonly number[];
   // Set once this instance has been superseded by disposeInstance(). getInstance()
   // silently discards its config once an instance exists, so a stale manager left
   // over from a previous session/bucket must refuse new work rather than upload to
@@ -40,6 +42,7 @@ export class UploadManager {
     // Sets the max number of concurrent FILE uploads.
     this.maxConcurrency = config.maxConcurrency ?? 2;
     this.partSize = (config.partSizeMB ?? 5) * 1024 * 1024;
+    this.retryDelaysMs = config.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   }
 
   public static getInstance(config: UploadManagerConfig): UploadManager {
@@ -125,20 +128,11 @@ export class UploadManager {
     }
 
     const id = uuidv4();
-    const uploader = new MultipartUploader({
-      s3: this.s3,
-      bucket: this.bucket,
-      key: config.key,
-      fileName: file.name,
-      partSizeBytes: this.partSize,
-      concurrency: this.partConcurrency,
-      contentType: config.contentType,
-    });
 
     const uploadItem: UploadItem = {
       id,
       file,
-      uploader,
+      uploader: this.uploaderFor(file, config),
       config,
       status: 'queued',
       progress: 0,
@@ -157,6 +151,46 @@ export class UploadManager {
    * This method no longer duplicates code and correctly uses its config.
    * It now calls `addUpload` for each file.
    */
+  private uploaderFor(file: File, config: UploadItem['config']): MultipartUploader {
+    return new MultipartUploader({
+      s3: this.s3,
+      bucket: this.bucket,
+      key: config.key,
+      fileName: file.name,
+      partSizeBytes: this.partSize,
+      concurrency: this.partConcurrency,
+      contentType: config.contentType,
+    });
+  }
+
+  /**
+   * Sends a failed upload again, from the start.
+   *
+   * Failures that may clear by themselves are already retried automatically,
+   * so what reaches 'failed' is either one that did not, or one that kept
+   * failing. Either way the person can see why, and this is how they say "try
+   * that again". A new uploader is built because the failed one's session was
+   * aborted (see abandon()); the file was kept for exactly this.
+   *
+   * @returns false when there is nothing to retry: the upload is not failed,
+   *   or this manager has been disposed.
+   */
+  public retryUpload(id: string): boolean {
+    if (this.isDisposed) return false;
+
+    const item = this.uploads.get(id);
+    if (!item || item.status !== 'failed' || !item.file) return false;
+
+    item.uploader = this.uploaderFor(item.file, item.config);
+    item.error = undefined;
+
+    this.updateItemStatus(id, 'queued', 0);
+    this.queue.push(id);
+    this.processQueue();
+
+    return true;
+  }
+
   public addFolderUpload(
     files: FileList,
     config: { basePrefix?: string }
@@ -316,12 +350,23 @@ export class UploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        // Non-null: the item was just moved to 'uploading', so its resources
-        // cannot have been released yet.
-        if (item.uploader!['uploadId']) {
-          await item.uploader!.resume(item.file!, onProgress);
-        } else {
-          await item.uploader!.start(item.file!, onProgress);
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await this.runAttempt(item, onProgress);
+            break;
+          } catch (err) {
+            if (!this.shouldRetry(id, err, attempt)) throw err;
+
+            console.warn(
+              `Upload ${id} failed, retrying (${attempt + 1} of ${this.retryDelaysMs.length}):`,
+              err
+            );
+            await waitBeforeRetry(this.retryDelaysMs[attempt]!);
+
+            // Paused, cancelled or torn down while waiting. The status already
+            // says which, and there is nothing left for this loop to do.
+            if (this.isDisposed || this.uploads.get(id)?.status !== 'uploading') return;
+          }
         }
 
         if (this.uploads.get(id)?.status === 'uploading') {
@@ -344,13 +389,42 @@ export class UploadManager {
         if (finalStatus === 'completed' || finalStatus === 'failed') {
           // 'cancelled' is not handled here: cancelUpload() already released
           // this item. 'paused' deliberately keeps its resources so it can
-          // resume.
-          this.releaseResources(id);
+          // resume, and 'failed' keeps its file so it can be retried.
+          if (finalStatus === 'completed') this.releaseResources(id);
+          else item.uploader = undefined;
+
           this.activeUploads--;
           this.processQueue();
         }
       }
     })();
+  }
+
+  /**
+   * One go at the upload: a fresh start, or a resume of a multipart session
+   * that is already open - after a pause, or after an attempt that failed.
+   * Resuming is what makes a retry cheap: the parts already on S3 stay there.
+   */
+  private async runAttempt(item: UploadItem, onProgress: (progress: number) => void) {
+    // Non-null: the item is 'uploading', and an uploader is only released once
+    // an item is finished.
+    const uploader = item.uploader!;
+
+    if (uploader['uploadId']) {
+      await uploader.resume(item.file!, onProgress);
+    } else {
+      await uploader.start(item.file!, onProgress);
+    }
+  }
+
+  /** Whether a failed attempt gets another go. */
+  private shouldRetry(id: string, err: unknown, attempt: number): boolean {
+    return (
+      attempt < this.retryDelaysMs.length &&
+      !this.isDisposed &&
+      this.uploads.get(id)?.status === 'uploading' &&
+      isTransientUploadError(err)
+    );
   }
 
   /**

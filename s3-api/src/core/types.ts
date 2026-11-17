@@ -262,7 +262,7 @@ export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'completed' | 'fa
 export interface UploadItem {
   id: string;
   /**
-   * The file being uploaded, or undefined once the item has finished.
+   * The file being uploaded, or undefined once the item no longer needs it.
    *
    * The manager keeps every item it has ever been given so `getStatus` can
    * still answer for finished work, but a `File` pins an OS-level handle and
@@ -271,8 +271,10 @@ export interface UploadItem {
    * back until logout, so they are dropped the moment an item reaches
    * 'completed', 'failed', or 'cancelled'.
    *
-   * Invariant: present for 'queued', 'uploading', and 'paused' (a paused item
-   * must keep them to resume); absent for terminal states.
+   * Invariant: both present for 'queued', 'uploading', and 'paused' (a paused
+   * item must keep them to resume). A 'failed' item keeps its file, so
+   * retryUpload() can send it again, but not its uploader: that session was
+   * aborted. Both absent for 'completed' and 'cancelled'.
    */
   file?: File;
   status: UploadStatus;
@@ -295,6 +297,12 @@ export type UploadManagerConfig = {
   maxConcurrency?: number;
   /** Default part size for all uploads, in MEGABYTES. Converted to bytes before reaching MultipartUploader. */
   partSizeMB?: number;
+  /**
+   * How long to wait before each automatic retry of an upload that failed for
+   * a reason that may clear by itself, such as a dropped connection. Its
+   * length is the number of retries. Defaults to 2, 8 and 30 seconds.
+   */
+  retryDelaysMs?: readonly number[];
 };
 
 // For the event emitter

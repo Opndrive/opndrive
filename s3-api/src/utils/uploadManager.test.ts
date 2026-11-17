@@ -34,12 +34,28 @@ const { MockUploader, uploaderInstances } = vi.hoisted(() => {
   class MockUploader {
     start = vi.fn(async (_file: File, onProgress?: (p: number) => void) => {
       this.onProgress = onProgress;
-      return this.gate.promise;
+      return this.attempt();
     });
     resume = vi.fn(async (_file: File, onProgress?: (p: number) => void) => {
       this.onProgress = onProgress;
-      return this.gate.promise;
+      return this.attempt();
     });
+
+    /**
+     * Each attempt waits on `gate`. A settled gate is replaced first, so an
+     * automatic retry is held until the test settles it too.
+     */
+    private attempt() {
+      if (this.gateSettled) {
+        this.gate = deferred();
+        this.gateSettled = false;
+      }
+      const gate = this.gate;
+      return gate.promise.finally(() => {
+        if (this.gate === gate) this.gateSettled = true;
+      });
+    }
+    gateSettled = false;
     pause = vi.fn();
     cancel = vi.fn(async () => {});
     gate = deferred();
@@ -65,7 +81,20 @@ const config = {
   s3: {} as S3Client,
   bucket: 'test-bucket',
   prefix: 'users/alice/',
+  // No automatic retries unless a test asks for them, so a rejected attempt
+  // means a failed upload. See 'automatic retry' for the rest.
+  retryDelaysMs: [] as number[],
 };
+
+/** An error with no HTTP status, as a dropped connection produces. */
+const dropped = () => Object.assign(new Error('Failed to fetch'), { name: 'TypeError' });
+
+/** An error S3 will give again however often it is asked. */
+const refused = () =>
+  Object.assign(new Error('Access Denied'), {
+    name: 'AccessDenied',
+    $metadata: { httpStatusCode: 403 },
+  });
 
 function makeFile(name = 'a.txt', size = 10) {
   return new File(['x'.repeat(size)], name);
@@ -515,6 +544,185 @@ describe('events', () => {
   });
 });
 
+/**
+ * Failures that may clear by themselves - a dropped connection, a 503 - are
+ * tried again, a little later each time. They used to fail the upload for
+ * good on the first one.
+ */
+describe('automatic retry', () => {
+  const retrying = { ...config, retryDelaysMs: [0, 0, 0] };
+
+  it('tries a dropped connection again, and completes', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    // Still going, on its second attempt.
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(2);
+
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+  });
+
+  it('resumes the multipart session rather than starting over', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+    // The first attempt opened a session before it failed.
+    uploaderInstances[0]!.uploadId = 'upload-1';
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+
+    // The parts already on S3 stay there. Only the rest are sent.
+    expect(uploaderInstances[0]!.resume).toHaveBeenCalledTimes(1);
+    expect(uploaderInstances).toHaveLength(1);
+  });
+
+  it('does not retry a refusal that will only come back the same', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(refused());
+    await settle();
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after its last retry, and then cleans up', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+    }
+
+    // One attempt and three retries.
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(4);
+    expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    expect(uploaderInstances[0]!.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying once the upload is paused', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({ ...config, retryDelaysMs: [50] });
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    // Paused during the wait before the retry.
+    manager.pauseUpload(id);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'paused' });
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying once the upload is cancelled', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({ ...config, retryDelaysMs: [50] });
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    await manager.cancelUpload(id);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'cancelled' });
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps its concurrency slot while it waits to retry', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({
+      ...config,
+      maxConcurrency: 1,
+      retryDelaysMs: [50],
+    });
+    manager.addUpload(makeFile('a.txt'), { key: 'a' });
+    const next = manager.addUpload(makeFile('b.txt'), { key: 'b' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+
+    // Letting the next one start would mean two uploads at once once the
+    // retry begins.
+    expect(manager.getStatus(next)).toMatchObject({ status: 'queued' });
+  });
+});
+
+describe('retryUpload', () => {
+  async function failedUpload(manager: UploadManager) {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const id = manager.addUpload(makeFile('a.txt'), { key: 'a', contentType: 'text/plain' });
+    await settle();
+    uploaderInstances[0]!.gate.reject(refused());
+    await settle();
+    return id;
+  }
+
+  it('sends a failed upload again, with a fresh uploader', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = await failedUpload(manager);
+
+    expect(manager.retryUpload(id)).toBe(true);
+    await settle();
+
+    // The first uploader's session was aborted when it failed.
+    expect(uploaderInstances).toHaveLength(2);
+    expect(uploaderInstances[1]!.config).toMatchObject({ key: 'a', contentType: 'text/plain' });
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+
+    uploaderInstances[1]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed', progress: 100 });
+  });
+
+  it('starts it from zero and announces that', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = await failedUpload(manager);
+    const changes: EventPayload[] = [];
+    manager.on('statusChange', (payload) => changes.push(payload));
+
+    manager.retryUpload(id);
+
+    expect(changes[0]).toMatchObject({ id, status: 'queued', progress: 0 });
+  });
+
+  it('refuses anything that has not failed', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    expect(manager.retryUpload(id)).toBe(false);
+    expect(manager.retryUpload('no-such-id')).toBe(false);
+  });
+
+  it('refuses on a disposed manager', async () => {
+    const manager = UploadManager.getInstance(config);
+    const id = await failedUpload(manager);
+    await UploadManager.disposeInstance();
+
+    expect(manager.retryUpload(id)).toBe(false);
+  });
+});
+
 describe('content type', () => {
   it('hands each upload the content type it was given', () => {
     const manager = UploadManager.getInstance(config);
@@ -628,7 +836,7 @@ describe('resource release', () => {
     expect(itemOf(manager, id)!.uploader).toBeUndefined();
   });
 
-  it('drops them when an upload fails', async () => {
+  it('keeps the file of a failed upload, so it can be retried, but drops its uploader', async () => {
     const manager = UploadManager.getInstance(config);
     const id = manager.addUpload(makeFile(), { key: 'a.txt' });
     await settle();
@@ -637,8 +845,11 @@ describe('resource release', () => {
     uploaderInstances[0]!.gate.reject(new Error('network died'));
     await settle();
 
+    // The uploader's session was aborted, so it is no use to anyone. The file
+    // is what retryUpload() sends again.
     expect(manager.getStatus(id)!.status).toBe('failed');
-    expect(itemOf(manager, id)!.file).toBeUndefined();
+    expect(itemOf(manager, id)!.file).toBeDefined();
+    expect(itemOf(manager, id)!.uploader).toBeUndefined();
   });
 
   it('drops them when an upload is cancelled', async () => {

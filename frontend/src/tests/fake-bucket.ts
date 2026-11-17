@@ -70,6 +70,8 @@ export interface FakeBucket {
    */
   holdParts(): void;
   release(): void;
+  /** Fails the next `count` byte-carrying requests (PutObject, UploadPart) with `error`. */
+  failUploads(count: number, error: Error): void;
   /** Makes the listing edge throw, simulating a dead network during planning. */
   failListings(error: Error): void;
   /** Makes the per-file existence edge throw, as a refused or dropped HEAD does. */
@@ -91,6 +93,7 @@ export function createFakeBucket(): FakeBucket {
 
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
+  const uploadFailures = { remaining: 0, error: null as Error | null };
 
   /**
    * What every byte-carrying request goes through: the gate, which models a
@@ -102,6 +105,11 @@ export function createFakeBucket(): FakeBucket {
 
     if (options?.abortSignal?.aborted) {
       throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+
+    if (uploadFailures.remaining > 0) {
+      uploadFailures.remaining--;
+      throw uploadFailures.error;
     }
   }
 
@@ -252,6 +260,10 @@ export function createFakeBucket(): FakeBucket {
       openGate?.();
       gate = null;
       openGate = null;
+    },
+    failUploads(count, error) {
+      uploadFailures.remaining = count;
+      uploadFailures.error = error;
     },
     failListings(error) {
       listingError = error;

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineArrowPath, HiOutlineXMark } from 'react-icons/hi2';
 import { Files, Info } from 'lucide-react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
@@ -53,6 +53,11 @@ export interface OperationRowProps {
   onRemove: (id: string, operationType: OperationType) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
+  /**
+   * Sends a failed upload again. Uploads only: a delete or a download that
+   * failed has nothing kept to send.
+   */
+  onRetry?: (id: string, isFolder: boolean) => void;
 }
 
 const CANCELLABLE = ['uploading', 'queued', 'deleting', 'paused', 'downloading', 'pending'];
@@ -78,8 +83,14 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
   onRemove,
   onPause,
   onResume,
+  onRetry,
 }) => {
   const canCancel = CANCELLABLE.includes(status);
+  // An upload can fail and still be sent again: the manager keeps its file
+  // for exactly this. Failures that might clear by themselves have already
+  // been retried by then, so this is for the rest.
+  const canRetry =
+    operationType === 'upload' && (status === 'failed' || status === 'error') && Boolean(onRetry);
   const isActive = ACTIVE.includes(status);
   const isFileUpload = operationType === 'upload' && type === 'file';
 
@@ -386,6 +397,23 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
             // one with nothing to press. ('failed' is what a delete reports;
             // uploads and downloads say 'error'.)
             <div className="flex items-center gap-2">
+              {canRetry && (
+                <button
+                  onClick={() => onRetry!(id, type === 'folder')}
+                  className="p-1 rounded transition-colors duration-200"
+                  style={{ color: 'var(--muted-foreground)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--accent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                  title="Retry"
+                  aria-label={`Retry ${name}`}
+                >
+                  <HiOutlineArrowPath className="w-3 h-3" />
+                </button>
+              )}
               <button
                 onClick={() => onRemove(id, operationType)}
                 className="p-1 rounded transition-colors duration-200"

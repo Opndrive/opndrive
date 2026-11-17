@@ -127,6 +127,8 @@ beforeEach(async () => {
     prefix: '',
     maxConcurrency: 3,
     partSizeMB: 5,
+    // Real retries, without the real waits between them.
+    retryDelaysMs: [0, 0, 0],
   });
   managerRef.current = manager;
   useUploadStore.setState({ uploads: {}, duplicateQueue: [] });
@@ -308,6 +310,58 @@ describe('1c. content type', () => {
     await untilIdle(bucket);
 
     expect(bucket.objects.get('camera/IMG_0001.heic')?.contentType).toBe('image/heic');
+  });
+});
+
+describe('1d. retrying', () => {
+  it('carries on by itself after a dropped connection', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bucket.failUploads(1, Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' }));
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(await dropOfFolder('docs', [{ path: 'a.txt' }]), '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+    await until(() => bucket.objects.has('docs/a.txt'), 'the retry to land');
+
+    // Nobody had to do anything: the blip was retried and the file is there.
+    const card = Object.values(uploads()).find((u) => u.type === 'file')!;
+    expect(card.status).toBe('completed');
+  });
+
+  it('lets the person retry an upload that failed for good', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const denied = Object.assign(new Error('Access Denied'), {
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+    bucket.failUploads(1, denied);
+    const dispatch = mountPipeline();
+
+    let outcome!: Awaited<ReturnType<ReturnType<typeof useUploadDispatch>>>;
+    await act(async () => {
+      outcome = await dispatch.current(
+        {
+          individualFiles: [makeFile('report.pdf', 10, 'application/pdf')],
+          folderStructures: [],
+          skipped: [],
+        },
+        '',
+        bucket.apiS3
+      );
+    });
+    const uploadId = outcome.dispatched[0]!.files[0]!.uploadId;
+    await until(() => uploads()[uploadId]?.status === 'failed', 'the upload to fail');
+    expect(bucket.objects.has('report.pdf')).toBe(false);
+
+    // The permission is fixed, and the person presses Retry.
+    await act(async () => {
+      expect(manager.retryUpload(uploadId)).toBe(true);
+    });
+    await until(() => uploads()[uploadId]?.status === 'completed', 'the retry to complete');
+
+    expect(bucket.objects.get('report.pdf')).toEqual({ size: 10, contentType: 'application/pdf' });
   });
 });
 
