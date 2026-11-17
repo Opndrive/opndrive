@@ -131,6 +131,114 @@ describe('upload tracking', () => {
   });
 });
 
+/**
+ * Many cards, one update.
+ *
+ * Every update copies the uploads map, and past a thousand or so entries that
+ * copy is slow, so the count of updates is what decides whether a large drop
+ * takes milliseconds or most of a minute. These count notifications rather
+ * than time anything, which would be flaky.
+ */
+describe('updating many cards at once', () => {
+  /** Counts store notifications while `run` runs. */
+  function updatesDuring(run: () => void): number {
+    let updates = 0;
+    const unsubscribe = useUploadStore.subscribe(() => updates++);
+    run();
+    unsubscribe();
+    return updates;
+  }
+
+  beforeEach(() => {
+    useUploadStore.setState({ uploads: {} });
+  });
+
+  it('adds a whole drop in one update, in order', () => {
+    const cards = ['a', 'b', 'c'].map((id) => upload({ id }));
+
+    expect(updatesDuring(() => store().addUploads(cards))).toBe(1);
+    expect(Object.keys(store().uploads)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps the cards already there', () => {
+    store().addUpload('old', upload({ id: 'old' }));
+
+    store().addUploads([upload({ id: 'new' })]);
+
+    expect(Object.keys(store().uploads)).toEqual(['old', 'new']);
+  });
+
+  it('does not update at all for an empty drop', () => {
+    expect(updatesDuring(() => store().addUploads([]))).toBe(0);
+  });
+
+  it('applies changes to many cards in one update', () => {
+    store().addUploads(['a', 'b', 'c'].map((id) => upload({ id })));
+
+    const updates = updatesDuring(() =>
+      store().updateUploads(
+        new Map([
+          ['a', { status: 'uploading' as const, progress: 10 }],
+          ['b', { status: 'uploading' as const, progress: 20 }],
+          ['c', { status: 'queued' as const, progress: 0 }],
+        ])
+      )
+    );
+
+    expect(updates).toBe(1);
+    expect(store().uploads.a).toMatchObject({ status: 'uploading', progress: 10 });
+    expect(store().uploads.b).toMatchObject({ status: 'uploading', progress: 20 });
+    expect(store().uploads.c).toMatchObject({ status: 'queued', progress: 0 });
+  });
+
+  it('applies what it can of a batch that mentions cards it no longer tracks', () => {
+    store().addUpload('a', upload({ id: 'a' }));
+
+    store().updateUploads(
+      new Map([
+        ['gone', { status: 'cancelled' as const }],
+        ['a', { status: 'uploading' as const }],
+      ])
+    );
+
+    expect(Object.keys(store().uploads)).toEqual(['a']);
+    expect(store().uploads.a!.status).toBe('uploading');
+  });
+
+  it('does not update at all for a batch of cards it no longer tracks', () => {
+    // The trailing 'cancelled' events of a logout, landing after the wipe.
+    store().addUpload('a', upload({ id: 'a' }));
+
+    const updates = updatesDuring(() =>
+      store().updateUploads(new Map([['gone', { status: 'cancelled' as const }]]))
+    );
+
+    expect(updates).toBe(0);
+  });
+
+  it('removes a folder card together with its file cards', () => {
+    store().addUploads([
+      upload({ id: 'folder', type: 'folder', fileIds: ['a', 'b'] }),
+      upload({ id: 'a', parentFolderId: 'folder' }),
+      upload({ id: 'b', parentFolderId: 'folder' }),
+      upload({ id: 'loose' }),
+    ]);
+
+    store().removeUpload('folder');
+
+    // The file cards are never shown on their own. Left behind, they would be
+    // copied again by every later update, drop after drop.
+    expect(Object.keys(store().uploads)).toEqual(['loose']);
+  });
+
+  it('removes many cards in one update', () => {
+    store().addUploads(['a', 'b', 'c'].map((id) => upload({ id })));
+
+    expect(updatesDuring(() => store().removeUploads(['a', 'c']))).toBe(1);
+    expect(Object.keys(store().uploads)).toEqual(['b']);
+  });
+});
+
 describe('clearing', () => {
   beforeEach(() => {
     store().addUpload('done', upload({ id: 'done', status: 'completed' }));
@@ -774,6 +882,51 @@ describe('placing the finished row', () => {
 
     expect(addFolder).toHaveBeenCalledWith('docs/', 'photos');
     expect(refreshCurrentData).not.toHaveBeenCalled();
+  });
+
+  it('adds the folder row once when one batch lands all of its files', () => {
+    store().addUploads([
+      upload({
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        fileIds: ['a', 'b', 'c'],
+        destinationPrefix: 'docs/',
+      }),
+      upload({ id: 'a', parentFolderId: 'folder' }),
+      upload({ id: 'b', parentFolderId: 'folder' }),
+      upload({ id: 'c', parentFolderId: 'folder' }),
+    ]);
+
+    store().updateUploads(
+      new Map(['a', 'b', 'c'].map((id) => [id, { status: 'completed' as const, progress: 100 }]))
+    );
+
+    expect(addFolder).toHaveBeenCalledExactlyOnceWith('docs/', 'photos');
+  });
+
+  it('places loose files and a finished folder from the same batch', () => {
+    store().addUploads([
+      upload({
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        fileIds: ['a'],
+        destinationPrefix: '',
+      }),
+      upload({ id: 'a', parentFolderId: 'folder' }),
+      upload({ id: 'loose', key: 'notes.txt', size: 3, destinationPrefix: '' }),
+    ]);
+
+    store().updateUploads(
+      new Map([
+        ['a', { status: 'completed' as const }],
+        ['loose', { status: 'completed' as const }],
+      ])
+    );
+
+    expect(addFolder).toHaveBeenCalledExactlyOnceWith('', 'photos');
+    expect(addFile).toHaveBeenCalledExactlyOnceWith('', { key: 'notes.txt', size: 3 });
   });
 
   it('falls back to a re-read when the card cannot say where it landed', async () => {

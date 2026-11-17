@@ -5,6 +5,7 @@ import { UploadStatus } from '@opndrive/s3-api';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 import { createUploadExecutor, type UploadExecutor } from '../services/upload-executor';
+import { createUploadEventBatcher } from '../services/upload-event-batcher';
 
 interface UploadContextValue {
   /**
@@ -25,7 +26,7 @@ const UploadContext = createContext<UploadContextValue>({ executor: null });
 export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Field selector: this provider wraps the whole dashboard, so subscribing to
   // the entire upload store would re-render every page on each progress tick.
-  const updateUpload = useUploadStore((state) => state.updateUpload);
+  const updateUploads = useUploadStore((state) => state.updateUploads);
   const uploadManager = useActiveUploadManager();
 
   const [executor, setExecutor] = useState<UploadExecutor | null>(null);
@@ -65,39 +66,24 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     if (!uploadManager) return;
-    const handleStatusChange = ({
-      id,
-      status,
-      progress,
-    }: {
-      id: string;
-      status: UploadStatus;
-      progress: number;
-    }) => {
-      updateUpload(id, { status, progress });
-    };
 
-    const handleProgress = ({
-      id,
-      progress,
-      status,
-    }: {
-      id: string;
-      progress: number;
-      status: UploadStatus;
-    }) => {
-      updateUpload(id, { progress, status });
-    };
+    // Batched rather than applied one by one: a large drop sends thousands of
+    // events, and each store update copies every card. See the batcher.
+    const batcher = createUploadEventBatcher(updateUploads);
+    const handleEvent = (event: { id: string; status: UploadStatus; progress: number }) =>
+      batcher.push(event);
 
-    uploadManager.on('statusChange', handleStatusChange);
-    uploadManager.on('progress', handleProgress);
+    uploadManager.on('statusChange', handleEvent);
+    uploadManager.on('progress', handleEvent);
 
-    // Clean up the subscription when the component unmounts
     return () => {
-      uploadManager.off('statusChange', handleStatusChange);
-      uploadManager.off('progress', handleProgress);
+      uploadManager.off('statusChange', handleEvent);
+      uploadManager.off('progress', handleEvent);
+      // Whatever arrived in the last window still lands. The store ignores
+      // events for cards a logout has already cleared.
+      batcher.flush();
     };
-  }, [uploadManager, updateUpload]);
+  }, [uploadManager, updateUploads]);
 
   const value = useMemo(() => ({ executor }), [executor]);
 

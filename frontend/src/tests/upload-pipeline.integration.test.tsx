@@ -71,7 +71,7 @@ function mountPipeline() {
 }
 
 /**
- * Drains microtasks until `predicate` holds, then returns.
+ * Waits until `predicate` holds, then returns.
  *
  * Deliberately not a fixed number of ticks. `addUpload` starts a detached
  * worker, so the test has to wait for something it does not hold a promise to,
@@ -80,25 +80,43 @@ function mountPipeline() {
  * flake rather than the regression it is. Naming the condition also documents
  * what each test is actually waiting for.
  *
- * Deliberately not a timer either. Nothing in this pipeline is wall-clock
- * driven, so polling on time would only add slack that varies with CI load.
+ * Microtasks first, and real time only once they run dry. The bytes move on
+ * promises alone, but the cards hear about it in batches on a short timer
+ * (UPLOAD_EVENT_WINDOW_MS), so a wait on a card has to let that timer fire.
+ * The deadline is generous on purpose: it only bounds a test that is going
+ * to fail anyway.
  */
-async function until(predicate: () => boolean, label: string, maxDrains = 500) {
-  for (let i = 0; i < maxDrains; i++) {
-    if (predicate()) return;
+async function until(predicate: () => boolean, label: string, deadlineMs = 5_000) {
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    for (let i = 0; i < 50; i++) {
+      if (predicate()) return;
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
     await act(async () => {
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
   }
+  if (predicate()) return;
   throw new Error(`timed out waiting for: ${label}`);
 }
 
-/** Waits for the whole drop to come to rest: nothing queued, nothing in flight. */
+/**
+ * Waits for the whole drop to come to rest: nothing in flight, and every
+ * file's card showing how it ended.
+ *
+ * Finished, not merely started: the cards hear about uploads in batches, so a
+ * card can still read 'uploading' just after its bytes have landed.
+ */
 async function untilIdle(bucketRef: FakeBucket, label = 'uploads to finish') {
   await until(
     () =>
       bucketRef.openUploads.size === 0 &&
-      Object.values(uploads()).every((u) => u.type === 'folder' || u.status !== 'queued'),
+      Object.values(uploads()).every(
+        (u) => u.type === 'folder' || ['completed', 'failed', 'cancelled'].includes(u.status)
+      ),
     label
   );
 }

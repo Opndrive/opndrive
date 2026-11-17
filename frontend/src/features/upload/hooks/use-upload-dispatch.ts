@@ -25,7 +25,7 @@ import { useCallback } from 'react';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import type { ProcessedDragData } from '../types/folder-upload-types';
 import { useUploadQueueStore, type QueueNotice } from '../stores/use-upload-queue-store';
-import { useUploadStore } from '../stores/use-upload-store';
+import { useUploadStore, type UploadProgress } from '../stores/use-upload-store';
 import { useUploadExecutor } from '../context/upload-context';
 import type { DispatchResult } from '../services/upload-executor';
 import { objectExists, objectKey } from '@/services/object-existence';
@@ -219,7 +219,7 @@ function unverifiedNotice(names: readonly string[]): QueueNotice | null {
 
 export function useUploadDispatch() {
   const executor = useUploadExecutor();
-  const addUpload = useUploadStore((state) => state.addUpload);
+  const addUploads = useUploadStore((state) => state.addUploads);
   const showDuplicateDialog = useUploadStore((state) => state.showDuplicateDialog);
   const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
 
@@ -331,11 +331,15 @@ export function useUploadDispatch() {
       const current = (uploadId: string) =>
         executor.statusOf(uploadId) ?? { status: 'queued' as const, progress: 0 };
 
+      // Collected and added in one go. Each store update copies every card, so
+      // adding them one at a time made a large drop slower with every file.
+      const cards: UploadProgress[] = [];
+
       for (const result of dispatched) {
         if (result.plan.kind === 'folder') {
           // The folder card owns the task id, which is what `cancelTask` takes,
           // so cancelling from the UI needs no extra bookkeeping.
-          addUpload(result.taskId, {
+          cards.push({
             id: result.taskId,
             name: result.plan.resolvedName,
             status: 'queued',
@@ -348,7 +352,7 @@ export function useUploadDispatch() {
           });
 
           for (const file of result.files) {
-            addUpload(file.uploadId, {
+            cards.push({
               id: file.uploadId,
               // The key rather than the bare name, so two files called
               // "img.jpg" from different subfolders stay distinguishable.
@@ -366,7 +370,7 @@ export function useUploadDispatch() {
         } else {
           // Loose files get no wrapper card; each is its own row.
           for (const file of result.files) {
-            addUpload(file.uploadId, {
+            cards.push({
               id: file.uploadId,
               name: file.file.name,
               ...current(file.uploadId),
@@ -384,7 +388,7 @@ export function useUploadDispatch() {
         // The manager refused this plan outright - a disposed manager after a
         // logout or bucket switch. Say so on a card rather than dropping it.
         if (result.dispatchError && result.files.length === 0) {
-          addUpload(result.taskId, {
+          cards.push({
             id: result.taskId,
             name: result.plan.resolvedName || 'Upload',
             status: 'failed',
@@ -394,6 +398,8 @@ export function useUploadDispatch() {
           });
         }
       }
+
+      addUploads(cards);
 
       if (looseNotices.length > 0) {
         useUploadQueueStore.setState((state) => ({
@@ -407,6 +413,6 @@ export function useUploadDispatch() {
         nothingStarted: dispatched.every((result) => result.files.length === 0),
       };
     },
-    [executor, addUpload, askAboutDuplicate]
+    [executor, addUploads, askAboutDuplicate]
   );
 }

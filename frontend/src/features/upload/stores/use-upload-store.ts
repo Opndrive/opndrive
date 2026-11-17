@@ -48,7 +48,7 @@ export interface DuplicatePrompt {
   remaining: number;
 }
 
-interface UploadProgress {
+export interface UploadProgress {
   id: string;
   name: string;
   status: UploadStatus;
@@ -109,6 +109,42 @@ function placeFinishedUpload(upload: UploadProgress): boolean {
   addFile(upload.destinationPrefix, { key: upload.key, size: upload.size });
 
   return true;
+}
+
+/**
+ * Adds the rows for the cards a batch of updates has just finished.
+ *
+ * A loose file or a folder card adds its own row, and only a card that cannot
+ * say where it landed falls back to re-listing. A file inside a folder adds
+ * nothing on its own: the listing that changes is the one *above* the folder,
+ * and it gains a single row for the folder itself, once every file in it has
+ * landed.
+ *
+ * Each such folder is checked once per batch rather than once per finished
+ * file. Checking reads every file of the folder, so doing it per file read a
+ * folder of 4,000 files 4,000 times over.
+ */
+function placeCompleted(completed: readonly UploadProgress[], state: UploadStore): void {
+  const placeOrRefresh = (upload: UploadProgress) => {
+    if (placeFinishedUpload(upload)) return;
+
+    state.refreshDataAfterUploadBatch().catch(() => {
+      // Silently handle refresh errors
+    });
+  };
+
+  const folders = new Set<string>();
+  for (const upload of completed) {
+    if (upload.type === 'file' && upload.parentFolderId) folders.add(upload.parentFolderId);
+    else placeOrRefresh(upload);
+  }
+
+  for (const folderId of folders) {
+    const folder = state.uploads[folderId];
+    if (folder?.fileIds?.every((id) => state.uploads[id]?.status === 'completed')) {
+      placeOrRefresh(folder);
+    }
+  }
 }
 
 interface DeleteProgress {
@@ -225,8 +261,27 @@ interface UploadStore {
   setUploadManager: (manager: UploadManager | SignedUrlUploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
+  /**
+   * Adds a whole drop's cards in one update.
+   *
+   * Every update copies the uploads map, so adding a drop's cards one at a time
+   * copied it once per file. Past a thousand or so entries the map is slow to
+   * copy, and 4,000 files took about 9 seconds of main thread just to show.
+   */
+  addUploads: (uploads: readonly UploadProgress[]) => void;
   updateUpload: (id: string, updates: Partial<UploadProgress>) => void;
+  /**
+   * Applies many cards' changes in one update, for the same reason as
+   * `addUploads`. The manager's events arrive here in batches; see
+   * `upload-event-batcher`.
+   *
+   * Changes for cards no longer tracked are ignored, as in `updateUpload`.
+   */
+  updateUploads: (updates: ReadonlyMap<string, Partial<UploadProgress>>) => void;
+  /** Removes a card, and a folder card's file cards with it. */
   removeUpload: (id: string) => void;
+  /** `removeUpload` for many cards in one update, for clearing the panel. */
+  removeUploads: (ids: readonly string[]) => void;
   clearCompleted: () => void;
   clearAll: () => void;
   /**
@@ -329,67 +384,68 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       },
     })),
 
-  updateUpload: (id: string, updates: Partial<UploadProgress>) => {
-    // Ignore events for uploads we are no longer tracking. Disposing the upload
-    // managers on logout emits a trailing 'cancelled' per in-flight item, which
-    // can arrive after clearSessionData() has already run - spreading onto an
-    // absent entry would resurrect it as a malformed card with no name or type.
-    if (!get().uploads[id]) return;
+  addUploads: (entries) => {
+    if (entries.length === 0) return;
 
-    set((state) => ({
-      uploads: {
-        ...state.uploads,
-        [id]: {
-          ...state.uploads[id],
-          ...updates,
-        },
-      },
-    }));
-
-    // A finished upload adds its own row. Only a card that cannot say where it
-    // landed falls back to re-listing.
-    if (updates.status === 'completed') {
-      const { refreshDataAfterUploadBatch } = get();
-      const state = get();
-      const completedUpload = state.uploads[id];
-
-      const placeOrRefresh = (upload: UploadProgress) => {
-        if (placeFinishedUpload(upload)) return;
-
-        refreshDataAfterUploadBatch().catch(() => {
-          // Silently handle refresh errors
-        });
-      };
-
-      if (completedUpload.type === 'file' && !completedUpload.parentFolderId) {
-        // A loose file, which is one row in the prefix it was dropped into.
-        placeOrRefresh(completedUpload);
-      } else if (completedUpload.type === 'file' && completedUpload.parentFolderId) {
-        // A file inside a folder. Nothing is added for it on its own: the
-        // listing that changes is the one *above* the folder, and it gains a
-        // single row for the folder itself, once every file in it has landed.
-        const parentFolderId = completedUpload.parentFolderId;
-        const folderUpload = state.uploads[parentFolderId];
-
-        if (folderUpload && folderUpload.fileIds) {
-          // Check if all files in the folder are completed
-          const allFilesCompleted = folderUpload.fileIds.every((fileId) => {
-            const fileUpload = state.uploads[fileId];
-            return fileUpload && fileUpload.status === 'completed';
-          });
-
-          if (allFilesCompleted) placeOrRefresh(folderUpload);
-        }
-      } else if (completedUpload.type === 'folder') {
-        placeOrRefresh(completedUpload);
-      }
-    }
+    set((state) => {
+      const uploads = { ...state.uploads };
+      for (const entry of entries) uploads[entry.id] = entry;
+      return { uploads };
+    });
   },
 
-  removeUpload: (id: string) =>
-    set((state) => ({
-      uploads: Object.fromEntries(Object.entries(state.uploads).filter(([key]) => key !== id)),
-    })),
+  updateUpload: (id: string, updates: Partial<UploadProgress>) =>
+    get().updateUploads(new Map([[id, updates]])),
+
+  updateUploads: (updates) => {
+    const completed: UploadProgress[] = [];
+
+    set((state) => {
+      // Ignore events for uploads we are no longer tracking. Disposing the
+      // upload managers on logout emits a trailing 'cancelled' per in-flight
+      // item, which can arrive after clearSessionData() has already run -
+      // spreading onto an absent entry would resurrect it as a malformed card
+      // with no name or type.
+      let uploads: Record<string, UploadProgress> | null = null;
+
+      for (const [id, changes] of updates) {
+        const current = state.uploads[id];
+        if (!current) continue;
+
+        // One copy for the whole batch, made only once there is something
+        // to change.
+        uploads ??= { ...state.uploads };
+        const next = { ...current, ...changes };
+        uploads[id] = next;
+
+        if (changes.status === 'completed') completed.push(next);
+      }
+
+      // Unchanged state, so nothing re-renders for a batch of strays.
+      return uploads ? { uploads } : state;
+    });
+
+    if (completed.length > 0) placeCompleted(completed, get());
+  },
+
+  removeUpload: (id: string) => get().removeUploads([id]),
+
+  removeUploads: (ids) =>
+    set((state) => {
+      const gone = new Set<string>();
+      for (const id of ids) {
+        gone.add(id);
+        // A folder's file cards are never shown on their own, so left behind
+        // they would only make every later update copy them again.
+        for (const fileId of state.uploads[id]?.fileIds ?? []) gone.add(fileId);
+      }
+
+      const uploads: Record<string, UploadProgress> = {};
+      for (const id in state.uploads) {
+        if (!gone.has(id)) uploads[id] = state.uploads[id]!;
+      }
+      return { uploads };
+    }),
 
   clearCompleted: () =>
     set((state) => ({

@@ -99,48 +99,56 @@ type UploadsMap = ReturnType<typeof useUploadStore.getState>['uploads'];
  * for no benefit.
  */
 
-// Calculate folder progress based on its files
-function getFolderProgress(uploads: UploadsMap, folderId: string): number {
+/**
+ * A folder card's status and progress, worked out from its files.
+ *
+ * One pass over the files for both. This runs for every folder on every
+ * update the panel sees, and the version it replaces walked a folder's files
+ * up to eight times each round.
+ */
+export function summariseFolder(
+  uploads: UploadsMap,
+  folderId: string
+): { status: string; progress: number } {
   const folder = uploads[folderId];
-  if (!folder || !folder.fileIds) return 0;
+  if (!folder || !folder.fileIds) return { status: folder?.status || 'queued', progress: 0 };
 
-  const fileProgresses = folder.fileIds.map((id) => uploads[id]?.progress || 0);
-  return fileProgresses.reduce((sum, progress) => sum + progress, 0) / fileProgresses.length;
-}
+  let progressSum = 0;
+  let present = 0;
+  let uploading = 0;
+  let paused = 0;
+  let completed = 0;
+  let queued = 0;
+  let failed = 0;
 
-// Calculate folder status based on its files
-function getFolderStatus(uploads: UploadsMap, folderId: string): string {
-  const folder = uploads[folderId];
-  if (!folder || !folder.fileIds) return folder?.status || 'queued';
+  for (const id of folder.fileIds) {
+    const file = uploads[id];
+    progressSum += file?.progress || 0;
+    // A file whose card is gone counts towards progress as nothing done, and
+    // towards status not at all.
+    if (!file) continue;
 
-  const fileStatuses = folder.fileIds.map((id) => uploads[id]?.status).filter(Boolean);
-
-  // If folder itself is cancelled, return cancelled
-  if (folder.status === 'cancelled') return 'cancelled';
-
-  // If any file is uploading, folder is uploading
-  if (fileStatuses.some((status) => status === 'uploading')) return 'uploading';
-
-  // If any file is paused, folder is paused
-  if (fileStatuses.some((status) => status === 'paused')) return 'paused';
-
-  // If all files are completed, folder is completed
-  if (fileStatuses.length > 0 && fileStatuses.every((status) => status === 'completed'))
-    return 'completed';
-
-  // If some files are completed but others are not, folder is still uploading
-  if (
-    fileStatuses.some((status) => status === 'completed') &&
-    fileStatuses.some((status) => ['uploading', 'queued', 'paused'].includes(status))
-  ) {
-    return 'uploading';
+    present++;
+    if (file.status === 'uploading') uploading++;
+    else if (file.status === 'paused') paused++;
+    else if (file.status === 'completed') completed++;
+    else if (file.status === 'queued') queued++;
+    else if (file.status === 'failed') failed++;
   }
 
-  // If any file failed, folder has failed
-  if (fileStatuses.some((status) => status === 'failed')) return 'failed';
+  const progress = folder.fileIds.length > 0 ? progressSum / folder.fileIds.length : 0;
 
-  // Default to queued if all files are queued
-  return 'queued';
+  let status: string;
+  if (folder.status === 'cancelled') status = 'cancelled';
+  else if (uploading > 0) status = 'uploading';
+  else if (paused > 0) status = 'paused';
+  else if (present > 0 && completed === present) status = 'completed';
+  // Some done and some still waiting: the folder as a whole is under way.
+  else if (completed > 0 && queued > 0) status = 'uploading';
+  else if (failed > 0) status = 'failed';
+  else status = 'queued';
+
+  return { status, progress };
 }
 
 // Extract file extension from filename
@@ -161,6 +169,7 @@ export const OperationsModal: React.FC = () => {
   const uploads = useUploadStore((state) => state.uploads);
   const deletes = useUploadStore((state) => state.deletes);
   const removeUpload = useUploadStore((state) => state.removeUpload);
+  const removeUploads = useUploadStore((state) => state.removeUploads);
   const removeDeleteOperation = useUploadStore((state) => state.removeDeleteOperation);
   const updateUpload = useUploadStore((state) => state.updateUpload);
   const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
@@ -317,9 +326,9 @@ export const OperationsModal: React.FC = () => {
           name: upload.name,
           type: upload.type,
           operationType: 'upload' as const,
-          status: upload.type === 'folder' ? getFolderStatus(uploads, upload.id) : upload.status,
-          progress:
-            upload.type === 'folder' ? getFolderProgress(uploads, upload.id) : upload.progress,
+          ...(upload.type === 'folder'
+            ? summariseFolder(uploads, upload.id)
+            : { status: upload.status, progress: upload.progress }),
           fileIds: upload.fileIds,
           parentFolderId: upload.parentFolderId,
           extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
@@ -699,7 +708,18 @@ export const OperationsModal: React.FC = () => {
                     // so a kind of operation cannot be handled in one and
                     // forgotten in the other, which is how downloads were left
                     // out of this in the first place.
-                    sortedOperations.forEach((op) => removeOperation(op.id, op.operationType));
+                    //
+                    // Uploads are the exception, taken in one update: removed
+                    // one by one, a drop of 4,000 loose files copied the rest
+                    // of the map 4,000 times.
+                    removeUploads(
+                      sortedOperations
+                        .filter((op) => op.operationType === 'upload')
+                        .map((op) => op.id)
+                    );
+                    sortedOperations
+                      .filter((op) => op.operationType !== 'upload')
+                      .forEach((op) => removeOperation(op.id, op.operationType));
                   }
                 }}
                 className="p-2 sm:p-1 rounded transition-colors duration-200"
