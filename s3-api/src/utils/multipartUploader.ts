@@ -15,6 +15,10 @@ export class MultipartUploader {
   private key: string;
   private fileName: string;
 
+  // Everything a resume needs, held here and nowhere else. It used to be
+  // mirrored into localStorage after every part - file name, key and upload id
+  // - where nothing read it back, and where an upload that failed or was closed
+  // mid-way left it for good. See no-browser-storage.test.ts.
   private uploadId?: string;
   private completedParts: CompletedPart[] = [];
   private partSize: number = 5 * 1024 * 1024;
@@ -35,20 +39,6 @@ export class MultipartUploader {
       config.partSizeBytes && config.partSizeBytes >= 5 * 1024 * 1024
         ? config.partSizeBytes
         : 5 * 1024 * 1024;
-    localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
-  }
-
-  private saveState(file: File) {
-    const state = {
-      uploadId: this.uploadId,
-      key: this.key,
-      fileName: this.fileName,
-      fileSize: file.size,
-      completedParts: this.completedParts,
-      partSize: this.partSize,
-      concurrency: this.concurrency,
-    };
-    localStorage.setItem(`upload:${this.fileName}:${this.key}`, JSON.stringify(state));
   }
 
   async start(file: File, onProgress?: (p: number) => void) {
@@ -77,7 +67,6 @@ export class MultipartUploader {
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
-      localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
     }
   }
 
@@ -117,7 +106,6 @@ export class MultipartUploader {
           );
 
           this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
-          this.saveState(file);
 
           if (onProgress) {
             const uniqueCompleted = new Set(this.completedParts.map((p) => p.PartNumber));
@@ -185,13 +173,10 @@ export class MultipartUploader {
     }
     this.completedParts = Array.from(deduped.values());
 
-    this.saveState(file);
-
     await this.uploadParts(file, onProgress);
 
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
-      localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
     }
   }
 
@@ -214,6 +199,5 @@ export class MultipartUploader {
         })
       );
     }
-    localStorage.removeItem(`upload:${this.fileName}:${this.key}`);
   }
 }

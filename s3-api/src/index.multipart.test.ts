@@ -3,13 +3,9 @@
  * onto a `MultipartUploadConfig` and hands back a `MultipartUploader`. The
  * mapping is what's under test here, verified through the commands the
  * returned uploader actually issues rather than by reaching into its privates.
- *
- * `MultipartUploader`'s constructor touches `localStorage` (it clears any
- * stale resume state), which does not exist in the node test environment, so
- * these suites install a memory-backed shim.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
 import {
   S3Client,
@@ -32,29 +28,12 @@ const creds: Credentials = {
 
 const MB = 1024 * 1024;
 
-/** Minimal in-memory localStorage, enough for the uploader's get/set/remove. */
-function installLocalStorage() {
-  const store = new Map<string, string>();
-  vi.stubGlobal('localStorage', {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
-  });
-  return store;
-}
-
 function makeApi() {
   return new BYOS3ApiProvider(creds, 'BYO');
 }
 
 beforeEach(() => {
   s3Mock.reset();
-  installLocalStorage();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe('uploadMultipartParallely', () => {
@@ -113,22 +92,6 @@ describe('uploadMultipartParallely', () => {
       UploadId: 'upload-1',
       MultipartUpload: { Parts: [{ ETag: '"etag-1"', PartNumber: 1 }] },
     });
-  });
-
-  it('clears any stale resume state for the same file and key', () => {
-    const store = installLocalStorage();
-    store.set('upload:big.bin:users/alice/big.bin', '{"uploadId":"stale"}');
-
-    makeApi().uploadMultipartParallely({
-      key: 'users/alice/big.bin',
-      fileName: 'big.bin',
-      partSizeBytes: 5 * MB,
-      concurrency: 4,
-    });
-
-    // A leftover uploadId from a previous session points at a multipart upload
-    // S3 may have already aborted.
-    expect(store.has('upload:big.bin:users/alice/big.bin')).toBe(false);
   });
 
   it('falls back to a concurrency of 3 when given a non-positive value', async () => {

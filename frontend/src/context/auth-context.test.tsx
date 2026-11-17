@@ -1602,3 +1602,56 @@ describe('a session change gives back the names uploads had claimed', () => {
     expect(nameOfferedFor('photos')).toBe('photos (1)');
   });
 });
+
+/**
+ * Regression test for upload state an earlier version left in localStorage.
+ *
+ * The uploader used to write `upload:<file name>:<key>` after every part and
+ * read it back never. The write is gone, but the entries an interrupted upload
+ * left behind are still sitting in people's browsers, naming their files, with
+ * nothing that will ever remove them.
+ *
+ * `clearLegacyUploadState` is tested on its own next to where it lives. This is
+ * the other half, and the half that keeps going missing in this file: that
+ * something actually calls it.
+ */
+describe('loading the app clears upload state an earlier version left behind', () => {
+  beforeEach(() => {
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+  });
+
+  it('removes the leftover entries', async () => {
+    localStorage.setItem('upload:holiday.mp4:videos/holiday.mp4', '{"uploadId":"abc"}');
+    localStorage.setItem('upload:report.pdf:docs/report.pdf', '{"uploadId":"def"}');
+
+    await renderProvider();
+
+    expect(localStorage.getItem('upload:holiday.mp4:videos/holiday.mp4')).toBeNull();
+    expect(localStorage.getItem('upload:report.pdf:docs/report.pdf')).toBeNull();
+  });
+
+  it('does not take the session with them', async () => {
+    const session = JSON.stringify({
+      accessKeyId: 'AKIA_A',
+      secretAccessKey: 'secret-a',
+      region: 'us-east-1',
+      bucketName: 'bucket-a',
+      prefix: '',
+    });
+    localStorage.setItem(STORAGE_KEY, session);
+    localStorage.setItem('upload-settings-storage', '{"state":{"uploadMode":"signed-url"}}');
+    localStorage.setItem('upload:holiday.mp4:videos/holiday.mp4', '{"uploadId":"abc"}');
+
+    await renderProvider();
+
+    // A cleanup that signed people out, or reset the upload mode they chose,
+    // would be a worse bug than the one it is cleaning up after.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(session);
+    expect(localStorage.getItem('upload-settings-storage')).toBe(
+      '{"state":{"uploadMode":"signed-url"}}'
+    );
+    expect(localStorage.getItem('upload:holiday.mp4:videos/holiday.mp4')).toBeNull();
+  });
+});

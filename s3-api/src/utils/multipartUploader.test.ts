@@ -5,9 +5,11 @@
  * already holds, and aborting so no orphaned multipart upload is left accruing
  * storage charges.
  *
- * It persists resume state to `localStorage` (including from its constructor),
- * which does not exist in the node test environment, so these suites install a
- * memory-backed shim.
+ * Everything it needs to resume is held in memory. It used to write that state
+ * to `localStorage` as well, after every part - file name, key and upload id -
+ * where nothing ever read it back and an interrupted upload left it for good.
+ * These suites run against a `localStorage` that records every call, and one
+ * group of them checks the record stays empty.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -25,15 +27,32 @@ import { MultipartUploader } from './multipartUploader.js';
 const s3Mock = mockClient(S3Client);
 const MB = 1024 * 1024;
 
-let store: Map<string, string>;
+/** Every call made on `localStorage`, by method name. Should stay empty. */
+let storageCalls: string[];
 
+/**
+ * A `localStorage` that works and writes down what was asked of it.
+ *
+ * Working matters: a stub that threw would also catch a stray write, but only
+ * by failing whichever test happened to trigger it, with an error about
+ * storage in a test about pausing.
+ */
 function installLocalStorage() {
-  store = new Map<string, string>();
+  storageCalls = [];
+  const held = new Map<string, string>();
+  const record =
+    <A extends unknown[], R>(name: string, fn: (...args: A) => R) =>
+    (...args: A): R => {
+      storageCalls.push(name);
+      return fn(...args);
+    };
+
   vi.stubGlobal('localStorage', {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
+    getItem: record('getItem', (k: string) => held.get(k) ?? null),
+    setItem: record('setItem', (k: string, v: string) => void held.set(k, v)),
+    removeItem: record('removeItem', (k: string) => void held.delete(k)),
+    clear: record('clear', () => held.clear()),
+    key: record('key', (i: number) => [...held.keys()][i] ?? null),
   });
 }
 
@@ -53,14 +72,14 @@ function makeFile(size: number) {
   return new File([new Uint8Array(size)], 'big.bin');
 }
 
-const STATE_KEY = 'upload:big.bin:users/alice/big.bin';
-
 /** One macrotask tick - drains every pending microtask first. */
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 /** Private field access, mirroring how UploadManager reads `uploader['uploadId']`. */
 const uploadIdOf = (u: MultipartUploader) => u['uploadId'];
 const controllersOf = (u: MultipartUploader) => u['controllers'];
+/** What the uploader is holding in memory to resume from. */
+const completedPartsOf = (u: MultipartUploader) => u['completedParts'];
 
 function stubHappyPath() {
   s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
@@ -78,17 +97,76 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('construction', () => {
-  it('clears any stale resume state for the same file and key', () => {
-    installLocalStorage();
-    store.set(STATE_KEY, '{"uploadId":"from-a-previous-session"}');
+describe('browser storage', () => {
+  it('is left alone through a whole upload, start to finish', async () => {
+    stubHappyPath();
 
-    makeUploader();
+    await makeUploader().start(makeFile(12 * MB)); // 5 + 5 + 2
 
-    // That uploadId may point at a multipart upload S3 has already aborted.
-    expect(store.has(STATE_KEY)).toBe(false);
+    // Three parts used to mean three writes of the file's name and key, with a
+    // removal either side.
+    expect(storageCalls).toEqual([]);
   });
 
+  it('is left alone when an upload is paused and picked back up', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(ListPartsCommand).resolves({ Parts: [{ ETag: '"etag-1"', PartNumber: 1 }] });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+    let paused = false;
+    s3Mock.on(UploadPartCommand).callsFake(async () => {
+      if (!paused) {
+        paused = true;
+        uploader.pause();
+      }
+      return { ETag: '"etag-1"' };
+    });
+    const file = makeFile(15 * MB);
+
+    await uploader.start(file);
+    await uploader.resume(file);
+
+    // The pause is the case the stored state was meant for, and resuming never
+    // read it: the uploader already had the upload id and the parts in hand.
+    expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 1);
+    expect(storageCalls).toEqual([]);
+  });
+
+  it('is left alone when an upload is cancelled', async () => {
+    stubHappyPath();
+    const uploader = makeUploader();
+    uploader['uploadId'] = 'upload-1';
+
+    await uploader.cancel();
+
+    expect(storageCalls).toEqual([]);
+  });
+
+  it('is left alone when an upload fails', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).rejects(new Error('boom'));
+
+    await expect(makeUploader().start(makeFile(5 * MB))).rejects.toThrow('boom');
+
+    // The path that used to leave an entry behind for good: written as the
+    // parts went up, with no success and no cancel to clear it afterwards.
+    expect(storageCalls).toEqual([]);
+  });
+
+  it('does not need a localStorage to exist at all', async () => {
+    // Node, a worker, a browser with storage switched off. The constructor
+    // used to reach for it before a single byte had moved.
+    vi.unstubAllGlobals();
+    expect(typeof localStorage).toBe('undefined');
+    stubHappyPath();
+
+    await makeUploader().start(makeFile(5 * MB));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 1);
+  });
+});
+
+describe('construction', () => {
   it('takes the part size in bytes', async () => {
     stubHappyPath();
 
@@ -186,39 +264,6 @@ describe('start', () => {
     expect(controllersOf(uploader)).toEqual([]);
   });
 
-  it('persists resume state after every part', async () => {
-    stubHappyPath();
-    const setItem = vi.spyOn(globalThis.localStorage, 'setItem');
-
-    await makeUploader().start(makeFile(12 * MB)); // 5 + 5 + 2
-
-    // Written as it goes, not once at the end - a crash mid-upload is only
-    // recoverable from state that was already on disk.
-    expect(setItem).toHaveBeenCalledTimes(3);
-    const [key, value] = setItem.mock.calls[1]!;
-    expect(key).toBe(STATE_KEY);
-    expect(JSON.parse(value)).toEqual({
-      uploadId: 'upload-1',
-      key: 'users/alice/big.bin',
-      fileName: 'big.bin',
-      fileSize: 12 * MB,
-      partSize: 5 * MB,
-      concurrency: 1,
-      completedParts: [
-        { ETag: '"etag"', PartNumber: 1 },
-        { ETag: '"etag"', PartNumber: 2 },
-      ],
-    });
-  });
-
-  it('clears the resume state once the upload completes', async () => {
-    stubHappyPath();
-
-    await makeUploader().start(makeFile(5 * MB));
-
-    expect(store.has(STATE_KEY)).toBe(false);
-  });
-
   it('completes with parts sorted by number regardless of finish order', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(CompleteMultipartUploadCommand).resolves({});
@@ -306,7 +351,7 @@ describe('pause', () => {
     expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
   });
 
-  it('keeps the resume state on disk so the upload can be picked back up', async () => {
+  it('keeps what it needs to pick the upload back up', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     const uploader = makeUploader();
     s3Mock.on(UploadPartCommand).callsFake(async () => {
@@ -316,14 +361,11 @@ describe('pause', () => {
 
     await uploader.start(makeFile(15 * MB));
 
-    // Unlike the success and cancel paths, pausing must NOT clear this.
-    const state = JSON.parse(store.get(STATE_KEY)!);
-    expect(state).toMatchObject({
-      uploadId: 'upload-1',
-      key: 'users/alice/big.bin',
-      fileSize: 15 * MB,
-      completedParts: [{ ETag: '"etag-1"', PartNumber: 1 }],
-    });
+    // Held on the uploader itself, which is where resume() reads it from. The
+    // session is still open on S3, and losing its id would strand the parts
+    // already there.
+    expect(uploadIdOf(uploader)).toBe('upload-1');
+    expect(completedPartsOf(uploader)).toEqual([{ ETag: '"etag-1"', PartNumber: 1 }]);
   });
 
   it('aborts the controllers of parts still in flight', async () => {
@@ -505,17 +547,6 @@ describe('resume', () => {
     expect(s3Mock).toHaveReceivedCommand(CompleteMultipartUploadCommand);
   });
 
-  it('clears the resume state once it finishes', async () => {
-    stubHappyPath();
-    s3Mock.on(ListPartsCommand).resolves({ Parts: [] });
-    const uploader = makeUploader();
-    uploader['uploadId'] = 'upload-1';
-
-    await uploader.resume(makeFile(5 * MB));
-
-    expect(store.has(STATE_KEY)).toBe(false);
-  });
-
   it('does not complete when paused again mid-resume', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(ListPartsCommand).resolves({ Parts: [] });
@@ -530,7 +561,8 @@ describe('resume', () => {
     await uploader.resume(makeFile(15 * MB));
 
     expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
-    expect(store.has(STATE_KEY)).toBe(true);
+    // Still resumable: the session id survives a second pause.
+    expect(uploadIdOf(uploader)).toBe('upload-1');
   });
 
   it('reports progress across parts it did not have to re-upload', async () => {
@@ -569,19 +601,6 @@ describe('cancel', () => {
 
     // AbortMultipartUpload without an UploadId is a guaranteed 400.
     expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
-  });
-
-  it('clears the resume state', async () => {
-    stubHappyPath();
-    const uploader = makeUploader();
-    uploader['uploadId'] = 'upload-1';
-    store.set(STATE_KEY, '{"uploadId":"upload-1"}');
-
-    await uploader.cancel();
-
-    // Leaving it behind would let a later session try to resume an upload S3
-    // has already discarded.
-    expect(store.has(STATE_KEY)).toBe(false);
   });
 
   it('aborts in-flight part controllers and empties the list', async () => {

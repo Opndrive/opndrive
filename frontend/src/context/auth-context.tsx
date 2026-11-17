@@ -11,6 +11,7 @@ import {
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
 import { ConnectionFailureError, classifyConnectionFailure } from '@/lib/s3/connection-failure';
+import { clearLegacyUploadState } from '@/lib/privacy/legacy-storage';
 import { countActiveWork, useUploadStore } from '@/features/upload/stores/use-upload-store';
 import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
@@ -390,6 +391,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsLoading(false);
       }
     };
+
+    // Once per load, and unrelated to the session below except that both are
+    // about what this browser is holding: upload state an earlier version
+    // wrote and never read. See lib/privacy/legacy-storage.
+    clearLegacyUploadState();
 
     checkAuth();
     // Mount-only on purpose. This restores a persisted session exactly once
