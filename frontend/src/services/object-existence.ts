@@ -13,11 +13,16 @@ import { BYOS3ApiProvider } from '@opndrive/s3-api';
  * overwrote whatever was. Callers that cannot determine the answer must say so
  * rather than guess.
  *
- * @throws whatever the metadata lookup threw.
+ * Not catching here was only half of it. This went through `fetchMetadata`,
+ * which does the catching itself and hands back null for a failure exactly as
+ * it does for a missing object - so the promise above was kept by this function
+ * and broken one call further down. `apiS3.objectExists` treats a 404 as the
+ * only "no" there is.
+ *
+ * @throws whatever the lookup threw, for anything other than a missing object.
  */
 export async function objectExists(apiS3: BYOS3ApiProvider, key: string): Promise<boolean> {
-  const metadata = await apiS3.fetchMetadata(key);
-  return metadata !== null;
+  return apiS3.objectExists(key);
 }
 
 /** Joins a destination prefix and a file name into an S3 key. */

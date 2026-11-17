@@ -59,3 +59,7 @@ copilot-instructions.md
 .agents/
 skills-lock.json
 .claude/
+
+# Local codebase analysis notes. Generated per developer as a reading aid,
+# never part of the project.
+codebase-analysis-docs/

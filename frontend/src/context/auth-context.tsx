@@ -11,8 +11,10 @@ import {
 } from '@opndrive/s3-api';
 import { useDriveStore } from './data-context';
 import { ConnectionFailureError, classifyConnectionFailure } from '@/lib/s3/connection-failure';
+import { clearLegacyUploadState } from '@/lib/privacy/legacy-storage';
 import { countActiveWork, useUploadStore } from '@/features/upload/stores/use-upload-store';
 import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
+import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 
 /**
@@ -164,6 +166,15 @@ async function initializeUploadManagers(
   // because the map it clears holds the only reference to each abort
   // controller; see the note on the store.
   useUploadStore.getState().clearSessionData();
+
+  // The names those uploads had claimed go with them. A claim says a prefix in
+  // *this* bucket is spoken for, and it is keyed by the prefix alone - so
+  // carried into another bucket it still answers for "photos/", and a folder
+  // dropped there is uploaded as "photos (1)" with a notice that one "was
+  // already here". Neither is true of a bucket nothing has been uploaded to.
+  // The notices are dropped for the same reason the cards above are: each one
+  // describes a drop into the bucket being left.
+  useUploadQueueStore.getState().reset();
 
   // The listing cache needs it most of all, and was the one thing this did not
   // clear. `fetchData` returns early when a prefix is already 'ready' or has
@@ -380,6 +391,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsLoading(false);
       }
     };
+
+    // Once per load, and unrelated to the session below except that both are
+    // about what this browser is holding: upload state an earlier version
+    // wrote and never read. See lib/privacy/legacy-storage.
+    clearLegacyUploadState();
 
     checkAuth();
     // Mount-only on purpose. This restores a persisted session exactly once
@@ -615,6 +631,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // UploadProvider unmounts - without this, records from this bucket would
       // still be on screen after connecting to a different one.
       useUploadStore.getState().clearSessionData();
+
+      // And what the upload queue was holding for it: the names claimed in
+      // this bucket, and the notices about drops into it. Both are in memory
+      // only, so a reload would have cleared them - but signing out and back
+      // in does not reload anything.
+      useUploadQueueStore.getState().reset();
 
       // And the search cache, which holds raw object keys from this bucket.
       // It is keyed by query+prefix with a 5 minute TTL and nothing else

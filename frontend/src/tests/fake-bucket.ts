@@ -46,6 +46,8 @@ export interface FakeBucket {
   release(): void;
   /** Makes the listing edge throw, simulating a dead network during planning. */
   failListings(error: Error): void;
+  /** Makes the per-file existence edge throw, as a refused or dropped HEAD does. */
+  failExistenceChecks(error: Error): void;
   /** Counts listing calls, to prove a failed check is not retried in a loop. */
   listingCalls(): number;
 }
@@ -59,6 +61,7 @@ export function createFakeBucket(): FakeBucket {
   let uploadSeq = 0;
   let listings = 0;
   let listingError: Error | null = null;
+  let existenceError: Error | null = null;
 
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
@@ -132,12 +135,22 @@ export function createFakeBucket(): FakeBucket {
     return { files, folders, nextToken: undefined, isTruncated: false };
   };
 
-  /** Serves the metadata edge that `objectExists` uses. */
-  const fetchMetadata = async (key: string) => (objects.has(key) ? { ContentLength: 0 } : null);
+  /**
+   * Serves the existence edge that `objectExists` uses.
+   *
+   * Throws when told to, like the real one. The edge this replaced answered
+   * null for a failure, which is the behaviour that let a check that never
+   * ran pass for a name that was free.
+   */
+  const objectExists = async (key: string) => {
+    if (existenceError) throw existenceError;
+
+    return objects.has(key);
+  };
 
   const apiS3 = {
     fetchDirectoryStructure,
-    fetchMetadata,
+    objectExists,
     getS3Client: () => s3Client,
     getBucketName: () => 'test-bucket',
     getPrefix: () => '',
@@ -165,6 +178,9 @@ export function createFakeBucket(): FakeBucket {
     },
     failListings(error) {
       listingError = error;
+    },
+    failExistenceChecks(error) {
+      existenceError = error;
     },
     listingCalls: () => listings,
   };

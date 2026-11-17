@@ -303,6 +303,59 @@ describe('loose file collisions', () => {
     expect(useUploadStore.getState().duplicateQueue).toEqual([]);
   });
 
+  it('names the file when only one could not be checked', async () => {
+    mockObjectExists.mockRejectedValue(new Error('throttled'));
+    const dispatchDrop = dispatch();
+
+    const { notices } = await dispatchDrop(
+      drop({ individualFiles: [makeFile('notes.txt')] }),
+      '',
+      apiS3
+    );
+
+    expect(notices[0]).toMatchObject({ path: 'notes.txt', count: 1 });
+    expect(notices[0]!.detail).toContain('"notes.txt"');
+  });
+
+  it('says it once when the check fails for a whole drop', async () => {
+    // A bucket that refuses HEAD refuses it for every file, so the failures
+    // arrive together. One notice per file would be the same sentence repeated
+    // as many times as there were files.
+    mockObjectExists.mockRejectedValue(new Error('403 Forbidden'));
+    const dispatchDrop = dispatch();
+
+    const { notices } = await dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt'), makeFile('c.txt')] }),
+      '',
+      apiS3
+    );
+
+    expect(manager.added.map((a) => a.key)).toEqual(['a.txt', 'b.txt', 'c.txt']);
+    expect(notices.map((n) => [n.kind, n.count])).toEqual([['unverified', 3]]);
+    expect(notices[0]!.detail).toContain('3 of these files');
+    // Reaches the panel as one row too, not just the return value.
+    expect(queue().notices).toHaveLength(1);
+  });
+
+  it('counts only the files that could not be checked', async () => {
+    // The connection came back partway through. The file that was checked and
+    // found free needs no caveat.
+    mockObjectExists
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error('timeout'));
+    const dispatchDrop = dispatch();
+
+    const { notices } = await dispatchDrop(
+      drop({ individualFiles: [makeFile('a.txt'), makeFile('b.txt'), makeFile('c.txt')] }),
+      '',
+      apiS3
+    );
+
+    expect(manager.added.map((a) => a.key)).toEqual(['a.txt', 'b.txt', 'c.txt']);
+    expect(notices.map((n) => [n.kind, n.count])).toEqual([['unverified', 2]]);
+  });
+
   it('does not object-check files inside a folder', async () => {
     // Those collide at the prefix level, which planning already resolved.
     const dispatchDrop = dispatch();

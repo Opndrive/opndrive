@@ -440,4 +440,60 @@ describe('5. the network failure and unverified path', () => {
     expect(bucket.listingCalls()).toBe(3);
     expect([...bucket.objects.keys()].sort()).toEqual(['a/x.jpg', 'b/y.jpg', 'c/z.jpg']);
   });
+
+  it('never asks about a duplicate it was unable to look for', async () => {
+    // One of these really is a duplicate, and the bucket will not say which.
+    bucket.put('a.txt');
+    bucket.failExistenceChecks(new Error('403 Forbidden'));
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(
+        {
+          individualFiles: [makeFile('a.txt'), makeFile('b.txt'), makeFile('c.txt')],
+          folderStructures: [],
+          skipped: [],
+        },
+        '',
+        bucket.apiS3
+      );
+    });
+    await untilIdle(bucket);
+
+    // No prompt: there is no finding to ask about. And no silence either, which
+    // is what there used to be - the failed check read as "free", so a.txt was
+    // overwritten without a word.
+    expect(useUploadStore.getState().duplicateQueue).toEqual([]);
+    expect([...bucket.objects.keys()].sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
+
+    // Said once for the drop, not once per file.
+    expect(queue().notices.map((n) => [n.kind, n.count])).toEqual([['unverified', 3]]);
+
+    render(<QueueNotices />);
+    expect(screen.getByText(/will be overwritten/)).toBeTruthy();
+  });
+
+  it('still catches the duplicate when the bucket does answer', async () => {
+    // The control for the test above: same drop, working check.
+    bucket.put('a.txt');
+    const dispatch = mountPipeline();
+
+    let pending: Promise<unknown> | undefined;
+    await act(async () => {
+      pending = dispatch.current(
+        { individualFiles: [makeFile('a.txt')], folderStructures: [], skipped: [] },
+        '',
+        bucket.apiS3
+      );
+    });
+    await until(() => useUploadStore.getState().duplicateQueue.length === 1, 'the prompt');
+
+    expect(useUploadStore.getState().duplicateQueue[0]!.duplicateItem.name).toBe('a.txt');
+    expect(queue().notices).toEqual([]);
+
+    await act(async () => {
+      useUploadStore.getState().resolveDuplicate('cancel');
+      await pending;
+    });
+  });
 });

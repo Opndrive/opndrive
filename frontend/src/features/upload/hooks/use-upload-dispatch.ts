@@ -185,6 +185,38 @@ function policyNotice(policy: DuplicatePolicy, count: number): QueueNotice | nul
   };
 }
 
+/**
+ * One notice for the files whose check failed, however many there were.
+ *
+ * Checks fail together far more often than apart: a bucket that refuses HEAD
+ * refuses it for every file, and so does a connection that has dropped. A
+ * notice per file would turn a five-hundred-file drop into five hundred copies
+ * of one sentence, in a list the operations panel renders in full.
+ *
+ * A single file still gets named, since "one of these" helps nobody find it.
+ */
+function unverifiedNotice(names: readonly string[]): QueueNotice | null {
+  if (names.length === 0) return null;
+
+  if (names.length === 1) {
+    return {
+      id: `dup-unverified-${Date.now()}`,
+      kind: 'unverified',
+      path: names[0]!,
+      count: 1,
+      detail: `Could not check whether "${names[0]}" already exists here, so it is being uploaded under that name. If it does exist, it will be overwritten.`,
+    };
+  }
+
+  return {
+    id: `dup-unverified-${Date.now()}`,
+    kind: 'unverified',
+    path: '',
+    count: names.length,
+    detail: `Could not check whether ${names.length} of these files already exist here, so they are being uploaded under their own names. Any that do exist will be overwritten.`,
+  };
+}
+
 export function useUploadDispatch() {
   const executor = useUploadExecutor();
   const addUpload = useUploadStore((state) => state.addUpload);
@@ -253,6 +285,8 @@ export function useUploadDispatch() {
         if (replaced) looseNotices.push(replaced);
 
         individualFiles = [];
+        const unverified: string[] = [];
+
         verdicts.forEach((verdict, index) => {
           if (verdict.kind === 'cancelled') {
             looseNotices.push({
@@ -276,18 +310,13 @@ export function useUploadDispatch() {
             return;
           }
 
-          if (verdict.kind === 'unverified') {
-            looseNotices.push({
-              id: `dup-unverified-${Date.now()}-${index}`,
-              kind: 'unverified',
-              path: verdict.file.name,
-              count: 1,
-              detail: `Could not check whether "${verdict.file.name}" already exists here, so it is being uploaded under that name. If it does exist, it will be overwritten.`,
-            });
-          }
+          if (verdict.kind === 'unverified') unverified.push(verdict.file.name);
 
           individualFiles.push(verdict.file);
         });
+
+        const couldNotCheck = unverifiedNotice(unverified);
+        if (couldNotCheck) looseNotices.push(couldNotCheck);
       }
 
       const { planned, notices } = await useUploadQueueStore

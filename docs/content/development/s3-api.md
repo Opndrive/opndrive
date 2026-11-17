@@ -27,7 +27,8 @@ multiply requests rather than help.
 | Method                                                              | What it does                                                  |
 | ------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `fetchDirectoryStructure(prefix, maxKeys, token?)`                  | Paginated listing, split into `files` and `folders`           |
-| `fetchMetadata(path)`                                               | `HeadObject`; returns `null` on 404 rather than throwing      |
+| `fetchMetadata(path)`                                               | `HeadObject`; `null` on 404 and on any other failure          |
+| `objectExists(key)`                                                 | `HeadObject` as yes/no; throws when it could not check        |
 | `uploadWithPreSignedUrl(params)`                                    | Single-request presigned PUT URL                              |
 | `uploadMultipartParallely(params)`                                  | Returns a `MultipartUploader` for large files                 |
 | `getSignedUrl(params)`                                              | Presigned GET URL, with an inline-preview mode                |

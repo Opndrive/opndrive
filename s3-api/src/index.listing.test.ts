@@ -219,6 +219,59 @@ describe('fetchMetadata', () => {
   });
 });
 
+describe('objectExists', () => {
+  it('reports true for a key that answers', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 2048 });
+
+    await expect(makeApi().objectExists('users/alice/report.pdf')).resolves.toBe(true);
+    expect(s3Mock).toHaveReceivedCommandWith(HeadObjectCommand, {
+      Bucket: 'test-bucket',
+      Key: 'users/alice/report.pdf',
+    });
+  });
+
+  it('reports false for a missing object', async () => {
+    s3Mock.on(HeadObjectCommand).rejects(s3Error('NotFound', 404));
+
+    await expect(makeApi().objectExists('users/alice/gone.pdf')).resolves.toBe(false);
+  });
+
+  it('throws when the lookup is refused, rather than calling the key free', async () => {
+    const denied = s3Error('AccessDenied', 403);
+    s3Mock.on(HeadObjectCommand).rejects(denied);
+
+    // This is the whole difference from fetchMetadata, which answers null
+    // here. A caller about to write to this key has to be able to tell "no
+    // such object" from "you may not look".
+    await expect(makeApi().objectExists('users/alice/secret.pdf')).rejects.toBe(denied);
+  });
+
+  it('throws for a throttled lookup too', async () => {
+    const slowDown = s3Error('SlowDown', 503);
+    s3Mock.on(HeadObjectCommand).rejects(slowDown);
+
+    await expect(makeApi().objectExists('users/alice/report.pdf')).rejects.toBe(slowDown);
+  });
+
+  it('throws for a failure that carries no HTTP status at all', async () => {
+    // A dropped connection, or a cross-origin HEAD the bucket does not allow.
+    const unreachable = new TypeError('Failed to fetch');
+    s3Mock.on(HeadObjectCommand).rejects(unreachable);
+
+    await expect(makeApi().objectExists('users/alice/report.pdf')).rejects.toBe(unreachable);
+  });
+
+  it('does not log, since the caller is the one who decides what a failure means', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    s3Mock.on(HeadObjectCommand).rejects(s3Error('AccessDenied', 403));
+
+    await expect(makeApi().objectExists('users/alice/secret.pdf')).rejects.toThrow();
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
 describe('listFromPrefix', () => {
   it('follows continuation tokens until the listing is exhausted', async () => {
     s3Mock

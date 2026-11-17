@@ -120,6 +120,8 @@ export abstract class BaseS3ApiProvider {
 
   abstract fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null>;
 
+  abstract objectExists(key: string): Promise<boolean>;
+
   abstract uploadWithPreSignedUrl(params: PresignedUploadParams): Promise<string | null>;
 
   abstract uploadMultipartParallely(params: MultipartUploadParams): MultipartUploader;
