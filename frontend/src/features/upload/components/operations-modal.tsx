@@ -156,8 +156,10 @@ export function summariseFolder(
   else if (uploading > 0) status = 'uploading';
   else if (paused > 0) status = 'paused';
   else if (present > 0 && completed === present) status = 'completed';
-  // Some done and some still waiting: the folder as a whole is under way.
-  else if (completed > 0 && queued > 0) status = 'uploading';
+  // Files still waiting their turn: the folder is under way once any file
+  // before them has finished, landed or failed. Called failed while files
+  // still waited, its card offered Remove, which took their cards away too.
+  else if (queued > 0) status = completed > 0 || failed > 0 ? 'uploading' : 'queued';
   else if (failed > 0) status = 'failed';
   else status = 'queued';
 

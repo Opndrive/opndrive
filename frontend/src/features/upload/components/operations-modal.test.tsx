@@ -255,6 +255,51 @@ describe('a failed upload', () => {
     expect(screen.getByText('The specified bucket does not exist')).toBeTruthy();
   });
 
+  it('keeps a folder whose first files failed as still going, while the rest wait', () => {
+    // The first two files failed together, and nothing else had started.
+    // Shown as failed, the card offered "Remove from list", which also took
+    // away the cards of the files still to upload: they went on uploading
+    // with nothing showing them, and nothing asking before the tab closed.
+    seed({
+      folder: {
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        status: 'queued',
+        progress: 0,
+        fileIds: ['a', 'b', 'c'],
+      },
+      a: {
+        id: 'a',
+        name: 'photos/a.jpg',
+        type: 'file',
+        status: 'failed',
+        progress: 0,
+        parentFolderId: 'folder',
+      },
+      b: {
+        id: 'b',
+        name: 'photos/b.jpg',
+        type: 'file',
+        status: 'failed',
+        progress: 0,
+        parentFolderId: 'folder',
+      },
+      c: {
+        id: 'c',
+        name: 'photos/c.jpg',
+        type: 'file',
+        status: 'queued',
+        progress: 0,
+        parentFolderId: 'folder',
+      },
+    });
+    renderPanel();
+
+    expect(screen.queryByTitle('Remove from list')).toBeNull();
+    expect(screen.getByText('Uploading...')).toBeTruthy();
+  });
+
   it("prefers the folder's own reason, when it has one", () => {
     seed({
       folder: {
@@ -347,7 +392,15 @@ describe('summariseFolder', () => {
     ['completed once every file is', ['completed', 'completed'], 'completed'],
     ['uploading while some are done and some still wait', ['completed', 'queued'], 'uploading'],
     ['failed when something failed and nothing is left to run', ['completed', 'failed'], 'failed'],
-    ['failed when nothing finished and something failed', ['queued', 'failed'], 'failed'],
+    ['failed when every file failed', ['failed', 'failed'], 'failed'],
+    // Not failed: files are still waiting their turn. Called failed, its card
+    // offered Remove, which took away the cards of files still to upload.
+    ['uploading while some failed and others still wait', ['queued', 'failed'], 'uploading'],
+    [
+      'uploading while some landed, some failed, others wait',
+      ['completed', 'failed', 'queued'],
+      'uploading',
+    ],
     ['queued while every file waits', ['queued', 'queued'], 'queued'],
     ['queued when every file was cancelled', ['cancelled', 'cancelled'], 'queued'],
   ])('is %s', (_, statuses, expected) => {
