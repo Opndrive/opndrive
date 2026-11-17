@@ -3,6 +3,7 @@ import {
   CompleteMultipartUploadCommand,
   CopyObjectCommand,
   CreateMultipartUploadCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   UploadPartCopyCommand,
   type CompletedPart,
@@ -67,7 +68,6 @@ export async function copyObject(
   options: CopyObjectOptions = {}
 ): Promise<void> {
   const maxSingleCopy = options.maxSingleCopyBytes ?? MAX_SINGLE_COPY_BYTES;
-  const copySource = `${bucket}/${encodeURIComponent(sourceKey)}`;
 
   let head: HeadObjectCommandOutput | undefined;
   let size = options.size;
@@ -86,26 +86,71 @@ export async function copyObject(
 
   if (size === undefined || size <= maxSingleCopy) {
     await s3.send(
-      new CopyObjectCommand({ Bucket: bucket, CopySource: copySource, Key: destinationKey })
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: copySourceOf(bucket, sourceKey),
+        Key: destinationKey,
+      })
     );
     return;
   }
 
-  await copyInParts(s3, bucket, copySource, destinationKey, size, head, options.partSizeBytes);
+  await copyInParts(s3, bucket, sourceKey, destinationKey, size, head, options.partSizeBytes);
+}
+
+/** A copy's CopySource: the bucket, and the source key URL-encoded. */
+const copySourceOf = (bucket: string, key: string) => `${bucket}/${encodeURIComponent(key)}`;
+
+/**
+ * The source's tags, in the form CreateMultipartUpload takes them, or
+ * undefined when it has none.
+ *
+ * Asked for only when the HEAD counted some, so an untagged object - nearly
+ * all of them - costs no extra request. A HEAD made without permission to
+ * read tags counts none, and then none can be copied either way. Read from
+ * the version being copied, where the bucket keeps versions.
+ *
+ * Each key and value is percent-encoded on its own: in a query string a "+"
+ * may be read as a space or as itself, depending on who reads it.
+ */
+async function tagsOf(
+  s3: S3Client,
+  bucket: string,
+  sourceKey: string,
+  head: HeadObjectCommandOutput | undefined
+): Promise<string | undefined> {
+  if (!head?.TagCount) return undefined;
+
+  const { TagSet } = await s3.send(
+    new GetObjectTaggingCommand({ Bucket: bucket, Key: sourceKey, VersionId: head.VersionId })
+  );
+  if (!TagSet?.length) return undefined;
+
+  return TagSet.map(
+    ({ Key, Value }) => `${encodeURIComponent(Key ?? '')}=${encodeURIComponent(Value ?? '')}`
+  ).join('&');
 }
 
 async function copyInParts(
   s3: S3Client,
   bucket: string,
-  copySource: string,
+  sourceKey: string,
   destinationKey: string,
   size: number,
   head: HeadObjectCommandOutput | undefined,
   partSizeBytes: number | undefined
 ): Promise<void> {
-  // CopyObject carries the source's metadata over by itself. A multipart
-  // upload starts blank, so everything CopyObject would have kept is set here
-  // - or a renamed video would come out as binary/octet-stream.
+  const copySource = copySourceOf(bucket, sourceKey);
+
+  // CopyObject carries the source's metadata and tags over by itself. A
+  // multipart upload starts blank, so everything CopyObject would have kept
+  // is set here - or a renamed video would come out as binary/octet-stream,
+  // and without the tags a lifecycle rule or access policy keys on.
+  //
+  // Tags that cannot be read stop the copy here, before anything is written,
+  // as CopyObject would have refused it.
+  const tagging = await tagsOf(s3, bucket, sourceKey, head);
+
   const created = await s3.send(
     new CreateMultipartUploadCommand({
       Bucket: bucket,
@@ -118,6 +163,7 @@ async function copyInParts(
       Expires: head?.Expires,
       Metadata: head?.Metadata,
       StorageClass: head?.StorageClass,
+      Tagging: tagging,
     })
   );
   const uploadId = created.UploadId;

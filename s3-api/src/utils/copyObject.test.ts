@@ -17,6 +17,7 @@ import {
   CompleteMultipartUploadCommand,
   CopyObjectCommand,
   CreateMultipartUploadCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   UploadPartCopyCommand,
 } from '@aws-sdk/client-s3';
@@ -162,6 +163,65 @@ describe('an object over 5 GiB', () => {
       ContentType: 'video/mp4',
       CacheControl: 'max-age=60',
       Metadata: { camera: 'x100' },
+    });
+  });
+
+  /**
+   * Tags too. CopyObject copies them unless told otherwise, so a small file
+   * kept its tags through a rename and a large one lost them, and with them
+   * whatever lifecycle rule, access policy or cost report keyed on them.
+   */
+  describe('its tags', () => {
+    it('are carried over, encoded the way S3 reads them', async () => {
+      s3Mock.on(HeadObjectCommand).resolves({ ...head, TagCount: 2 });
+      s3Mock.on(GetObjectTaggingCommand).resolves({
+        TagSet: [
+          { Key: 'project', Value: 'x' },
+          // A space and a "+", which a query string can confuse, and an "=".
+          { Key: 'note', Value: 'a b+c=d' },
+        ],
+      });
+
+      await copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size });
+
+      expect(s3Mock.commandCalls(GetObjectTaggingCommand)[0]!.args[0].input).toMatchObject({
+        Bucket: 'bucket',
+        Key: 'videos/raw.mp4',
+      });
+      expect(s3Mock.commandCalls(CreateMultipartUploadCommand)[0]!.args[0].input.Tagging).toBe(
+        'project=x&note=a%20b%2Bc%3Dd'
+      );
+    });
+
+    it('are read from the version being copied', async () => {
+      s3Mock.on(HeadObjectCommand).resolves({ ...head, TagCount: 1, VersionId: 'v7' });
+      s3Mock.on(GetObjectTaggingCommand).resolves({ TagSet: [{ Key: 'k', Value: 'v' }] });
+
+      await copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size });
+
+      expect(s3Mock.commandCalls(GetObjectTaggingCommand)[0]!.args[0].input.VersionId).toBe('v7');
+    });
+
+    it('cost no request when there are none', async () => {
+      await copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size });
+
+      expect(s3Mock.commandCalls(GetObjectTaggingCommand)).toHaveLength(0);
+      expect(
+        s3Mock.commandCalls(CreateMultipartUploadCommand)[0]!.args[0].input.Tagging
+      ).toBeUndefined();
+    });
+
+    it('stop the copy before it starts when they cannot be read', async () => {
+      // As CopyObject would refuse: better than a copy that quietly has none.
+      s3Mock.on(HeadObjectCommand).resolves({ ...head, TagCount: 1 });
+      s3Mock
+        .on(GetObjectTaggingCommand)
+        .rejects(Object.assign(new Error('Access Denied'), { name: 'AccessDenied' }));
+
+      await expect(
+        copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size })
+      ).rejects.toThrow('Access Denied');
+      expect(s3Mock.commandCalls(CreateMultipartUploadCommand)).toHaveLength(0);
     });
   });
 
