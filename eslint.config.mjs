@@ -160,7 +160,6 @@ export default [
       'frontend/src/features/dashboard/hooks/use-folder-creation.ts',
       'frontend/src/features/dashboard/hooks/use-file-metadata.ts',
       'frontend/src/features/dashboard/components/ui/menus/create-menu.tsx',
-      'frontend/src/features/dashboard/components/ui/items/file-thumbnail-with-image.tsx',
       'frontend/src/features/upload/components/operations-modal.tsx',
       'frontend/src/components/file-preview/viewers/image-viewer.tsx',
       'frontend/src/components/file-preview/viewers/audio-viewer.tsx',

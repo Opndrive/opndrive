@@ -24,24 +24,24 @@ multiply requests rather than help.
 
 ## Public API (`BYOS3ApiProvider`)
 
-| Method                                                              | What it does                                                  |
-| ------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `fetchDirectoryStructure(prefix, maxKeys, token?)`                  | Paginated listing, split into `files` and `folders`           |
-| `fetchMetadata(path)`                                               | `HeadObject`; `null` on 404 and on any other failure          |
-| `objectExists(key)`                                                 | `HeadObject` as yes/no; throws when it could not check        |
-| `uploadWithPreSignedUrl(params)`                                    | Single-request presigned PUT URL                              |
-| `uploadMultipartParallely(params)`                                  | Returns a `MultipartUploader`; one-part files use one PUT     |
-| `getSignedUrl(params)`                                              | Presigned GET URL, with an inline-preview mode                |
-| `downloadFile(params)`                                              | Streams a GET body to `Buffer`/`Blob` with progress callbacks |
-| `deleteFile(key)`                                                   | Single-object delete                                          |
-| `deleteBatch(batch)`                                                | Up to 1000 objects per call - see below                       |
-| `listFromPrefix(prefix)`                                            | Exhaustive, paginated key listing under a prefix              |
-| `moveFile(params)` / `renameFile(params)`                           | Copy + delete for a single object                             |
-| `renameFolder(params)`                                              | Bulk rename - see below                                       |
-| `createFolder(key)`                                                 | Writes a zero-byte object as a folder marker                  |
-| `search(params)`                                                    | Client-side name matching over one listing page               |
-| `getBuckets(params)`                                                | One page of the account's buckets - see below                 |
-| `getBucketName()` / `getPrefix()` / `getRegion()` / `getS3Client()` | Accessors                                                     |
+| Method                                                              | What it does                                                                |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `fetchDirectoryStructure(prefix, maxKeys, token?)`                  | Paginated listing, split into `files` and `folders`                         |
+| `fetchMetadata(path)`                                               | `HeadObject`; `null` on 404 and on any other failure                        |
+| `objectExists(key)`                                                 | `HeadObject` as yes/no; throws when it could not check                      |
+| `uploadWithPreSignedUrl(params)`                                    | Single-request presigned PUT URL                                            |
+| `uploadMultipartParallely(params)`                                  | Returns a `MultipartUploader`; one-part files use one PUT                   |
+| `getSignedUrl(params)`                                              | Presigned GET URL, with an inline-preview mode that can set `Cache-Control` |
+| `downloadFile(params)`                                              | Streams a GET body to `Buffer`/`Blob` with progress callbacks               |
+| `deleteFile(key)`                                                   | Single-object delete                                                        |
+| `deleteBatch(batch)`                                                | Up to 1000 objects per call - see below                                     |
+| `listFromPrefix(prefix)`                                            | Exhaustive, paginated key listing under a prefix                            |
+| `moveFile(params)` / `renameFile(params)`                           | Copy + delete for a single object                                           |
+| `renameFolder(params)`                                              | Bulk rename - see below                                                     |
+| `createFolder(key)`                                                 | Writes a zero-byte object as a folder marker                                |
+| `search(params)`                                                    | Client-side name matching over one listing page                             |
+| `getBuckets(params)`                                                | One page of the account's buckets - see below                               |
+| `getBucketName()` / `getPrefix()` / `getRegion()` / `getS3Client()` | Accessors                                                                   |
 
 ### `deleteBatch` and the `Errors` array
 

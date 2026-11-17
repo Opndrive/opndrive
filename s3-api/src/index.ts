@@ -232,6 +232,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         Key: params.key,
         ResponseContentDisposition: 'inline',
         ResponseContentType: params.responseContentType,
+        ResponseCacheControl: params.responseCacheControl,
       });
     } else {
       cmd = new GetObjectCommand({

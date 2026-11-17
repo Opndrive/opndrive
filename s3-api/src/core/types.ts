@@ -67,6 +67,13 @@ export interface SignedUrlParams {
   isPreview: boolean;
   responseContentType?: string;
   /**
+   * `Cache-Control` for the presigned response, overriding whatever the object
+   * was stored with. Only honoured when `isPreview` is true. Most objects carry
+   * none, which leaves the browser to guess how long it may keep them; a page
+   * that shows the same image again and again can say so instead.
+   */
+  responseCacheControl?: string;
+  /**
    * Name the browser should save the file as. Only honoured when `isPreview` is
    * false; sets `Content-Disposition: attachment` on the presigned response so
    * the name survives the cross-origin hop that makes `<a download>` a no-op.
