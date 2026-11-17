@@ -66,7 +66,7 @@ export function FilePreviewModal() {
    * the panel puts them inside the dialog, and putting it back on close returns
    * them to the file they came from rather than the top of the document.
    *
-   * Deliberately no focus trap. This one embeds the pdf, monaco and xlsx
+   * Deliberately no focus trap. This one embeds the pdf, code and spreadsheet
    * viewers, which manage focus themselves, and a trap wrapped around them is
    * the kind of thing that breaks a viewer in a way nobody notices for months.
    * The panel is full screen, so there is nothing visible behind it to tab to,

@@ -1,7 +1,7 @@
 /**
  * Preview modal accessibility.
  *
- * This one is not a Radix dialog. It embeds the pdf, monaco and xlsx viewers,
+ * This one is not a Radix dialog. It embeds the pdf, code and spreadsheet viewers,
  * which manage focus themselves, so a focus trap wrapped around them is a good
  * way to break a viewer quietly. It gets the dialog semantics and the focus
  * moves by hand instead, which means nothing enforces them but these tests.
@@ -30,7 +30,7 @@ vi.mock('@/context/file-preview-context', () => ({
   useFilePreview: () => preview.value,
 }));
 
-// The header and the viewers pull in S3, monaco and pdf. None of that is what
+// The header and the viewers pull in S3 and pdf.js. None of that is what
 // this file is about.
 vi.mock('./preview-header', () => ({ PreviewHeader: () => <button>Close preview</button> }));
 vi.mock('./preview-content', () => ({ PreviewContent: () => <div>viewer</div> }));

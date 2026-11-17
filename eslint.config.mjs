@@ -165,7 +165,6 @@ export default [
       'frontend/src/components/file-preview/viewers/image-viewer.tsx',
       'frontend/src/components/file-preview/viewers/audio-viewer.tsx',
       'frontend/src/components/file-preview/viewers/video-viewer.tsx',
-      'frontend/src/components/file-preview/viewers/pdf-viewer.tsx',
       'frontend/src/components/file-preview/viewers/excel-viewer.tsx',
       'frontend/src/components/file-preview/viewers/code-viewer.tsx',
     ],
