@@ -10,7 +10,12 @@ export interface SearchOptions {
   onRequestCountUpdate?: (count: number) => void; // Track number of API requests made
 }
 
-const GLOBAL_SCAN_THRESHOLD = 100_000; // stop after scanning 100k items per request
+/**
+ * How many objects one search call reads before handing back a resume token,
+ * matched or not. It used to be compared with the number of matches, so a
+ * search for something that is not there read the entire bucket in one go.
+ */
+const GLOBAL_SCAN_THRESHOLD = 100_000;
 const INITIAL_RESULTS_LIMIT = 50; // Stop after 50 results for initial search
 
 type ResumeState = {
@@ -93,12 +98,12 @@ class SearchService {
     const allFolders: _Object[] = [];
     const queue: string[] = state?.queue?.slice() ?? [rootPrefix];
     let current = state?.current ? { ...state.current } : undefined;
-    let scanned = 0; // total keys scanned
+    let scanned = 0; // objects listed, matched or not
     let totalResultsCount = 0; // Track total files + folders
     let initialBatchCount = 0; // Track items loaded in THIS batch (not total)
     let apiRequestCount = 0; // Track number of API requests made in this search call
 
-    while (scanned < GLOBAL_SCAN_THRESHOLD && (current || queue.length)) {
+    while (current || queue.length) {
       if (signal?.aborted) throw new Error('Search cancelled');
 
       if (!current) {
@@ -128,17 +133,14 @@ class SearchService {
         allFiles.push(...page.files);
       }
 
+      // Not queued for a search of their own. The listing has no delimiter,
+      // so it already reaches everything below this prefix, folders included;
+      // following a matched folder listed its whole subtree a second time.
       if (page.folders?.length) {
         allFolders.push(...page.folders);
-        // Add folders to queue for recursive search
-        for (const folder of page.folders) {
-          if (folder.Key) {
-            queue.push(folder.Key);
-          }
-        }
       }
 
-      scanned += page.totalKeys;
+      scanned += page.scannedKeys ?? page.totalKeys;
       const newItemsCount = (page.files?.length || 0) + (page.folders?.length || 0);
       initialBatchCount += newItemsCount;
       totalResultsCount = allFiles.length + allFolders.length;
@@ -156,40 +158,25 @@ class SearchService {
         });
       }
 
-      // Check if we've reached the initial results limit (50 items) for THIS batch
-      // Apply limit to both initial search and "Load More" operations
-      if (initialBatchCount >= INITIAL_RESULTS_LIMIT) {
-        // Save state for continuation
-        const resume: ResumeState = {
-          queue,
-          current: page.nextToken ? { ...current, nextToken: page.nextToken } : undefined,
-        };
-        return {
-          files: dedupeByKey(allFiles),
-          totalFiles: allFiles.length,
-          folders: dedupeByKey(allFolders),
-          totalFolders: allFolders.length,
-          totalKeys: totalResultsCount,
-          nextToken: encodeResumeToken(resume),
-          isTruncated: true, // More results available
-        };
-      }
-
-      // Check if there are more results using isTruncated and nextToken
-      // isTruncated: false means there are more results, true means no more results
-      if (page.nextToken && page.isTruncated === true) {
-        // Continue pagination with the next token
+      // Where to read next, decided before deciding whether to stop, so that
+      // stopping hands back a token for exactly what is left. S3 sends a
+      // continuation token only while a prefix has more to list.
+      if (page.nextToken) {
         current.nextToken = page.nextToken;
-      } else if (page.isTruncated === false) {
-        // No more results, stop the search completely
-        break;
       } else {
-        // No next token and not explicitly truncated, move to next prefix
+        // This prefix is done. Move on to whatever is still queued, which a
+        // resume token from before folders stopped being queued may hold;
+        // stopping outright here dropped those without saying so.
         current = undefined;
       }
 
-      // If we reached the threshold, stop and return resume token
-      if (scanned >= GLOBAL_SCAN_THRESHOLD) {
+      // Stop for now once this call has found a batch of results, or read its
+      // share of the bucket - but only with something left to read. A token
+      // for nothing left showed "Load more" for a search that was finished.
+      const somethingLeft = current !== undefined || queue.length > 0;
+      const batchFull = initialBatchCount >= INITIAL_RESULTS_LIMIT;
+      const readEnough = scanned >= GLOBAL_SCAN_THRESHOLD;
+      if (somethingLeft && (batchFull || readEnough)) {
         const resume: ResumeState = { queue, current };
         return {
           files: dedupeByKey(allFiles),

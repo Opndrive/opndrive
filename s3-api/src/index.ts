@@ -651,6 +651,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       folders: foldersMatching,
       totalFolders,
       totalKeys: allKeysMatched,
+      scannedKeys: contents.length,
       nextToken: response.NextContinuationToken,
       isTruncated: response.IsTruncated,
     };

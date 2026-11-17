@@ -386,6 +386,20 @@ describe('search', () => {
     expect(result.folders.map((f) => f.Key)).toEqual(['docs/reports/', 'docs/archive/']);
   });
 
+  it('says how many keys it listed, not only how many matched', async () => {
+    s3Mock.on(ListObjectsV2Command).resolves(page);
+
+    const result = await makeApi().search({
+      prefix: 'docs/',
+      searchTerm: 'nothing-like-this',
+      nextToken: undefined,
+    });
+
+    // A caller limiting how much it reads has to count what was read. Counting
+    // matches, a search for something absent never reaches any limit.
+    expect(result).toMatchObject({ totalKeys: 0, scannedKeys: 5 });
+  });
+
   it('matches on the name only, ignoring the directory part of the key', async () => {
     s3Mock.on(ListObjectsV2Command).resolves({
       Contents: [{ Key: 'invoices/2026/summary.txt' }],
@@ -453,6 +467,7 @@ describe('search', () => {
       folders: [],
       totalFolders: 0,
       totalKeys: 0,
+      scannedKeys: 0,
       nextToken: undefined,
       isTruncated: undefined,
     });

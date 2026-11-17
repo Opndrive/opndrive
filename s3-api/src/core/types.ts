@@ -195,7 +195,14 @@ export interface SearchResult {
   totalFiles: number;
   folders: _Object[];
   totalFolders: number;
+  /** Keys that matched: `totalFiles + totalFolders`. */
   totalKeys: number;
+  /**
+   * Keys the page listed, matched or not. What a caller budgeting how much of
+   * a bucket to read should count: `totalKeys` stays at zero across a whole
+   * bucket of objects that do not match.
+   */
+  scannedKeys?: number;
   nextToken?: string;
   isTruncated?: boolean;
 }
