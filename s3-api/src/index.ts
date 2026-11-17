@@ -68,6 +68,15 @@ const MAX_REPORTED_KEYS = 10;
  */
 const LIST_BUCKETS_PAGE_SIZE = 10_000;
 
+/**
+ * Whether a throw from S3 means "there is no such object".
+ *
+ * A HEAD response carries no body, so the status is the only thing to go on.
+ */
+function isNotFound(error: unknown): boolean {
+  return error instanceof S3ServiceException && error.$metadata?.httpStatusCode === 404;
+}
+
 export class BYOS3ApiProvider extends BaseS3ApiProvider {
   protected userType: userTypes;
 
@@ -109,6 +118,13 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     };
   }
 
+  /**
+   * Reads an object's metadata, for showing it.
+   *
+   * Returns null when the object is missing and also when the lookup failed
+   * for any other reason, so a null here does NOT mean the key is free. Use
+   * `objectExists` to decide whether something is already stored at a key.
+   */
   async fetchMetadata(path: string): Promise<HeadObjectCommandOutput | null> {
     try {
       const command = new HeadObjectCommand({
@@ -120,15 +136,43 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
       return metadata;
     } catch (error: unknown) {
-      // 404 errors are expected when checking for file existence
-      // Don't log these as they're part of normal operation
-      if (error instanceof S3ServiceException && error.$metadata?.httpStatusCode === 404) {
+      // A missing object is an ordinary answer, not something to log.
+      if (isNotFound(error)) {
         return null;
       }
 
       // Only log unexpected errors
       console.warn('Unexpected error in fetchMetadata:', error);
       return null;
+    }
+  }
+
+  /**
+   * Whether an object is stored at `key`.
+   *
+   * `fetchMetadata` cannot answer this. It returns null for a missing object
+   * and for every other failure alike, so a HEAD that was refused, throttled or
+   * never completed reads as "nothing there" - and a caller deciding whether a
+   * name is free then writes over whatever was.
+   *
+   * Only a 404 means no. Anything else is thrown, because "could not check" is
+   * not an answer to "does it exist", and callers must be able to tell the two
+   * apart.
+   */
+  async objectExists(key: string): Promise<boolean> {
+    try {
+      await this.s3.send(
+        new HeadObjectCommand({
+          Bucket: this.credentials.bucketName,
+          Key: key,
+        })
+      );
+
+      return true;
+    } catch (error: unknown) {
+      if (isNotFound(error)) return false;
+
+      throw error;
     }
   }
 
