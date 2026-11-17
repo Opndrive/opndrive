@@ -7,7 +7,12 @@ export interface UploadCardEvent {
   id: string;
   status: UploadStatus;
   progress: number;
+  /** Why it failed, on a 'failed' event. */
+  error?: string;
 }
+
+/** What a card takes from an event. */
+export type UploadCardChange = Omit<UploadCardEvent, 'id'>;
 
 /**
  * How long events are collected before they reach the store.
@@ -39,12 +44,14 @@ export interface UploadEventBatcher {
  *
  * Only the latest event per upload is kept. Each event carries the upload's
  * whole status and progress, so an older one has nothing the newer one lacks.
+ * The same goes for the reason it failed: an event that is not a failure
+ * carries none, which clears the reason a retried upload's card was showing.
  *
  * @param apply receives each batch, oldest upload first.
  * @param schedule defaults to setTimeout; injectable for tests.
  */
 export function createUploadEventBatcher(
-  apply: (batch: ReadonlyMap<string, { status: UploadStatus; progress: number }>) => void,
+  apply: (batch: ReadonlyMap<string, UploadCardChange>) => void,
   {
     windowMs = UPLOAD_EVENT_WINDOW_MS,
     schedule = (run: () => void, ms: number) => {
@@ -56,7 +63,7 @@ export function createUploadEventBatcher(
     schedule?: (run: () => void, ms: number) => () => void;
   } = {}
 ): UploadEventBatcher {
-  let pending = new Map<string, { status: UploadStatus; progress: number }>();
+  let pending = new Map<string, UploadCardChange>();
   let unschedule: (() => void) | null = null;
 
   const flush = () => {
@@ -72,8 +79,10 @@ export function createUploadEventBatcher(
   };
 
   return {
-    push({ id, status, progress }) {
-      pending.set(id, { status, progress });
+    push({ id, status, progress, error }) {
+      // The reason went missing here before: only status and progress were
+      // kept, so every failed card said "Failed" and never why.
+      pending.set(id, { status, progress, error });
       unschedule ??= schedule(flush, windowMs);
     },
     flush,

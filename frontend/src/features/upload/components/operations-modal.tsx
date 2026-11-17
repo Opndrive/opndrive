@@ -101,18 +101,24 @@ type UploadsMap = ReturnType<typeof useUploadStore.getState>['uploads'];
  */
 
 /**
- * A folder card's status and progress, worked out from its files.
+ * A folder card's status and progress, worked out from its files, and why it
+ * failed when it has.
  *
- * One pass over the files for both. This runs for every folder on every
+ * One pass over the files for all of it. This runs for every folder on every
  * update the panel sees, and the version it replaces walked a folder's files
  * up to eight times each round.
+ *
+ * The reason is the folder's own when it has one - a folder that could not
+ * start at all has no files to ask - and otherwise the first failed file's.
  */
 export function summariseFolder(
   uploads: UploadsMap,
   folderId: string
-): { status: string; progress: number } {
+): { status: string; progress: number; error?: string } {
   const folder = uploads[folderId];
-  if (!folder || !folder.fileIds) return { status: folder?.status || 'queued', progress: 0 };
+  if (!folder || !folder.fileIds) {
+    return { status: folder?.status || 'queued', progress: 0, error: folder?.error };
+  }
 
   let progressSum = 0;
   let present = 0;
@@ -121,6 +127,7 @@ export function summariseFolder(
   let completed = 0;
   let queued = 0;
   let failed = 0;
+  let firstFailure: string | undefined;
 
   for (const id of folder.fileIds) {
     const file = uploads[id];
@@ -134,7 +141,10 @@ export function summariseFolder(
     else if (file.status === 'paused') paused++;
     else if (file.status === 'completed') completed++;
     else if (file.status === 'queued') queued++;
-    else if (file.status === 'failed') failed++;
+    else if (file.status === 'failed') {
+      failed++;
+      firstFailure ??= file.error;
+    }
   }
 
   const progress = folder.fileIds.length > 0 ? progressSum / folder.fileIds.length : 0;
@@ -149,7 +159,8 @@ export function summariseFolder(
   else if (failed > 0) status = 'failed';
   else status = 'queued';
 
-  return { status, progress };
+  const error = status === 'failed' ? (folder.error ?? firstFailure) : undefined;
+  return { status, progress, error };
 }
 
 // Extract file extension from filename
@@ -329,9 +340,12 @@ export const OperationsModal: React.FC = () => {
           name: upload.name,
           type: upload.type,
           operationType: 'upload' as const,
+          // With the reason it failed. Left out, every failed upload said
+          // only "Failed", whether its key was refused or its connection
+          // dropped, which want different things from the person reading it.
           ...(upload.type === 'folder'
             ? summariseFolder(uploads, upload.id)
-            : { status: upload.status, progress: upload.progress }),
+            : { status: upload.status, progress: upload.progress, error: upload.error }),
           fileIds: upload.fileIds,
           parentFolderId: upload.parentFolderId,
           extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,

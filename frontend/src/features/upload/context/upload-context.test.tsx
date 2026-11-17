@@ -202,6 +202,32 @@ describe('card updates', () => {
     expect(uploads['u-2']).toMatchObject({ status: 'uploading', progress: 50 });
   });
 
+  it('keeps the reason an upload failed, and drops it once it is tried again', () => {
+    mountProvider(false);
+    vi.useFakeTimers();
+
+    act(() => {
+      manager.emit('statusChange', {
+        id: 'u-0',
+        status: 'failed',
+        progress: 40,
+        error: 'Access Denied',
+      });
+      vi.advanceTimersByTime(UPLOAD_EVENT_WINDOW_MS);
+    });
+    expect(useUploadStore.getState().uploads['u-0']).toMatchObject({
+      status: 'failed',
+      error: 'Access Denied',
+    });
+
+    // Retried: the reason was about the attempt that failed.
+    act(() => {
+      manager.emit('statusChange', { id: 'u-0', status: 'queued', progress: 0 });
+      vi.advanceTimersByTime(UPLOAD_EVENT_WINDOW_MS);
+    });
+    expect(useUploadStore.getState().uploads['u-0']!.error).toBeUndefined();
+  });
+
   it('still delivers the last window when the provider goes away', () => {
     const { unmount } = mountProvider(false);
     vi.useFakeTimers();

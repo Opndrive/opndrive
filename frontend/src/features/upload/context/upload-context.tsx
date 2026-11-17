@@ -70,8 +70,12 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Batched rather than applied one by one: a large drop sends thousands of
     // events, and each store update copies every card. See the batcher.
     const batcher = createUploadEventBatcher(updateUploads);
-    const handleEvent = (event: { id: string; status: UploadStatus; progress: number }) =>
-      batcher.push(event);
+    const handleEvent = (event: {
+      id: string;
+      status: UploadStatus;
+      progress: number;
+      error?: string;
+    }) => batcher.push(event);
 
     uploadManager.on('statusChange', handleEvent);
     uploadManager.on('progress', handleEvent);

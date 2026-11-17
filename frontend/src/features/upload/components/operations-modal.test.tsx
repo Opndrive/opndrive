@@ -115,6 +115,75 @@ describe('Retry', () => {
   });
 });
 
+describe('a failed upload', () => {
+  it('says why it failed', () => {
+    seed({
+      u1: {
+        id: 'u1',
+        name: 'report.pdf',
+        type: 'file',
+        status: 'failed',
+        progress: 40,
+        error: 'Access Denied',
+      },
+    });
+    renderPanel();
+
+    // Not a bare "Failed": a refused key and a dropped connection want
+    // different things from the person reading it.
+    expect(screen.getByText('Access Denied')).toBeTruthy();
+  });
+
+  it('says why a folder failed, from the file that failed', () => {
+    seed({
+      folder: {
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        status: 'queued',
+        progress: 0,
+        fileIds: ['a', 'b'],
+      },
+      a: {
+        id: 'a',
+        name: 'photos/a.jpg',
+        type: 'file',
+        status: 'completed',
+        progress: 100,
+        parentFolderId: 'folder',
+      },
+      b: {
+        id: 'b',
+        name: 'photos/b.jpg',
+        type: 'file',
+        status: 'failed',
+        progress: 0,
+        parentFolderId: 'folder',
+        error: 'The specified bucket does not exist',
+      },
+    });
+    renderPanel();
+
+    expect(screen.getByText('The specified bucket does not exist')).toBeTruthy();
+  });
+
+  it("prefers the folder's own reason, when it has one", () => {
+    seed({
+      folder: {
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        status: 'failed',
+        progress: 0,
+        error: 'The upload could not start.',
+      },
+    });
+    renderPanel();
+
+    expect(screen.getByText('The upload could not start.')).toBeTruthy();
+  });
+});
+
 describe('while a drop is being prepared', () => {
   // Between a drop landing and its first card, a big folder is read, checked
   // and planned. The panel used to stay away for all of it.
