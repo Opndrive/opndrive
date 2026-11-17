@@ -31,9 +31,9 @@ const { MockUploader, uploaderInstances } = vi.hoisted(() => {
     onProgress?: (p: number) => void;
 
     /** Captured so tests can assert the key the manager derived. */
-    config: { key?: string };
+    config: { key?: string; contentType?: string };
 
-    constructor(config: { key?: string }) {
+    constructor(config: { key?: string; contentType?: string }) {
       this.config = config;
       instances.push(this);
     }
@@ -374,6 +374,16 @@ describe('events', () => {
 
     expect(healthy).toHaveBeenCalled();
     expect(error).toHaveBeenCalled();
+  });
+});
+
+describe('content type', () => {
+  it('hands each upload the content type it was given', () => {
+    const manager = SignedUrlUploadManager.getInstance(config);
+
+    manager.addUpload(makeFile('IMG_0001.HEIC'), { key: 'a', contentType: 'image/heic' });
+
+    expect(uploaderInstances[0]!.config.contentType).toBe('image/heic');
   });
 });
 

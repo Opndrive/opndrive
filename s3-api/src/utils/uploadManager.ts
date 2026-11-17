@@ -117,7 +117,7 @@ export class UploadManager {
    * CORRECTED: Adds a file to the upload queue.
    * The concurrency for the uploader is now a fixed value, not the manager's concurrency.
    */
-  public addUpload(file: File, config: { key: string }): string {
+  public addUpload(file: File, config: { key: string; contentType?: string }): string {
     if (this.isDisposed) {
       throw new Error(
         'This UploadManager instance has been disposed. Obtain a new one via getInstance().'
@@ -132,6 +132,7 @@ export class UploadManager {
       fileName: file.name,
       partSizeBytes: this.partSize,
       concurrency: this.partConcurrency,
+      contentType: config.contentType,
     });
 
     const uploadItem: UploadItem = {

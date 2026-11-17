@@ -106,12 +106,12 @@ async function untilIdle(bucketRef: FakeBucket, label = 'uploads to finish') {
 /** Builds a real drop payload by running extraction over mocked entry APIs. */
 async function dropOfFolder(
   name: string,
-  files: { path: string; size?: number; failWith?: Error }[]
+  files: { path: string; size?: number; type?: string; failWith?: Error }[]
 ): Promise<ProcessedDragData> {
   // Group by the first segment below the folder so nested directories are real
   // directories, not flattened names.
   const children = files.map((f) =>
-    mockFileEntry(makeFile(f.path.split('/').pop()!, f.size), { failWith: f.failWith })
+    mockFileEntry(makeFile(f.path.split('/').pop()!, f.size, f.type), { failWith: f.failWith })
   );
   const entry = mockDirectoryEntry(name, children);
   const list = mockDataTransferItemList([mockDataTransferItem(entry)]);
@@ -212,8 +212,8 @@ describe('1b. empty and small files', () => {
     });
     await untilIdle(bucket);
 
-    expect(bucket.objects.get('project/__init__.py')).toEqual({ size: 0 });
-    expect(bucket.objects.get('project/main.py')).toEqual({ size: 20 });
+    expect(bucket.objects.get('project/__init__.py')).toMatchObject({ size: 0 });
+    expect(bucket.objects.get('project/main.py')).toMatchObject({ size: 20 });
     // File cards only. A folder card's status is worked out from its files
     // when the panel draws it, so the stored one stays where it started.
     const fileCards = Object.values(uploads()).filter((u) => u.type === 'file');
@@ -232,7 +232,7 @@ describe('1b. empty and small files', () => {
     });
     await untilIdle(bucket);
 
-    expect(bucket.objects.get('.gitkeep')).toEqual({ size: 0 });
+    expect(bucket.objects.get('.gitkeep')).toMatchObject({ size: 0 });
   });
 
   it('sends a small file as one request, with no multipart session', async () => {
@@ -272,6 +272,42 @@ describe('1b. empty and small files', () => {
     expect(bucket.objects.size).toBe(0);
     expect(bucket.commands).not.toContain('AbortMultipartUploadCommand');
     expect(queue().claimedPrefixes()).toEqual([]);
+  });
+});
+
+describe('1c. content type', () => {
+  it('stores each file under its type, on both upload paths', async () => {
+    const data = await dropOfFolder('media', [
+      { path: 'clip.mp4', size: MULTIPART_SIZE, type: 'video/mp4' },
+      { path: 'notes.txt', type: 'text/plain' },
+    ]);
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(data, '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+
+    // Multipart sets it when the upload is created; one request sets it on
+    // the PUT. Both used to send none, and S3 stored everything as binary.
+    expect(bucket.objects.get('media/clip.mp4')).toEqual({
+      size: MULTIPART_SIZE,
+      contentType: 'video/mp4',
+    });
+    expect(bucket.objects.get('media/notes.txt')).toEqual({ size: 10, contentType: 'text/plain' });
+  });
+
+  it('fills in a type from the extension when the browser has none', async () => {
+    // An iPhone photo dropped on a Windows machine arrives with no type.
+    const data = await dropOfFolder('camera', [{ path: 'IMG_0001.heic', type: '' }]);
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(data, '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+
+    expect(bucket.objects.get('camera/IMG_0001.heic')?.contentType).toBe('image/heic');
   });
 });
 

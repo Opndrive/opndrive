@@ -40,6 +40,15 @@ export interface MultipartUploadParams {
    */
   partSizeBytes: number;
   concurrency: number;
+  /**
+   * Stored as the object's Content-Type.
+   *
+   * Optional. Without it the File's own `type` is used, and when the browser
+   * left that empty too, none is sent and S3 stores its default,
+   * `binary/octet-stream`. Uploads used to send none at all, so every file
+   * uploaded this way was stored as binary whatever it was.
+   */
+  contentType?: string;
 }
 
 export interface MultipartUploadConfig extends MultipartUploadParams {
@@ -274,6 +283,8 @@ export interface UploadItem {
   config: {
     key: string;
     folderId?: string;
+    /** See MultipartUploadParams.contentType. */
+    contentType?: string;
   };
 }
 

@@ -41,6 +41,8 @@ export class MultipartUploader {
   private isPaused = false;
   private isCancelled = false;
   private concurrency = 3;
+  /** See MultipartUploadParams.contentType. */
+  private contentType?: string;
 
   private controllers: AbortController[] = [];
 
@@ -49,6 +51,7 @@ export class MultipartUploader {
     this.bucket = config.bucket;
     this.key = config.key;
     this.fileName = config.fileName;
+    this.contentType = config.contentType || undefined;
     this.concurrency = config.concurrency && config.concurrency > 0 ? config.concurrency : 3;
     // S3 rejects a multipart upload whose non-final parts are under 5 MiB.
     this.partSize =
@@ -68,6 +71,9 @@ export class MultipartUploader {
         new CreateMultipartUploadCommand({
           Bucket: this.bucket,
           Key: this.key,
+          // Set here or never: the parts and the completion carry no type, so
+          // this is what the finished object is stored as.
+          ContentType: this.contentTypeOf(file),
         })
       );
 
@@ -89,6 +95,14 @@ export class MultipartUploader {
     if (!this.isPaused && !this.isCancelled) {
       await this.completeUpload();
     }
+  }
+
+  /**
+   * The Content-Type to store: the one this upload was given, else the
+   * browser's, else none - which S3 stores as `binary/octet-stream`.
+   */
+  private contentTypeOf(file: File): string | undefined {
+    return this.contentType || file.type || undefined;
   }
 
   /** Whether the whole file fits in a single part. An empty file always does. */
@@ -121,6 +135,7 @@ export class MultipartUploader {
           Bucket: this.bucket,
           Key: this.key,
           Body: file,
+          ContentType: this.contentTypeOf(file),
         }),
         { abortSignal: controller.signal }
       );

@@ -219,6 +219,36 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
     });
   });
 
+  describe('content type', () => {
+    it('is recorded for a single-request upload', async () => {
+      const key = keyFor('photo.png');
+
+      await uploader(key).start(new File([randomBytes(512)], 'photo.png', { type: 'image/png' }));
+
+      expect((await head(key)).ContentType).toBe('image/png');
+    });
+
+    it('is recorded for a multipart upload', async () => {
+      const key = keyFor('clip.mp4');
+
+      await uploader(key).start(
+        new File([randomBytes(11 * MiB)], 'clip.mp4', { type: 'video/mp4' })
+      );
+
+      expect((await head(key)).ContentType).toBe('video/mp4');
+    });
+
+    it('takes the type the caller names over an empty one from the browser', async () => {
+      const key = keyFor('README.md');
+
+      await uploader(key, client, { contentType: 'text/markdown' }).start(
+        new File(['# hi'], 'README.md')
+      );
+
+      expect((await head(key)).ContentType).toBe('text/markdown');
+    });
+  });
+
   describe('multipart files', () => {
     it('arrive byte for byte', async () => {
       const key = keyFor('archive.bin');

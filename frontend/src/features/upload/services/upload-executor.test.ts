@@ -41,7 +41,7 @@ function fakeManager() {
     progress: [],
     statusChange: [],
   };
-  const added: { id: string; key: string; file: File }[] = [];
+  const added: { id: string; key: string; contentType?: string; file: File }[] = [];
   const cancelled: string[] = [];
   let nextId = 0;
 
@@ -57,7 +57,7 @@ function fakeManager() {
     failCancel: new Set<string>(),
     addUpload(file, config) {
       const id = `upload-${nextId++}`;
-      added.push({ id, key: config.key, file });
+      added.push({ id, key: config.key, contentType: config.contentType, file });
       return id;
     },
     async cancelUpload(id) {
@@ -242,6 +242,17 @@ describe('start', () => {
       'docs/photos (1)/a.jpg',
       'docs/photos (1)/raw/b.jpg',
     ]);
+  });
+
+  it('gives every file a content type, filling in from the extension', () => {
+    const photo = new File([new Uint8Array(10)], 'IMG_0001.heic');
+    const scan = new File([new Uint8Array(10)], 'scan.pdf', { type: 'application/pdf' });
+
+    executor.start([filePlan({ files: [photo, scan] })]);
+
+    // The browser had nothing to say about the HEIC photo. Sent without a
+    // type, S3 would store it as binary.
+    expect(manager.added.map((a) => a.contentType)).toEqual(['image/heic', 'application/pdf']);
   });
 
   it('reports the manager ids it produced for each task', () => {

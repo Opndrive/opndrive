@@ -11,7 +11,7 @@
  *         |
  *         v
  *   [ this executor ]     key mapping, task <-> upload ids, claim lifecycle
- *         |  addUpload(file, { key }) x N
+ *         |  addUpload(file, { key, contentType }) x N
  *         v
  *   UploadManager         THE queue, THE concurrency limit, multipart
  *         |  statusChange / progress
@@ -32,10 +32,11 @@
 
 import type { PlannedUpload } from '../stores/use-upload-queue-store';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
+import { contentTypeFor } from '../utils/content-type';
 
 /** What the executor needs from an upload manager. */
 export interface UploadManagerLike {
-  addUpload(file: File, config: { key: string }): string;
+  addUpload(file: File, config: { key: string; contentType?: string }): string;
   cancelUpload(id: string): Promise<void> | void;
   on(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
   off(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
@@ -276,7 +277,9 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         try {
           for (const file of plan.files) {
             const key = keyForPlannedFile(plan, file);
-            const uploadId = manager.addUpload(file, { key });
+            // Decided here rather than by the manager, which only knows what
+            // the browser said. See contentTypeFor.
+            const uploadId = manager.addUpload(file, { key, contentType: contentTypeFor(file) });
 
             record.uploadIds.add(uploadId);
             taskByUpload.set(uploadId, plan.id);

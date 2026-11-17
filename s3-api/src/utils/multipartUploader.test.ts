@@ -57,7 +57,9 @@ function installLocalStorage() {
   });
 }
 
-function makeUploader(overrides: { partSizeBytes?: number; concurrency?: number } = {}) {
+function makeUploader(
+  overrides: { partSizeBytes?: number; concurrency?: number; contentType?: string } = {}
+) {
   return new MultipartUploader({
     s3: new S3Client({ region: 'us-east-1' }),
     bucket: 'test-bucket',
@@ -65,6 +67,7 @@ function makeUploader(overrides: { partSizeBytes?: number; concurrency?: number 
     fileName: 'big.bin',
     partSizeBytes: overrides.partSizeBytes ?? 5 * MB,
     concurrency: overrides.concurrency ?? 1,
+    contentType: overrides.contentType,
   });
 }
 
@@ -370,6 +373,67 @@ describe('files that fit in one part', () => {
     await uploader.start(makeFile(1024));
 
     expect(s3Mock).not.toHaveReceivedCommand(PutObjectCommand);
+  });
+});
+
+/**
+ * The Content-Type the object is stored with.
+ *
+ * Uploads used to send none, so S3 stored every file as binary/octet-stream:
+ * a photo, a video and a PDF all came back as "some bytes" to anything that
+ * read the object without the app's own preview overriding the type.
+ */
+describe('content type', () => {
+  const typed = (size: number, name: string, type: string) =>
+    new File([new Uint8Array(size)], name, { type });
+
+  it("sends the file's type with a single request", async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader().start(typed(1024, 'photo.png', 'image/png'));
+
+    expect(s3Mock).toHaveReceivedCommandWith(PutObjectCommand, { ContentType: 'image/png' });
+  });
+
+  it('sends it when a multipart upload is created', async () => {
+    stubHappyPath();
+
+    await makeUploader().start(typed(12 * MB, 'clip.mp4', 'video/mp4'));
+
+    // The parts and the completion carry no type. This is the only request
+    // that can set it.
+    expect(s3Mock).toHaveReceivedCommandWith(CreateMultipartUploadCommand, {
+      ContentType: 'video/mp4',
+    });
+  });
+
+  it('uses the type it was given when the browser has none', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    // An iPhone photo on Windows: the browser often reports no type for it.
+    await makeUploader({ contentType: 'image/heic' }).start(typed(1024, 'IMG_0001.HEIC', ''));
+
+    expect(s3Mock).toHaveReceivedCommandWith(PutObjectCommand, { ContentType: 'image/heic' });
+  });
+
+  it('prefers the type it was given over the browser one', async () => {
+    stubHappyPath();
+
+    await makeUploader({ contentType: 'text/csv' }).start(
+      typed(12 * MB, 'export.csv', 'application/vnd.ms-excel')
+    );
+
+    expect(s3Mock).toHaveReceivedCommandWith(CreateMultipartUploadCommand, {
+      ContentType: 'text/csv',
+    });
+  });
+
+  it('sends none when nobody knows, leaving S3 to its default', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await makeUploader().start(makeFile(1024));
+
+    expect(s3Mock.commandCalls(PutObjectCommand)[0]!.args[0].input.ContentType).toBeUndefined();
   });
 });
 

@@ -34,11 +34,24 @@ function s3Error(name: string, message: string, httpStatusCode = 400) {
   return Object.assign(new Error(message), { name, $metadata: { httpStatusCode } });
 }
 
+export interface StoredObject {
+  size: number;
+  /** Absent when the upload sent none, which real S3 stores as binary/octet-stream. */
+  contentType?: string;
+}
+
+interface OpenUpload {
+  key: string;
+  parts: Map<number, number>;
+  /** Given when the upload is created. The parts and the completion carry none. */
+  contentType?: string;
+}
+
 export interface FakeBucket {
-  /** Committed objects, keyed by S3 key. */
-  objects: Map<string, { size: number }>;
+  /** Committed objects, keyed by S3 key, with the Content-Type they were stored under. */
+  objects: Map<string, StoredObject>;
   /** Multipart uploads that were started and not yet completed or aborted. */
-  openUploads: Map<string, { key: string; parts: Map<number, number> }>;
+  openUploads: Map<string, OpenUpload>;
   /** Every command class name the uploader sent, in order. */
   commands: string[];
   /** Keys that were aborted rather than completed. */
@@ -66,8 +79,8 @@ export interface FakeBucket {
 }
 
 export function createFakeBucket(): FakeBucket {
-  const objects = new Map<string, { size: number }>();
-  const openUploads = new Map<string, { key: string; parts: Map<number, number> }>();
+  const objects = new Map<string, StoredObject>();
+  const openUploads = new Map<string, OpenUpload>();
   const commands: string[] = [];
   const aborted: string[] = [];
 
@@ -100,13 +113,20 @@ export function createFakeBucket(): FakeBucket {
         await onTheWire(options);
 
         const body = command.input.Body as Blob | undefined;
-        objects.set(command.input.Key as string, { size: body?.size ?? 0 });
+        objects.set(command.input.Key as string, {
+          size: body?.size ?? 0,
+          contentType: command.input.ContentType,
+        });
         return { ETag: '"etag-single"' };
       }
 
       if (command instanceof CreateMultipartUploadCommand) {
         const id = `mpu-${uploadSeq++}`;
-        openUploads.set(id, { key: command.input.Key as string, parts: new Map() });
+        openUploads.set(id, {
+          key: command.input.Key as string,
+          parts: new Map(),
+          contentType: command.input.ContentType,
+        });
         return { UploadId: id };
       }
 
@@ -147,7 +167,7 @@ export function createFakeBucket(): FakeBucket {
           size += partSize;
         });
 
-        objects.set(upload.key, { size });
+        objects.set(upload.key, { size, contentType: upload.contentType });
         openUploads.delete(id);
         return {};
       }

@@ -206,6 +206,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       fileName: params.fileName,
       concurrency: params.concurrency,
       partSizeBytes: params.partSizeBytes,
+      contentType: params.contentType,
     };
 
     const uploader = new MultipartUploader(config);

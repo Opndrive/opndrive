@@ -69,12 +69,15 @@ class FakeXhr {
 
 const uploadWithPreSignedUrl = vi.fn(async () => 'https://signed.example.com/put');
 
-function makeUploader(overrides: { key?: string; expiresInSeconds?: number } = {}) {
+function makeUploader(
+  overrides: { key?: string; expiresInSeconds?: number; contentType?: string } = {}
+) {
   return new SignedUrlUploader({
     apiProvider: { uploadWithPreSignedUrl } as unknown as BYOS3ApiProvider,
     key: overrides.key ?? 'users/alice/a.txt',
     fileName: 'a.txt',
     expiresInSeconds: overrides.expiresInSeconds,
+    contentType: overrides.contentType,
   });
 }
 
@@ -160,6 +163,28 @@ describe('the request', () => {
     );
 
     expect(xhr.headers['Content-Type']).toBe('application/pdf');
+    xhr.fire('load');
+    await promise;
+  });
+
+  it('sends the content type it was given when the file has none', async () => {
+    const { promise, xhr } = await startUpload(
+      makeUploader({ contentType: 'image/heic' }),
+      new File(['x'], 'IMG_0001.HEIC')
+    );
+
+    expect(xhr.headers['Content-Type']).toBe('image/heic');
+    xhr.fire('load');
+    await promise;
+  });
+
+  it('prefers the content type it was given over the file one', async () => {
+    const { promise, xhr } = await startUpload(
+      makeUploader({ contentType: 'text/csv' }),
+      new File(['x'], 'export.csv', { type: 'application/vnd.ms-excel' })
+    );
+
+    expect(xhr.headers['Content-Type']).toBe('text/csv');
     xhr.fire('load');
     await promise;
   });

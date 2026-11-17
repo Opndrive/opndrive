@@ -46,10 +46,10 @@ const { MockUploader, uploaderInstances } = vi.hoisted(() => {
     onProgress?: (p: number) => void;
     uploadId?: string;
 
-    /** Captured so tests can assert the key the manager derived. */
-    config: { key?: string };
+    /** Captured so tests can assert what the manager handed over. */
+    config: { key?: string; contentType?: string };
 
-    constructor(config: { key?: string }) {
+    constructor(config: { key?: string; contentType?: string }) {
       this.config = config;
       instances.push(this);
     }
@@ -444,6 +444,24 @@ describe('events', () => {
     // uploads mid-teardown.
     expect(healthy).toHaveBeenCalled();
     expect(error).toHaveBeenCalled();
+  });
+});
+
+describe('content type', () => {
+  it('hands each upload the content type it was given', () => {
+    const manager = UploadManager.getInstance(config);
+
+    manager.addUpload(makeFile('IMG_0001.HEIC'), { key: 'a', contentType: 'image/heic' });
+
+    expect(uploaderInstances[0]!.config.contentType).toBe('image/heic');
+  });
+
+  it('leaves it to the uploader when none is given', () => {
+    const manager = UploadManager.getInstance(config);
+
+    manager.addUpload(makeFile('a.txt'), { key: 'a' });
+
+    expect(uploaderInstances[0]!.config.contentType).toBeUndefined();
   });
 });
 

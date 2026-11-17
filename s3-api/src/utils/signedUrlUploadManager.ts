@@ -16,6 +16,7 @@ interface SignedUrlUploadItem {
   config: {
     key: string;
     folderId?: string;
+    contentType?: string;
   };
   status: UploadStatus;
   progress: number;
@@ -100,7 +101,7 @@ export class SignedUrlUploadManager {
   /**
    * Add a file to the upload queue
    */
-  public addUpload(file: File, config: { key: string }): string {
+  public addUpload(file: File, config: { key: string; contentType?: string }): string {
     if (this.isDisposed) {
       throw new Error(
         'This SignedUrlUploadManager instance has been disposed. Obtain a new one via getInstance().'
@@ -113,6 +114,7 @@ export class SignedUrlUploadManager {
       key: config.key,
       fileName: file.name,
       expiresInSeconds: this.expiresInSeconds,
+      contentType: config.contentType,
     });
 
     const uploadItem: SignedUrlUploadItem = {

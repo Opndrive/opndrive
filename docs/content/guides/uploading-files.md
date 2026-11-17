@@ -16,6 +16,12 @@ request rather than as a one-part multipart upload. That is fewer round trips
 for small files, and it is the only way to upload an empty file at all: S3
 refuses to complete a multipart upload that has no parts.
 
+Every upload records the file's Content-Type, in both modes. It is the type your
+browser reports, or, when the browser reports none (common for HEIC photos and
+some video formats on Windows), the type its extension implies. Without one, S3
+stores a file as `binary/octet-stream`, and a shared link to a photo downloads
+it instead of showing it.
+
 ## How the Mode Switch Actually Works
 
 Switching modes in Settings updates a Zustand store

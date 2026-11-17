@@ -6,6 +6,8 @@ export interface SignedUrlUploadConfig {
   key: string;
   fileName: string;
   expiresInSeconds?: number;
+  /** Sent as the Content-Type. Defaults to the File's own type. */
+  contentType?: string;
 }
 
 export class SignedUrlUploader {
@@ -13,6 +15,7 @@ export class SignedUrlUploader {
   private key: string;
   private fileName: string;
   private expiresInSeconds: number;
+  private contentType?: string;
   private abortController: AbortController | null = null;
   private isPaused = false;
 
@@ -21,6 +24,7 @@ export class SignedUrlUploader {
     this.key = config.key;
     this.fileName = config.fileName;
     this.expiresInSeconds = config.expiresInSeconds ?? 3600; // 1 hour default
+    this.contentType = config.contentType || undefined;
   }
 
   /**
@@ -77,7 +81,10 @@ export class SignedUrlUploader {
 
       // Open and send request
       xhr.open('PUT', signedUrl);
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.setRequestHeader(
+        'Content-Type',
+        this.contentType || file.type || 'application/octet-stream'
+      );
       xhr.send(file);
     });
   }

@@ -77,6 +77,25 @@ describe('uploadMultipartParallely', () => {
     });
   });
 
+  it('passes a content type through to the upload', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"etag-1"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    const uploader = makeApi().uploadMultipartParallely({
+      key: 'users/alice/clip.mp4',
+      fileName: 'clip.mp4',
+      partSizeBytes: 5 * MB,
+      concurrency: 1,
+      contentType: 'video/mp4',
+    });
+    await uploader.start(new File(['x'.repeat(6 * MB)], 'clip.mp4'));
+
+    expect(s3Mock).toHaveReceivedCommandWith(CreateMultipartUploadCommand, {
+      ContentType: 'video/mp4',
+    });
+  });
+
   it('completes the upload with the parts it collected', async () => {
     s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(UploadPartCommand).resolves({ ETag: '"etag-1"' });
