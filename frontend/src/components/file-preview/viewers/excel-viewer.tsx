@@ -6,7 +6,6 @@ import { createS3PreviewService } from '@/services/s3-preview-service';
 import { PreviewError } from '../preview-error';
 import { PreviewLoading } from '../preview-loading';
 import { getFileExtension, isFileInCategory } from '@/config/file-extensions';
-import * as XLSX from 'xlsx';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface ExcelViewerProps {
@@ -97,7 +96,11 @@ export function ExcelViewer({ file }: ExcelViewerProps) {
         if (extension === '.csv') {
           rows = parseCSV(await response.text());
         } else if (isFileInCategory(fileName, 'spreadsheet')) {
-          const arrayBuffer = await response.arrayBuffer();
+          // Loaded here, when a spreadsheet is actually opened. Imported at
+          // the top, the parser - the largest library in the app - shipped
+          // with every dashboard page, since the preview modal is part of
+          // the dashboard layout.
+          const [arrayBuffer, XLSX] = await Promise.all([response.arrayBuffer(), import('xlsx')]);
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           rows = XLSX.utils.sheet_to_json(worksheet, {

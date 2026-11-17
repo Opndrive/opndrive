@@ -137,6 +137,19 @@ export default [
       // rules-of-hooks would have caught #82 outright.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      // Static imports only; `await import('xlsx')` is what this asks for.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'xlsx',
+              message:
+                "Load it where a spreadsheet is parsed, with `await import('xlsx')`. A static import puts the largest library in the app into every dashboard page, because the preview modal is part of the dashboard layout.",
+            },
+          ],
+        },
+      ],
     },
   },
 
