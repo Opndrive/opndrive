@@ -1,17 +1,26 @@
 /**
  * OperationsModal: the panel's own wiring, between a row's buttons and the
- * upload manager. The rows and the manager are tested on their own; this is
- * the part in between, where a button can reach the wrong thing or nothing.
+ * upload manager and executor. Those and the rows are tested on their own;
+ * this is the part in between, where a button can reach the wrong thing or
+ * nothing.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import type { RetryOutcome } from '../services/upload-executor';
 
-const manager = vi.hoisted(() => ({
-  retryUpload: vi.fn((_id: string) => true),
-  cancelUpload: vi.fn(),
-  pauseUpload: vi.fn(),
-  resumeUpload: vi.fn(),
+const { manager, executor } = vi.hoisted(() => ({
+  manager: {
+    retryUpload: vi.fn((_id: string) => true),
+    cancelUpload: vi.fn(),
+    pauseUpload: vi.fn(),
+    resumeUpload: vi.fn(),
+  },
+  executor: {
+    retry: vi.fn((_id: string): RetryOutcome => ({ ok: true })),
+    uploadsFor: vi.fn((_taskId: string): string[] => []),
+    cancelTask: vi.fn(),
+  },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -24,6 +33,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/use-auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/use-auth')>()),
   useActiveUploadManager: () => manager,
+}));
+
+vi.mock('../context/upload-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../context/upload-context')>()),
+  useUploadExecutor: () => executor,
 }));
 
 import { OperationsModal, summariseFolder } from './operations-modal';
@@ -66,9 +80,23 @@ describe('Retry', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry report.pdf' }));
 
-    expect(manager.retryUpload).toHaveBeenCalledExactlyOnceWith('u1');
+    // Through the executor, which keeps the task's books, not around it.
+    expect(executor.retry).toHaveBeenCalledExactlyOnceWith('u1');
+    expect(manager.retryUpload).not.toHaveBeenCalled();
     // The reason described the attempt being replaced.
     expect(useUploadStore.getState().uploads.u1!.error).toBeUndefined();
+  });
+
+  it('says why, on the card, when a retry is refused', () => {
+    executor.retry.mockReturnValueOnce({ ok: false, reason: 'The name is taken now.' });
+    seed({
+      u1: { id: 'u1', name: 'report.pdf', type: 'file', status: 'failed', progress: 0 },
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry report.pdf' }));
+
+    expect(useUploadStore.getState().uploads.u1!.error).toBe('The name is taken now.');
   });
 
   it('retries only the files of a folder that failed', () => {
@@ -108,10 +136,46 @@ describe('Retry', () => {
     });
     renderPanel();
 
+    const updates = vi.fn();
+    const unsubscribe = useUploadStore.subscribe(updates);
     fireEvent.click(screen.getByRole('button', { name: 'Retry photos' }));
+    unsubscribe();
 
     // a.jpg already landed. Sending it again would only cost a request.
-    expect(manager.retryUpload.mock.calls.map(([id]) => id)).toEqual(['b', 'c']);
+    expect(executor.retry.mock.calls.map(([id]) => id)).toEqual(['b', 'c']);
+    // One update for the whole folder: each one copies every card.
+    expect(updates).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts a folder's refusal on the folder, and takes it off once a retry gets through", () => {
+    executor.retry.mockReturnValue({ ok: false, reason: 'The name is taken now.' });
+    seed({
+      folder: {
+        id: 'folder',
+        name: 'photos',
+        type: 'folder',
+        status: 'queued',
+        progress: 0,
+        fileIds: ['a'],
+      },
+      a: {
+        id: 'a',
+        name: 'photos/a.jpg',
+        type: 'file',
+        status: 'failed',
+        progress: 0,
+        parentFolderId: 'folder',
+      },
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry photos' }));
+    expect(useUploadStore.getState().uploads.folder!.error).toBe('The name is taken now.');
+    expect(screen.getByText('The name is taken now.')).toBeTruthy();
+
+    executor.retry.mockReturnValue({ ok: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry photos' }));
+    expect(useUploadStore.getState().uploads.folder!.error).toBeUndefined();
   });
 });
 

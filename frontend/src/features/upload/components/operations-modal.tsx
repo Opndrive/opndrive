@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadStore, type UploadProgress } from '@/features/upload/stores/use-upload-store';
 import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { DuplicateDialog } from './duplicate-dialog';
@@ -184,6 +184,7 @@ export const OperationsModal: React.FC = () => {
   const removeUploads = useUploadStore((state) => state.removeUploads);
   const removeDeleteOperation = useUploadStore((state) => state.removeDeleteOperation);
   const updateUpload = useUploadStore((state) => state.updateUpload);
+  const updateUploads = useUploadStore((state) => state.updateUploads);
   const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
   const resolveDuplicate = useUploadStore((state) => state.resolveDuplicate);
 
@@ -302,29 +303,40 @@ export const OperationsModal: React.FC = () => {
   );
 
   /**
-   * Sends a failed upload again.
+   * Sends a failed upload again, through the executor, which keeps the task's
+   * books: see `UploadExecutor.retry`.
    *
    * A folder card has no upload of its own - it stands for its files - so it
    * retries the ones that failed and leaves the rest alone. The folder's own
    * status is worked out from its files, so it follows them back to active.
    *
-   * The card's reason is cleared first: it describes the attempt that is
-   * being replaced.
+   * A retried card's reason is cleared: it describes the attempt being
+   * replaced. A refused retry says why on the card that was pressed. All of
+   * it is one store update, however many files a folder retries.
    */
   const retryOperation = useCallback(
     (itemId: string, isFolder: boolean) => {
-      if (!uploadManager) return;
+      if (!executor) return;
 
       const all = useUploadStore.getState().uploads;
       const ids = isFolder
         ? (all[itemId]?.fileIds ?? []).filter((fileId) => all[fileId]?.status === 'failed')
         : [itemId];
 
+      const changes = new Map<string, Partial<UploadProgress>>();
+      let refusal: string | undefined;
       for (const id of ids) {
-        if (uploadManager.retryUpload(id)) updateUpload(id, { error: undefined });
+        const outcome = executor.retry(id);
+        if (outcome.ok) changes.set(id, { error: undefined });
+        else refusal ??= outcome.reason;
       }
+      // A folder's own reason is set either way, so an old refusal goes once
+      // a retry gets through.
+      if (isFolder || refusal) changes.set(itemId, { error: refusal });
+
+      updateUploads(changes);
     },
-    [uploadManager, updateUpload]
+    [executor, updateUploads]
   );
 
   // Derivation lives above the `uploadManager` guard because useMemo is a

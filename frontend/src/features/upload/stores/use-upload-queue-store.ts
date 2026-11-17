@@ -208,6 +208,16 @@ interface UploadQueueState {
     startAttempt?: number
   ) => { resolvedName: string; prefix: string; attempt: number };
 
+  /**
+   * Claims exactly `prefix` for `taskId` again, for a retry of a task that has
+   * already let go of its name. No counter is tried: the files being retried
+   * belong under that one prefix and nowhere else.
+   *
+   * @returns whether `taskId` holds the prefix afterwards. False means another
+   *   task has it, and nothing changes.
+   */
+  reclaimPrefix: (prefix: string, taskId: string) => boolean;
+
   /** Marks a task's claims as having landed bytes, so they are never released. */
   commitClaim: (taskId: string) => void;
   /** Gives back a cancelled task's uncommitted claims. */
@@ -477,6 +487,15 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
     const prefix = `${base}${resolvedName}/`;
     set((state) => ({ claims: [...state.claims, { prefix, taskId, committed: false }] }));
     return { resolvedName, prefix, attempt: MAX_SUFFIX_ATTEMPTS + 1 };
+  },
+
+  reclaimPrefix: (prefix, taskId) => {
+    const target = normalisePrefix(prefix);
+    const holder = get().claims.find((claim) => claim.prefix === target);
+    if (holder) return holder.taskId === taskId;
+
+    set((state) => ({ claims: [...state.claims, { prefix: target, taskId, committed: false }] }));
+    return true;
   },
 
   planDrop: async (data, options) => {
