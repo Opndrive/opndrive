@@ -5,6 +5,7 @@ import { AuthContext, AuthProvider } from './auth-context';
 import { useDriveStore } from './data-context';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
 import type { Credentials, SearchResult } from '@opndrive/s3-api';
 
 /**
@@ -1427,5 +1428,177 @@ describe('a switch leaves no trace of the previous bucket on the operations card
     });
 
     expect(useUploadStore.getState().uploads).toEqual({});
+  });
+});
+
+/**
+ * Regression test for upload name claims outliving the bucket they were made in.
+ *
+ * Uploading a folder claims its prefix, so a second drop of the same name in
+ * the same session is told the name is taken without asking the bucket again.
+ * A claim is keyed by the prefix and nothing else. Switch bucket and it is
+ * still there, still answering for "photos/" - so the first folder dropped into
+ * a bucket that has never held one is uploaded as "photos (1)", under a notice
+ * saying a folder of that name "was already here".
+ *
+ * `reset()` on the queue store has always been the fix, and its own comment
+ * said it ran on logout and on a bucket switch. Nothing called it. So, as with
+ * the search cache above, this mounts the real AuthProvider: the store clears
+ * perfectly well when asked, and the defect was that nobody asked.
+ */
+describe('a session change gives back the names uploads had claimed', () => {
+  const BUCKET_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: '',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  const queue = () => useUploadQueueStore.getState();
+
+  /**
+   * Leaves the queue as a finished folder upload leaves it: the prefix claimed,
+   * and committed because bytes landed. Committed is the case that matters - an
+   * uncommitted claim is released when its upload ends, a committed one never.
+   */
+  function uploadedFolder(name: string) {
+    const taskId = `task-${name}`;
+    queue().reservePrefix(name, '', taskId);
+    queue().commitClaim(taskId);
+  }
+
+  /** What a folder of this name would be stored as if it were dropped now. */
+  function nameOfferedFor(name: string) {
+    const { resolvedName } = queue().reservePrefix(name, '', `probe-${name}`);
+    queue().releaseClaim(`probe-${name}`);
+    return resolvedName;
+  }
+
+  function denied() {
+    return Object.assign(new Error('Access Denied'), {
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+  }
+
+  beforeEach(async () => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.constructorError = null;
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useUploadStore.getState().clearSessionData();
+    useSearchStore.getState().clearCache();
+    useDriveStore.getState().clearAllData();
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BUCKET_A));
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+  });
+
+  it('offers a folder its own name in the bucket switched to', async () => {
+    uploadedFolder('photos');
+    // Precondition: inside the session that uploaded it, the name really is
+    // spoken for. If this stops holding there is no leak left to test.
+    expect(nameOfferedFor('photos')).toBe('photos (1)');
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    expect(queue().claims).toEqual([]);
+    expect(nameOfferedFor('photos')).toBe('photos');
+  });
+
+  it('drops the notices about drops into the bucket being left', async () => {
+    useUploadQueueStore.setState({
+      notices: [
+        {
+          id: 'renamed-1',
+          kind: 'renamed',
+          path: 'photos',
+          count: 1,
+          detail: 'A folder named "photos" was already here.',
+        },
+      ],
+    });
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b');
+    });
+
+    // Left up, this would sit on the operations card describing bucket-a's
+    // folders while the listing behind it showed bucket-b's.
+    expect(queue().notices).toEqual([]);
+  });
+
+  it('gives the names back on logout', async () => {
+    uploadedFolder('photos');
+
+    act(() => {
+      auth!.clearSession();
+    });
+
+    expect(queue().claims).toEqual([]);
+    expect(nameOfferedFor('photos')).toBe('photos');
+
+    // Let the gate timer clearSession leaves behind run out. See settleLogout.
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+  });
+
+  it('gives them back when a different bucket is connected without logging out', async () => {
+    uploadedFolder('photos');
+
+    // /connect is reachable with a session already open, so a bucket can
+    // change without a switch or a logout ever having happened.
+    await act(async () => {
+      await auth!.createSession({ ...BUCKET_A, bucketName: 'bucket-c' });
+    });
+
+    expect(queue().claims).toEqual([]);
+    expect(nameOfferedFor('photos')).toBe('photos');
+  });
+
+  it('keeps them when the bucket switched to turns out to be unreadable', async () => {
+    uploadedFolder('photos');
+    s3.fetchDirectoryStructure.mockRejectedValue(denied());
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b').catch(() => {});
+    });
+
+    // The session never left bucket-a, where "photos/" is still exactly as
+    // taken as it was. Forgetting that would let the next drop overwrite it.
+    expect(nameOfferedFor('photos')).toBe('photos (1)');
+  });
+
+  it('keeps them when the bucket picked is the one already open', async () => {
+    uploadedFolder('photos');
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-a');
+    });
+
+    expect(nameOfferedFor('photos')).toBe('photos (1)');
   });
 });

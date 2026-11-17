@@ -202,7 +202,14 @@ interface UploadQueueState {
 
   dismissNotice: (id: string) => void;
   clearNotices: () => void;
-  /** Called on logout or bucket switch - claims from one session mean nothing in the next. */
+  /**
+   * Called whenever the session changes - connecting, switching bucket, signing
+   * out. Claims are keyed by prefix alone, so one made in the last bucket would
+   * otherwise speak for the same prefix in the next.
+   *
+   * The caller is `auth-context`, next to the other per-bucket state it clears.
+   * This used to say it was called and was not: nothing in the app did.
+   */
   reset: () => void;
 }
 
