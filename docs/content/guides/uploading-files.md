@@ -91,7 +91,9 @@ Multipart uploads work by sending a file in parts and then issuing a single
 is closed mid-upload, the laptop sleeps and the connection dies, the browser is
 force-quit - the parts that already reached S3 stay there. Opndrive aborts the
 upload cleanly whenever it gets the chance, but a closed tab gives the page no
-time to send anything, so this case cannot be fixed from the browser.
+time to send anything, so this case cannot be fixed from the browser. The
+browser does ask before closing a tab that still has an upload running, which
+catches the accidental close, but not a crash or a force-quit.
 
 Orphaned parts behave badly:
 

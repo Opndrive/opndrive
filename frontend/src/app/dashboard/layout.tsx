@@ -18,7 +18,7 @@ import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/r
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
 import { useAuth } from '@/hooks/use-auth';
 import { UploadCard } from '@/features/upload/components/upload-card';
-import { useDeleteUnloadGuard } from '@/features/upload/hooks/use-delete-unload-guard';
+import { useUnloadGuard } from '@/features/upload/hooks/use-unload-guard';
 import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
 
 /**
@@ -165,7 +165,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
 export default function DynamicDashboardLayout({ children }: { children: React.ReactNode }) {
   // Sits out here rather than in LayoutShell, which returns early for the
   // preview and settings routes and would change its hook count
-  useDeleteUnloadGuard();
+  useUnloadGuard();
 
   return (
     <ScrollProvider>
