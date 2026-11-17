@@ -647,6 +647,61 @@ describe('automatic retry', () => {
     expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * Paused and resumed while waiting to retry: the resume starts a new
+   * attempt at once, and the worker that was waiting must then stand aside.
+   * It used to wake, see 'uploading' again and carry on beside the new one,
+   * so both sent the rest of the file and both finished it.
+   */
+  async function pausedAndResumedWhileWaiting() {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance({ ...config, retryDelaysMs: [50] });
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    manager.pauseUpload(id);
+    await manager.resumeUpload(id);
+    await settle();
+    // The retry's wait runs out with the resumed attempt under way.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    return { manager, id };
+  }
+
+  it('runs one attempt at a time after a pause and resume while waiting', async () => {
+    const { manager, id } = await pausedAndResumedWhileWaiting();
+    const changes: string[] = [];
+    manager.on('statusChange', (payload) => changes.push(payload.status));
+
+    // The first attempt, and the resumed one. Not a third beside it.
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(2);
+
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+    expect(changes).toEqual(['completed']);
+  });
+
+  it('keeps the concurrency limit after a pause and resume while waiting', async () => {
+    const { manager } = await pausedAndResumedWhileWaiting();
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+
+    // Two workers finishing one upload gave back two slots for the one it
+    // held, and from then on one more upload ran at once than allowed.
+    const more = ['b', 'c', 'd'].map((key) => manager.addUpload(makeFile(), { key }));
+    await settle();
+
+    expect(more.map((id) => manager.getStatus(id)!.status)).toEqual([
+      'uploading',
+      'uploading',
+      'queued',
+    ]);
+  });
+
   it('keeps its concurrency slot while it waits to retry', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const manager = UploadManager.getInstance({

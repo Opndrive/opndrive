@@ -35,6 +35,18 @@ export class UploadManager {
 
   private listeners = new Map<UploadEvent, Set<EventListener>>();
 
+  /**
+   * The worker each upload belongs to, by upload id.
+   *
+   * Pausing or cancelling takes an upload away from its worker, and resuming
+   * hands it to a new one. The old worker can still be running: waiting to
+   * retry, or on a request that has not come back yet. It checks this before
+   * doing anything, and stops if the upload is no longer its own. Otherwise a
+   * pause and resume during a retry's wait left two workers sending the same
+   * file, each finishing it and each handing back a concurrency slot.
+   */
+  private workers = new Map<string, symbol>();
+
   private constructor(config: UploadManagerConfig) {
     this.s3 = config.s3;
     this.prefix = config.prefix;
@@ -248,6 +260,7 @@ export class UploadManager {
     // Non-null: resources are released only on terminal states, and this item
     // is 'uploading'.
     item.uploader!.pause();
+    this.workers.delete(id);
     this.activeUploads--;
     this.updateItemStatus(id, 'paused');
     this.processQueue();
@@ -286,6 +299,7 @@ export class UploadManager {
     // see status 'uploading' and transition the item to 'completed', emitting a
     // bogus success event for an upload the caller just cancelled.
     this.updateItemStatus(id, 'cancelled');
+    this.workers.delete(id);
 
     // The worker's `finally` only decrements for completed/failed, so once the
     // status is 'cancelled' this bookkeeping becomes ours.
@@ -340,8 +354,13 @@ export class UploadManager {
       return;
     }
 
+    const worker = Symbol(id);
+    this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
+
+    // Whether this worker still has the upload. See `workers`.
+    const ownsUpload = () => this.workers.get(id) === worker;
 
     (async () => {
       try {
@@ -355,6 +374,9 @@ export class UploadManager {
             await this.runAttempt(item, onProgress);
             break;
           } catch (err) {
+            // Paused or cancelled underneath this attempt, which is what
+            // ended it. Not a failure, and not this worker's to retry.
+            if (!ownsUpload()) return;
             if (!this.shouldRetry(id, err, attempt)) throw err;
 
             console.warn(
@@ -363,18 +385,19 @@ export class UploadManager {
             );
             await waitBeforeRetry(this.retryDelaysMs[attempt]!);
 
-            // Paused, cancelled or torn down while waiting. The status already
-            // says which, and there is nothing left for this loop to do.
-            if (this.isDisposed || this.uploads.get(id)?.status !== 'uploading') return;
+            // Paused, cancelled or torn down while waiting, and perhaps
+            // resumed since, by a worker of its own. Either way there is
+            // nothing left for this one to do.
+            if (this.isDisposed || !ownsUpload()) return;
           }
         }
 
-        if (this.uploads.get(id)?.status === 'uploading') {
+        if (ownsUpload() && this.uploads.get(id)?.status === 'uploading') {
           this.updateItemStatus(id, 'completed', 100);
         }
       } catch (err) {
-        const currentStatus = this.uploads.get(id)?.status;
-        if (currentStatus !== 'paused' && currentStatus !== 'cancelled') {
+        // Not owned any more means paused or cancelled, which is no failure.
+        if (ownsUpload()) {
           console.error(`Upload failed for ${id}:`, err);
           this.updateItemStatus(
             id,
@@ -386,7 +409,12 @@ export class UploadManager {
         }
       } finally {
         const finalStatus = this.uploads.get(id)?.status;
-        if (finalStatus === 'completed' || finalStatus === 'failed') {
+        // A worker that lost its upload has nothing to settle: whatever took
+        // the upload away gave its slot back, and a resumed upload is the new
+        // worker's to finish.
+        if (ownsUpload() && (finalStatus === 'completed' || finalStatus === 'failed')) {
+          this.workers.delete(id);
+
           // 'cancelled' is not handled here: cancelUpload() already released
           // this item. 'paused' deliberately keeps its resources so it can
           // resume, and 'failed' keeps its file so it can be retried.
