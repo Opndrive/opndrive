@@ -34,6 +34,14 @@ describe('isTransientUploadError', () => {
     ).toBe(true);
   });
 
+  it('retries the passing errors S3 reports with a 400', () => {
+    // S3 sends these with "400 Bad Request", and its error code is the more
+    // specific of the two: "your connection went quiet", "slow down".
+    expect(isTransientUploadError(withStatus(400, 'RequestTimeout'))).toBe(true);
+    expect(isTransientUploadError(withStatus(400, 'Throttling'))).toBe(true);
+    expect(isTransientUploadError(withStatus(400, 'RequestLimitExceeded'))).toBe(true);
+  });
+
   it('reads a network failure from its message as a last resort', () => {
     expect(isTransientUploadError(new Error('socket hang up'))).toBe(true);
     expect(isTransientUploadError(new Error('Connection reset by peer'))).toBe(true);

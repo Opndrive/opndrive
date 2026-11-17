@@ -39,11 +39,16 @@ const NETWORK_MESSAGE =
  * Whether trying the same upload again could succeed without anyone changing
  * anything.
  *
- * A server that answered with a status said something definite. 5xx, 429 and
- * 408 mean "not now"; anything else - a 403 for a revoked key, a 404 for a
- * missing bucket - will say the same thing on every attempt, so it is not
- * retried. No status at all means the request never got an answer, which in a
- * browser is a dropped connection.
+ * S3's own error code comes first. It is the most specific thing in the
+ * answer, and some codes that mean "not now" arrive as "400 Bad Request":
+ * RequestTimeout (the connection went quiet mid-upload) and the throttling
+ * codes. Read by status alone, those failed the upload for good.
+ *
+ * Otherwise a server that answered with a status said something definite.
+ * 5xx, 429 and 408 mean "not now"; anything else - a 403 for a revoked key, a
+ * 404 for a missing bucket - will say the same thing on every attempt, so it
+ * is not retried. No status at all means the request never got an answer,
+ * which in a browser is a dropped connection.
  *
  * Our own aborts never reach here: a paused or cancelled upload is caught
  * before it is treated as a failure.
@@ -58,13 +63,13 @@ export function isTransientUploadError(error: unknown): boolean {
   };
   const status = $metadata?.httpStatusCode;
 
+  if (typeof name === 'string' && SERVER_HICCUPS.has(name)) return true;
+
   if (typeof status === 'number') {
     return status >= 500 || status === 429 || status === 408;
   }
 
-  if (typeof name === 'string' && (NO_ANSWER.has(name) || SERVER_HICCUPS.has(name))) {
-    return true;
-  }
+  if (typeof name === 'string' && NO_ANSWER.has(name)) return true;
 
   return typeof message === 'string' && NETWORK_MESSAGE.test(message);
 }
