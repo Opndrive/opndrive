@@ -395,6 +395,35 @@ describe('planDrop: local reservation phase', () => {
     expect(planned[0]!.files).toHaveLength(3);
   });
 
+  it('carries the empty folders of a drop into its plan', async () => {
+    const folder = { ...makeFolder('photos', 1), emptyFolders: ['raw', 'edits/2024'] };
+
+    const { planned } = await store().planDrop(dropOf([folder]), { destinationPrefix: 'docs' });
+
+    expect(planned[0]).toMatchObject({
+      prefix: 'docs/photos/',
+      emptyFolders: ['raw', 'edits/2024'],
+    });
+  });
+
+  it('plans a dropped folder that holds nothing at all', async () => {
+    // Its name is reserved and checked like any other folder's, so dropping
+    // an empty "photos" next to an existing one still lands as "photos (1)".
+    const empty: FolderStructure = {
+      name: 'photos',
+      files: [],
+      totalSize: 0,
+      relativePath: 'photos',
+      emptyFolders: [''],
+    };
+
+    const { planned } = await store().planDrop(dropOf([empty]), { destinationPrefix: '' });
+
+    expect(planned).toEqual([
+      expect.objectContaining({ kind: 'folder', prefix: 'photos/', files: [], emptyFolders: [''] }),
+    ]);
+  });
+
   it('copies the file list rather than aliasing the drop payload', async () => {
     // The plan outlives the drop event; sharing the array would let a later
     // mutation of the payload change what gets uploaded.

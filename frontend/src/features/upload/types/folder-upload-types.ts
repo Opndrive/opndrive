@@ -5,6 +5,17 @@ export interface FolderStructure {
   files: File[];
   totalSize: number;
   relativePath: string;
+  /**
+   * Folders in the drop with nothing in them, relative to this one: '' for
+   * this folder itself, 'a/b' for one nested inside it. Only the innermost:
+   * a folder holding nothing but an empty folder is implied by it.
+   *
+   * S3 has no folders, only keys, so a folder with no files exists only as a
+   * marker object. Without these, an empty folder in a drop - or a drop of
+   * one - simply did not arrive. Only a drop can report them: a folder picker
+   * (`webkitdirectory`) lists files and nothing else.
+   */
+  emptyFolders?: string[];
 }
 
 /**

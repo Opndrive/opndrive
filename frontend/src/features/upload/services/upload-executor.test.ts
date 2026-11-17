@@ -284,6 +284,58 @@ describe('start', () => {
     expect(executor.taskFor('upload-nope')).toBeUndefined();
   });
 
+  it('creates each empty folder as a marker object ending in a slash', () => {
+    executor.start([
+      folderPlan({
+        prefix: 'photos/',
+        files: [makeFile('a.jpg', 'photos/a.jpg')],
+        emptyFolders: ['raw', 'edits/2024'],
+      }),
+    ]);
+
+    expect(manager.added.map((a) => [a.key, a.file.size])).toEqual([
+      ['photos/a.jpg', 10],
+      ['photos/raw/', 0],
+      ['photos/edits/2024/', 0],
+    ]);
+    // A marker has no content type, the same as "New folder" writes.
+    expect(manager.added.slice(1).map((a) => a.contentType)).toEqual([undefined, undefined]);
+  });
+
+  it('creates a dropped empty folder as the marker for its own prefix', () => {
+    // A renamed folder lands under its resolved name, like its files would.
+    executor.start([
+      folderPlan({
+        prefix: 'docs/photos (1)/',
+        resolvedName: 'photos (1)',
+        files: [],
+        emptyFolders: [''],
+      }),
+    ]);
+
+    expect(manager.added.map((a) => a.key)).toEqual(['docs/photos (1)/']);
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0']);
+  });
+
+  it('holds the claim of an empty folder until its marker lands', () => {
+    queue().reservePrefix('photos', '', 'task-folder');
+
+    executor.start([folderPlan({ files: [], emptyFolders: [''] })]);
+
+    // Released at dispatch, the name would be free for the next drop while
+    // this folder is still being created.
+    expect(queue().claimedPrefixes()).toEqual(['photos/']);
+
+    manager.emit('statusChange', { id: 'upload-0', status: 'completed', progress: 100 });
+    expect(queue().claims[0]).toMatchObject({ prefix: 'photos/', committed: true });
+  });
+
+  it('creates no markers for a plan of loose files', () => {
+    executor.start([filePlan({ files: [makeFile('a.txt')], emptyFolders: [''] })]);
+
+    expect(manager.added.map((a) => a.key)).toEqual(['a.txt']);
+  });
+
   it('reports where an upload already is, for the card created after it', () => {
     // The real manager starts the first files inside addUpload, before it
     // returns the id, so a card made afterwards has missed that event.

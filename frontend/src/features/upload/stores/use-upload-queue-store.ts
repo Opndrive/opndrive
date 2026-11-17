@@ -104,6 +104,11 @@ export interface PlannedUpload {
   verification: 'confirmed' | 'failed' | 'unchecked';
   files: File[];
   totalBytes: number;
+  /**
+   * Empty folders to create, relative to `prefix`: '' for the folder itself.
+   * Folder plans only. See FolderStructure.emptyFolders.
+   */
+  emptyFolders?: string[];
 }
 
 /**
@@ -607,6 +612,7 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           verification: reservation.verification,
           files,
           totalBytes: totalBytesOf(files),
+          emptyFolders: [...(reservation.folder.emptyFolders ?? [])],
         });
       }
 

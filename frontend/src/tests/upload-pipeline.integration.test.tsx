@@ -384,6 +384,65 @@ describe('1d. retrying', () => {
   });
 });
 
+describe('1g. empty folders', () => {
+  /** Reads a hand-built tree through the real extraction. */
+  const dropOfTree = (root: ReturnType<typeof mockDirectoryEntry>) =>
+    FolderStructureProcessor.processDataTransferItems(
+      mockDataTransferItemList([mockDataTransferItem(root)])
+    );
+
+  async function dropAndSettle(data: ProcessedDragData) {
+    const dispatch = mountPipeline();
+    await act(async () => {
+      await dispatch.current(data, '', bucket.apiS3);
+    });
+    await untilIdle(bucket);
+  }
+
+  it('creates the empty folders inside a dropped one', async () => {
+    const data = await dropOfTree(
+      mockDirectoryEntry('project', [
+        mockFileEntry(makeFile('README.md', 5)),
+        mockDirectoryEntry('logs', []),
+        mockDirectoryEntry('src', [
+          mockDirectoryEntry('fixtures', [mockDirectoryEntry('none', [])]),
+        ]),
+      ])
+    );
+
+    await dropAndSettle(data);
+
+    expect([...bucket.objects.keys()].sort()).toEqual([
+      'project/README.md',
+      'project/logs/',
+      'project/src/fixtures/none/',
+    ]);
+    expect(bucket.objects.get('project/logs/')).toMatchObject({ size: 0 });
+    expect(
+      Object.values(uploads()).every((u) => u.type === 'folder' || u.status === 'completed')
+    ).toBe(true);
+  });
+
+  it('creates a dropped folder that holds nothing at all', async () => {
+    // This drop used to do nothing whatsoever.
+    await dropAndSettle(await dropOfTree(mockDirectoryEntry('archive', [])));
+
+    expect([...bucket.objects.keys()]).toEqual(['archive/']);
+    const folderCard = Object.values(uploads()).find((u) => u.type === 'folder')!;
+    expect(folderCard.name).toBe('archive');
+    expect(folderCard.fileIds).toHaveLength(1);
+  });
+
+  it('renames an empty folder whose name is taken, like any other', async () => {
+    bucket.put('archive/old.txt');
+
+    await dropAndSettle(await dropOfTree(mockDirectoryEntry('archive', [])));
+
+    expect(bucket.objects.has('archive (1)/')).toBe(true);
+    expect(bucket.objects.has('archive/')).toBe(false);
+  });
+});
+
 describe('1f. checking loose files for duplicates', () => {
   afterEach(() => {
     useUploadSettingsStore.setState({ duplicatePolicy: 'ask' });

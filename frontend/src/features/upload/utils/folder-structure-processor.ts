@@ -21,6 +21,8 @@ const READ_CONCURRENCY = 16;
 interface DirectoryRead {
   files: File[];
   skipped: SkippedEntry[];
+  /** Paths, from the drop, of the directories below with nothing in them. */
+  emptyFolders: string[];
 }
 
 /** Runs at most `limit` of the tasks handed to it at once. */
@@ -78,11 +80,12 @@ async function readFileEntry(
     );
     Object.defineProperty(file, 'webkitRelativePath', { value: path, writable: false });
     onFileFound?.();
-    return { files: [file], skipped: [] };
+    return { files: [file], skipped: [], emptyFolders: [] };
   } catch (fileError) {
     return {
       files: [],
       skipped: [{ kind: 'file', path, reason: describeReason(fileError, 'could not be read') }],
+      emptyFolders: [],
     };
   }
 }
@@ -110,10 +113,12 @@ export class FolderStructureProcessor {
     // Each one settles with a result rather than rejecting, so a walk that
     // stops early leaves nothing unhandled behind it.
     const reads: Promise<DirectoryRead>[] = [];
+    let isEmpty = true;
 
     for (;;) {
       const batch = await limit(() => readBatch(reader));
       if (batch.length === 0) break;
+      isEmpty = false;
 
       for (const entry of batch) {
         const path = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -135,6 +140,7 @@ export class FolderStructureProcessor {
               skipped: [
                 { kind: 'folder', path, reason: describeReason(subDirError, 'could not be read') },
               ],
+              emptyFolders: [],
             }))
           );
         }
@@ -144,10 +150,18 @@ export class FolderStructureProcessor {
     // NOT `files.push(...read.files)`. Spreading passes each element as an
     // argument, and V8 throws RangeError past ~100k of them - which the caller's
     // catch would then swallow, dropping the whole subtree with one notice.
-    const merged: DirectoryRead = { files: [], skipped: [] };
+    // A directory with nothing in it at all. One that only holds files that
+    // could not be read is not empty: its files are reported as skipped, and
+    // creating it bare would pass for a successful upload of nothing.
+    const merged: DirectoryRead = {
+      files: [],
+      skipped: [],
+      emptyFolders: isEmpty ? [basePath] : [],
+    };
     for (const read of await Promise.all(reads)) {
       appendAll(merged.files, read.files);
       appendAll(merged.skipped, read.skipped);
+      appendAll(merged.emptyFolders, read.emptyFolders);
     }
     return merged;
   }
@@ -188,7 +202,15 @@ export class FolderStructureProcessor {
               const folderFiles = read.files;
               appendAll(skipped, read.skipped);
 
-              if (folderFiles.length > 0) {
+              // Relative to the dropped folder, which is '' when it is the
+              // empty one.
+              const emptyFolders = read.emptyFolders.map((path) =>
+                path === entry.name ? '' : path.slice(entry.name.length + 1)
+              );
+
+              // An empty folder is still something the user dropped. It used
+              // to be left out here, and the drop did nothing at all.
+              if (folderFiles.length > 0 || emptyFolders.length > 0) {
                 const totalSize = folderFiles.reduce((sum, file) => sum + file.size, 0);
 
                 folderStructures.push({
@@ -196,6 +218,7 @@ export class FolderStructureProcessor {
                   files: folderFiles,
                   totalSize,
                   relativePath: entry.name,
+                  emptyFolders,
                 });
               }
             } catch (error) {

@@ -68,7 +68,8 @@ export interface DispatchResult {
    *
    * `addUpload` throws on a disposed manager, which happens for real: logging
    * out or switching bucket mid-drop tears the singleton down. Compare
-   * `files.length` against `plan.files.length` to see how much got through.
+   * `files.length` against the plan's files and empty folders together to see
+   * how much got through.
    */
   dispatchError?: Error;
 }
@@ -270,7 +271,10 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
           continue;
         }
 
-        // Registered BEFORE dispatching, with the full file count already in
+        const emptyFolders = plan.kind === 'folder' ? (plan.emptyFolders ?? []) : [];
+        const planned = plan.files.length + emptyFolders.length;
+
+        // Registered BEFORE dispatching, with the full count already in
         // `pending`. Both matter: `addUpload` emits synchronously and starts
         // the queue, so an event for the first file can arrive while the
         // second is still being handed over. Counting up as we went would let
@@ -278,7 +282,7 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         // folder that is still being set up.
         const record: TaskRecord = {
           uploadIds: new Set(),
-          pending: plan.files.length,
+          pending: planned,
           committed: false,
           cancelled: false,
         };
@@ -298,6 +302,21 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
             taskByUpload.set(uploadId, plan.id);
             files.push({ uploadId, taskId: plan.id, key, file });
           }
+
+          // An empty folder is a zero-byte object named for it, ending in
+          // '/' - the same marker "New folder" writes. Uploaded like any
+          // other file, so it counts towards the folder's card, its claim
+          // and its cancel, and a drop of only empty folders still finishes.
+          // No content type: a marker has none, as with "New folder".
+          for (const relative of emptyFolders) {
+            const key = `${plan.prefix}${relative ? `${relative}/` : ''}`;
+            const marker = new File([], relative ? relative.split('/').pop()! : plan.resolvedName);
+            const uploadId = manager.addUpload(marker, { key });
+
+            record.uploadIds.add(uploadId);
+            taskByUpload.set(uploadId, plan.id);
+            files.push({ uploadId, taskId: plan.id, key, file: marker });
+          }
         } catch (error) {
           // The manager refused the rest of this plan - disposal mid-drop is
           // the real case. Nothing is thrown onward: the remaining plans still
@@ -313,7 +332,7 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         // Subtracted rather than assigned: a file dispatched earlier in this
         // same loop may have already finished and decremented `pending`, and
         // assigning the dispatched count would resurrect it.
-        record.pending -= plan.files.length - record.uploadIds.size;
+        record.pending -= planned - record.uploadIds.size;
 
         results.push({ taskId: plan.id, plan, files, dispatchError });
 

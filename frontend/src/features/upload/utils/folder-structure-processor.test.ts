@@ -160,21 +160,57 @@ describe('dropping a folder', () => {
     expect(dir.readCallCount()).toBe(4);
   });
 
-  it('skips a folder that contains nothing', async () => {
+  it('brings along a folder that contains nothing, to be created empty', async () => {
+    // It used to be left out, so dropping an empty folder did nothing at all.
     const empty = mockDirectoryEntry('empty', []);
 
     const result = await process([mockDataTransferItem(empty)]);
 
-    // Creating a zero-file upload would leave a phantom folder in the UI.
-    expect(result.folderStructures).toEqual([]);
+    expect(result.folderStructures).toEqual([
+      { name: 'empty', files: [], totalSize: 0, relativePath: 'empty', emptyFolders: [''] },
+    ]);
   });
 
-  it('skips a folder whose subfolders are all empty', async () => {
+  it('names only the innermost of nested empty folders', async () => {
+    // outer/inner/ implies outer/, so one marker covers both.
     const dir = mockDirectoryEntry('outer', [mockDirectoryEntry('inner', [])]);
 
     const result = await process([mockDataTransferItem(dir)]);
 
+    expect(result.folderStructures[0]!.emptyFolders).toEqual(['inner']);
+    expect(result.folderStructures[0]!.files).toEqual([]);
+  });
+
+  it('keeps the empty folders that sit beside files', async () => {
+    const dir = mockDirectoryEntry('project', [
+      mockFileEntry(makeFile('README.md')),
+      mockDirectoryEntry('logs', []),
+      mockDirectoryEntry('src', [
+        mockFileEntry(makeFile('main.py')),
+        mockDirectoryEntry('fixtures', [mockDirectoryEntry('empty-case', [])]),
+      ]),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
+    expect(result.folderStructures[0]!.emptyFolders).toEqual(['logs', 'src/fixtures/empty-case']);
+    expect(pathsOf(result.folderStructures[0]!.files)).toEqual([
+      'project/README.md',
+      'project/src/main.py',
+    ]);
+  });
+
+  it('does not count a folder whose files could not be read as empty', async () => {
+    // Creating it bare would pass for a successful upload of nothing. The
+    // files are reported as skipped instead.
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('locked.txt'), { failWith: new Error('locked') }),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
     expect(result.folderStructures).toEqual([]);
+    expect(result.skipped.map((s) => s.path)).toEqual(['docs/locked.txt']);
   });
 
   it('sums the total size across nested folders', async () => {

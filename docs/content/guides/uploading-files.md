@@ -66,7 +66,10 @@ sequenceDiagram
 
 <!-- SCREENSHOT: Upload panel showing multiple files with progress bars, one paused -->
 
-1. Click the upload button, or drag files onto the file list.
+1. Click the upload button, or drag files onto the file list. Dragging a folder
+   also brings its empty folders along, and an empty folder on its own is
+   created as one. **Folder upload** in the New menu cannot do this, because
+   browsers do not tell a page about empty folders chosen that way.
 2. Track progress per file in the upload panel. A large dropped folder shows how
    many files have been found while it is still being read, then **Getting ready
    to upload** while it is checked against the bucket.
