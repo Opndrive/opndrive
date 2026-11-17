@@ -343,6 +343,25 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
   async listFromPrefix(prefix: string): Promise<string[]> {
     const allKeys: string[] = [];
+    for await (const keys of this.listPagesFromPrefix(prefix)) {
+      // Not `allKeys.push(...keys)`: spreading a page is fine, but appending
+      // is just as short and has no argument-count ceiling.
+      for (const key of keys) allKeys.push(key);
+    }
+    return allKeys;
+  }
+
+  /**
+   * Every key under a prefix, one listing page at a time, as each arrives.
+   *
+   * For callers that can start on the first page while the rest are still
+   * being listed: a delete of a 100,000-object folder used to read all 100
+   * pages before removing anything. Stopping the iteration early (a `break`
+   * out of `for await`) stops the listing too.
+   *
+   * @throws whatever a listing request threw, at the page it failed on.
+   */
+  async *listPagesFromPrefix(prefix: string): AsyncGenerator<string[], void, undefined> {
     let continuationToken: string | undefined;
 
     do {
@@ -354,12 +373,9 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         })
       );
 
-      const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
-      allKeys.push(...keys);
+      yield (list.Contents || []).map((o) => o.Key!).filter(Boolean);
       continuationToken = list.NextContinuationToken;
     } while (continuationToken);
-
-    return allKeys;
   }
 
   async moveFile(params: MoveFileParams): Promise<void> {

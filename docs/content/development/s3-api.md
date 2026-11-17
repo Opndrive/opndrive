@@ -36,6 +36,7 @@ multiply requests rather than help.
 | `deleteFile(key)`                                                   | Single-object delete                                                        |
 | `deleteBatch(batch)`                                                | Up to 1000 objects per call - see below                                     |
 | `listFromPrefix(prefix)`                                            | Exhaustive, paginated key listing under a prefix                            |
+| `listPagesFromPrefix(prefix)`                                       | The same keys one page at a time, as each arrives (async iterator)          |
 | `moveFile(params)` / `renameFile(params)`                           | Copy + delete for a single object                                           |
 | `renameFolder(params)`                                              | Bulk rename - see below                                                     |
 | `createFolder(key)`                                                 | Writes a zero-byte object as a folder marker                                |

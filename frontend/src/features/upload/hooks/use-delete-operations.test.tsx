@@ -23,6 +23,20 @@ import type { Folder } from '@/features/dashboard/types/folder';
 import type { FileItem } from '@/features/dashboard/types/file';
 
 const listFromPrefix = vi.fn();
+/**
+ * Pages of up to a thousand, the way S3 pages, built from whatever
+ * `listFromPrefix` is set to answer - so a test states a folder's contents
+ * once and both forms of listing agree on it. Always at least one page, as
+ * s3-api always makes one request.
+ */
+const listPagesFromPrefix = vi.fn(async function* (prefix: string) {
+  const keys: string[] = await listFromPrefix(prefix);
+  let offset = 0;
+  do {
+    yield keys.slice(offset, offset + 1000);
+    offset += 1000;
+  } while (offset < keys.length);
+});
 const deleteBatch = vi.fn();
 const deleteFile = vi.fn();
 const refreshCurrentData = vi.fn();
@@ -45,7 +59,13 @@ const route = { pathname: '/dashboard/browse' };
 
 vi.mock('@/hooks/use-auth-guard', () => ({
   useAuthGuard: () => ({
-    apiS3: { listFromPrefix, deleteBatch, deleteFile, getBucketName: () => 'test-bucket' },
+    apiS3: {
+      listFromPrefix,
+      listPagesFromPrefix,
+      deleteBatch,
+      deleteFile,
+      getBucketName: () => 'test-bucket',
+    },
   }),
 }));
 
@@ -164,6 +184,33 @@ describe('folder marker ordering', () => {
     expect(batchedKeys()).toEqual([['docs/']]);
   });
 
+  it('starts deleting before the folder has been listed to the end', async () => {
+    // A 100,000-object folder used to be listed in full - 100 requests - before
+    // anything was removed.
+    let releaseSecondPage!: () => void;
+    listPagesFromPrefix.mockImplementationOnce(async function* () {
+      yield Array.from({ length: 1000 }, (_, i) => `docs/a${i}.txt`);
+      await new Promise<void>((resolve) => (releaseSecondPage = resolve));
+      yield ['docs/last.txt'];
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+    let deleting!: Promise<void>;
+    act(() => {
+      deleting = result.current.deleteFolderWithProgress(folder());
+    });
+
+    await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledOnce());
+    // The first thousand are going while the second page is still unread.
+    expect(releaseSecondPage).toBeTypeOf('function');
+
+    releaseSecondPage();
+    await act(async () => {
+      await deleting;
+    });
+    expect(batchedKeys().at(-1)).toEqual(['docs/last.txt', 'docs/']);
+  });
+
   it('normalizes a prefix that arrives without a trailing slash', async () => {
     listFromPrefix.mockResolvedValue(['docs/a.txt']);
 
@@ -172,7 +219,7 @@ describe('folder marker ordering', () => {
       await result.current.deleteFolderWithProgress(folder({ Prefix: 'docs' }));
     });
 
-    expect(listFromPrefix).toHaveBeenCalledWith('docs/');
+    expect(listPagesFromPrefix).toHaveBeenCalledWith('docs/');
     expect(batchedKeys()).toEqual([['docs/a.txt', 'docs/']]);
   });
 });
@@ -329,6 +376,31 @@ describe('recovery record', () => {
       prefix: 'docs/',
       name: 'docs',
     });
+  });
+
+  it('counts everything listed so far, as the listing goes on', async () => {
+    // The record is written before the first batch, when only one page is
+    // known, and has to keep up: a tab closed later in a big delete should
+    // say how much it was actually removing.
+    const firstPage = Array.from({ length: 1000 }, (_, i) => `docs/a${i}.txt`);
+    const secondPage = Array.from({ length: 500 }, (_, i) => `docs/b${i}.txt`);
+    listFromPrefix.mockResolvedValue([...firstPage, ...secondPage]);
+
+    const seen: number[] = [];
+    deleteBatch.mockImplementation(async (batch: { Key: string }[]) => {
+      seen.push((Object.values(records())[0] as { totalItems: number }).totalItems);
+      return { requested: batch.length, deleted: batch.length, errors: [] };
+    });
+
+    const { result } = renderHook(() => useDeleteOperations());
+    await act(async () => {
+      await result.current.deleteFolderWithProgress(folder());
+    });
+
+    // 1001 when the first batch went (a page plus the marker), 1501 by the
+    // last.
+    expect(seen[0]).toBe(1001);
+    expect(seen.at(-1)).toBe(1501);
   });
 
   it('is cleared once the delete finishes', async () => {
