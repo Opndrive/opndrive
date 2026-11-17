@@ -21,6 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { UploadStatus } from '@opndrive/s3-api';
 import {
   createUploadExecutor,
   keyForPlannedFile,
@@ -43,6 +44,8 @@ function fakeManager() {
   };
   const added: { id: string; key: string; contentType?: string; file: File }[] = [];
   const cancelled: string[] = [];
+  // What getStatus answers: the last thing each upload was said to be.
+  const statuses = new Map<string, { status: UploadStatus; progress: number }>();
   let nextId = 0;
 
   const manager: UploadManagerLike & {
@@ -58,12 +61,14 @@ function fakeManager() {
     addUpload(file, config) {
       const id = `upload-${nextId++}`;
       added.push({ id, key: config.key, contentType: config.contentType, file });
+      statuses.set(id, { status: 'queued', progress: 0 });
       return id;
     },
     async cancelUpload(id) {
       cancelled.push(id);
       if (manager.failCancel.has(id)) throw new Error(`abort failed for ${id}`);
     },
+    getStatus: (id) => statuses.get(id),
     on(event, listener) {
       listeners[event]!.push(listener);
     },
@@ -71,6 +76,10 @@ function fakeManager() {
       listeners[event] = listeners[event]!.filter((l) => l !== listener);
     },
     emit(event, payload) {
+      statuses.set(payload.id, {
+        status: payload.status as UploadStatus,
+        progress: payload.progress,
+      });
       for (const listener of [...listeners[event]!]) listener(payload);
     },
     listenerCount: () => listeners.progress!.length + listeners.statusChange!.length,
@@ -273,6 +282,28 @@ describe('start', () => {
     expect(executor.taskFor('upload-0')).toBe('task-a');
     expect(executor.taskFor('upload-1')).toBe('task-b');
     expect(executor.taskFor('upload-nope')).toBeUndefined();
+  });
+
+  it('reports where an upload already is, for the card created after it', () => {
+    // The real manager starts the first files inside addUpload, before it
+    // returns the id, so a card made afterwards has missed that event.
+    const eager = fakeManager();
+    const plainAdd = eager.addUpload.bind(eager);
+    eager.addUpload = (file, config) => {
+      const id = plainAdd(file, config);
+      eager.emit('statusChange', { id, status: 'uploading', progress: 0 });
+      return id;
+    };
+    const eagerExecutor = createUploadExecutor(eager);
+
+    const [result] = eagerExecutor.start([folderPlan()]);
+
+    expect(eagerExecutor.statusOf(result!.files[0]!.uploadId)).toEqual({
+      status: 'uploading',
+      progress: 0,
+    });
+    expect(eagerExecutor.statusOf('upload-nope')).toBeUndefined();
+    eagerExecutor.dispose();
   });
 
   it('dispatches several plans in one call', () => {

@@ -325,6 +325,12 @@ export function useUploadDispatch() {
 
       const dispatched = executor.start(planned);
 
+      // A file's card starts where its upload already is, not at 'queued'.
+      // The manager starts the first few files inside `start`, and the events
+      // saying so arrived before any of these cards existed.
+      const current = (uploadId: string) =>
+        executor.statusOf(uploadId) ?? { status: 'queued' as const, progress: 0 };
+
       for (const result of dispatched) {
         if (result.plan.kind === 'folder') {
           // The folder card owns the task id, which is what `cancelTask` takes,
@@ -347,8 +353,7 @@ export function useUploadDispatch() {
               // The key rather than the bare name, so two files called
               // "img.jpg" from different subfolders stay distinguishable.
               name: file.key,
-              status: 'queued',
-              progress: 0,
+              ...current(file.uploadId),
               type: 'file',
               parentFolderId: result.taskId,
               key: file.key,
@@ -364,8 +369,7 @@ export function useUploadDispatch() {
             addUpload(file.uploadId, {
               id: file.uploadId,
               name: file.file.name,
-              status: 'queued',
-              progress: 0,
+              ...current(file.uploadId),
               type: 'file',
               key: file.key,
               size: file.file.size,

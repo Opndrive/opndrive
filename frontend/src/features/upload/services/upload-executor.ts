@@ -30,6 +30,7 @@
  *    below exists only to learn when a claim can be committed.
  */
 
+import type { UploadStatus } from '@opndrive/s3-api';
 import type { PlannedUpload } from '../stores/use-upload-queue-store';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import { contentTypeFor } from '../utils/content-type';
@@ -38,6 +39,7 @@ import { contentTypeFor } from '../utils/content-type';
 export interface UploadManagerLike {
   addUpload(file: File, config: { key: string; contentType?: string }): string;
   cancelUpload(id: string): Promise<void> | void;
+  getStatus(id: string): { status: UploadStatus; progress: number } | undefined;
   on(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
   off(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
 }
@@ -150,6 +152,17 @@ export interface UploadExecutor {
   taskFor(uploadId: string): string | undefined;
   /** Manager ids still tracked for a task. Empty once the task is terminal. */
   uploadsFor(taskId: string): string[];
+  /**
+   * Where an upload stands right now, by the manager's own account.
+   *
+   * For whoever creates the upload's card, which can only happen after
+   * `start` has returned its id. By then the manager has already announced
+   * the upload: `addUpload` emits 'queued' and, for the first few files,
+   * 'uploading' before it returns, and those events went nowhere because
+   * there was no card yet. A card started at 'queued' showed every upload
+   * that was already running as waiting.
+   */
+  statusOf(uploadId: string): { status: UploadStatus; progress: number } | undefined;
   /** Unsubscribes from the manager. Call on session teardown. */
   dispose(): void;
 }
@@ -334,6 +347,8 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
     taskFor: (uploadId) => taskByUpload.get(uploadId),
 
     uploadsFor: (taskId) => [...(tasks.get(taskId)?.uploadIds ?? [])],
+
+    statusOf: (uploadId) => manager.getStatus(uploadId),
 
     dispose() {
       manager.off('progress', onProgress);

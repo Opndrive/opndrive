@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import type { BYOS3ApiProvider } from '@opndrive/s3-api';
+import type { BYOS3ApiProvider, UploadStatus } from '@opndrive/s3-api';
 import { useUploadDispatch } from './use-upload-dispatch';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import { useUploadStore } from '../stores/use-upload-store';
@@ -58,15 +58,19 @@ const apiS3 = { __brand: 'fake' } as unknown as BYOS3ApiProvider;
 
 function fakeManager() {
   const added: { id: string; key: string }[] = [];
+  /** What getStatus answers. Uploads not in here read as not yet known. */
+  const statuses = new Map<string, { status: UploadStatus; progress: number }>();
   let n = 0;
   return {
     added,
+    statuses,
     addUpload(_file: File, config: { key: string }) {
       const id = `upload-${n++}`;
       added.push({ id, key: config.key });
       return id;
     },
     cancelUpload: vi.fn(),
+    getStatus: (id: string) => statuses.get(id),
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -213,6 +217,43 @@ describe('loose files', () => {
     );
 
     expect(manager.added.map((a) => a.key)).toEqual(['notes.txt', 'photos/a.jpg']);
+  });
+});
+
+describe('a card starts where its upload already is', () => {
+  // The manager starts the first few files while it is still being handed
+  // them, before any card exists, so their 'uploading' event goes nowhere.
+  // Cards that all started at 'queued' showed running uploads as waiting.
+  it('shows a file the manager has already started as uploading', async () => {
+    manager.statuses.set('upload-0', { status: 'uploading', progress: 0 });
+    manager.statuses.set('upload-1', { status: 'queued', progress: 0 });
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(
+      drop({ folderStructures: [folder('photos', ['a.jpg', 'b.jpg'])] }),
+      '',
+      apiS3
+    );
+
+    expect(uploads()['upload-0']).toMatchObject({ status: 'uploading', progress: 0 });
+    expect(uploads()['upload-1']).toMatchObject({ status: 'queued', progress: 0 });
+  });
+
+  it('does the same for a loose file', async () => {
+    manager.statuses.set('upload-0', { status: 'uploading', progress: 12 });
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+
+    expect(uploads()['upload-0']).toMatchObject({ status: 'uploading', progress: 12 });
+  });
+
+  it('starts at queued when the manager has nothing to say', async () => {
+    const dispatchDrop = dispatch();
+
+    await dispatchDrop(drop({ individualFiles: [makeFile('notes.txt')] }), '', apiS3);
+
+    expect(uploads()['upload-0']).toMatchObject({ status: 'queued', progress: 0 });
   });
 });
 

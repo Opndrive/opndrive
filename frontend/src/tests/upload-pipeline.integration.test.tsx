@@ -365,6 +365,35 @@ describe('1d. retrying', () => {
   });
 });
 
+describe('1e. what the cards say while uploading', () => {
+  it('shows the files that are already running as uploading, not queued', async () => {
+    // The manager runs three at a time and starts the first three inside the
+    // dispatch itself, before their cards exist. Held in flight, so nothing
+    // finishes and moves the cards on before they are read.
+    bucket.holdParts();
+    const data = await dropOfFolder('docs', [
+      { path: 'a.txt' },
+      { path: 'b.txt' },
+      { path: 'c.txt' },
+      { path: 'd.txt' },
+      { path: 'e.txt' },
+    ]);
+    const dispatch = mountPipeline();
+
+    await act(async () => {
+      await dispatch.current(data, '', bucket.apiS3);
+    });
+
+    const statuses = Object.values(uploads())
+      .filter((u) => u.type === 'file')
+      .map((u) => u.status);
+    expect(statuses).toEqual(['uploading', 'uploading', 'uploading', 'queued', 'queued']);
+
+    bucket.release();
+    await untilIdle(bucket);
+  });
+});
+
 describe('2. the collision and suffix path', () => {
   it('separates two folders of the same name in one drop', async () => {
     const first = await dropOfFolder('photos', [{ path: 'a.jpg' }]);
