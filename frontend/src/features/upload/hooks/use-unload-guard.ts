@@ -36,7 +36,12 @@ export function useUnloadGuard(): void {
   // the layout this sits in. The loop stops at the first live upload.
   const hasUnfinishedUpload = useUploadStore((state) => {
     for (const id in state.uploads) {
-      if (UNFINISHED_UPLOAD_STATUSES.has(state.uploads[id]!.status)) return true;
+      const upload = state.uploads[id]!;
+      // A folder card stands for its files and is never moved on from
+      // 'queued' itself, so counting it kept the prompt up after every
+      // folder upload. Its files' cards are here too, with real statuses.
+      if (upload.type === 'folder') continue;
+      if (UNFINISHED_UPLOAD_STATUSES.has(upload.status)) return true;
     }
     return false;
   });

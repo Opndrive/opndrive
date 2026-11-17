@@ -121,6 +121,69 @@ describe('while an upload is unfinished', () => {
   );
 });
 
+describe('for a dropped folder', () => {
+  /**
+   * A folder card as dispatch makes it: 'queued', for good. Nothing ever
+   * moves it on, because the panel works a folder's status out from its
+   * files, so its own status says nothing about whether work is left.
+   */
+  function seedFolder(...fileStatuses: UploadStatus[]) {
+    const fileIds = fileStatuses.map((_, i) => `f${i}`);
+    act(() => {
+      useUploadStore.setState({
+        uploads: {
+          folder: {
+            id: 'folder',
+            name: 'photos',
+            type: 'folder',
+            status: 'queued',
+            progress: 0,
+            fileIds,
+          },
+          ...Object.fromEntries(
+            fileStatuses.map((status, i) => [
+              `f${i}`,
+              {
+                id: `f${i}`,
+                name: `photos/${i}.jpg`,
+                type: 'file' as const,
+                status,
+                progress: 10,
+                parentFolderId: 'folder',
+              },
+            ])
+          ),
+        },
+      });
+    });
+  }
+
+  it('lets the tab close once every file in it has finished', () => {
+    seedFolder('completed', 'completed');
+    renderHook(() => useUnloadGuard());
+
+    expect(unloadWasBlocked()).toBe(false);
+  });
+
+  it('blocks while a file in it is still going', () => {
+    seedFolder('completed', 'uploading');
+    const { rerender } = renderHook(() => useUnloadGuard());
+    expect(unloadWasBlocked()).toBe(true);
+
+    seedFolder('completed', 'completed');
+    rerender();
+
+    expect(unloadWasBlocked()).toBe(false);
+  });
+
+  it('blocks while files in it are still waiting their turn', () => {
+    seedFolder('failed', 'queued');
+    renderHook(() => useUnloadGuard());
+
+    expect(unloadWasBlocked()).toBe(true);
+  });
+});
+
 describe('while a drop is being planned', () => {
   // A large folder takes a while to read and check before its first upload
   // card exists. Closing then loses the drop just as surely.
