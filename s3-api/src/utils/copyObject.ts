@@ -71,7 +71,15 @@ export async function copyObject(
 
   let head: HeadObjectCommandOutput | undefined;
   let size = options.size;
-  if (size === undefined) {
+
+  // A size from a listing is enough to choose one CopyObject: that copies
+  // whatever is there when it runs, and refuses it if it has since grown past
+  // the limit. A multipart copy needs a HEAD regardless, for the version every
+  // part is pinned to, and then that version's size is the one that counts. A
+  // folder rename's listing can be minutes old by an object's turn, and parts
+  // cut from it copied a source that had grown since only as far as the old
+  // size - after which the rename deleted the whole original.
+  if (size === undefined || size > maxSingleCopy) {
     head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: sourceKey }));
     size = head?.ContentLength;
   }
@@ -83,7 +91,6 @@ export async function copyObject(
     return;
   }
 
-  head ??= await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: sourceKey }));
   await copyInParts(s3, bucket, copySource, destinationKey, size, head, options.partSizeBytes);
 }
 

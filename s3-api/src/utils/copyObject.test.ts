@@ -172,6 +172,33 @@ describe('an object over 5 GiB', () => {
     expect(partInputs()).toHaveLength(13);
   });
 
+  /**
+   * A folder rename passes each object's size from its listing, which can be
+   * minutes old by the time that object's turn comes. The parts are pinned to
+   * the version a HEAD finds, so they have to be cut from that version's size
+   * too. Cut from the listing's, a source that had since grown came out cut
+   * short, and the rename then deleted the whole original.
+   */
+  it('cuts the parts from the size of the version it copies, not the listing', async () => {
+    const grown = size + 1 * GiB;
+    s3Mock.on(HeadObjectCommand).resolves({ ...head, ContentLength: grown });
+
+    await copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size });
+
+    const ends = partInputs().map((input) => Number(input.CopySourceRange!.split('-')[1]));
+    expect(Math.max(...ends)).toBe(grown - 1);
+  });
+
+  it('copies in one request a source that has shrunk under the limit since', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ...head, ContentLength: 10 });
+    s3Mock.on(CopyObjectCommand).resolves({});
+
+    await copyObject(s3, 'bucket', 'videos/raw.mp4', 'videos/final.mp4', { size });
+
+    expect(s3Mock.commandCalls(CopyObjectCommand)).toHaveLength(1);
+    expect(partInputs()).toHaveLength(0);
+  });
+
   it('stops taking parts after one fails, aborts once none is in flight, and throws', async () => {
     const order: string[] = [];
     s3Mock.on(UploadPartCopyCommand).callsFake(async (input) => {
