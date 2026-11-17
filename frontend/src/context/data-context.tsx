@@ -169,12 +169,6 @@ function discardOpenRequests(key: string): void {
 }
 
 /**
- * Runs `work`, or joins the request already open for `key` when the caller is
- * happy with an in-flight result. A forced sync passes `reuseInFlight: false`
- * because the user asked for fresh data, not for whatever was already being
- * read before they asked.
- */
-/**
  * The first listing page of a prefix, shared by reads that start together.
  *
  * `fetchData` and `fetchRecentItems` both list the same prefix, and the two
@@ -208,6 +202,12 @@ function readFirstPage(apiS3: BYOS3ApiProvider, prefix: string): ListingPage {
   return read;
 }
 
+/**
+ * Runs `work`, or joins the request already open for `key` when the caller is
+ * happy with an in-flight result. A forced sync passes `reuseInFlight: false`
+ * because the user asked for fresh data, not for whatever was already being
+ * read before they asked.
+ */
 function runDeduped(
   inFlight: Map<string, Promise<void>>,
   key: string,

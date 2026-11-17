@@ -133,6 +133,7 @@ export class SignedUrlUploadManager {
     return id;
   }
 
+  /** A fresh uploader for one file, for a new upload or a retry of a failed one. */
   private uploaderFor(file: File, config: SignedUrlUploadItem['config']): SignedUrlUploader {
     return new SignedUrlUploader({
       apiProvider: this.apiProvider,
@@ -375,9 +376,9 @@ export class SignedUrlUploadManager {
   }
 
   /**
-   * Emit events to listeners
+   * Emit events to listeners. See UploadManager.emit - listeners must be
+   * isolated from each other.
    */
-  /** See UploadManager.emit - listeners must be isolated from each other. */
   private emit(event: UploadEvent, payload: EventPayload): void {
     this.listeners.get(event)?.forEach((listener) => {
       try {

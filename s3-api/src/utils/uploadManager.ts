@@ -170,11 +170,7 @@ export class UploadManager {
     return id;
   }
 
-  /**
-   * CORRECTED: Adds a folder to the upload queue.
-   * This method no longer duplicates code and correctly uses its config.
-   * It now calls `addUpload` for each file.
-   */
+  /** A fresh uploader for one file, for a new upload or a retry of a failed one. */
   private uploaderFor(file: File, config: UploadItem['config']): MultipartUploader {
     return new MultipartUploader({
       s3: this.s3,
@@ -215,6 +211,11 @@ export class UploadManager {
     return true;
   }
 
+  /**
+   * CORRECTED: Adds a folder to the upload queue.
+   * This method no longer duplicates code and correctly uses its config.
+   * It now calls `addUpload` for each file.
+   */
   public addFolderUpload(
     files: FileList,
     config: { basePrefix?: string }
