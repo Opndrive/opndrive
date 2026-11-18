@@ -45,40 +45,44 @@ interface NoticeRowProps {
 /**
  * Memoised on the notice object, which the store only replaces when the list
  * actually changes. The panel around this re-renders on every progress tick.
+ *
+ * The label and the dismiss button share a line at the top, and the detail
+ * takes the full width beneath them. Side by side with the label, the detail
+ * was squeezed into a narrow column and ran to five or six short lines.
  */
 const NoticeRow: React.FC<NoticeRowProps> = React.memo(({ notice, onDismiss }) => (
   <div
     data-testid="queue-notice"
     data-kind={notice.kind}
-    className="flex items-start gap-2 px-4 py-2"
+    className="px-4 py-2.5"
     style={{ borderBottom: '1px solid var(--border)' }}
   >
-    <span
-      className="text-[10px] font-semibold uppercase tracking-wide mt-0.5 flex-shrink-0"
-      style={{ color: ACCENT[notice.kind] }}
-    >
-      {LABEL[notice.kind]}
-    </span>
+    <div data-testid="queue-notice-header" className="flex items-center justify-between gap-2">
+      <span
+        className="text-[10px] font-semibold uppercase tracking-wide"
+        style={{ color: ACCENT[notice.kind] }}
+      >
+        {LABEL[notice.kind]}
+      </span>
 
-    <div className="flex-1 min-w-0">
-      <p className="text-xs" style={{ color: 'var(--foreground)' }}>
-        {notice.detail}
-      </p>
-      {notice.count > 1 && (
-        <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-          {notice.count} items
-        </p>
-      )}
+      <button
+        onClick={() => onDismiss(notice.id)}
+        aria-label={`Dismiss notice: ${notice.detail}`}
+        className="-mr-1 p-1 rounded transition-colors duration-200 flex-shrink-0 hover:bg-[var(--accent)]"
+        style={{ color: 'var(--muted-foreground)' }}
+      >
+        <HiOutlineXMark className="w-3.5 h-3.5" />
+      </button>
     </div>
 
-    <button
-      onClick={() => onDismiss(notice.id)}
-      aria-label={`Dismiss notice: ${notice.detail}`}
-      className="p-1 rounded transition-colors duration-200 flex-shrink-0"
-      style={{ color: 'var(--muted-foreground)' }}
-    >
-      <HiOutlineXMark className="w-3 h-3" />
-    </button>
+    <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--foreground)' }}>
+      {notice.detail}
+    </p>
+    {notice.count > 1 && (
+      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+        {notice.count} items
+      </p>
+    )}
   </div>
 ));
 NoticeRow.displayName = 'NoticeRow';

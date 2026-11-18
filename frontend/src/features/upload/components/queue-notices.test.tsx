@@ -105,6 +105,14 @@ describe('the three kinds', () => {
     expect(row.getAttribute('data-kind')).toBe('unverified');
     expect(within(row).getByText('Not verified')).toBeTruthy();
     expect(screen.getByText(/will be overwritten/)).toBeTruthy();
+
+    // The label and its dismiss button on top, the detail across the full
+    // width below. Beside the label, the detail was a narrow column of five
+    // or six short lines.
+    const header = within(row).getByTestId('queue-notice-header');
+    expect(within(header).getByText('Not verified')).toBeTruthy();
+    expect(within(header).getByRole('button', { name: /^Dismiss notice/ })).toBeTruthy();
+    expect(header.contains(screen.getByText(/will be overwritten/))).toBe(false);
   });
 
   it('omits the item count for a notice standing for one thing', () => {
