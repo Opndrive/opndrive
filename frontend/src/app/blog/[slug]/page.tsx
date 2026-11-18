@@ -2,7 +2,8 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getPostBySlug, getAllPostSlugs, getRelatedPosts } from '@/lib/wordpress/service';
+import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
+import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
@@ -19,23 +20,21 @@ import {
 } from '@/lib/seo';
 import { isBlogEnabled } from '@/config/features';
 
-// Revalidate every 60 seconds
-export const revalidate = 60;
-
-// Generate static params for all blog posts
-export async function generateStaticParams() {
-  if (!isBlogEnabled()) {
-    return [];
-  }
-
-  try {
-    const slugs = await getAllPostSlugs();
-    return slugs.map((slug) => ({ slug }));
-  } catch (error) {
-    console.error('Error generating static params for blog posts:', error);
-    return [];
-  }
-}
+/*
+ * Deliberately no `generateStaticParams` and no `revalidate` here.
+ *
+ * Both used to be exported, asking Next.js to pre-render the posts and treat
+ * any other slug as an incremental static page built on first request. That
+ * cannot work in this app: the root layout reads headers() for the CSP nonce,
+ * so no page can be static. With posts to pre-render, the build found that out
+ * and quietly made the route dynamic. With none, it never tried, registered
+ * the route as incremental static, and every request then failed with a 500
+ * (DYNAMIC_SERVER_USAGE) before this page's own notFound() could answer -
+ * /blog/rss.xml included, which had no route of its own and landed here.
+ *
+ * Rendered per request instead, the WordPress responses are still cached:
+ * the client asks fetch for force-cache with a 60 second revalidate.
+ */
 
 // Generate metadata for each post
 export async function generateMetadata({
@@ -52,15 +51,14 @@ export async function generateMetadata({
 
   const { slug } = await params;
 
-  let post;
-  try {
-    post = await getPostBySlug(slug);
-  } catch (error) {
-    console.error('Error fetching blog post metadata:', error);
-    return {
-      title: 'Post Not Found',
-    };
+  // No WordPress behind the blog: no post can exist, which is known.
+  if (!isWordPressConfigured()) {
+    return { title: 'Post Not Found' };
   }
+
+  // A WordPress error is thrown on, not turned into "not found": the page then
+  // answers 500, which a crawler retries, instead of a 404 for a live post.
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     return {
@@ -171,13 +169,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const { slug } = await params;
 
-  let post;
-  try {
-    post = await getPostBySlug(slug);
-  } catch (error) {
-    console.error('Error fetching blog post:', error);
+  // No WordPress behind the blog: no post can exist, so a 404 is the truth.
+  if (!isWordPressConfigured()) {
     notFound();
   }
+
+  // Only a post WordPress says does not exist is a 404. A failed request is
+  // thrown on and answers 500: a 404 would tell Google a live post was gone.
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     notFound();
@@ -226,7 +225,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-8">
           <span>by {post.author.name}</span>
           <span>|</span>
-          <time dateTime={post.publishedDate}>{formatDate(post.publishedDate)}</time>
+          <time dateTime={post.publishedDate}>{formatDate(post.publishedDateLocal)}</time>
           <span>|</span>
           <span>{readingTime} min read</span>
         </div>

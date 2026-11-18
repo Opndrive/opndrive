@@ -101,7 +101,9 @@ export const POST_FIELDS = `
     excerpt
     content
     date
+    dateGmt
     modified
+    modifiedGmt
     author {
       ...AuthorFields
     }
@@ -195,6 +197,7 @@ export const GET_ALL_POST_SLUGS = `
     posts(first: $first, after: $after, where: { status: PUBLISH }) {
       nodes {
         slug
+        modifiedGmt
       }
       pageInfo {
         hasNextPage

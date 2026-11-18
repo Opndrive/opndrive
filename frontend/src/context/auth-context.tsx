@@ -271,11 +271,15 @@ function persistSession(creds: Credentials): void {
  * the one public page still serving `Loading...` as its entire body to anyone
  * who arrived without JavaScript, crawlers included.
  *
- * Matching covers children, so /connect/cloudflare-r2 is public too. It does
- * not make `/` match everything: the child test looks for a `/` *after* the
- * route, and no path begins with `//`.
+ * `/blog` was missing for the same reason, and so the blog index and every post
+ * reached a crawler as `Loading...` with the article only in the client
+ * payload. A blog that cannot be read without JavaScript is not much of one.
+ *
+ * Matching covers children, so /connect/cloudflare-r2 and /blog/some-post are
+ * public too. It does not make `/` match everything: the child test looks for a
+ * `/` *after* the route, and no path begins with `//`.
  */
-const PUBLIC_ROUTES = ['/', '/privacy', '/terms', '/connect'];
+const PUBLIC_ROUTES = ['/', '/privacy', '/terms', '/connect', '/blog'];
 
 function isPublicRoute(pathname: string | null): boolean {
   if (pathname === null) return false;

@@ -20,22 +20,57 @@ import type {
   CategoryNode,
   TagNode,
 } from './types';
+import { decodeHtmlEntities, htmlToText } from './entities';
 
 /**
- * Transform WordPress post to simplified BlogPost format
+ * A WPGraphQL "...Gmt" field as an ISO string Date can read.
+ *
+ * WPGraphQL gives these in UTC without a zone designator, so without a "Z"
+ * they would be read in whatever zone the server runs in. A value that already
+ * carries a zone is left alone.
  */
-function transformPost(post: WordPressPost): BlogPost {
-  // Clean excerpt (remove HTML tags)
-  const cleanExcerpt = post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '').trim() : '';
+export function gmtToIso(gmt: string | undefined | null): string | undefined {
+  if (!gmt) return undefined;
+  return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(gmt) ? gmt : `${gmt}Z`;
+}
+
+/**
+ * The first `count` characters, counted as code points: a decoded excerpt can
+ * hold emoji, and cutting by UTF-16 unit could leave half of one behind.
+ */
+function firstChars(text: string, count: number): string {
+  return Array.from(text).slice(0, count).join('');
+}
+
+/** A rendered WordPress text field (title, term name, SEO text) as plain text. */
+function plainText(rendered: string | undefined | null): string {
+  return rendered ? decodeHtmlEntities(rendered) : '';
+}
+
+/**
+ * Transform WordPress post to simplified BlogPost format.
+ *
+ * Text fields come back from WPGraphQL rendered, entities and all, and are
+ * decoded here once, so everything downstream handles plain text. Dates come
+ * back as the site's local time with no offset; the `...Gmt` twins are used
+ * for the exact instant, and the local one is kept only for showing the date.
+ * `content` is HTML and stays as it is.
+ */
+export function transformPost(post: WordPressPost): BlogPost {
+  // Plain text from here on: components show it as it is, without stripping
+  // tags again, which would eat a "<b>" the author wrote as text.
+  const cleanExcerpt = post.excerpt ? htmlToText(post.excerpt).trim() : '';
+  const title = plainText(post.title);
 
   return {
     id: post.id,
     slug: post.slug,
-    title: post.title,
+    title,
     excerpt: cleanExcerpt,
     content: post.content,
-    publishedDate: post.date,
-    modifiedDate: post.modified,
+    publishedDate: gmtToIso(post.dateGmt) ?? post.date,
+    publishedDateLocal: post.date,
+    modifiedDate: gmtToIso(post.modifiedGmt) ?? post.modified,
     author: {
       name: post.author?.node?.name || 'Anonymous',
       avatar: post.author?.node?.avatar?.url,
@@ -44,7 +79,7 @@ function transformPost(post: WordPressPost): BlogPost {
     featuredImage: post.featuredImage?.node
       ? {
           url: post.featuredImage.node.sourceUrl,
-          alt: post.featuredImage.node.altText || post.title,
+          alt: post.featuredImage.node.altText || title,
           width: post.featuredImage.node.mediaDetails?.width || 1200,
           height: post.featuredImage.node.mediaDetails?.height || 630,
         }
@@ -52,21 +87,23 @@ function transformPost(post: WordPressPost): BlogPost {
     categories:
       post.categories?.nodes?.map((cat: CategoryNode) => ({
         id: cat.id,
-        name: cat.name,
+        name: plainText(cat.name),
         slug: cat.slug,
       })) || [],
     tags:
       post.tags?.nodes?.map((tag: TagNode) => ({
         id: tag.id,
-        name: tag.name,
+        name: plainText(tag.name),
         slug: tag.slug,
       })) || [],
     seo: {
-      title: post.seo?.title || post.title,
-      description: post.seo?.metaDesc || cleanExcerpt.substring(0, 160),
-      ogTitle: post.seo?.opengraphTitle || post.seo?.title || post.title,
+      title: plainText(post.seo?.title) || title,
+      description: plainText(post.seo?.metaDesc) || firstChars(cleanExcerpt, 160),
+      ogTitle: plainText(post.seo?.opengraphTitle) || plainText(post.seo?.title) || title,
       ogDescription:
-        post.seo?.opengraphDescription || post.seo?.metaDesc || cleanExcerpt.substring(0, 160),
+        plainText(post.seo?.opengraphDescription) ||
+        plainText(post.seo?.metaDesc) ||
+        firstChars(cleanExcerpt, 160),
       ogImage: post.seo?.opengraphImage?.sourceUrl || post.featuredImage?.node?.sourceUrl,
       canonical: post.seo?.canonical,
       noindex: post.seo?.metaRobotsNoindex === 'noindex',
@@ -89,11 +126,15 @@ export async function getAllPosts(limit = 100): Promise<BlogPost[]> {
 /**
  * Get recent posts for blog index
  */
-export async function getRecentPosts(limit = 10): Promise<BlogPost[]> {
+export async function getRecentPosts(
+  limit = 10,
+  { revalidate }: { revalidate?: number } = {}
+): Promise<BlogPost[]> {
   const data = await fetchGraphQLWithTags<WordPressPostsResponse>(
     GET_RECENT_POSTS,
     { first: limit },
-    ['posts']
+    ['posts'],
+    revalidate
   );
 
   return data.posts.nodes.map(transformPost);
@@ -116,26 +157,42 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
 }
 
 /**
- * Get all post slugs for static generation
+ * Every published post's slug and the date WordPress last saw it change, for
+ * the sitemap. Pages through the whole list, 100 at a time.
+ *
+ * `revalidate` is how long each page of the list may be cached. A route is
+ * regenerated as often as its shortest-lived fetch, so a route that is meant
+ * to be rebuilt hourly has to ask for an hour here too, not the default minute.
  */
-export async function getAllPostSlugs(): Promise<string[]> {
-  const slugs: string[] = [];
+export async function getAllPostSitemapData({
+  revalidate = 60,
+}: { revalidate?: number } = {}): Promise<Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>> {
+  const posts: Array<Pick<BlogPost, 'slug' | 'modifiedDate'>> = [];
   let hasNextPage = true;
   let after: string | null = null;
 
   while (hasNextPage) {
     const data: WordPressPostsResponse = await fetchGraphQL<WordPressPostsResponse>(
       GET_ALL_POST_SLUGS,
-      { first: 100, after }
+      { first: 100, after },
+      { next: { revalidate } }
     );
 
-    slugs.push(...data.posts.nodes.map((post: WordPressPost) => post.slug));
+    posts.push(
+      ...data.posts.nodes.map((post: WordPressPost) => ({
+        slug: post.slug,
+        // WPGraphQL's `modified` is the site's local time with no offset, so
+        // it would be read as whatever zone the server runs in. `modifiedGmt`
+        // is UTC; gmtToIso marks it as such.
+        modifiedDate: gmtToIso(post.modifiedGmt) ?? '',
+      }))
+    );
 
     hasNextPage = data.posts.pageInfo.hasNextPage;
     after = data.posts.pageInfo.endCursor;
   }
 
-  return slugs;
+  return posts;
 }
 
 /**

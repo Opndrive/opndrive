@@ -48,7 +48,9 @@ export const POST_FIELDS = `
     excerpt
     content
     date
+    dateGmt
     modified
+    modifiedGmt
     author {
       ...AuthorFields
     }
@@ -129,13 +131,15 @@ export const GET_POST_BY_SLUG = `
 `;
 
 /**
- * Query to fetch all post slugs (for static generation)
+ * Query to fetch every published post's slug and last-modified date, for the
+ * sitemap
  */
 export const GET_ALL_POST_SLUGS = `
   query GetAllPostSlugs($first: Int = 100, $after: String) {
     posts(first: $first, after: $after, where: { status: PUBLISH }) {
       nodes {
         slug
+        modifiedGmt
       }
       pageInfo {
         hasNextPage

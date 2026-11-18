@@ -11,7 +11,11 @@ export interface WordPressPost {
   excerpt: string;
   content: string;
   date: string;
+  /** UTC, without a zone suffix. */
+  dateGmt?: string;
   modified: string;
+  /** UTC, without a zone suffix. Only the sitemap query asks for it. */
+  modifiedGmt?: string;
   author: WordPressAuthor;
   featuredImage?: WordPressFeaturedImage;
   categories: {
@@ -124,7 +128,22 @@ export interface BlogPost {
   title: string;
   excerpt: string;
   content: string;
+  /**
+   * When the post was published, as an ISO string in UTC (from WPGraphQL's
+   * `dateGmt`). This is the exact instant, for everything a machine reads: Open
+   * Graph, article meta tags, structured data, `<time dateTime>`, the feed.
+   * Every post query selects `dateGmt`, which WPGraphQL gives for every
+   * published post; only a query without it falls back to the local time.
+   */
   publishedDate: string;
+  /**
+   * The publish date as the site's own clock gave it, with no offset - what the
+   * author saw in WordPress. Only for showing the date to readers: parsed
+   * without a zone, it gives the same calendar day wherever it is rendered,
+   * where the UTC instant could fall on the day before or after.
+   */
+  publishedDateLocal: string;
+  /** When the post last changed, as an ISO string in UTC (from `modifiedGmt`). */
   modifiedDate: string;
   author: {
     name: string;

@@ -6,29 +6,43 @@
 
 import { isBlogEnabled, requiresWordPressCredentials } from '@/config/features';
 
-// Lazy evaluation - only check when actually used
-const getWordPressConfig = () => {
-  // Check if blog feature is enabled
-  if (!isBlogEnabled()) {
-    throw new Error('Blog feature is disabled. Set NEXT_PUBLIC_ENABLE_BLOG=true to enable it.');
-  }
+/**
+ * Whether there is a WordPress to ask at all: the blog is on and its GraphQL
+ * URL is set. Not the same as WordPress answering - callers that treat a
+ * failed request as "unknown" use this to tell a blog with no source (nothing
+ * to show, ever) from one whose source did not answer this time.
+ */
+export function isWordPressConfigured(): boolean {
+  return missingWordPressConfig() === null;
+}
 
+/** What stops WordPress being used, or null when nothing does. One rule for both callers. */
+function missingWordPressConfig(): string | null {
+  if (!isBlogEnabled()) {
+    return 'Blog feature is disabled. Set NEXT_PUBLIC_ENABLE_BLOG=true to enable it.';
+  }
   // Only require credentials if using self-hosted WordPress
   if (!requiresWordPressCredentials()) {
-    throw new Error('WordPress is not configured for this deployment.');
+    return 'WordPress is not configured for this deployment.';
   }
-
-  const WORDPRESS_API_URL = process.env.WORDPRESS_GRAPHQL_URL || '';
-  const WP_AUTH_TOKEN = process.env.WORDPRESS_AUTH_TOKEN;
-
-  if (!WORDPRESS_API_URL) {
-    throw new Error(
+  if (!process.env.WORDPRESS_GRAPHQL_URL) {
+    return (
       'WORDPRESS_GRAPHQL_URL environment variable is not defined. ' +
-        'Either set it or disable the blog feature with NEXT_PUBLIC_ENABLE_BLOG=false'
+      'Either set it or disable the blog feature with NEXT_PUBLIC_ENABLE_BLOG=false'
     );
   }
+  return null;
+}
 
-  return { WORDPRESS_API_URL, WP_AUTH_TOKEN };
+// Lazy evaluation - only check when actually used
+const getWordPressConfig = () => {
+  const missing = missingWordPressConfig();
+  if (missing) throw new Error(missing);
+
+  return {
+    WORDPRESS_API_URL: process.env.WORDPRESS_GRAPHQL_URL!,
+    WP_AUTH_TOKEN: process.env.WORDPRESS_AUTH_TOKEN,
+  };
 };
 
 interface GraphQLResponse<T> {
@@ -123,17 +137,22 @@ export async function fetchGraphQL<T>(
 }
 
 /**
- * Fetch with custom cache tags for on-demand revalidation
+ * Fetch with custom cache tags for on-demand revalidation.
+ *
+ * `revalidate` defaults to a minute. A route that is meant to be regenerated
+ * less often has to pass its own interval: Next.js regenerates a route as
+ * often as its shortest-lived fetch, whatever the route itself exports.
  */
 export async function fetchGraphQLWithTags<T>(
   query: string,
   variables: GraphQLVariables = {},
-  tags: string[]
+  tags: string[],
+  revalidate = 60
 ): Promise<T> {
   return fetchGraphQL<T>(query, variables, {
     next: {
       tags,
-      revalidate: 60,
+      revalidate,
     },
   });
 }

@@ -1,6 +1,9 @@
+import { serializeJsonLd } from '@/lib/seo/json-ld';
+
 /**
  * Structured Data Component
- * Renders JSON-LD structured data for SEO
+ * Renders JSON-LD structured data for SEO. Blog titles and excerpts come from
+ * WordPress, so the JSON is serialized with `<` escaped (see serializeJsonLd).
  */
 
 interface StructuredDataProps {
@@ -12,7 +15,7 @@ export function StructuredData({ data }: StructuredDataProps) {
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(data, null, 0),
+        __html: serializeJsonLd(data),
       }}
     />
   );

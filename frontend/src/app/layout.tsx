@@ -8,6 +8,8 @@ import { headers } from 'next/headers';
 import { AnalyticsGate } from '@/components/analytics/analytics-gate';
 import { SITE_URL } from '@/config/links';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
+import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/seo/social';
+import { serializeJsonLd } from '@/lib/seo/json-ld';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -41,28 +43,17 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
+    ...BASE_OPEN_GRAPH,
     title: 'Opndrive - Open-source S3 Compatible Storage Interface',
     description:
       'Open-source web interface for S3 compatible storage. Connect your own bucket and manage files with complete control over your data.',
     url: SITE_URL,
-    siteName: 'Opndrive',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'Opndrive - S3 Storage Interface',
-      },
-    ],
-    locale: 'en_US',
-    type: 'website',
   },
   twitter: {
-    card: 'summary_large_image',
+    ...BASE_TWITTER,
     title: 'Opndrive - Open-source S3 Compatible Storage Interface',
     description:
       'Open-source web interface for S3 compatible storage. Connect your own bucket and manage files with complete control over your data.',
-    images: ['/og-image.png'],
   },
   manifest: '/manifest.json',
   robots: {
@@ -102,12 +93,15 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* JSON-LD Structured Data for Google */}
+        {/* JSON-LD Structured Data for Google. Every nonce'd script here allows a
+            hydration difference on that one attribute: the browser hides a nonce
+            from the DOM once it has used it, so it never matches. */}
         <script
           nonce={nonce}
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'Organization',
               name: 'Opndrive',
@@ -126,9 +120,10 @@ export default async function RootLayout({
         />
         <script
           nonce={nonce}
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'WebApplication',
               name: 'Opndrive',
@@ -147,6 +142,7 @@ export default async function RootLayout({
         />
         <script
           nonce={nonce}
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
