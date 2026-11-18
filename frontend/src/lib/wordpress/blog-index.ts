@@ -15,8 +15,8 @@
  */
 
 import { cache } from 'react';
+import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import type { Metadata, MetadataRoute } from 'next';
-import { isBlogEnabled } from '@/config/features';
 import { isWordPressConfigured } from './client';
 import { getRecentPosts } from './service';
 import type { BlogPost } from './types';
@@ -27,10 +27,21 @@ export const BLOG_INDEX_POST_LIMIT = 50;
 /** How long the RSS feed's view of WordPress may be cached: the feed's own interval. */
 export const FEED_REVALIDATE_SECONDS = 3600;
 
+/**
+ * True while `next build` runs. Routes rebuilt in the background (the feed,
+ * the sitemap) throw when WordPress does not answer, because Next.js then
+ * keeps serving the last version it built; but during the build there is no
+ * last version, and a WordPress outage must not fail a deploy, so there they
+ * fall back to what they can say without it.
+ */
+export function isBuilding(): boolean {
+  return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
+}
+
 /** The recent posts, or null if a configured WordPress did not answer. */
 async function fetchRecentPosts(revalidate?: number): Promise<BlogPost[] | null> {
   // No blog, or no WordPress behind it: nothing to show, which is known.
-  if (!isBlogEnabled() || !isWordPressConfigured()) return [];
+  if (!isWordPressConfigured()) return [];
 
   try {
     return await getRecentPosts(BLOG_INDEX_POST_LIMIT, { revalidate });

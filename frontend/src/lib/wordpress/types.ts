@@ -132,6 +132,8 @@ export interface BlogPost {
    * When the post was published, as an ISO string in UTC (from WPGraphQL's
    * `dateGmt`). This is the exact instant, for everything a machine reads: Open
    * Graph, article meta tags, structured data, `<time dateTime>`, the feed.
+   * Every post query selects `dateGmt`, which WPGraphQL gives for every
+   * published post; only a query without it falls back to the local time.
    */
   publishedDate: string;
   /**

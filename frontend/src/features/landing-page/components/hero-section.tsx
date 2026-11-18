@@ -3,7 +3,7 @@
 import { assets } from '@/assets';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
@@ -64,7 +64,13 @@ export default function HeroSection({
   // never runs one it creates - so React promotes that copy itself, and leaves
   // the script out rather than render one that would not run.
   const serverOrHydrating = useServerOrHydrating();
-  const promoted: HeroTheme | null = serverOrHydrating ? null : activeHeroTheme();
+  // Decided once, on the first render: none when hydrating (the script has
+  // done it), the visible copy on a client-only render. Later renders - after
+  // hydration, or a theme toggle - leave it alone, so the attributes never
+  // move between copies and the DOM is not read again.
+  const [promoted] = useState<HeroTheme | null>(() =>
+    serverOrHydrating ? null : activeHeroTheme()
+  );
   const priority = (theme: HeroTheme) =>
     promoted === theme ? ({ loading: 'eager', fetchPriority: 'high' } as const) : {};
 

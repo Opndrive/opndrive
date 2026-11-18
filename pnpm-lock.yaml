@@ -170,6 +170,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      entities:
+        specifier: 8.0.0
+        version: 8.0.0
       framer-motion:
         specifier: ^12.42.2
         version: 12.43.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
