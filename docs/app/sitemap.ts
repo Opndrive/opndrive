@@ -15,7 +15,6 @@ const getPageParams = generateStaticParamsFor('mdxPath');
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const params = await getPageParams();
 
-  return params.map(({ mdxPath }) => ({
-    url: pageUrl(Array.isArray(mdxPath) ? mdxPath : [mdxPath]),
-  }));
+  // Typed string | string[]; Nextra gives an array, and flat() takes either.
+  return params.map(({ mdxPath }) => ({ url: pageUrl([mdxPath].flat()) }));
 }

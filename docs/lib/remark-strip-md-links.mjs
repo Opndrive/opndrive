@@ -26,17 +26,26 @@ export function remarkStripMdLinks() {
 
     visit(tree, 'link', (node) => {
       if (typeof node.url !== 'string') return;
-      if (/^[a-z]+:\/\//i.test(node.url) || node.url.startsWith('#') || node.url.startsWith('/')) {
+      // Anything with a scheme is not a content file: https:, but also
+      // mailto: and tel:, which have no "//".
+      if (
+        /^[a-z][a-z0-9+.-]*:/i.test(node.url) ||
+        node.url.startsWith('#') ||
+        node.url.startsWith('/')
+      ) {
         return;
       }
 
       const [target, hash] = node.url.split('#');
       if (!target) return;
 
-      let resolved = path.posix.join(currentDir, target).replace(/\.mdx?$/i, '');
-      if (resolved === 'index' || resolved.endsWith('/index')) {
-        resolved = resolved.slice(0, -'index'.length);
-      }
+      // A folder's index file is served at the folder's path with no trailing
+      // slash (`guides/index.md` is `/guides`), matching the canonical URLs;
+      // `/guides/` would only answer with a redirect.
+      const resolved = path.posix
+        .join(currentDir, target)
+        .replace(/\.mdx?$/i, '')
+        .replace(/(^|\/)index$/, '');
 
       node.url = '/' + resolved.replace(/^\/+/, '') + (hash ? `#${hash}` : '');
     });

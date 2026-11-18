@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { DOCS_URL } from '@/lib/site';
+import { DOCS_URL } from '@/lib/links';
 
 /** Everything on the docs site is public, so nothing is disallowed. */
 export default function robots(): MetadataRoute.Robots {

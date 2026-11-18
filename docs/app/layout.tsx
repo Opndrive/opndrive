@@ -3,8 +3,8 @@ import Image from 'next/image';
 import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
-import { APP_URL, DISCORD_URL } from '@/lib/links';
-import { BASE_OPEN_GRAPH, DOCS_URL } from '@/lib/site';
+import { APP_URL, DISCORD_URL, DOCS_URL } from '@/lib/links';
+import { BASE_OPEN_GRAPH } from '@/lib/site';
 import { AnalyticsGate } from '@/components/analytics-gate';
 import 'nextra-theme-docs/style.css';
 
@@ -22,8 +22,9 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     // The same handle the main site uses, from frontend/src/lib/seo/config.ts.
+    // No images here: Next.js fills twitter:image from openGraph's when it is
+    // unset, so the share image is named once, in BASE_OPEN_GRAPH.
     site: '@opndrive',
-    images: ['/og-image.png'],
   },
 };
 
