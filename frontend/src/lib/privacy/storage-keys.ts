@@ -46,7 +46,7 @@ export const STORAGE_KEYS: readonly StorageKeyEntry[] = [
     mechanisms: ['localStorage'],
     category: 'necessary',
     purpose: 'Your storage credentials, so a refresh does not sign you out',
-    lifetime: 'Until you disconnect',
+    lifetime: 'Until you use Clear Session',
   },
   {
     key: 's3_connections',
@@ -54,7 +54,7 @@ export const STORAGE_KEYS: readonly StorageKeyEntry[] = [
     category: 'necessary',
     purpose:
       'The storage connections you have added, with their names and credentials, so you can switch between them',
-    lifetime: 'Until you delete the connection or disconnect it',
+    lifetime: 'Until you delete the connection, or use Clear Session, which removes them all',
   },
   {
     key: 'ui-theme',
@@ -83,7 +83,7 @@ export const STORAGE_KEYS: readonly StorageKeyEntry[] = [
     category: 'necessary',
     purpose:
       'Lets an interrupted delete be recovered. Contains the names of the files it was working on',
-    lifetime: 'Until the delete finishes or is abandoned',
+    lifetime: 'Until the delete finishes or is abandoned, or you use Clear Session',
   },
   {
     key: 'upload-settings-storage',

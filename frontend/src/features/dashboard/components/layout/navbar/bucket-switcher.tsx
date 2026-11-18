@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
-import { confirmAction } from '@/shared/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,19 +25,17 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { useBuckets } from '@/features/dashboard/hooks/use-buckets';
 import { useBucketMutations } from '@/features/dashboard/hooks/use-bucket-mutations';
-import { useNotification } from '@/context/notification-context';
-import { failureFrom } from '@/lib/s3/connection-failure';
 import {
   describeBucketNameCaveat,
   describeBucketNameError,
   isValidBucketName,
 } from '@/lib/s3/bucket-name';
-import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
 import {
   menuContentClass,
   menuItemClass,
 } from '@/features/dashboard/components/ui/menus/menu-styles';
 import { cn } from '@/shared/utils/utils';
+import { useGuardedSwitch } from './use-guarded-switch';
 
 /**
  * Which bucket the session is working in, how to move to another, and how to
@@ -62,22 +59,6 @@ import { cn } from '@/shared/utils/utils';
  * session is connected to.
  */
 type Panel = 'list' | 'create';
-
-/** "2 uploads and 1 delete are still in progress." */
-export function describeActiveWork(work: ActiveWork): string {
-  const parts: string[] = [];
-
-  if (work.uploads > 0) parts.push(`${work.uploads} upload${work.uploads === 1 ? '' : 's'}`);
-  if (work.deletes > 0) parts.push(`${work.deletes} delete${work.deletes === 1 ? '' : 's'}`);
-
-  // Only reachable if the counts changed between the refusal and this call, in
-  // which case saying something vague is better than saying "0 uploads".
-  if (parts.length === 0) return 'Work is still in progress.';
-
-  const verb = work.uploads + work.deletes === 1 ? 'is' : 'are';
-
-  return `${parts.join(' and ')} ${verb} still in progress.`;
-}
 
 /**
  * Hands the menu's opening focus to the search field.
@@ -148,10 +129,11 @@ export function BucketSwitcher() {
     createBucket,
     deleteBucket,
   } = useBucketMutations();
-  const { error: notifyError } = useNotification();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [isSwitching, setIsSwitching] = useState(false);
+  // Shared with the connection switcher: neither can start a change while the
+  // other's is still being verified.
+  const { isSwitching, run } = useGuardedSwitch();
   const [panel, setPanel] = useState<Panel>('list');
   const [manualName, setManualName] = useState('');
   const [newBucketName, setNewBucketName] = useState('');
@@ -200,50 +182,24 @@ export function BucketSwitcher() {
 
   const runSwitch = useCallback(
     async (bucketName: string, region: string | undefined) => {
-      // One switch at a time. Step 1 refuses a concurrent one outright; this
-      // just avoids making the call that would be refused.
-      if (isSwitching) return;
-
       // Picking the bucket already open is not a switch, and must not raise the
-      // "this will cancel your uploads" question for a no-op. Step 1 answers
-      // `unchanged` for exactly this, but there is no reason to ask at all.
+      // "this will cancel your uploads" question for a no-op.
       if (bucketName === currentBucketName) {
         setIsOpen(false);
         return;
       }
 
-      setIsSwitching(true);
+      const switched = await run({
+        attempt: (discardActiveWork) => switchBucket(bucketName, region, { discardActiveWork }),
+        confirmTitle: `Switch to ${bucketName}?`,
+        change: 'Switching buckets',
+      });
 
-      try {
-        const result = await switchBucket(bucketName, region);
-
-        if (result.status === 'blocked') {
-          const confirmed = await confirmAction({
-            title: `Switch to ${bucketName}?`,
-            description: `${describeActiveWork(result.activeWork)}\nSwitching buckets cancels them.`,
-            confirmLabel: 'Switch and cancel',
-            destructive: true,
-          });
-
-          // Never retried automatically: the whole point of the refusal is that
-          // a person decides whether that work can be thrown away.
-          if (!confirmed) return;
-
-          await switchBucket(bucketName, region, { discardActiveWork: true });
-        }
-
-        setIsOpen(false);
-      } catch (caught) {
-        // A bucket that cannot be verified leaves the session exactly as it
-        // was, so the switcher stays open and usable on the bucket it is
-        // already on. The classified failure names the actual problem.
-        const failure = failureFrom(caught);
-        notifyError(`${failure.title}. ${failure.detail}`);
-      } finally {
-        setIsSwitching(false);
-      }
+      // A bucket that cannot be verified leaves the session exactly as it was,
+      // so the switcher stays open and usable on the bucket it is already on.
+      if (switched) setIsOpen(false);
     },
-    [currentBucketName, isSwitching, notifyError, switchBucket]
+    [currentBucketName, run, switchBucket]
   );
 
   const handleManualSubmit = useCallback(
@@ -331,10 +287,11 @@ export function BucketSwitcher() {
           size="sm"
           title={currentBucketName ?? undefined}
           aria-label={`Current bucket: ${label}. Change bucket`}
-          // Narrow enough on a phone to sit beside the menu button and the
-          // wordmark without pushing either off screen; the name truncates and
-          // the title attribute keeps the whole of it reachable.
-          className="h-8 min-w-0 max-w-32 gap-2 rounded-md px-2 text-foreground data-[state=open]:bg-accent sm:max-w-52 md:max-w-72"
+          // Capped, and free to shrink below the cap (`shrink` undoes the
+          // button's shrink-0), so beside the connection switcher a long name
+          // truncates instead of pushing the search and profile off screen.
+          // The title attribute keeps the whole of it reachable.
+          className="h-8 min-w-0 max-w-32 shrink gap-2 rounded-md px-2 text-foreground data-[state=open]:bg-accent sm:max-w-52 md:max-w-72"
         >
           {isSwitching ? (
             <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />

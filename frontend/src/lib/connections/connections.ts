@@ -4,20 +4,25 @@ import { S3_PROVIDERS, getProviderBySlug } from '@/config/providers';
 /**
  * Saved connections: every storage account this browser can switch between.
  *
- * `s3_user_session` stays the single source of truth for the connection the app
- * is working in right now. This list is only what the user has added over time,
- * so the switcher has somewhere to switch *to*.
+ * `s3_user_session` stays the credentials the app is working in right now.
+ * `s3_connections` holds the list the user has added, and which entry of that
+ * list the session belongs to, as one record:
  *
- * Every add is appended, whatever it matches: the same keys on another bucket,
- * or an exact duplicate, are separate entries. Which saved entry is live is
- * tracked by id in the auth context while the app runs; `findConnection`
- * recovers it from the stored session on a reload, which works because the saved
- * copy is kept in step with the session on every bucket switch.
+ *   { "activeId": "<id>" | null, "connections": [ ... ] }
+ *
+ * Keeping the active id in storage, rather than working it out on a reload by
+ * matching credentials, is what keeps names attached to the right account: two
+ * entries can share keys, and a bucket switch can make two entries identical.
+ * A credential match is only the fallback, for a record that predates the id or
+ * whose id no longer matches the session.
+ *
+ * Every write re-reads the stored record first, so a tab that loaded earlier
+ * cannot overwrite what another tab added since.
  *
  * Everything here is synchronous and storage-tolerant. A browser that refuses
- * site data, or a list that was edited by hand into nonsense, yields an empty
- * list rather than an exception - the app must keep working on the session it
- * has.
+ * site data, or a record edited by hand into nonsense, yields `null` or an
+ * empty list rather than an exception - the app must keep working on the
+ * session it has.
  */
 
 export const CONNECTIONS_KEY = 's3_connections';
@@ -33,7 +38,7 @@ export interface Connection {
   id: string;
   /** The alias shown in the switcher. */
   name: string;
-  /** A provider slug from the registry, used only to pick the icon. */
+  /** A provider slug from the registry, used to pick the icon. */
   provider: string;
   /**
    * The same shape `s3_user_session` stores. Holds the bucket the connection was
@@ -42,7 +47,19 @@ export interface Connection {
   authContext: Credentials;
 }
 
-function isCredentials(value: unknown): value is Credentials {
+/** The stored record: the list, and which entry the session is on. */
+export interface SavedConnections {
+  activeId: string | null;
+  connections: Connection[];
+}
+
+export const EMPTY_SAVED_CONNECTIONS: SavedConnections = { activeId: null, connections: [] };
+
+/**
+ * The shape both `s3_user_session` and a saved entry must have before anything
+ * is built on it. One check for both, so they cannot drift.
+ */
+export function isCredentials(value: unknown): value is Credentials {
   const c = value as Credentials | null;
 
   return (
@@ -65,39 +82,74 @@ function isConnection(value: unknown): value is Connection {
 }
 
 /**
- * Whether two sets of credentials point at the same keys, bucket and folder.
- *
- * Used only to recognise the stored session among the saved entries on a
- * reload. It is never used to refuse or merge an add: identical connections are
- * allowed to coexist.
+ * Whether two sets of credentials are the same in every part that decides what
+ * they reach: keys, secret, region, endpoint, bucket and folder.
  */
 export function isSameConnection(a: Credentials, b: Credentials): boolean {
   return (
     a.accessKeyId === b.accessKeyId &&
+    a.secretAccessKey === b.secretAccessKey &&
+    a.region === b.region &&
     (a.endpoint ?? '') === (b.endpoint ?? '') &&
-    a.bucketName === b.bucketName &&
+    (a.bucketName ?? '') === (b.bucketName ?? '') &&
     (a.prefix ?? '') === (b.prefix ?? '')
   );
 }
 
-export function readConnections(): Connection[] {
+/**
+ * Which storage account these credentials reach: the endpoint and the access
+ * key, never the secret. Bucket names are only unique within an account (or a
+ * self-hosted server), so anything remembered per bucket - an interrupted
+ * delete, say - has to be remembered per account too, now that one browser
+ * can hold several.
+ */
+export function accountKey(creds: Pick<Credentials, 'accessKeyId' | 'endpoint'>): string {
+  return `${(creds.endpoint ?? '').trim().toLowerCase()}|${creds.accessKeyId}`;
+}
+
+/**
+ * The stored record, or null when storage cannot be read at all. An absent or
+ * unreadable value is an empty record; only a refusal to read is null, so a
+ * writer can tell "nothing saved" from "cannot see what is saved".
+ */
+export function readSavedConnections(): SavedConnections | null {
+  let raw: string | null;
+
   try {
-    const raw = localStorage.getItem(CONNECTIONS_KEY);
-    if (!raw) return [];
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(isConnection);
+    raw = localStorage.getItem(CONNECTIONS_KEY);
   } catch {
-    return [];
+    return null;
+  }
+
+  if (!raw) return { ...EMPTY_SAVED_CONNECTIONS, connections: [] };
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    // The first version of this feature stored a bare array, with no active id.
+    if (Array.isArray(parsed)) {
+      return { activeId: null, connections: parsed.filter(isConnection) };
+    }
+
+    const record = parsed as Partial<SavedConnections> | null;
+    const connections = Array.isArray(record?.connections)
+      ? record.connections.filter(isConnection)
+      : [];
+    const activeId =
+      typeof record?.activeId === 'string' && connections.some((c) => c.id === record.activeId)
+        ? record.activeId
+        : null;
+
+    return { activeId, connections };
+  } catch {
+    return { ...EMPTY_SAVED_CONNECTIONS, connections: [] };
   }
 }
 
-/** Writes the list. Returns whether it landed; a refusal is not fatal to the caller. */
-export function writeConnections(connections: readonly Connection[]): boolean {
+/** Writes the record. Returns whether it landed; a refusal is not fatal to the caller. */
+export function writeSavedConnections(saved: SavedConnections): boolean {
   try {
-    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(connections));
+    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(saved));
     return true;
   } catch (error) {
     console.warn(
@@ -109,6 +161,15 @@ export function writeConnections(connections: readonly Connection[]): boolean {
   }
 }
 
+/** Forgets every saved connection and its keys. */
+export function forgetSavedConnections(): void {
+  try {
+    localStorage.removeItem(CONNECTIONS_KEY);
+  } catch {
+    // Unreadable storage holds nothing this page can remove.
+  }
+}
+
 export function newConnectionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -117,38 +178,72 @@ export function newConnectionId(): string {
   return `c_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Host suffixes that identify a provider. Matched against the parsed hostname only. */
+const PROVIDER_HOSTS: ReadonlyArray<readonly [suffix: string, slug: string]> = [
+  ['r2.cloudflarestorage.com', 'cloudflare-r2'],
+  ['wasabisys.com', 'wasabi'],
+  ['backblazeb2.com', 'backblaze-b2'],
+  ['digitaloceanspaces.com', 'digitalocean-spaces'],
+  ['amazonaws.com', 'aws-s3'],
+];
+
+/** The endpoint's hostname, lower-cased, or '' when it is not a URL. */
+function endpointHost(endpoint: string): string {
+  try {
+    // A bare host ("minio.example.com:9000") is a URL once given a scheme.
+    const url = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(endpoint) ? endpoint : `https://${endpoint}`
+    );
+    return url.hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Best guess at the provider from the endpoint, for connections made before
- * this list existed (which never recorded one). Only decides which icon is
- * drawn, so a wrong answer costs a logo and nothing else.
+ * this list existed (which never recorded one). It decides the icon and the
+ * default name, which is the user's cue to which service the keys go to, so it
+ * reads the endpoint's hostname and requires the provider's domain to be that
+ * host or end it ("s3.amazonaws.com.example.net" is not AWS, and neither is a
+ * provider's domain in the path or query).
  */
 export function inferProviderSlug(creds: Credentials): string {
-  const endpoint = (creds.endpoint ?? '').toLowerCase();
+  const endpoint = (creds.endpoint ?? '').trim();
 
   if (!endpoint) return 'aws-s3';
-  if (endpoint.includes('r2.cloudflarestorage.com')) return 'cloudflare-r2';
-  if (endpoint.includes('wasabisys.com')) return 'wasabi';
-  if (endpoint.includes('backblazeb2.com')) return 'backblaze-b2';
-  if (endpoint.includes('digitaloceanspaces.com')) return 'digitalocean-spaces';
-  if (endpoint.includes('amazonaws.com')) return 'aws-s3';
-  if (endpoint.includes('minio')) return 'minio';
+
+  const host = endpointHost(endpoint);
+  if (!host) return FALLBACK_PROVIDER;
+
+  for (const [suffix, slug] of PROVIDER_HOSTS) {
+    if (host === suffix || host.endsWith(`.${suffix}`)) return slug;
+  }
+
+  // Self-hosted MinIO has no fixed domain; a host label named for it is the
+  // best there is ("minio.example.com", "minio-1.local"), not any host that
+  // merely contains the letters.
+  if (host.split('.').some((label) => /^minio(?:$|[-\d])/.test(label))) return 'minio';
 
   return FALLBACK_PROVIDER;
 }
 
 /** An alias when the user did not type one: "Amazon S3 - my-bucket". */
-export function defaultConnectionName(providerSlug: string, creds: Credentials): string {
+export function defaultConnectionName(
+  providerSlug: string,
+  creds: Pick<Credentials, 'bucketName'>
+): string {
   const providerName = getProviderBySlug(providerSlug)?.name ?? 'Storage';
   const bucket = creds.bucketName?.trim();
 
-  return bucket ? `${providerName} - ${bucket}` : providerName;
+  return normaliseConnectionName(bucket ? `${providerName} - ${bucket}` : providerName);
 }
 
 export function normaliseConnectionName(name: string | undefined): string {
   return (name ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_CONNECTION_NAME_LENGTH);
 }
 
-/** A slug the registry knows, or the fallback. Keeps a bad value out of storage. */
+/** A slug the registry knows, or the inferred one. Keeps a bad value out of storage. */
 function knownProvider(slug: string | undefined, creds: Credentials): string {
   if (slug && S3_PROVIDERS.some((provider) => provider.slug === slug)) return slug;
 
@@ -161,25 +256,19 @@ export interface ConnectionDetails {
 }
 
 /**
- * Appends a connection. Always: there is no deduplication, so adding exactly
+ * A new saved entry. Always new: there is no deduplication, so adding exactly
  * the same keys, bucket and folder again gives a second entry, which is what
- * someone adding it twice asked for. Returns the new list and the entry added,
- * so the caller knows which one is now live.
+ * someone adding it twice asked for.
  */
-export function addConnection(
-  list: readonly Connection[],
-  creds: Credentials,
-  details: ConnectionDetails = {}
-): { list: Connection[]; connection: Connection } {
+export function newConnection(creds: Credentials, details: ConnectionDetails = {}): Connection {
   const provider = knownProvider(details.provider, creds);
-  const connection: Connection = {
+
+  return {
     id: newConnectionId(),
     name: normaliseConnectionName(details.name) || defaultConnectionName(provider, creds),
     provider,
     authContext: creds,
   };
-
-  return { list: [...list, connection], connection };
 }
 
 /**
@@ -199,13 +288,19 @@ export function refreshConnection(
 }
 
 /**
- * The saved connection for exactly these credentials, if any. With identical
- * entries the first is returned; they differ only by name, so which is marked
- * live after a reload is cosmetic.
+ * The saved entry the stored session belongs to.
+ *
+ * The recorded active id wins whenever its entry still holds exactly these
+ * credentials. Otherwise the first entry that does, which only matters for a
+ * record written before the id was stored, or a session written without its
+ * record (a storage refusal, or a tab closed between the two writes).
  */
-export function findConnection(
-  list: readonly Connection[],
-  creds: Credentials | null
+export function findSessionConnection(
+  saved: SavedConnections,
+  creds: Credentials
 ): Connection | undefined {
-  return creds ? list.find((entry) => isSameConnection(entry.authContext, creds)) : undefined;
+  const recorded = saved.connections.find((entry) => entry.id === saved.activeId);
+  if (recorded && isSameConnection(recorded.authContext, creds)) return recorded;
+
+  return saved.connections.find((entry) => isSameConnection(entry.authContext, creds));
 }

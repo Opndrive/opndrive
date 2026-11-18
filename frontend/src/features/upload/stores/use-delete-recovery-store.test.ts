@@ -10,17 +10,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   useDeleteRecoveryStore,
-  interruptedDeletesForBucket,
+  interruptedDeletesFor,
   type InterruptedDelete,
 } from './use-delete-recovery-store';
 import { markerLast } from '../utils/delete-key-order';
 
 const store = () => useDeleteRecoveryStore.getState();
 
+const ACCOUNT = 'https://minio-1.local|KEY_A';
+const OTHER_ACCOUNT = 'https://minio-2.local|KEY_B';
+
 function record(overrides: Partial<InterruptedDelete> = {}): InterruptedDelete {
   return {
     id: 'op-1',
     bucket: 'bucket-a',
+    account: ACCOUNT,
     prefix: 'docs/',
     name: 'docs',
     totalItems: 12,
@@ -124,26 +128,46 @@ describe('surviving the tab', () => {
   });
 });
 
-describe('bucket pinning', () => {
+describe('bucket and account pinning', () => {
+  const at = (bucket: string | null | undefined, account: string | null | undefined = ACCOUNT) =>
+    interruptedDeletesFor(store().records, { bucket, account });
+
   beforeEach(() => {
     store().recordStarted(record({ id: 'a', bucket: 'bucket-a', startedAt: 2000 }));
     store().recordStarted(record({ id: 'b', bucket: 'bucket-b', startedAt: 1000 }));
   });
 
   it('only returns records aimed at the bucket in front of the user', () => {
-    const found = interruptedDeletesForBucket(store().records, 'bucket-a');
-
-    expect(found.map((r) => r.id)).toEqual(['a']);
+    expect(at('bucket-a').map((found) => found.id)).toEqual(['a']);
   });
 
   it('returns nothing for a bucket with no interrupted deletes', () => {
-    expect(interruptedDeletesForBucket(store().records, 'bucket-c')).toEqual([]);
+    expect(at('bucket-c')).toEqual([]);
   });
 
-  it('returns nothing before a bucket is known, rather than everything', () => {
-    expect(interruptedDeletesForBucket(store().records, undefined)).toEqual([]);
-    expect(interruptedDeletesForBucket(store().records, null)).toEqual([]);
-    expect(interruptedDeletesForBucket(store().records, '')).toEqual([]);
+  it('returns nothing before a bucket or account is known, rather than everything', () => {
+    expect(at(undefined)).toEqual([]);
+    expect(at(null)).toEqual([]);
+    expect(at('')).toEqual([]);
+    expect(interruptedDeletesFor(store().records, { bucket: 'bucket-a', account: null })).toEqual(
+      []
+    );
+    expect(at('bucket-a', '')).toEqual([]);
+  });
+
+  /**
+   * Two saved connections can each have a bucket called "bucket-a". Offering
+   * one account's interrupted delete in the other would delete files the user
+   * never asked to delete.
+   */
+  it('never offers a delete in a same-named bucket of another account', () => {
+    expect(at('bucket-a', OTHER_ACCOUNT)).toEqual([]);
+  });
+
+  it('never offers a record written before accounts were recorded', () => {
+    store().recordStarted(record({ id: 'legacy', bucket: 'bucket-a', account: undefined }));
+
+    expect(at('bucket-a').map((found) => found.id)).toEqual(['a']);
   });
 
   it('leaves another bucket record alone, since that session may come back', () => {
@@ -152,11 +176,16 @@ describe('bucket pinning', () => {
     expect(store().records['b']).toBeDefined();
   });
 
+  it('forgets every record at once when the browser is signed out', () => {
+    store().clearAll();
+
+    expect(store().records).toEqual({});
+  });
+
   it('puts the oldest interruption first', () => {
     store().recordStarted(record({ id: 'c', bucket: 'bucket-a', startedAt: 500 }));
 
-    const found = interruptedDeletesForBucket(store().records, 'bucket-a');
-    expect(found.map((r) => r.id)).toEqual(['c', 'a']);
+    expect(at('bucket-a').map((found) => found.id)).toEqual(['c', 'a']);
   });
 });
 

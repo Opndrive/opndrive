@@ -16,14 +16,20 @@ import { countActiveWork, useUploadStore } from '@/features/upload/stores/use-up
 import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+import { useDeleteRecoveryStore } from '@/features/upload/stores/use-delete-recovery-store';
 import {
   type Connection,
   type ConnectionDetails,
-  findConnection,
-  readConnections,
+  type SavedConnections,
+  CONNECTIONS_KEY,
+  EMPTY_SAVED_CONNECTIONS,
+  findSessionConnection,
+  forgetSavedConnections,
+  isCredentials,
+  newConnection,
+  readSavedConnections,
   refreshConnection,
-  addConnection,
-  writeConnections,
+  writeSavedConnections,
 } from '@/lib/connections/connections';
 
 /**
@@ -70,7 +76,21 @@ const UPLOAD_CONCURRENCY = 3;
 export type BucketSwitchResult =
   | { status: 'switched'; bucketName: string }
   | { status: 'unchanged'; bucketName: string }
-  | { status: 'blocked'; activeWork: ActiveWork };
+  | { status: 'blocked'; activeWork: ActiveWork }
+  | SessionChangeRefused;
+
+/**
+ * Answers every session change can give besides doing it.
+ *
+ * `busy`: another switch or connect is already running. Refused rather than
+ * queued; the switchers disable themselves on `isSwitchingSession`, so this
+ * only reaches a caller that raced that.
+ *
+ * `cancelled`: the session was cleared while this one was being verified, so
+ * it was dropped before anything was torn down. Signing out has to win over a
+ * switch that was still on its way.
+ */
+export type SessionChangeRefused = { status: 'busy' } | { status: 'cancelled' };
 
 export interface SwitchBucketOptions {
   /**
@@ -92,7 +112,18 @@ export interface SwitchBucketOptions {
 export type ConnectionSwitchResult =
   | { status: 'switched'; connectionId: string }
   | { status: 'unchanged'; connectionId: string }
-  | { status: 'blocked'; activeWork: ActiveWork };
+  | { status: 'blocked'; activeWork: ActiveWork }
+  | SessionChangeRefused;
+
+/**
+ * What `createSession` did. `blocked` when a session is already live with
+ * uploads or deletes running: connecting another account cancels them, and
+ * that is the user's call, exactly as it is for a switch.
+ */
+export type CreateSessionResult =
+  | { status: 'created'; connectionId: string }
+  | { status: 'blocked'; activeWork: ActiveWork }
+  | SessionChangeRefused;
 
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
@@ -103,13 +134,22 @@ interface AuthContextType {
   connections: Connection[];
   /** The id of the saved connection the session is on, or null. */
   activeConnectionId: string | null;
+  /**
+   * A switch or a connect is running. Both switchers disable on it, so one
+   * cannot start a change while the other's is still being verified.
+   */
+  isSwitchingSession: boolean;
   isLoading: boolean;
   /**
    * Establishes a session and saves it as a connection. `details` carries the
    * alias and provider the user chose, neither of which are part of the
    * credentials themselves.
    */
-  createSession: (creds: Credentials, details?: ConnectionDetails) => Promise<void>;
+  createSession: (
+    creds: Credentials,
+    details?: ConnectionDetails,
+    options?: SwitchBucketOptions
+  ) => Promise<CreateSessionResult>;
   switchConnection: (
     connectionId: string,
     options?: SwitchBucketOptions
@@ -120,16 +160,15 @@ interface AuthContextType {
     region?: string,
     options?: SwitchBucketOptions
   ) => Promise<BucketSwitchResult>;
+  /**
+   * Signs out of this browser: ends the session and forgets every saved
+   * connection and its keys. On a shared machine nothing is left behind.
+   */
   clearSession: () => void;
 }
 
-function isValidCreds(c: Credentials): c is Credentials {
-  return (
-    typeof c?.accessKeyId === 'string' &&
-    typeof c?.secretAccessKey === 'string' &&
-    typeof c?.region === 'string'
-  );
-}
+/** One check for the stored session and every saved entry; see connections.ts. */
+const isValidCreds = isCredentials;
 
 /**
  * UploadManager.getInstance()/SignedUrlUploadManager.getInstance() return the
@@ -248,6 +287,7 @@ export const AuthContext = createContext<AuthContextType>({
   userCreds: null,
   connections: [],
   activeConnectionId: null,
+  isSwitchingSession: false,
   isLoading: true,
   createSession: async () => {
     throw new Error('AuthContext not initialized');
@@ -343,15 +383,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [uploadManager, setUploadManager] = useState<UploadManager | null>(null);
   const [signedUrlUploadManager, setSignedUrlUploadManager] =
     useState<SignedUrlUploadManager | null>(null);
-  const [userCreds, setUserCreds] = useState<Credentials | null>(null);
+  const [userCreds, setUserCredsState] = useState<Credentials | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [isSwitchingSession, setIsSwitchingSession] = useState(false);
+
+  /**
+   * What a screen reader is told once a switch lands. A switch remounts the
+   * whole dashboard behind the loading gate, notifications included, so a
+   * notice raised by the switcher would be dropped with it. This region lives
+   * outside the gate.
+   */
+  const [announcement, setAnnouncement] = useState('');
+
+  /**
+   * The session's credentials as of right now. A switch started from a menu
+   * may have been rendered before another switch finished, and a candidate
+   * built from that render's `userCreds` would carry the previous account's
+   * keys under the new connection's id.
+   */
+  const userCredsRef = useRef<Credentials | null>(null);
+
+  const setUserCreds = (creds: Credentials | null) => {
+    userCredsRef.current = creds;
+    setUserCredsState(creds);
+  };
+
+  /**
+   * Bumped whenever the session is replaced or cleared. A switch or connect
+   * notes it before verifying and gives up if it has moved by the time the
+   * answer comes back, so a Clear Session pressed during a slow verification
+   * is not undone when it finishes.
+   */
+  const sessionEpoch = useRef(0);
 
   /**
    * The list as of right now, for handlers that must not read a stale render.
-   * `createSession` and the switchers run from event handlers that may have
-   * closed over an older `connections`; writing from state would drop an entry
-   * added in between.
+   * Only the fallback for writes: they start from storage (see `updateSaved`).
    */
   const connectionsRef = useRef<Connection[]>([]);
 
@@ -371,14 +439,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setActiveConnectionIdState(id);
   };
 
-  /** Applies a change to the saved list, in memory and in storage. */
-  const updateConnections = (change: (list: Connection[]) => Connection[]) => {
-    const next = change(connectionsRef.current);
-
-    connectionsRef.current = next;
-    setConnections(next);
-    writeConnections(next);
+  const showSaved = (saved: SavedConnections) => {
+    connectionsRef.current = saved.connections;
+    setConnections(saved.connections);
   };
+
+  /**
+   * Applies a change to the saved record, starting from what storage holds now
+   * rather than from this tab's copy, so a tab that loaded earlier cannot
+   * overwrite connections another tab has added or moved since. Only when
+   * storage cannot be read at all does it fall back to the copy in memory.
+   */
+  const updateSaved = (change: (saved: SavedConnections) => SavedConnections) => {
+    const base = readSavedConnections() ?? {
+      activeId: activeConnectionIdRef.current,
+      connections: connectionsRef.current,
+    };
+    const next = change(base);
+
+    showSaved(next);
+    writeSavedConnections(next);
+  };
+
+  // Another tab added, moved or deleted a connection: show the list as it is
+  // now. Which connection this tab is on stays this tab's own.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== CONNECTIONS_KEY) return;
+
+      const saved = readSavedConnections();
+      if (saved) showSaved(saved);
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -396,8 +491,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
    */
   const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Whether a bucket switch is mid-flight. See `switchBucket`. */
+  /** Whether a switch or connect is mid-flight. See `swapSession`. */
   const isSwitching = useRef(false);
+
+  const setSwitching = (value: boolean) => {
+    isSwitching.current = value;
+    setIsSwitchingSession(value);
+  };
 
   useEffect(() => {
     return () => {
@@ -430,9 +530,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // The saved list is read before the session so it is available to every
       // route, not only to those that restore one. Applied unconditionally: a
       // visitor with saved connections but no live session still has them.
-      const saved = readConnections();
-      connectionsRef.current = saved;
-      setConnections(saved);
+      const saved = readSavedConnections() ?? EMPTY_SAVED_CONNECTIONS;
+      showSaved(saved);
 
       try {
         const storedCreds = localStorage.getItem(STORAGE_KEY);
@@ -448,18 +547,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserCreds(creds);
             setApiS3(api);
 
-            // A session that predates saved connections has no entry in the
-            // list, and the switcher would show an empty menu above a
-            // dashboard that is plainly connected. Adopt it, so upgrading
+            // The entry recorded as active, when it still holds exactly these
+            // credentials. A session that predates saved connections has no
+            // entry at all, and the switcher would show an empty menu above a
+            // dashboard that is plainly connected: adopt it, so upgrading
             // costs nobody their connection.
-            const match = findConnection(connectionsRef.current, creds);
+            const match = findSessionConnection(saved, creds);
 
             if (match) {
               setActiveConnectionId(match.id);
+              if (saved.activeId !== match.id) {
+                updateSaved((current) => ({ ...current, activeId: match.id }));
+              }
             } else {
-              const { list, connection } = addConnection(connectionsRef.current, creds);
+              const connection = newConnection(creds);
 
-              updateConnections(() => list);
+              updateSaved((current) => ({
+                activeId: connection.id,
+                connections: [...current.connections, connection],
+              }));
               setActiveConnectionId(connection.id);
             }
 
@@ -488,7 +594,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       } catch (error) {
         console.error('Failed to restore session : ', error);
-        clearSession();
+        // Only the session that failed. The saved connections are separate
+        // accounts that may be fine, and wiping them because one stored
+        // session would not load would cost the user all of them.
+        endSession({ forgetSaved: false });
       } finally {
         setIsLoading(false);
       }
@@ -508,14 +617,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   // Create a session & persist in localStorage
-  const createSession = async (creds: Credentials, details?: ConnectionDetails): Promise<void> => {
+  const createSession = async (
+    creds: Credentials,
+    details?: ConnectionDetails,
+    options?: SwitchBucketOptions
+  ): Promise<CreateSessionResult> => {
+    if (isSwitching.current) return { status: 'busy' };
+
+    // Connecting another account while one is live replaces it, and the
+    // teardown below cancels its uploads and deletes. Same rule as a switch:
+    // ask first.
+    if (userCredsRef.current && !options?.discardActiveWork) {
+      const activeWork = countActiveWork(useUploadStore.getState());
+
+      if (activeWork.uploads > 0 || activeWork.deletes > 0) {
+        return { status: 'blocked', activeWork };
+      }
+    }
+
+    setSwitching(true);
+    const epoch = sessionEpoch.current;
+
+    /** Whether this connect replaced the session (and so owns the gate below). */
+    let applied = false;
+
     try {
       setIsLoading(true);
       const api = new BYOS3ApiProvider(creds, 'BYO');
 
       await verifyCredentials(api, creds);
 
+      // Signed out while the keys were being checked: that wins.
+      if (epoch !== sessionEpoch.current) return { status: 'cancelled' };
+
       const { manager, signedUrlManager } = await initializeUploadManagers(api, creds);
+      sessionEpoch.current += 1;
+      applied = true;
 
       // Persist to state and localStorage
       setUserCreds(creds);
@@ -526,15 +663,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Saved only once the session is live, so the list never holds an
       // account whose keys were just rejected. A storage refusal here is not
-      // fatal: the session above is already up, and `writeConnections` says so
+      // fatal: the session above is already up, and `writeSavedConnections` says so
       // in the console.
       //
       // Always appended, never merged: there is no deduplication, so even an
       // exact repeat of a saved connection becomes another entry.
-      const { list, connection } = addConnection(connectionsRef.current, creds, details);
+      const connection = newConnection(creds, details);
 
-      updateConnections(() => list);
+      updateSaved((current) => ({
+        activeId: connection.id,
+        connections: [...current.connections, connection],
+      }));
       setActiveConnectionId(connection.id);
+
+      return { status: 'created', connectionId: connection.id };
 
       // Deliberately does not navigate. The one caller is ConnectWizard, which
       // lives at /connect/[provider] and pushes to /dashboard itself once this
@@ -550,7 +692,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // of them.
       throw new ConnectionFailureError(classifyConnectionFailure(error));
     } finally {
-      setIsLoading(false);
+      // A sign-out that landed while this was verifying raised the gate itself
+      // and lowers it on its own timer, once its navigation has committed.
+      // Lowering it here would show the routes it is hiding a moment early.
+      if (applied || epoch === sessionEpoch.current) setIsLoading(false);
+      setSwitching(false);
     }
   };
 
@@ -570,7 +716,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     candidate: Credentials,
     connectionId: string | null,
     options?: SwitchBucketOptions
-  ): Promise<{ status: 'swapped' } | { status: 'blocked'; activeWork: ActiveWork }> => {
+  ): Promise<
+    { status: 'swapped' } | { status: 'blocked'; activeWork: ActiveWork } | SessionChangeRefused
+  > => {
+    // Checked before the question about running work, so a second switch is
+    // turned away rather than asking about uploads it would never get to cancel.
+    if (isSwitching.current) return { status: 'busy' };
+
     if (!options?.discardActiveWork) {
       const activeWork = countActiveWork(useUploadStore.getState());
 
@@ -581,17 +733,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Two switches running at once would each dispose the other's managers and
     // race to persist their own credentials, and the loser's provider would
-    // outlive the winner's session. The loading gate below hides the UI that
-    // could start a second one, so this only has to catch a programmatic
-    // caller - refusing is enough.
+    // outlive the winner's session. `isSwitchingSession` disables both
+    // switchers for the length of this, and the check at the top refuses a
+    // caller that raced it.
     //
     // Everything above returns before the flag is taken, so a `blocked` or
-    // `unchanged` answer can never leave it set.
-    if (isSwitching.current) {
-      throw new Error('a session switch is already in progress');
-    }
-
-    isSwitching.current = true;
+    // `busy` answer can never leave it set.
+    setSwitching(true);
+    const epoch = sessionEpoch.current;
 
     /**
      * Whether this call is the one holding the loading gate up.
@@ -623,6 +772,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         throw new ConnectionFailureError(classifyConnectionFailure(error));
       }
 
+      // Signed out while this was being verified. Nothing has been torn down
+      // yet, and a session the user just ended must not come back.
+      if (epoch !== sessionEpoch.current) return { status: 'cancelled' };
+
       // Verified. Everything past here belongs to the new session, so the gate
       // goes up: children are replaced by the placeholder for the length of
       // the swap rather than being handed a session that is half of each.
@@ -637,6 +790,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // new ones - the half-switched state this ordering would otherwise have
       // to recover from cannot arise.
       const { manager, signedUrlManager } = await initializeUploadManagers(api, candidate);
+      sessionEpoch.current += 1;
 
       // Applied in one continuation, so React commits them as a single update
       // and a consumer of the context never reads the new credentials against
@@ -657,7 +811,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // The saved copy of this account follows the session, so choosing the
       // connection again later returns to the bucket it was last on.
       setActiveConnectionId(connectionId);
-      updateConnections((list) => refreshConnection(list, connectionId, candidate));
+      updateSaved((current) => ({
+        activeId: connectionId,
+        connections: refreshConnection(current.connections, connectionId, candidate),
+      }));
 
       // The old prefix is gone with the old session, and the browse route
       // carries one in its URL. Sending the user to the dashboard root is what
@@ -667,7 +824,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return { status: 'swapped' };
     } finally {
       if (gateRaised) setIsLoading(false);
-      isSwitching.current = false;
+      setSwitching(false);
     }
   };
 
@@ -693,7 +850,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     region?: string,
     options?: SwitchBucketOptions
   ): Promise<BucketSwitchResult> => {
-    const current = userCreds;
+    // Read now, not from the render that built this function: another switch
+    // may have finished since, and the candidate below has to be built from
+    // the session that is live and filed under the connection that owns it.
+    const current = userCredsRef.current;
+    const connectionId = activeConnectionIdRef.current;
 
     if (!current) {
       throw new Error('switchBucket: there is no session to switch');
@@ -734,11 +895,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       prefix: '',
     };
 
-    const outcome = await swapSession(candidate, activeConnectionIdRef.current, options);
+    const outcome = await swapSession(candidate, connectionId, options);
 
-    if (outcome.status === 'blocked') {
-      return { status: 'blocked', activeWork: outcome.activeWork };
-    }
+    if (outcome.status !== 'swapped') return outcome;
+
+    setAnnouncement(`Switched to bucket ${nextBucket}.`);
 
     return { status: 'switched', bucketName: nextBucket };
   };
@@ -757,22 +918,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     connectionId: string,
     options?: SwitchBucketOptions
   ): Promise<ConnectionSwitchResult> => {
-    const target = connectionsRef.current.find((entry) => entry.id === connectionId);
+    // From storage when it can be read: another tab may have moved this
+    // connection to another bucket since this one loaded.
+    const saved = readSavedConnections();
+    const target = (saved?.connections ?? connectionsRef.current).find(
+      (entry) => entry.id === connectionId
+    );
 
     if (!target) {
-      throw new Error('switchConnection: that connection no longer exists');
+      throw new Error('That connection is no longer saved in this browser.');
     }
 
     // Already the live connection: nothing to tear down.
-    if (connectionId === activeConnectionIdRef.current && userCreds) {
+    if (connectionId === activeConnectionIdRef.current && userCredsRef.current) {
       return { status: 'unchanged', connectionId };
     }
 
     const outcome = await swapSession(target.authContext, target.id, options);
 
-    if (outcome.status === 'blocked') {
-      return { status: 'blocked', activeWork: outcome.activeWork };
-    }
+    if (outcome.status !== 'swapped') return outcome;
+
+    setAnnouncement(`Switched to ${target.name}.`);
 
     return { status: 'switched', connectionId };
   };
@@ -785,19 +951,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
    * quiet return so a caller that skipped the check finds out.
    */
   const removeConnection = (connectionId: string): void => {
-    const target = connectionsRef.current.find((entry) => entry.id === connectionId);
-
-    if (!target) return;
-
-    if (userCreds && connectionId === activeConnectionIdRef.current) {
-      throw new Error('removeConnection: the connection in use cannot be removed');
+    if (userCredsRef.current && connectionId === activeConnectionIdRef.current) {
+      throw new Error('The connection in use cannot be deleted. Use Clear Session to end it.');
     }
 
-    updateConnections((list) => list.filter((entry) => entry.id !== connectionId));
+    // The stored session belongs to whichever tab switched last. Deleting the
+    // entry it is on would only see it adopted back on the next load, under a
+    // made-up name.
+    const saved = readSavedConnections();
+    if (saved?.activeId === connectionId) {
+      throw new Error('That connection is open in another tab. Switch away from it there first.');
+    }
+
+    updateSaved((current) => ({
+      ...current,
+      connections: current.connections.filter((entry) => entry.id !== connectionId),
+    }));
   };
 
-  // Clear session completely
-  const clearSession = () => {
+  /**
+   * Ends the session. With `forgetSaved` (Clear Session) every saved
+   * connection and its keys go too; without it (a stored session that would
+   * not load) only the failed session goes, and the other accounts stay saved.
+   */
+  const endSession = ({ forgetSaved }: { forgetSaved: boolean }) => {
+    // Any switch or connect still being verified is now out of date: it checks
+    // this before applying anything, and gives up.
+    sessionEpoch.current += 1;
+
     try {
       // Set loading state to prevent components from using context values
       setIsLoading(true);
@@ -846,13 +1027,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Clear localStorage
       localStorage.removeItem(STORAGE_KEY);
 
-      // Signing out forgets the account being signed out of, keys included -
-      // "Clear Session" on a shared machine must not leave them behind in the
-      // list. Other saved connections are left alone: they are not what was
-      // asked to be cleared.
-      const leavingId = activeConnectionIdRef.current;
-      if (leavingId !== null) {
-        updateConnections((list) => list.filter((entry) => entry.id !== leavingId));
+      if (forgetSaved) {
+        // Signing out forgets everything this browser holds for storage: every
+        // saved connection with its keys, and the record of any delete that was
+        // cut off. Removing only the connection being left would keep the
+        // others' secrets here, out of sight - the switcher needs a session -
+        // and one click away for whoever connects next on a shared machine.
+        forgetSavedConnections();
+        showSaved(EMPTY_SAVED_CONNECTIONS);
+        useDeleteRecoveryStore.getState().clearAll();
+      } else {
+        updateSaved((current) => ({ ...current, activeId: null }));
       }
       setActiveConnectionId(null);
 
@@ -873,6 +1058,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const clearSession = () => endSession({ forgetSaved: true });
+
   return (
     <AuthContext.Provider
       value={{
@@ -882,6 +1069,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         userCreds,
         connections,
         activeConnectionId,
+        isSwitchingSession,
         isLoading,
         createSession,
         switchConnection,
@@ -897,6 +1085,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       ) : (
         children
       )}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
     </AuthContext.Provider>
   );
 };

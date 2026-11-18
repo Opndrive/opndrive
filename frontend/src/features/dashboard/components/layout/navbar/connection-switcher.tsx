@@ -15,11 +15,10 @@ import {
 } from '@/shared/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/use-auth';
 import { useNotification } from '@/context/notification-context';
-import { failureFrom } from '@/lib/s3/connection-failure';
 import type { Connection } from '@/lib/connections/connections';
 import { S3_PROVIDERS, getProviderBySlug } from '@/config/providers';
 import { ProviderMark } from '@/features/connect/components/provider-mark';
-import { describeActiveWork } from './bucket-switcher';
+import { useGuardedSwitch } from './use-guarded-switch';
 import {
   menuContentClass,
   menuItemClass,
@@ -55,17 +54,15 @@ export function ConnectionSwitcher() {
   const router = useRouter();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [isSwitching, setIsSwitching] = useState(false);
+  // Shared with the bucket switcher: neither can start a change while the
+  // other's is still being verified.
+  const { isSwitching, run } = useGuardedSwitch();
 
   const current = connections.find((connection) => connection.id === activeConnectionId);
   const label = current?.name ?? 'No connection';
 
   const runSwitch = useCallback(
     async (connection: Connection) => {
-      // One switch at a time; the session refuses a concurrent one outright and
-      // this just avoids making the call that would be refused.
-      if (isSwitching) return;
-
       // Picking the connection already open is not a switch, and must not raise
       // the "this will cancel your uploads" question for a no-op.
       if (connection.id === current?.id) {
@@ -73,37 +70,19 @@ export function ConnectionSwitcher() {
         return;
       }
 
-      setIsSwitching(true);
+      const switched = await run({
+        attempt: (discardActiveWork) => switchConnection(connection.id, { discardActiveWork }),
+        confirmTitle: `Switch to ${connection.name}?`,
+        change: 'Switching connections',
+      });
 
-      try {
-        const result = await switchConnection(connection.id);
-
-        if (result.status === 'blocked') {
-          const confirmed = await confirmAction({
-            title: `Switch to ${connection.name}?`,
-            description: `${describeActiveWork(result.activeWork)}\nSwitching connections cancels them.`,
-            confirmLabel: 'Switch and cancel',
-            destructive: true,
-          });
-
-          // Never retried automatically: the whole point of the refusal is that
-          // a person decides whether that work can be thrown away.
-          if (!confirmed) return;
-
-          await switchConnection(connection.id, { discardActiveWork: true });
-        }
-
-        setIsOpen(false);
-      } catch (caught) {
-        // A connection that cannot be verified leaves the session exactly as it
-        // was, so the switcher stays open on the one it is already on.
-        const failure = failureFrom(caught);
-        notifyError(`${failure.title}. ${failure.detail}`);
-      } finally {
-        setIsSwitching(false);
-      }
+      // A connection that cannot be verified leaves the session exactly as it
+      // was, so the switcher stays open on the one it is already on. A switch
+      // that lands is announced by the auth provider, whose live region is the
+      // one thing the remount behind it leaves in place.
+      if (switched) setIsOpen(false);
     },
-    [current?.id, isSwitching, notifyError, switchConnection]
+    [current?.id, run, switchConnection]
   );
 
   const handleDelete = useCallback(
@@ -142,7 +121,10 @@ export function ConnectionSwitcher() {
           // On a phone the name is dropped and the provider mark stands for it:
           // the bucket switcher beside this already takes the room there, and
           // the full name stays one tap away in the menu and in the title.
-          className="h-8 min-w-0 max-w-32 gap-2 rounded-md px-2 text-foreground data-[state=open]:bg-accent sm:max-w-52 md:max-w-72"
+          // From sm, where the name shows, `shrink` undoes the button's
+          // shrink-0, so a long name truncates instead of pushing the rest of
+          // the navbar off the screen. The mark alone never needs to.
+          className="h-8 min-w-0 max-w-32 gap-2 rounded-md px-2 text-foreground data-[state=open]:bg-accent sm:max-w-52 sm:shrink md:max-w-72"
         >
           {isSwitching ? (
             <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />

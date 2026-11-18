@@ -292,7 +292,11 @@ describe('choosing a bucket', () => {
     await open();
     pick(/staging-assets/);
 
-    await waitFor(() => expect(switchBucket).toHaveBeenCalledWith('staging-assets', 'eu-west-1'));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenCalledWith('staging-assets', 'eu-west-1', {
+        discardActiveWork: false,
+      })
+    );
   });
 
   it('passes no region for a bucket the provider said nothing about', async () => {
@@ -303,7 +307,9 @@ describe('choosing a bucket', () => {
 
     // Not the session's region: the client would be rebuilt for a region the
     // bucket may not be in, and every request would come back a redirect.
-    await waitFor(() => expect(switchBucket).toHaveBeenCalledWith('backups', undefined));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenCalledWith('backups', undefined, { discardActiveWork: false })
+    );
   });
 
   it('does nothing at all when the current bucket is picked', async () => {
@@ -457,7 +463,11 @@ describe('when the provider will not list buckets', () => {
 
     // No region, because nothing told us one - and no local check that the
     // bucket exists, because that is what the switch itself verifies.
-    await waitFor(() => expect(switchBucket).toHaveBeenCalledWith('typed-bucket', undefined));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenCalledWith('typed-bucket', undefined, {
+        discardActiveWork: false,
+      })
+    );
   });
 
   it('will not submit an empty name', async () => {
@@ -565,7 +575,11 @@ describe('driving the switcher from the keyboard', () => {
 
     fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
 
-    await waitFor(() => expect(switchBucket).toHaveBeenCalledWith('staging-assets', 'eu-west-1'));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenCalledWith('staging-assets', 'eu-west-1', {
+        discardActiveWork: false,
+      })
+    );
   });
 
   it('closes on Escape', async () => {
@@ -633,7 +647,11 @@ describe('the confirmation and the list beneath it', () => {
 
     // The bucket and region travel as arguments rather than as state, so an
     // abandoned choice cannot be applied to the next one.
-    await waitFor(() => expect(switchBucket).toHaveBeenLastCalledWith('backups', undefined));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenLastCalledWith('backups', undefined, {
+        discardActiveWork: false,
+      })
+    );
   });
 });
 
@@ -660,7 +678,11 @@ describe('recovering from a failed switch', () => {
     switchBucket.mockResolvedValueOnce({ status: 'switched', bucketName: 'backups' });
     pick(/backups/);
 
-    await waitFor(() => expect(switchBucket).toHaveBeenLastCalledWith('backups', undefined));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenLastCalledWith('backups', undefined, {
+        discardActiveWork: false,
+      })
+    );
   });
 });
 
@@ -700,7 +722,11 @@ describe('the two ways a form can be submitted', () => {
     type(field, 'typed-bucket');
     fireEvent.submit(field.closest('form') as HTMLFormElement);
 
-    await waitFor(() => expect(switchBucket).toHaveBeenCalledWith('typed-bucket', undefined));
+    await waitFor(() =>
+      expect(switchBucket).toHaveBeenCalledWith('typed-bucket', undefined, {
+        discardActiveWork: false,
+      })
+    );
   });
 });
 

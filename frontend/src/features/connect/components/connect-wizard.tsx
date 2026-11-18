@@ -8,7 +8,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button, Combobox, SecretInput } from '@/shared/components/ui';
 import { type S3Provider, resolveEndpoint } from '@/config/providers';
 import { failureFrom, type ConnectionFailure } from '@/lib/s3/connection-failure';
-import { MAX_CONNECTION_NAME_LENGTH } from '@/lib/connections/connections';
+import { MAX_CONNECTION_NAME_LENGTH, defaultConnectionName } from '@/lib/connections/connections';
+import { confirmAction } from '@/shared/components/ui/confirm-dialog';
+import { describeCancellation } from '@/features/dashboard/components/layout/navbar/use-guarded-switch';
 
 interface ConnectWizardProps {
   provider: S3Provider;
@@ -74,7 +76,7 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     prefix: '',
     endpoint: '',
   });
-  /** The alias shown in the connection switcher. Required. */
+  /** The alias shown in the connection switcher. Optional: blank takes the default below. */
   const [connectionName, setConnectionName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [failure, setFailure] = useState<ConnectionFailure | null>(null);
@@ -88,15 +90,15 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
   // Not `${provider.name} needs an endpoint`, which the catch-all turned into
   // "Custom endpoint needs an endpoint". Naming the provider was redundant
   // anyway on a page that is already about one provider.
-  const missingName = !connectionName.trim();
-
   const blockedReason = missingEndpoint
     ? 'Add the endpoint URL above'
     : incomplete
       ? 'Fill in the key, secret and bucket'
-      : missingName
-        ? 'Give this connection a name'
-        : null;
+      : null;
+
+  // What a blank name becomes, shown as the placeholder so it is never a
+  // surprise in the switcher: "Amazon S3 - my-bucket".
+  const defaultName = defaultConnectionName(provider.slug, { bucketName: form.bucketName.trim() });
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -106,11 +108,26 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     setFailure(null);
 
     try {
-      await createSession(buildCredentials(provider, form), {
-        name: connectionName,
-        provider: provider.slug,
-      });
-      router.push('/dashboard');
+      const creds = buildCredentials(provider, form);
+      const details = { name: connectionName, provider: provider.slug };
+      let result = await createSession(creds, details);
+
+      // Another account is live with uploads or deletes running, and this one
+      // replaces it. Asked, never assumed, exactly as a switch asks.
+      if (result.status === 'blocked') {
+        const confirmed = await confirmAction({
+          title: 'Connect and cancel running work?',
+          description: describeCancellation(result.activeWork, 'Connecting another account'),
+          confirmLabel: 'Connect and cancel',
+          destructive: true,
+        });
+
+        if (!confirmed) return;
+
+        result = await createSession(creds, details, { discardActiveWork: true });
+      }
+
+      if (result.status === 'created') router.push('/dashboard');
     } catch (caught) {
       console.error('Failed to create session:', caught);
 
@@ -241,20 +258,23 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
 
         <div className="space-y-1.5">
           <label htmlFor="connection-name" className={LABEL}>
-            Connection name
+            Connection name <span className="font-normal text-muted-foreground">(optional)</span>
           </label>
           <input
             id="connection-name"
             type="text"
-            required
             maxLength={MAX_CONNECTION_NAME_LENGTH}
             autoComplete="off"
             className={FIELD}
-            placeholder={`My ${provider.name} account`}
+            placeholder={defaultName}
             value={connectionName}
             onChange={(event) => setConnectionName(event.target.value)}
+            aria-describedby="connection-name-hint"
           />
-          <p className={HINT}>How this connection is listed when you switch between them.</p>
+          <p id="connection-name-hint" className={HINT}>
+            How this connection is listed when you switch between them. Left blank, it is called{' '}
+            &ldquo;{defaultName}&rdquo;.
+          </p>
         </div>
 
         {failure && (

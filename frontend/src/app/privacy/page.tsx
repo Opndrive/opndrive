@@ -82,8 +82,9 @@ export default function PrivacyPolicyPage() {
         <LegalHighlight>
           <p>
             We recommend credentials scoped to a single bucket, with only the permissions you
-            actually need, rotated periodically. Use Disconnect rather than just closing the tab
-            when you are on a shared machine, which removes them from this browser.
+            actually need, rotated periodically. On a shared machine, use Clear Session in the
+            profile menu rather than just closing the tab: it removes every saved connection and its
+            keys from this browser.
           </p>
         </LegalHighlight>
       </LegalSection>
@@ -189,8 +190,9 @@ export default function PrivacyPolicyPage() {
       <LegalSection id="retention" heading="9. How long we keep things">
         <p>
           Analytics data is aggregate and retained by our host on a rolling window. Server logs are
-          short-lived and kept only for operational and security purposes. Anything stored in your
-          browser stays until you clear it, or until you disconnect, whichever comes first.
+          short-lived and kept only for operational and security purposes. Your credentials and
+          saved connections stay in your browser until you use Clear Session or clear its site data.
+          Your preferences stay until you clear them.
         </p>
       </LegalSection>
 

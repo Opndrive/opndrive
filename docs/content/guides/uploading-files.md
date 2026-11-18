@@ -86,11 +86,12 @@ sequenceDiagram
 ## Concurrency and Session Changes
 
 Both upload managers are singletons scoped to your current session and bucket.
-If you disconnect (Clear Session) or switch buckets, in-flight and queued
-uploads are torn down along with the old manager rather than continuing to
-target the previous bucket - this is intentional, not a bug: uploading to the
-wrong bucket after a credential switch would be worse than losing an in-progress
-upload.
+If you disconnect (Clear Session), switch buckets or switch connections,
+in-flight and queued uploads are torn down along with the old manager rather
+than continuing to target the previous bucket - this is intentional, not a bug:
+uploading to the wrong bucket after a credential switch would be worse than
+losing an in-progress upload. A switch asks first while anything is still
+running.
 
 ## Required: Clean Up Incomplete Multipart Uploads
 

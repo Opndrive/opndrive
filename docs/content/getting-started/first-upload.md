@@ -57,9 +57,16 @@ methods (direct, multipart, signed URL) and when each is used.
 
 ## Switching Buckets or Accounts
 
-1. Click the user icon → **Clear Session**.
-2. Refresh - you'll land back on the home page.
-3. Click **Get Started** again and enter the new credentials.
+The two switchers at the top of the dashboard do this without signing out:
+
+- The **bucket switcher** (showing the bucket name) moves to another bucket on
+  the same keys.
+- The **connection switcher** (to its left) moves to another saved connection.
+  Its **Add connection** item opens the connect page for another account or
+  bucket, and every connection you add is saved in this browser.
+
+If uploads or deletes are still running, Opndrive asks before switching, because
+switching cancels them.
 
 ## Stopping and Restarting the Dev Server
 

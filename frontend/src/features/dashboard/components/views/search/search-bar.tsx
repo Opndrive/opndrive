@@ -548,7 +548,9 @@ export function SearchBar({
               }
               ${
                 variant === 'navbar'
-                  ? 'py-2.5 pl-12 text-sm w-full min-w-0 md:min-w-[500px] max-w-[650px] shadow-sm'
+                  ? // Narrower below xl, so the navbar's two switchers keep
+                    // their names on a tablet or a small laptop.
+                    'py-2.5 pl-12 text-sm w-full min-w-0 md:min-w-[240px] lg:min-w-[360px] xl:min-w-[500px] max-w-[650px] shadow-sm'
                   : 'py-3.5 pl-12 text-base shadow-sm'
               }
               ${query ? 'pr-10' : 'pr-4'}

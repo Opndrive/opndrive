@@ -15,6 +15,7 @@ import type { Credentials } from '@opndrive/s3-api';
 import { ConnectionSwitcher } from './connection-switcher';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import type { Connection } from '@/lib/connections/connections';
+import { ConnectionFailureError } from '@/lib/s3/connection-failure';
 
 const switchConnection = vi.fn();
 const removeConnection = vi.fn();
@@ -64,12 +65,18 @@ const CONNECTIONS: Connection[] = [
   { id: 'b', name: LONG_NAME, provider: 'cloudflare-r2', authContext: ACCOUNT_B },
 ];
 
-function signedInAs(activeId: string | null, connections: Connection[] = CONNECTIONS) {
+function signedInAs(
+  activeId: string | null,
+  connections: Connection[] = CONNECTIONS,
+  extra: { isSwitchingSession?: boolean } = {}
+) {
   authState.mockReturnValue({
     connections,
     activeConnectionId: activeId,
     switchConnection,
     removeConnection,
+    isSwitchingSession: false,
+    ...extra,
   });
 }
 
@@ -186,7 +193,9 @@ describe('switching', () => {
       screen.getByRole('menuitemradio', { name: new RegExp(LONG_NAME.slice(0, 20)) })
     );
 
-    await waitFor(() => expect(switchConnection).toHaveBeenCalledWith('b'));
+    await waitFor(() =>
+      expect(switchConnection).toHaveBeenCalledWith('b', { discardActiveWork: false })
+    );
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 
@@ -200,11 +209,14 @@ describe('switching', () => {
     expect(switchConnection).not.toHaveBeenCalled();
   });
 
-  it('reports a connection that could not be reached and stays open', async () => {
+  it('reports a connection that could not be reached, in its own words, and stays open', async () => {
+    // What the auth context really throws: the failure already classified.
     switchConnection.mockRejectedValue(
-      Object.assign(new Error('AccessDenied'), {
-        name: 'ConnectionFailureError',
-        failure: { kind: 'permissions', title: 'Access denied', detail: 'Check the key.' },
+      new ConnectionFailureError({
+        kind: 'permissions',
+        title: 'These keys are not allowed to list the bucket',
+        detail: 'Check the key.',
+        retryable: false,
       })
     );
     renderSwitcher();
@@ -215,7 +227,43 @@ describe('switching', () => {
     );
 
     await waitFor(() => expect(notifyError).toHaveBeenCalledTimes(1));
+    expect(notifyError.mock.calls[0]![0]).toBe(
+      'These keys are not allowed to list the bucket. Check the key.'
+    );
     expect(screen.getByRole('menu')).toBeDefined();
+  });
+
+  it('reports nothing when another change got there first', async () => {
+    switchConnection.mockResolvedValue({ status: 'busy' });
+    renderSwitcher();
+    await open();
+
+    fireEvent.click(
+      screen.getByRole('menuitemradio', { name: new RegExp(LONG_NAME.slice(0, 20)) })
+    );
+
+    await waitFor(() => expect(switchConnection).toHaveBeenCalledTimes(1));
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeDefined();
+  });
+
+  /**
+   * The bucket switcher beside this one shares the flag: a bucket switch still
+   * being verified must not be raced by a connection switch.
+   */
+  it('cannot be used while another switch is running', async () => {
+    signedInAs('a', CONNECTIONS, { isSwitchingSession: true });
+    renderSwitcher();
+    await open();
+
+    const row = screen.getByRole('menuitemradio', { name: new RegExp(LONG_NAME.slice(0, 20)) });
+    expect(row.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      screen.getByRole('menuitem', { name: /add connection/i }).getAttribute('aria-disabled')
+    ).toBe('true');
+
+    fireEvent.click(row);
+    expect(switchConnection).not.toHaveBeenCalled();
   });
 
   it('asks before cancelling work, and only discards it once told to', async () => {
@@ -284,6 +332,25 @@ describe('deleting', () => {
 
     await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('b'));
     expect(notifySuccess).toHaveBeenCalled();
+  });
+
+  it('says why, when the connection cannot be removed', async () => {
+    removeConnection.mockImplementation(() => {
+      throw new Error('That connection is open in another tab. Switch away from it there first.');
+    });
+    renderSwitcher();
+    await open();
+
+    fireEvent.click(deleteButton());
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /delete connection$/i }));
+
+    await waitFor(() =>
+      expect(notifyError).toHaveBeenCalledWith(
+        'That connection is open in another tab. Switch away from it there first.'
+      )
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
   });
 
   it('keeps it when the confirmation is declined', async () => {

@@ -1,13 +1,14 @@
 /**
- * The connection name on the connect form.
+ * The connection name on the connect form, and connecting while another
+ * account is live.
  *
- * It is how a connection is listed in the switcher, so it is required: without
- * it the submit is blocked and the form says why, rather than inventing a name
- * the person never chose.
+ * The name is how a connection is listed in the switcher. It is optional: left
+ * blank, the connection is called after its provider and bucket, and the form
+ * shows that default before anything is submitted, so it is never a surprise.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const createSession = vi.fn();
 const push = vi.fn();
@@ -21,6 +22,7 @@ vi.mock('@/hooks/use-auth', () => ({
 }));
 
 import { getProviderBySlug } from '@/config/providers';
+import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { ConnectWizard } from './connect-wizard';
 
 const wasabi = getProviderBySlug('wasabi')!;
@@ -36,58 +38,124 @@ function fillCredentials() {
   fill('bucket-name', 'my-bucket');
 }
 
+function renderWizard() {
+  return render(
+    <>
+      <ConnectWizard provider={wasabi} />
+      <ConfirmDialogHost />
+    </>
+  );
+}
+
+const submitButton = () =>
+  screen.getByRole('button', { name: /connect to your s3 storage/i }) as HTMLButtonElement;
+
 beforeEach(() => {
   createSession.mockReset();
-  createSession.mockResolvedValue(undefined);
+  createSession.mockResolvedValue({ status: 'created', connectionId: 'new' });
   push.mockReset();
 });
 
 describe('the connection name field', () => {
-  it('is required and not marked optional', () => {
-    render(<ConnectWizard provider={wasabi} />);
+  it('is optional, and says so', () => {
+    renderWizard();
 
     const field = screen.getByLabelText(/connection name/i) as HTMLInputElement;
 
-    expect(field.required).toBe(true);
-    expect(field.closest('div')!.textContent).not.toMatch(/optional/i);
+    expect(field.required).toBe(false);
+    expect(screen.getByText(/connection name/i).textContent).toMatch(/optional/i);
   });
 
-  it('blocks connecting until a name is given, and says so', () => {
-    render(<ConnectWizard provider={wasabi} />);
+  it('shows the name a blank field becomes, and describes the field with it', () => {
+    renderWizard();
     fillCredentials();
 
-    const submit = screen.getByRole('button', { name: /connect to your s3 storage/i });
+    const field = screen.getByLabelText(/connection name/i) as HTMLInputElement;
+    const hint = document.getElementById(field.getAttribute('aria-describedby')!)!;
 
-    expect((submit as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/give this connection a name/i)).toBeDefined();
+    expect(field.placeholder).toBe('Wasabi - my-bucket');
+    expect(hint.textContent).toContain('Wasabi - my-bucket');
   });
 
-  it('does not accept a name that is only spaces', () => {
-    render(<ConnectWizard provider={wasabi} />);
+  it('does not hold the submit back for a missing name', () => {
+    renderWizard();
     fillCredentials();
-    fill('connection-name', '   ');
 
-    expect(
-      (screen.getByRole('button', { name: /connect to your s3 storage/i }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
+    expect(submitButton().disabled).toBe(false);
   });
 
   it('connects under the name that was typed, then opens the dashboard', async () => {
-    render(<ConnectWizard provider={wasabi} />);
+    renderWizard();
     fillCredentials();
     fill('connection-name', 'Studio media');
 
-    const submit = screen.getByRole('button', { name: /connect to your s3 storage/i });
-    expect((submit as HTMLButtonElement).disabled).toBe(false);
-
-    fireEvent.click(submit);
+    fireEvent.click(submitButton());
 
     await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
-    expect(createSession.mock.calls[0]![1]).toEqual({
-      name: 'Studio media',
-      provider: 'wasabi',
-    });
+    expect(createSession.mock.calls[0]![1]).toEqual({ name: 'Studio media', provider: 'wasabi' });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
   });
+
+  it('leaves the naming to the default when the field is blank', async () => {
+    renderWizard();
+    fillCredentials();
+
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+    expect(createSession.mock.calls[0]![1]).toEqual({ name: '', provider: 'wasabi' });
+  });
+});
+
+describe('connecting while another account has work running', () => {
+  beforeEach(() => {
+    createSession
+      .mockReset()
+      .mockResolvedValueOnce({ status: 'blocked', activeWork: { uploads: 2, deletes: 1 } })
+      .mockResolvedValueOnce({ status: 'created', connectionId: 'new' });
+  });
+
+  it('asks before cancelling it, and only connects once told to', async () => {
+    renderWizard();
+    fillCredentials();
+
+    fireEvent.click(submitButton());
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/2 uploads and 1 delete are still in progress/i)).toBeDefined();
+    expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /connect and cancel/i }));
+
+    await waitFor(() => expect(createSession).toHaveBeenCalledTimes(2));
+    expect(createSession.mock.calls[1]![2]).toEqual({ discardActiveWork: true });
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('stays on the form, with the work untouched, when the question is declined', async () => {
+    renderWizard();
+    fillCredentials();
+
+    fireEvent.click(submitButton());
+
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+    expect(submitButton().disabled).toBe(false);
+  });
+});
+
+it('does not open the dashboard when another change got there first', async () => {
+  createSession.mockReset().mockResolvedValue({ status: 'busy' });
+  renderWizard();
+  fillCredentials();
+
+  fireEvent.click(submitButton());
+
+  await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(submitButton().disabled).toBe(false));
+  expect(push).not.toHaveBeenCalled();
 });

@@ -52,6 +52,14 @@ export interface InterruptedDelete {
    * buckets a record can easily outlive a session that has switched.
    */
   bucket: string;
+  /**
+   * The account the bucket belongs to (`accountKey`: endpoint and access key,
+   * no secret). A bucket name is only unique within an account or a server,
+   * and with several saved connections a bucket of the same name elsewhere is
+   * ordinary - recovery offered there would delete someone else's files.
+   * Records written before this field existed have none, and are never offered.
+   */
+  account?: string;
   /** Normalized, always ends with a slash. */
   prefix: string;
   /** What to call it in the prompt. */
@@ -70,11 +78,13 @@ interface DeleteRecoveryStore {
    * is exactly the interrupted case.
    */
   clearRecord: (id: string) => void;
+  /** Forgets every record. Signing out of the browser clears them with the keys. */
+  clearAll: () => void;
 }
 
 export const useDeleteRecoveryStore = create<DeleteRecoveryStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       records: {},
 
       recordStarted: (record) =>
@@ -90,19 +100,30 @@ export const useDeleteRecoveryStore = create<DeleteRecoveryStore>()(
           delete records[id];
           return { records };
         }),
+
+      // Only when there is something to clear: persist writes on every set, and
+      // signing out should not rewrite an empty record every time.
+      clearAll: () => {
+        if (Object.keys(get().records).length > 0) set({ records: {} });
+      },
     }),
     { name: 'delete-recovery-storage', storage: bestEffortStorage }
   )
 );
 
-/** Records aimed at the given bucket, oldest first. Never crosses buckets. */
-export function interruptedDeletesForBucket(
+/**
+ * Records aimed at this bucket in this account, oldest first. Never crosses
+ * buckets or accounts, and a record with no account (written before accounts
+ * were recorded) matches none: offering it on a same-named bucket in another
+ * account would delete the wrong files.
+ */
+export function interruptedDeletesFor(
   records: Record<string, InterruptedDelete>,
-  bucket: string | null | undefined
+  target: { bucket: string | null | undefined; account: string | null | undefined }
 ): InterruptedDelete[] {
-  if (!bucket) return [];
+  if (!target.bucket || !target.account) return [];
 
   return Object.values(records)
-    .filter((record) => record.bucket === bucket)
+    .filter((record) => record.bucket === target.bucket && record.account === target.account)
     .sort((a, b) => a.startedAt - b.startedAt);
 }

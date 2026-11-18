@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
 
@@ -26,6 +26,11 @@ export const Notification: React.FC<NotificationProps> = ({
   const [isExiting, setIsExiting] = useState(false);
   const [progress, setProgress] = useState(100);
 
+  // An effect event, so the timer below runs once per duration and still
+  // calls the latest onClose, rather than restarting whenever the parent
+  // hands down a new callback.
+  const closeWhenDue = useEffectEvent(() => handleClose());
+
   useEffect(() => {
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
@@ -35,7 +40,7 @@ export const Notification: React.FC<NotificationProps> = ({
     }, 50);
 
     const timer = setTimeout(() => {
-      handleClose();
+      closeWhenDue();
     }, duration);
 
     return () => {
@@ -86,9 +91,18 @@ export const Notification: React.FC<NotificationProps> = ({
   const bottomPosition = 16 + index * 80; // Stack notifications from the bottom
 
   return (
-    <div className={cn(baseStyles, typeStyles[type])} style={{ bottom: `${bottomPosition}px` }}>
+    <div
+      className={cn(baseStyles, typeStyles[type])}
+      style={{ bottom: `${bottomPosition}px` }}
+      // Read out when it appears: an error interrupts, anything else waits its
+      // turn. Without this a screen reader heard none of these, and a failed
+      // switch or delete looked to its user like nothing had happened.
+      role={type === 'error' ? 'alert' : 'status'}
+      aria-live={type === 'error' ? 'assertive' : 'polite'}
+      aria-atomic="true"
+    >
       {/* Progress Bar */}
-      <div className="h-1 w-full bg-black/10 dark:bg-white/10">
+      <div className="h-1 w-full bg-black/10 dark:bg-white/10" aria-hidden="true">
         <div
           className={cn('h-full transition-all duration-75 ease-linear', progressBarColors[type])}
           style={{ width: `${progress}%` }}
@@ -97,10 +111,14 @@ export const Notification: React.FC<NotificationProps> = ({
 
       {/* Content */}
       <div className="flex items-center p-4">
-        <div className="flex-shrink-0 mr-3">{icons[type]}</div>
+        <div className="flex-shrink-0 mr-3" aria-hidden="true">
+          {icons[type]}
+        </div>
         <div className="flex-1 mr-2 font-medium">{message}</div>
         <button
+          type="button"
           onClick={handleClose}
+          aria-label="Close notification"
           className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
         >
           <X className="w-4 h-4" />

@@ -117,10 +117,27 @@ That path needs no extra permission: the name you type is checked the same way
 the connect form checks one, using the same bucket-level access you already
 have.
 
+## Several Connections
+
+Every connection you make is saved in this browser, so you can move between
+accounts and buckets without entering keys again. The connection switcher at the
+top left of the dashboard lists them, and its **Add connection** item opens the
+connect page.
+
+- **Connection name** is optional. Left blank, the connection is named after its
+  provider and bucket, for example "Cloudflare R2 - media".
+- Switching to a saved connection checks its keys first. If they no longer work,
+  you stay on the connection you were using and the error says why.
+- To forget a connection, open the switcher and use the trash icon on its row.
+  The connection in use has no trash icon: switch away from it first, or use
+  Clear Session.
+
 ## Disconnecting
 
-User icon → **Clear Session** removes the stored credentials immediately and
-returns you to the landing page.
+User icon → **Clear Session** signs this browser out. It removes the stored
+credentials of every saved connection immediately and returns you to the landing
+page. With more than one connection saved it asks first. Your buckets and the
+files in them are not touched.
 
 ## Required IAM Permissions
 
