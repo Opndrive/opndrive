@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineArrowPath, HiOutlineXMark } from 'react-icons/hi2';
 import { Files, Info } from 'lucide-react';
 import { FileIcon } from '@/shared/components/icons/file-icons';
 import { FolderIcon } from '@/shared/components/icons/folder-icons';
@@ -53,6 +53,17 @@ export interface OperationRowProps {
   onRemove: (id: string, operationType: OperationType) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
+  /**
+   * Sends a failed upload again. Uploads only: a delete or a download that
+   * failed has nothing kept to send.
+   */
+  onRetry?: (id: string, isFolder: boolean) => void;
+  /**
+   * Whether there is something to send again, which only the executor knows:
+   * a card for a plan the manager refused outright has no upload behind it.
+   * Retry is offered only when this is true.
+   */
+  retriable?: boolean;
 }
 
 const CANCELLABLE = ['uploading', 'queued', 'deleting', 'paused', 'downloading', 'pending'];
@@ -78,8 +89,19 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
   onRemove,
   onPause,
   onResume,
+  onRetry,
+  retriable = false,
 }) => {
   const canCancel = CANCELLABLE.includes(status);
+  // An upload can fail and still be sent again: the manager keeps its file
+  // for exactly this. Failures that might clear by themselves have already
+  // been retried by then, so this is for the rest - when there is an upload
+  // behind the card to send.
+  const canRetry =
+    operationType === 'upload' &&
+    (status === 'failed' || status === 'error') &&
+    retriable &&
+    Boolean(onRetry);
   const isActive = ACTIVE.includes(status);
   const isFileUpload = operationType === 'upload' && type === 'file';
 
@@ -153,7 +175,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'cancelled' && (
-          <p className="text-xs" style={{ color: '#ef4444' }}>
+          <p className="text-xs" style={{ color: 'var(--destructive)' }}>
             {operationType === 'upload'
               ? 'Upload cancelled'
               : operationType === 'delete'
@@ -185,7 +207,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'paused' && (
-          <p className="text-xs" style={{ color: '#f59e0b' }}>
+          <p className="text-xs" style={{ color: 'var(--warning)' }}>
             Paused
           </p>
         )}
@@ -194,7 +216,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           // downloads use 'error'. Matching on 'error' alone meant a failed or
           // partly-failed delete rendered no reason at all - the summary naming
           // the objects that survived was written to the store and never shown.
-          <p className="text-xs" style={{ color: '#ef4444' }}>
+          <p className="text-xs" style={{ color: 'var(--destructive)' }}>
             {error || 'Failed'}
           </p>
         )}
@@ -386,6 +408,23 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
             // one with nothing to press. ('failed' is what a delete reports;
             // uploads and downloads say 'error'.)
             <div className="flex items-center gap-2">
+              {canRetry && (
+                <button
+                  onClick={() => onRetry!(id, type === 'folder')}
+                  className="p-1 rounded transition-colors duration-200"
+                  style={{ color: 'var(--muted-foreground)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--accent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                  title="Retry"
+                  aria-label={`Retry ${name}`}
+                >
+                  <HiOutlineArrowPath className="w-3 h-3" />
+                </button>
+              )}
               <button
                 onClick={() => onRemove(id, operationType)}
                 className="p-1 rounded transition-colors duration-200"

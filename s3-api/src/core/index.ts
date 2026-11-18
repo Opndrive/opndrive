@@ -143,6 +143,7 @@ export abstract class BaseS3ApiProvider {
   abstract search(params: SearchParams): Promise<SearchResult>;
 
   abstract listFromPrefix(prefix: string): Promise<string[]>;
+  abstract listPagesFromPrefix(prefix: string): AsyncGenerator<string[], void, undefined>;
 
   abstract deleteBatch(batch: ObjectIdentifier[]): Promise<DeleteBatchResult>;
 

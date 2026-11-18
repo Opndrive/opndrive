@@ -11,7 +11,7 @@
  *         |
  *         v
  *   [ this executor ]     key mapping, task <-> upload ids, claim lifecycle
- *         |  addUpload(file, { key }) x N
+ *         |  addUpload(file, { key, contentType }) x N
  *         v
  *   UploadManager         THE queue, THE concurrency limit, multipart
  *         |  statusChange / progress
@@ -30,13 +30,20 @@
  *    below exists only to learn when a claim can be committed.
  */
 
+import type { UploadStatus } from '@opndrive/s3-api';
 import type { PlannedUpload } from '../stores/use-upload-queue-store';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
+import { contentTypeFor } from '../utils/content-type';
 
 /** What the executor needs from an upload manager. */
 export interface UploadManagerLike {
-  addUpload(file: File, config: { key: string }): string;
+  addUpload(file: File, config: { key: string; contentType?: string }): string;
+  /** Sends a failed upload again. False when it is not failed, or cannot be. */
+  retryUpload(id: string): boolean;
+  /** Lets go of a finished upload's file. Leaves one still going alone. */
+  discardUpload(id: string): boolean;
   cancelUpload(id: string): Promise<void> | void;
+  getStatus(id: string): { status: UploadStatus; progress: number } | undefined;
   on(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
   off(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
 }
@@ -65,7 +72,8 @@ export interface DispatchResult {
    *
    * `addUpload` throws on a disposed manager, which happens for real: logging
    * out or switching bucket mid-drop tears the singleton down. Compare
-   * `files.length` against `plan.files.length` to see how much got through.
+   * `files.length` against the plan's files and empty folders together to see
+   * how much got through.
    */
   dispatchError?: Error;
 }
@@ -132,7 +140,19 @@ interface TaskRecord {
   /** Set once bytes have provably landed, so the claim must never be released. */
   committed: boolean;
   cancelled: boolean;
+  /**
+   * The folder's prefix and name, which a retry may have to claim again.
+   * Null for loose files, which claim nothing.
+   */
+  folder: { prefix: string; name: string } | null;
+  /** Uploads that ended 'failed' and have not been retried since. */
+  failed: Set<string>;
 }
+
+/** What came of asking for a retry. */
+export type RetryOutcome = { ok: true } | { ok: false; reason: string };
+
+const CANNOT_RETRY = 'This upload can no longer be sent again.';
 
 export interface UploadExecutor {
   /** Dispatches every plan and returns the manager ids it produced. */
@@ -149,6 +169,42 @@ export interface UploadExecutor {
   taskFor(uploadId: string): string | undefined;
   /** Manager ids still tracked for a task. Empty once the task is terminal. */
   uploadsFor(taskId: string): string[];
+  /**
+   * Sends a failed upload again, and keeps its task's books.
+   *
+   * Straight to the manager, a retry ran with nothing tracking it. The task
+   * had counted the upload as finished, so a folder settled while a retried
+   * file was still going; and a folder that had settled had given its name
+   * back, so its retried files could land under a name another drop had been
+   * given since. Here the upload counts as pending again, a settled task is
+   * tracked again, and a folder takes its name back first - or the retry is
+   * refused, when another drop holds that name now.
+   */
+  retry(uploadId: string): RetryOutcome;
+  /**
+   * Whether `retry` could send this upload again: it failed, it is ours, and
+   * its folder was not cancelled. For deciding whether to offer Retry at all.
+   */
+  canRetry(uploadId: string): boolean;
+  /**
+   * Done with these uploads: their cards have been removed. A failed one's
+   * file was kept for a retry nobody can ask for any more, so the manager
+   * lets go of it, and the upload is no longer offered as retriable. Ids the
+   * manager does not know, such as a folder card's, and uploads still going
+   * are passed over.
+   */
+  discard(uploadIds: readonly string[]): void;
+  /**
+   * Where an upload stands right now, by the manager's own account.
+   *
+   * For whoever creates the upload's card, which can only happen after
+   * `start` has returned its id. By then the manager has already announced
+   * the upload: `addUpload` emits 'queued' and, for the first few files,
+   * 'uploading' before it returns, and those events went nowhere because
+   * there was no card yet. A card started at 'queued' showed every upload
+   * that was already running as waiting.
+   */
+  statusOf(uploadId: string): { status: UploadStatus; progress: number } | undefined;
   /** Unsubscribes from the manager. Call on session teardown. */
   dispose(): void;
 }
@@ -156,6 +212,13 @@ export interface UploadExecutor {
 export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor {
   const tasks = new Map<string, TaskRecord>();
   const taskByUpload = new Map<string, string>();
+  /**
+   * Failed uploads of tasks that have settled, so a retry can still find
+   * their task. Settling forgets which task an upload belonged to, and a
+   * failed upload can still be retried after that. Bounded by the failed
+   * uploads, whose files the manager keeps for a retry anyway.
+   */
+  const retriable = new Map<string, { taskId: string; folder: TaskRecord['folder'] }>();
 
   const queue = () => useUploadQueueStore.getState();
 
@@ -203,6 +266,13 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
     // would refuse anyway, but not calling it says so more clearly.
     if (!record.committed) queue().releaseClaim(taskId);
 
+    // A cancelled folder's failures are not offered again.
+    if (!record.cancelled) {
+      for (const uploadId of record.failed) {
+        retriable.set(uploadId, { taskId, folder: record.folder });
+      }
+    }
+
     forget(taskId, record);
   };
 
@@ -228,6 +298,9 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
     if (payload.status === 'completed') commitOnce(taskId);
 
     if (TERMINAL.includes(payload.status)) {
+      if (payload.status === 'failed') record.failed.add(payload.id);
+      else record.failed.delete(payload.id);
+
       record.pending = Math.max(0, record.pending - 1);
       settle(taskId);
     }
@@ -256,7 +329,10 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
           continue;
         }
 
-        // Registered BEFORE dispatching, with the full file count already in
+        const emptyFolders = plan.kind === 'folder' ? (plan.emptyFolders ?? []) : [];
+        const planned = plan.files.length + emptyFolders.length;
+
+        // Registered BEFORE dispatching, with the full count already in
         // `pending`. Both matter: `addUpload` emits synchronously and starts
         // the queue, so an event for the first file can arrive while the
         // second is still being handed over. Counting up as we went would let
@@ -264,9 +340,11 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         // folder that is still being set up.
         const record: TaskRecord = {
           uploadIds: new Set(),
-          pending: plan.files.length,
+          pending: planned,
           committed: false,
           cancelled: false,
+          folder: plan.kind === 'folder' ? { prefix: plan.prefix, name: plan.resolvedName } : null,
+          failed: new Set(),
         };
         tasks.set(plan.id, record);
 
@@ -276,11 +354,28 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         try {
           for (const file of plan.files) {
             const key = keyForPlannedFile(plan, file);
-            const uploadId = manager.addUpload(file, { key });
+            // Decided here rather than by the manager, which only knows what
+            // the browser said. See contentTypeFor.
+            const uploadId = manager.addUpload(file, { key, contentType: contentTypeFor(file) });
 
             record.uploadIds.add(uploadId);
             taskByUpload.set(uploadId, plan.id);
             files.push({ uploadId, taskId: plan.id, key, file });
+          }
+
+          // An empty folder is a zero-byte object named for it, ending in
+          // '/' - the same marker "New folder" writes. Uploaded like any
+          // other file, so it counts towards the folder's card, its claim
+          // and its cancel, and a drop of only empty folders still finishes.
+          // No content type: a marker has none, as with "New folder".
+          for (const relative of emptyFolders) {
+            const key = `${plan.prefix}${relative ? `${relative}/` : ''}`;
+            const marker = new File([], relative ? relative.split('/').pop()! : plan.resolvedName);
+            const uploadId = manager.addUpload(marker, { key });
+
+            record.uploadIds.add(uploadId);
+            taskByUpload.set(uploadId, plan.id);
+            files.push({ uploadId, taskId: plan.id, key, file: marker });
           }
         } catch (error) {
           // The manager refused the rest of this plan - disposal mid-drop is
@@ -297,7 +392,7 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
         // Subtracted rather than assigned: a file dispatched earlier in this
         // same loop may have already finished and decremented `pending`, and
         // assigning the dispatched count would resurrect it.
-        record.pending -= plan.files.length - record.uploadIds.size;
+        record.pending -= planned - record.uploadIds.size;
 
         results.push({ taskId: plan.id, plan, files, dispatchError });
 
@@ -332,11 +427,101 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
 
     uploadsFor: (taskId) => [...(tasks.get(taskId)?.uploadIds ?? [])],
 
+    retry(uploadId) {
+      const settled = retriable.get(uploadId);
+      const taskId = taskByUpload.get(uploadId) ?? settled?.taskId;
+      if (!taskId) return { ok: false, reason: CANNOT_RETRY };
+
+      let record = tasks.get(taskId);
+      if (!record) {
+        // Settled, and so forgotten: track the task again. Non-null: an
+        // upload with no live task can only have been found in `retriable`.
+        const { folder } = settled!;
+        let committed = false;
+
+        if (folder) {
+          // Given back when the folder settled with nothing landed, or
+          // forgotten when it was deleted. Taken again, unless another drop
+          // has been given it since: two folders' files under one prefix is
+          // exactly what claims are for.
+          if (!queue().reclaimPrefix(folder.prefix, taskId)) {
+            return {
+              ok: false,
+              reason: `Another upload is using the name "${folder.name}" now, so this one cannot be sent again into it.`,
+            };
+          }
+          committed = queue().claims.some(
+            (claim) => claim.taskId === taskId && claim.prefix === folder.prefix && claim.committed
+          );
+        }
+
+        record = {
+          uploadIds: new Set(),
+          pending: 0,
+          committed,
+          cancelled: false,
+          folder,
+          failed: new Set(),
+        };
+        tasks.set(taskId, record);
+      }
+
+      if (record.cancelled) return { ok: false, reason: CANNOT_RETRY };
+
+      // Counted and routed before the manager is asked, because it announces
+      // the retry as it starts it.
+      record.uploadIds.add(uploadId);
+      taskByUpload.set(uploadId, taskId);
+      record.pending++;
+
+      if (!manager.retryUpload(uploadId)) {
+        // Not failed after all, or the manager is gone. Undo the count, and
+        // settle: a task tracked again only for this lets go of what it took.
+        record.pending--;
+        settle(taskId);
+        return { ok: false, reason: CANNOT_RETRY };
+      }
+
+      record.failed.delete(uploadId);
+      retriable.delete(uploadId);
+      return { ok: true };
+    },
+
+    discard(uploadIds) {
+      for (const uploadId of uploadIds) {
+        // Only a finished upload is let go of. One still going stays
+        // tracked, and so does its task.
+        if (!manager.discardUpload(uploadId)) continue;
+
+        retriable.delete(uploadId);
+        const taskId = taskByUpload.get(uploadId);
+        const record = taskId ? tasks.get(taskId) : undefined;
+        if (record) {
+          // Already counted as finished, so `pending` does not change.
+          record.failed.delete(uploadId);
+          record.uploadIds.delete(uploadId);
+          taskByUpload.delete(uploadId);
+        }
+      }
+    },
+
+    canRetry(uploadId) {
+      if (manager.getStatus(uploadId)?.status !== 'failed') return false;
+
+      const taskId = taskByUpload.get(uploadId);
+      if (taskId) return !tasks.get(taskId)!.cancelled;
+
+      return retriable.has(uploadId);
+    },
+
+    statusOf: (uploadId) => manager.getStatus(uploadId),
+
     dispose() {
       manager.off('progress', onProgress);
       manager.off('statusChange', onStatusChange);
       tasks.clear();
       taskByUpload.clear();
+      retriable.clear();
     },
   };
 }

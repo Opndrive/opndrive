@@ -61,7 +61,9 @@ describe('uploadMultipartParallely', () => {
       partSizeBytes: 5 * MB,
       concurrency: 1,
     });
-    await uploader.start(new File(['hello'], 'big.bin'));
+    // Over one part, so this is a multipart upload. A file that fits in one
+    // part goes up as a single request instead - see multipartUploader.test.ts.
+    await uploader.start(new File(['x'.repeat(6 * MB)], 'big.bin'));
 
     expect(s3Mock).toHaveReceivedCommandWith(CreateMultipartUploadCommand, {
       Bucket: 'test-bucket',
@@ -72,6 +74,25 @@ describe('uploadMultipartParallely', () => {
       Key: 'users/alice/big.bin',
       UploadId: 'upload-1',
       PartNumber: 1,
+    });
+  });
+
+  it('passes a content type through to the upload', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"etag-1"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    const uploader = makeApi().uploadMultipartParallely({
+      key: 'users/alice/clip.mp4',
+      fileName: 'clip.mp4',
+      partSizeBytes: 5 * MB,
+      concurrency: 1,
+      contentType: 'video/mp4',
+    });
+    await uploader.start(new File(['x'.repeat(6 * MB)], 'clip.mp4'));
+
+    expect(s3Mock).toHaveReceivedCommandWith(CreateMultipartUploadCommand, {
+      ContentType: 'video/mp4',
     });
   });
 
@@ -86,11 +107,16 @@ describe('uploadMultipartParallely', () => {
       partSizeBytes: 5 * MB,
       concurrency: 1,
     });
-    await uploader.start(new File(['hello'], 'f'));
+    await uploader.start(new File(['x'.repeat(6 * MB)], 'f'));
 
     expect(s3Mock).toHaveReceivedCommandWith(CompleteMultipartUploadCommand, {
       UploadId: 'upload-1',
-      MultipartUpload: { Parts: [{ ETag: '"etag-1"', PartNumber: 1 }] },
+      MultipartUpload: {
+        Parts: [
+          { ETag: '"etag-1"', PartNumber: 1 },
+          { ETag: '"etag-1"', PartNumber: 2 },
+        ],
+      },
     });
   });
 
@@ -173,12 +199,12 @@ describe('uploadMultipartParallely', () => {
       partSizeBytes: 10 * MB,
       concurrency: 1,
     });
-    await uploader.start(new File(['x'.repeat(10 * MB)], 'f'));
+    await uploader.start(new File(['x'.repeat(20 * MB)], 'f'));
 
-    // 10 MB of data at a 10 MiB part size is a single part. Before the rename
-    // this field was called partSizeMB, so `10` meant 10 bytes, failed the
-    // 5 MiB floor, and silently produced two 5 MiB parts instead.
-    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(1);
+    // 20 MB of data at a 10 MiB part size is two parts. Before the rename this
+    // field was called partSizeMB, so `10` meant 10 bytes, failed the 5 MiB
+    // floor, and silently produced 5 MiB parts instead - four of them here.
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(2);
   });
 
   it('clamps any part size below 5MB up to the 5MB minimum', async () => {

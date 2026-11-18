@@ -104,6 +104,11 @@ export interface PlannedUpload {
   verification: 'confirmed' | 'failed' | 'unchecked';
   files: File[];
   totalBytes: number;
+  /**
+   * Empty folders to create, relative to `prefix`: '' for the folder itself.
+   * Folder plans only. See FolderStructure.emptyFolders.
+   */
+  emptyFolders?: string[];
 }
 
 /**
@@ -170,8 +175,20 @@ interface FolderReservation {
 }
 
 interface UploadQueueState {
-  /** True while a drop is being planned; the UI shows a "preparing" state. */
+  /** True while a drop is being planned. */
   isPlanning: boolean;
+  /**
+   * Drops between arriving and their uploads starting: being read, checked
+   * for duplicates or planned. A count, since drops can overlap. The upload
+   * panel shows a "preparing" line while it is above zero, because a large
+   * folder can take a while to get through all three and showed nothing.
+   * See `drop-preparation`.
+   */
+  preparingDrops: number;
+  /** Of `preparingDrops`, those still being read from disk. */
+  readingDrops: number;
+  /** Files found so far by the drops still being read. Zero when none is. */
+  filesFound: number;
   claims: PrefixClaim[];
   notices: QueueNotice[];
 
@@ -191,12 +208,39 @@ interface UploadQueueState {
     startAttempt?: number
   ) => { resolvedName: string; prefix: string; attempt: number };
 
+  /**
+   * Claims exactly `prefix` for `taskId` again, for a retry of a task that has
+   * already let go of its name. No counter is tried: the files being retried
+   * belong under that one prefix and nowhere else.
+   *
+   * @returns whether `taskId` holds the prefix afterwards. False means another
+   *   task has it, and nothing changes.
+   */
+  reclaimPrefix: (prefix: string, taskId: string) => boolean;
+
   /** Marks a task's claims as having landed bytes, so they are never released. */
   commitClaim: (taskId: string) => void;
   /** Gives back a cancelled task's uncommitted claims. */
   releaseClaim: (taskId: string) => void;
   /** Gives back a single uncommitted prefix. */
   releasePrefix: (prefix: string) => void;
+  /**
+   * Gives back the committed names at or below `prefix`, once that folder has
+   * been deleted from the bucket.
+   *
+   * A committed claim is kept for the session so a second drop cannot land on
+   * an upload's files. Once the folder is gone, there is nothing left to
+   * protect, and holding on renamed the next drop of that name to "photos (1)"
+   * beside nothing at all. Claims of tasks still uploading are kept: their
+   * files are still arriving under that prefix.
+   *
+   * Uncommitted claims are always kept. Each belongs to work still going: a
+   * drop being planned, which the executor has not heard of yet, or an upload
+   * that has not landed a byte. Either gives its claim back itself when it
+   * ends. Released here, a second drop of the same name could be given the
+   * prefix while the first was still on its way.
+   */
+  forgetClaimsUnder: (prefix: string, isStillUploading: (taskId: string) => boolean) => void;
   /** Every prefix currently spoken for, committed or not. */
   claimedPrefixes: () => string[];
 
@@ -416,6 +460,9 @@ export function summariseSkipped(
 
 const initialState = {
   isPlanning: false,
+  preparingDrops: 0,
+  readingDrops: 0,
+  filesFound: 0,
   claims: [] as PrefixClaim[],
   notices: [] as QueueNotice[],
 };
@@ -446,6 +493,15 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
     const prefix = `${base}${resolvedName}/`;
     set((state) => ({ claims: [...state.claims, { prefix, taskId, committed: false }] }));
     return { resolvedName, prefix, attempt: MAX_SUFFIX_ATTEMPTS + 1 };
+  },
+
+  reclaimPrefix: (prefix, taskId) => {
+    const target = normalisePrefix(prefix);
+    const holder = get().claims.find((claim) => claim.prefix === target);
+    if (holder) return holder.taskId === taskId;
+
+    set((state) => ({ claims: [...state.claims, { prefix: target, taskId, committed: false }] }));
+    return true;
   },
 
   planDrop: async (data, options) => {
@@ -592,6 +648,7 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
           verification: reservation.verification,
           files,
           totalBytes: totalBytesOf(files),
+          emptyFolders: [...(reservation.folder.emptyFolders ?? [])],
         });
       }
 
@@ -633,6 +690,19 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
     set((state) => ({
       claims: state.claims.filter((claim) => claim.prefix !== target || claim.committed),
     }));
+  },
+
+  forgetClaimsUnder: (prefix, isStillUploading) => {
+    const target = normalisePrefix(prefix);
+    // The root holds everything; no folder delete removes it.
+    if (!target) return;
+
+    const claims = get().claims;
+    const kept = claims.filter(
+      (claim) =>
+        !claim.prefix.startsWith(target) || !claim.committed || isStillUploading(claim.taskId)
+    );
+    if (kept.length !== claims.length) set({ claims: kept });
   },
 
   claimedPrefixes: () => get().claims.map((claim) => claim.prefix),

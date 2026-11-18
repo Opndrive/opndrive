@@ -138,6 +138,28 @@ describe('getSignedUrl', () => {
     expect(url.searchParams.get('response-content-type')).toBe('application/pdf');
   });
 
+  it('lets a preview say how long the browser may keep it', async () => {
+    const url = new URL(
+      await makeApi().getSignedUrl({
+        ...base,
+        isPreview: true,
+        responseCacheControl: 'private, max-age=3600',
+      })
+    );
+
+    expect(url.searchParams.get('response-cache-control')).toBe('private, max-age=3600');
+  });
+
+  it('leaves caching alone unless asked, and for downloads', async () => {
+    const preview = new URL(await makeApi().getSignedUrl({ ...base, isPreview: true }));
+    const download = new URL(
+      await makeApi().getSignedUrl({ ...base, responseCacheControl: 'private, max-age=3600' })
+    );
+
+    expect(preview.searchParams.has('response-cache-control')).toBe(false);
+    expect(download.searchParams.has('response-cache-control')).toBe(false);
+  });
+
   it('overrides the saved filename for downloads', async () => {
     const url = new URL(
       await makeApi().getSignedUrl({ ...base, downloadFilename: 'Q4 report.pdf' })

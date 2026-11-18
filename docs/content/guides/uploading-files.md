@@ -11,6 +11,30 @@ choice is remembered (`upload-settings-storage` in `localStorage`).
 Both modes upload directly from your browser to S3 - no Opndrive-operated server
 sits in between.
 
+In multipart mode, a file that fits in a single 5 MiB part is sent in one
+request rather than as a one-part multipart upload. That is fewer round trips
+for small files, and it is the only way to upload an empty file at all: S3
+refuses to complete a multipart upload that has no parts.
+
+Parts are 5 MiB, except for very large files. S3 allows at most 10,000 parts in
+one upload, so from about 48.8 GiB the part size grows just enough to fit, for
+example 7 MiB for a 60 GiB file. A file too large for 10,000 parts of S3's 5 GiB
+maximum (about 48.8 TiB) is refused before anything is sent.
+
+If an upload fails for a reason that may clear by itself, such as a dropped
+connection, a timeout or a busy server, it is tried again up to three times, 2,
+8 and 30 seconds apart. While the browser is offline it waits for the connection
+to come back instead of spending a retry. A multipart upload carries on from the
+parts already sent rather than starting over. An upload that still fails, or was
+refused outright (for example by a permissions error), shows **Retry** in the
+upload panel.
+
+Every upload records the file's Content-Type, in both modes. It is the type your
+browser reports, or, when the browser reports none (common for HEIC photos and
+some video formats on Windows), the type its extension implies. Without one, S3
+stores a file as `binary/octet-stream`, and a shared link to a photo downloads
+it instead of showing it.
+
 ## How the Mode Switch Actually Works
 
 Switching modes in Settings updates a Zustand store
@@ -42,8 +66,13 @@ sequenceDiagram
 
 <!-- SCREENSHOT: Upload panel showing multiple files with progress bars, one paused -->
 
-1. Click the upload button, or drag files onto the file list.
-2. Track progress per file in the upload panel.
+1. Click the upload button, or drag files onto the file list. Dragging a folder
+   also brings its empty folders along, and an empty folder on its own is
+   created as one. **Folder upload** in the New menu cannot do this, because
+   browsers do not tell a page about empty folders chosen that way.
+2. Track progress per file in the upload panel. A large dropped folder shows how
+   many files have been found while it is still being read, then **Getting ready
+   to upload** while it is checked against the bucket.
 3. With multipart mode, pause and resume an in-progress upload; with signed URL
    mode, cancel is the only control mid-upload.
 
@@ -67,7 +96,9 @@ Multipart uploads work by sending a file in parts and then issuing a single
 is closed mid-upload, the laptop sleeps and the connection dies, the browser is
 force-quit - the parts that already reached S3 stay there. Opndrive aborts the
 upload cleanly whenever it gets the chance, but a closed tab gives the page no
-time to send anything, so this case cannot be fixed from the browser.
+time to send anything, so this case cannot be fixed from the browser. The
+browser does ask before closing a tab that still has an upload running, which
+catches the accidental close, but not a crash or a force-quit.
 
 Orphaned parts behave badly:
 

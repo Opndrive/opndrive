@@ -16,8 +16,58 @@ export function CodeViewer({ file }: CodeViewerProps) {
   const [codeContent, setCodeContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by Retry, which the effect below reruns on. Retry used to reset the
+  // state and nothing else, so nothing asked again and it stayed on "Loading".
+  const [attempt, setAttempt] = useState(0);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
+  // Primitives, so the effect reruns when the file changes and not merely
+  // when the object describing it is rebuilt.
+  const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
+  const fileName = file.name;
+
+  useEffect(() => {
+    if (!apiS3) return;
+    const api = apiS3;
+    let cancelled = false;
+
+    async function loadCode() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const signedUrl = await createS3PreviewService(api).getSignedUrl({
+          id: fileKey,
+          key: fileKey,
+          name: fileName,
+          size: 0,
+        });
+
+        const response = await fetch(signedUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch code file: ${response.statusText}`);
+        }
+
+        const codeText = await response.text();
+        if (cancelled) return;
+        // For .txt files and other text files, even empty content is valid
+        setCodeContent(codeText);
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to load code:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load code');
+        setLoading(false);
+      }
+    }
+
+    loadCode();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, fileKey, fileName, attempt]);
+
+  // Below every hook, so the number of hooks never depends on the session.
   if (isLoading) {
     return <PreviewLoading message="Authenticating..." />;
   }
@@ -26,39 +76,10 @@ export function CodeViewer({ file }: CodeViewerProps) {
     return null;
   }
 
-  const s3PreviewService = createS3PreviewService(apiS3);
-
-  useEffect(() => {
-    async function loadCode() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const signedUrl = await s3PreviewService.getSignedUrl(file);
-
-        const response = await fetch(signedUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch code file: ${response.statusText}`);
-        }
-
-        const codeText = await response.text();
-        // For .txt files and other text files, even empty content is valid
-        setCodeContent(codeText);
-        setLoading(false);
-      } catch (err) {
-        console.error('Failed to load code:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load code');
-        setLoading(false);
-      }
-    }
-
-    loadCode();
-  }, [file.key, file.Key, file.name]);
-
   const handleRetry = () => {
     setError(null);
     setCodeContent(null);
-    setLoading(true);
+    setAttempt((count) => count + 1);
   };
 
   if (loading) {

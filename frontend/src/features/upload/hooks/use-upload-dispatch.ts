@@ -25,13 +25,14 @@ import { useCallback } from 'react';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import type { ProcessedDragData } from '../types/folder-upload-types';
 import { useUploadQueueStore, type QueueNotice } from '../stores/use-upload-queue-store';
-import { useUploadStore } from '../stores/use-upload-store';
+import { useUploadStore, type UploadProgress } from '../stores/use-upload-store';
 import { useUploadExecutor } from '../context/upload-context';
 import type { DispatchResult } from '../services/upload-executor';
-import { objectExists, objectKey } from '@/services/object-existence';
+import { findExistingNames, objectExists, objectKey } from '@/services/object-existence';
 import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { generateUniqueFileName } from '../utils/unique-filename';
 import { useUploadSettingsStore } from '../stores/use-upload-settings-store';
+import { whilePreparingDrop } from '../utils/drop-preparation';
 import type { DuplicatePolicy } from '../types';
 
 export interface DropOutcome {
@@ -45,6 +46,21 @@ const EMPTY_OUTCOME: DropOutcome = { dispatched: [], notices: [], nothingStarted
 
 /** How many object-existence checks run at once, matching VERIFY_CONCURRENCY. */
 const DUPLICATE_CHECK_CONCURRENCY = 5;
+
+/** The most listing pages a duplicate check reads, so up to 20,000 objects. */
+const MAX_DUPLICATE_LISTING_PAGES = 20;
+
+/**
+ * How many listing pages are worth reading before checking files one by one.
+ *
+ * A page costs about one round trip, and the HEADs it replaces cost one round
+ * per DUPLICATE_CHECK_CONCURRENCY files. Reading no more pages than that keeps
+ * the listing from ever being the slower way to finish. A folder too big to
+ * list in that budget falls back to HEADs for whatever it did not find.
+ */
+function listingBudget(fileCount: number): number {
+  return Math.min(MAX_DUPLICATE_LISTING_PAGES, Math.ceil(fileCount / DUPLICATE_CHECK_CONCURRENCY));
+}
 
 type FileVerdict =
   | { kind: 'upload'; file: File }
@@ -69,7 +85,10 @@ type DuplicateAnswer = {
  * already existed - this pipeline simply bypassed it, which is the regression
  * being fixed.
  *
- * Checks run concurrently, unlike the sequential version this replaces.
+ * More than a handful of files are checked against a listing of the
+ * destination, a page for up to a thousand objects, rather than with a HEAD
+ * each. What the listing cannot rule out, and every file of a small drop, gets
+ * its own HEAD, several at a time.
  */
 async function decideLooseFiles(
   files: readonly File[],
@@ -80,13 +99,38 @@ async function decideLooseFiles(
 ): Promise<FileVerdict[]> {
   const verdicts: FileVerdict[] = new Array(files.length);
   const collisions: number[] = [];
+  let toCheck = files.map((_, index) => index);
+
+  // A drop small enough to check in one round of HEADs gains nothing from a
+  // listing, and a big destination could make the listing the slower of two.
+  if (files.length > DUPLICATE_CHECK_CONCURRENCY) {
+    try {
+      const { existing, unknown } = await findExistingNames(
+        apiS3,
+        destination,
+        files.map((file) => file.name),
+        listingBudget(files.length)
+      );
+      const stillUnknown = new Set(unknown);
+
+      toCheck = [];
+      files.forEach((file, index) => {
+        if (existing.has(file.name)) collisions.push(index);
+        else if (stillUnknown.has(file.name)) toCheck.push(index);
+        else verdicts[index] = { kind: 'upload', file };
+      });
+    } catch {
+      // The listing could not answer. Every file is checked on its own
+      // instead, which reports a failure per file exactly as before.
+    }
+  }
 
   let cursor = 0;
   const runners = Array.from(
-    { length: Math.min(DUPLICATE_CHECK_CONCURRENCY, files.length) },
+    { length: Math.min(DUPLICATE_CHECK_CONCURRENCY, toCheck.length) },
     async () => {
-      while (cursor < files.length) {
-        const index = cursor++;
+      while (cursor < toCheck.length) {
+        const index = toCheck[cursor++]!;
         const file = files[index]!;
         try {
           const exists = await objectExists(apiS3, objectKey(destination, file.name));
@@ -219,7 +263,7 @@ function unverifiedNotice(names: readonly string[]): QueueNotice | null {
 
 export function useUploadDispatch() {
   const executor = useUploadExecutor();
-  const addUpload = useUploadStore((state) => state.addUpload);
+  const addUploads = useUploadStore((state) => state.addUploads);
   const showDuplicateDialog = useUploadStore((state) => state.showDuplicateDialog);
   const hideDuplicateDialog = useUploadStore((state) => state.hideDuplicateDialog);
 
@@ -248,7 +292,7 @@ export function useUploadDispatch() {
     [showDuplicateDialog, hideDuplicateDialog]
   );
 
-  return useCallback(
+  const dispatchDrop = useCallback(
     async (
       data: ProcessedDragData,
       destinationPrefix: string,
@@ -325,11 +369,21 @@ export function useUploadDispatch() {
 
       const dispatched = executor.start(planned);
 
+      // A file's card starts where its upload already is, not at 'queued'.
+      // The manager starts the first few files inside `start`, and the events
+      // saying so arrived before any of these cards existed.
+      const current = (uploadId: string) =>
+        executor.statusOf(uploadId) ?? { status: 'queued' as const, progress: 0 };
+
+      // Collected and added in one go. Each store update copies every card, so
+      // adding them one at a time made a large drop slower with every file.
+      const cards: UploadProgress[] = [];
+
       for (const result of dispatched) {
         if (result.plan.kind === 'folder') {
           // The folder card owns the task id, which is what `cancelTask` takes,
           // so cancelling from the UI needs no extra bookkeeping.
-          addUpload(result.taskId, {
+          cards.push({
             id: result.taskId,
             name: result.plan.resolvedName,
             status: 'queued',
@@ -342,13 +396,12 @@ export function useUploadDispatch() {
           });
 
           for (const file of result.files) {
-            addUpload(file.uploadId, {
+            cards.push({
               id: file.uploadId,
               // The key rather than the bare name, so two files called
               // "img.jpg" from different subfolders stay distinguishable.
               name: file.key,
-              status: 'queued',
-              progress: 0,
+              ...current(file.uploadId),
               type: 'file',
               parentFolderId: result.taskId,
               key: file.key,
@@ -361,11 +414,10 @@ export function useUploadDispatch() {
         } else {
           // Loose files get no wrapper card; each is its own row.
           for (const file of result.files) {
-            addUpload(file.uploadId, {
+            cards.push({
               id: file.uploadId,
               name: file.file.name,
-              status: 'queued',
-              progress: 0,
+              ...current(file.uploadId),
               type: 'file',
               key: file.key,
               size: file.file.size,
@@ -380,7 +432,7 @@ export function useUploadDispatch() {
         // The manager refused this plan outright - a disposed manager after a
         // logout or bucket switch. Say so on a card rather than dropping it.
         if (result.dispatchError && result.files.length === 0) {
-          addUpload(result.taskId, {
+          cards.push({
             id: result.taskId,
             name: result.plan.resolvedName || 'Upload',
             status: 'failed',
@@ -390,6 +442,8 @@ export function useUploadDispatch() {
           });
         }
       }
+
+      addUploads(cards);
 
       if (looseNotices.length > 0) {
         useUploadQueueStore.setState((state) => ({
@@ -403,6 +457,15 @@ export function useUploadDispatch() {
         nothingStarted: dispatched.every((result) => result.files.length === 0),
       };
     },
-    [executor, addUpload, askAboutDuplicate]
+    [executor, addUploads, askAboutDuplicate]
+  );
+
+  // Counted as a drop being prepared until its uploads have started. Checking
+  // a large drop against the bucket and planning it takes a while, and the
+  // upload panel says so instead of showing nothing.
+  return useCallback(
+    (data: ProcessedDragData, destinationPrefix: string, apiS3?: BYOS3ApiProvider | null) =>
+      whilePreparingDrop(() => dispatchDrop(data, destinationPrefix, apiS3)),
+    [dispatchDrop]
   );
 }

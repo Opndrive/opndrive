@@ -21,59 +21,64 @@ export function ImageViewer({ file }: ImageViewerProps) {
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [lastTap, setLastTap] = useState(0);
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
+  // Touch gesture support for mobile
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance?: number } | null>(
+    null
+  );
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
-  if (isLoading) {
-    return <PreviewLoading message="Authenticating..." />;
-  }
-
-  if (!isAuthenticated || !apiS3) {
-    return null;
-  }
+  // Primitives, so the effect reruns when the file changes and not merely
+  // when the object describing it is rebuilt.
+  const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
 
   useEffect(() => {
+    if (!apiS3) return;
+    const api = apiS3;
+    let cancelled = false;
+
     async function loadImage() {
       try {
-        if (!apiS3) return;
-
         setLoading(true);
         setError(null);
         setImageLoaded(false);
-
-        // Get the file key (handle both Key and key properties)
-        const fileKey = (file as PreviewableFile & { Key?: string }).Key || file.key || file.name;
 
         if (!fileKey) {
           throw new Error('No file key found');
         }
 
-        const url = await apiS3.getSignedUrl({
+        // The <img> below fetches it. This used to also start a second,
+        // crossOrigin copy "to test the URL" - a whole extra download of
+        // the image that the browser could not share with the first.
+        const url = await api.getSignedUrl({
           key: fileKey,
           expiryInSeconds: 3600,
           isPreview: true,
           responseContentType: getContentTypeForS3(fileKey),
         });
 
-        // Test if the URL is accessible
-        const testImg = new Image();
-        testImg.crossOrigin = 'anonymous';
-        testImg.src = url;
-
+        if (cancelled) return;
         setSignedUrl(url);
         setLoading(false);
       } catch (err) {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load image');
         setLoading(false);
       }
     }
 
     loadImage();
-  }, [file, apiS3]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiS3, fileKey]);
 
-  // Handle wheel events with proper passive: false
+  // Wheel zoom, with passive: false so it can stop the page scrolling. The
+  // container only exists once the image is showing, and this used to run
+  // once on mount, while it was still loading - so it never attached.
+  const showingImage = !loading && !error && Boolean(signedUrl);
   useEffect(() => {
     const container = imageContainerRef.current;
-    if (!container) return;
+    if (!showingImage || !container) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -81,13 +86,21 @@ export function ImageViewer({ file }: ImageViewerProps) {
       setScale((prev) => Math.min(Math.max(prev * delta, 0.1), 3));
     };
 
-    // Add event listener with passive: false to allow preventDefault
     container.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [showingImage]);
+
+  // Below every hook, so the number of hooks never depends on the session.
+  if (isLoading) {
+    return <PreviewLoading message="Authenticating..." />;
+  }
+
+  if (!isAuthenticated || !apiS3) {
+    return null;
+  }
 
   const calculateInitialScale = () => {
     if (naturalSize.width === 0 || naturalSize.height === 0) {
@@ -149,11 +162,6 @@ export function ImageViewer({ file }: ImageViewerProps) {
     setScale(calculateInitialScale());
     setRotation(0);
   };
-
-  // Touch gesture support for mobile
-  const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance?: number } | null>(
-    null
-  );
 
   const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
     const dx = touch1.clientX - touch2.clientX;

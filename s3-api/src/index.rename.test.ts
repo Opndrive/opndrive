@@ -21,6 +21,10 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   S3ServiceException,
+  HeadObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCopyCommand,
+  CompleteMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
 import { BYOS3ApiProvider } from './index.js';
 import type { Credentials, RenameFolderProgress } from './core/types.js';
@@ -172,6 +176,62 @@ describe('renameFile', () => {
     ).rejects.toThrow(/Rename failed/);
 
     expect(s3Mock).not.toHaveReceivedCommand(DeleteObjectCommand);
+  });
+});
+
+/**
+ * Objects over 5 GiB, which CopyObject refuses. A rename or move of one used
+ * to fail outright; these go through a multipart copy instead (see
+ * utils/copyObject.test.ts for the copy itself).
+ */
+describe('copying an object larger than 5 GiB', () => {
+  const GiB = 1024 ** 3;
+
+  beforeEach(() => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'up-1' });
+    s3Mock.on(UploadPartCopyCommand).resolves({ CopyPartResult: { ETag: '"e"' } });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    s3Mock.on(DeleteObjectCommand).resolves({});
+    s3Mock.on(DeleteObjectsCommand).resolves({});
+  });
+
+  it('moves a 6 GiB file, and deletes the original only after the copy', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 6 * GiB, ETag: '"v1"' });
+
+    await makeApi().moveFile({ oldKey: 'videos/raw.mp4', newKey: 'videos/final.mp4' });
+
+    expect(s3Mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
+    expect(s3Mock.commandCalls(UploadPartCopyCommand).length).toBeGreaterThan(1);
+    const completed = s3Mock.commandCalls(CompleteMultipartUploadCommand)[0]!;
+    const deleted = s3Mock.commandCalls(DeleteObjectCommand)[0]!;
+    expect(deleted.args[0].input.Key).toBe('videos/raw.mp4');
+    expect(deleted.calledAfter(completed)).toBe(true);
+  });
+
+  it('renames a folder holding one, copying only that object in parts', async () => {
+    s3Mock.on(ListObjectsV2Command, { Prefix: 'media/' }).resolves({
+      Contents: [
+        { Key: 'media/notes.txt', Size: 10 },
+        { Key: 'media/film.mkv', Size: 7 * GiB },
+      ],
+    });
+    s3Mock.on(ListObjectsV2Command, { Prefix: 'archive/' }).resolves({
+      Contents: [{ Key: 'archive/notes.txt' }, { Key: 'archive/film.mkv' }],
+    });
+    s3Mock.on(CopyObjectCommand).resolves({});
+    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 7 * GiB, ETag: '"v1"' });
+
+    const result = await makeApi().renameFolder({ oldPrefix: 'media/', newPrefix: 'archive/' });
+
+    expect(result.status).toBe('completed');
+    // The small one in one request, using the size from the listing: no HEAD.
+    expect(copiedKeys()).toEqual(['archive/notes.txt']);
+    // The big one in parts, with one HEAD for its metadata.
+    expect(s3Mock.commandCalls(HeadObjectCommand)).toHaveLength(1);
+    expect(s3Mock.commandCalls(CompleteMultipartUploadCommand)[0]!.args[0].input.Key).toBe(
+      'archive/film.mkv'
+    );
+    expect(deletedKeys().sort()).toEqual(['media/film.mkv', 'media/notes.txt']);
   });
 });
 

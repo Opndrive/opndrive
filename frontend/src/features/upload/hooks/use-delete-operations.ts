@@ -6,16 +6,11 @@ import { SESSION_ENDED, useUploadStore } from '../stores/use-upload-store';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
 import { useNotification } from '@/context/notification-context';
 import { useDeletedFolderCleanup } from './use-deleted-folder-cleanup';
-import { markerLast } from '../utils/delete-key-order';
+import { deleteListedKeys } from '../utils/delete-listed-keys';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { isFile, isFolderLike } from '@/shared/utils/drive-item';
-
-interface FolderContents {
-  allKeys: string[];
-  totalItems: number;
-}
 
 /**
  * S3 DeleteObjects responds 200 even when individual keys are rejected
@@ -245,23 +240,6 @@ export function useDeleteOperations() {
   const clearRecord = useDeleteRecoveryStore((state) => state.clearRecord);
   const cleanUpDeletedFolder = useDeletedFolderCleanup();
 
-  // Helper function to directly fetch all S3 objects with a prefix using AWS SDK
-  const getAllS3ObjectsWithPrefix = useCallback(
-    async (folderPrefix: string): Promise<FolderContents> => {
-      if (!apiS3) {
-        throw new Error('API not ready');
-      }
-
-      const allKeys = await apiS3.listFromPrefix(folderPrefix);
-
-      return {
-        allKeys: allKeys,
-        totalItems: allKeys.length,
-      };
-    },
-    [apiS3]
-  );
-
   const deleteFileWithProgress = useCallback(
     async (file: FileItem): Promise<void> => {
       if (!apiS3) {
@@ -369,94 +347,70 @@ export function useDeleteOperations() {
           throw abortError();
         }
 
-        // Get all folder contents using direct S3 API call
         const folderKey = folder.Prefix || folder.name;
         const normalizedKey = folderKey.endsWith('/') ? folderKey : `${folderKey}/`;
+        const startedAt = Date.now();
+        // Never moves backwards: the total grows while the folder is still
+        // being listed, which on its own would pull the bar back.
+        let shownProgress = 5;
 
-        const folderContents = await getAllS3ObjectsWithPrefix(normalizedKey);
-
-        if (signal.aborted) {
-          throw abortError();
-        }
-
-        // Update operation with actual file count, hide loading state
-        setCalculatingSize(itemId, false);
-        updateSize(itemId, 0, folderContents.totalItems); // Size calculation not needed for delete
-        updateDeleteProgress(itemId, 5); // Small progress after calculation
-
-        if (signal.aborted) {
-          throw abortError();
-        }
-
-        // The folder's own marker object goes last, always. See markerLast.
-        const allKeys = markerLast(folderContents.allKeys, normalizedKey);
-
-        // Write down that this folder is being deleted before the first batch
-        // goes out. The finally below clears it as soon as we report anything,
-        // so a record that is still here on the next load can only mean the
-        // run was cut off without telling anyone.
-        recordStarted({
-          id: itemId,
-          bucket: apiS3.getBucketName(),
-          prefix: normalizedKey,
-          name: folder.name,
-          totalItems: allKeys.length,
-          startedAt: Date.now(),
-        });
-
-        if (allKeys.length > 0) {
-          // Use batch delete for better performance (S3 allows up to 1000 objects per batch)
-          const batchSize = 1000;
-          let processed = 0;
-          let deletedCount = 0;
-          const failures: DeleteBatchError[] = [];
-
-          for (let i = 0; i < allKeys.length; i += batchSize) {
-            if (signal.aborted) {
-              throw abortError();
-            }
-
-            const batch = allKeys.slice(i, i + batchSize);
-
-            // Use batch delete to delete multiple objects at once
+        // Listed and deleted together. See deleteListedKeys for the order it
+        // keeps - the folder's own marker last - and why.
+        const { total, failures } = await deleteListedKeys({
+          pages: apiS3.listPagesFromPrefix(normalizedKey),
+          marker: normalizedKey,
+          signal,
+          send: async (keys) => {
             const result = normalizeDeleteResult(
-              await apiS3.deleteBatch(batch.map((key) => ({ Key: key }))),
-              batch.length
+              await apiS3.deleteBatch(keys.map((key) => ({ Key: key }))),
+              keys.length
             );
             if (!result.reliable) warnLegacyProviderOnce();
+            return result;
+          },
+          onListed: (listed) => {
+            // Written down before any of this page goes out, and again as the
+            // listing grows. The finally below clears it as soon as we report
+            // anything, so a record that is still here on the next load can
+            // only mean the run was cut off without telling anyone.
+            recordStarted({
+              id: itemId,
+              bucket: apiS3.getBucketName(),
+              prefix: normalizedKey,
+              name: folder.name,
+              totalItems: listed,
+              startedAt,
+            });
+            setCalculatingSize(itemId, false);
+            // Size calculation not needed for delete; the count is what shows.
+            updateSize(itemId, 0, listed);
+          },
+          onBatchDone: ({ processed, deleted, listed }) => {
+            // Driven off `processed` so it never stalls on a failing batch,
+            // with the true deleted count reported alongside it.
+            shownProgress = Math.max(shownProgress, 5 + (processed / listed) * 90);
+            updateDeleteProgress(itemId, shownProgress, deleted, listed);
+          },
+        });
 
-            // Keep going after a partial failure - bailing out here would
-            // strand more objects than it saves. Everything is reported below.
-            processed += batch.length;
-            deletedCount += result.deleted;
-            failures.push(...result.errors);
+        // A cancel landing after the final batch is a cancellation, not a
+        // partial failure.
+        if (signal.aborted) {
+          throw abortError();
+        }
 
-            // Drive the bar off `processed` so it never stalls on a failing
-            // chunk, but report the true deleted count alongside it.
-            const progress = 5 + (processed / allKeys.length) * 90;
-            updateDeleteProgress(itemId, progress, deletedCount, allKeys.length);
-          }
-
-          // A cancel landing after the final chunk is a cancellation, not a
-          // partial failure.
-          if (signal.aborted) {
-            throw abortError();
-          }
-
-          if (failures.length > 0) {
-            const summary = describeFailures(failures, allKeys.length);
-            failDeleteOperation(itemId, summary);
-            errorFunction(`Partially deleted "${folder.name}": ${summary}`);
-            // Some objects went and some did not, and only the bucket knows
-            // which. Silently, because those rows are on screen and asking is
-            // no reason to blank them.
-            await refreshCurrentData({ silent: true });
-            throw new PartialDeleteError(summary, failures);
-          }
-        } else {
-          // Empty folder, just delete the folder itself using single delete
-          await apiS3.deleteFile(normalizedKey);
-          updateDeleteProgress(itemId, 95);
+        // Keep going after a partial failure was the rule, and still is:
+        // stopping would strand more objects than it saves. All of it is
+        // reported here.
+        if (failures.length > 0) {
+          const summary = describeFailures(failures, total);
+          failDeleteOperation(itemId, summary);
+          errorFunction(`Partially deleted "${folder.name}": ${summary}`);
+          // Some objects went and some did not, and only the bucket knows
+          // which. Silently, because those rows are on screen and asking is
+          // no reason to blank them.
+          await refreshCurrentData({ silent: true });
+          throw new PartialDeleteError(summary, failures);
         }
 
         // Small delay to show final progress
@@ -504,7 +458,6 @@ export function useDeleteOperations() {
       apiS3,
       refreshCurrentData,
       errorFunction,
-      getAllS3ObjectsWithPrefix,
       startDeleteOperation,
       setCalculatingSize,
       updateDeleteProgress,

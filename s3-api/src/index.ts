@@ -28,6 +28,7 @@ import {
   ListBucketResult,
 } from './core/types.js';
 import { forEachWithConcurrency } from './utils/concurrency.js';
+import { copyObject } from './utils/copyObject.js';
 import { buildAttachmentDisposition } from './utils/content-disposition.js';
 import {
   ListObjectsV2Command,
@@ -39,7 +40,6 @@ import {
   __MetadataBearer,
   GetObjectCommand,
   DeleteObjectCommand,
-  CopyObjectCommand,
   CreateBucketCommand,
   BucketLocationConstraint,
   S3ServiceException,
@@ -206,6 +206,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       fileName: params.fileName,
       concurrency: params.concurrency,
       partSizeBytes: params.partSizeBytes,
+      contentType: params.contentType,
     };
 
     const uploader = new MultipartUploader(config);
@@ -231,6 +232,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         Key: params.key,
         ResponseContentDisposition: 'inline',
         ResponseContentType: params.responseContentType,
+        ResponseCacheControl: params.responseCacheControl,
       });
     } else {
       cmd = new GetObjectCommand({
@@ -341,6 +343,25 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
   async listFromPrefix(prefix: string): Promise<string[]> {
     const allKeys: string[] = [];
+    for await (const keys of this.listPagesFromPrefix(prefix)) {
+      // Not `allKeys.push(...keys)`: spreading a page is fine, but appending
+      // is just as short and has no argument-count ceiling.
+      for (const key of keys) allKeys.push(key);
+    }
+    return allKeys;
+  }
+
+  /**
+   * Every key under a prefix, one listing page at a time, as each arrives.
+   *
+   * For callers that can start on the first page while the rest are still
+   * being listed: a delete of a 100,000-object folder used to read all 100
+   * pages before removing anything. Stopping the iteration early (a `break`
+   * out of `for await`) stops the listing too.
+   *
+   * @throws whatever a listing request threw, at the page it failed on.
+   */
+  async *listPagesFromPrefix(prefix: string): AsyncGenerator<string[], void, undefined> {
     let continuationToken: string | undefined;
 
     do {
@@ -352,25 +373,15 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         })
       );
 
-      const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
-      allKeys.push(...keys);
+      yield (list.Contents || []).map((o) => o.Key!).filter(Boolean);
       continuationToken = list.NextContinuationToken;
     } while (continuationToken);
-
-    return allKeys;
   }
 
   async moveFile(params: MoveFileParams): Promise<void> {
     try {
-      const encodedSource = encodeURIComponent(params.oldKey);
-
-      await this.s3.send(
-        new CopyObjectCommand({
-          Bucket: this.credentials.bucketName,
-          CopySource: `${this.credentials.bucketName}/${encodedSource}`,
-          Key: params.newKey,
-        })
-      );
+      // Any size: a plain CopyObject stops at 5 GiB. See copyObject.
+      await copyObject(this.s3, this.credentials.bucketName, params.oldKey, params.newKey);
 
       await this.s3.send(
         new DeleteObjectCommand({
@@ -393,15 +404,9 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
 
       const fullOldPath = `${params.basePath}${params.oldName}`;
       const fullNewPath = `${params.basePath}${params.newName}`;
-      const encodedSource = encodeURIComponent(fullOldPath);
 
-      await this.s3.send(
-        new CopyObjectCommand({
-          Bucket: this.credentials.bucketName,
-          CopySource: `${this.credentials.bucketName}/${encodedSource}`,
-          Key: fullNewPath,
-        })
-      );
+      // Any size: a plain CopyObject stops at 5 GiB. See copyObject.
+      await copyObject(this.s3, this.credentials.bucketName, fullOldPath, fullNewPath);
 
       await this.s3.send(
         new DeleteObjectCommand({
@@ -450,9 +455,11 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       );
     }
 
-    // 1. List every key under the old prefix.
+    // 1. List every key under the old prefix, with its size: the copy below
+    // needs it to tell an object CopyObject can take from one it cannot.
     let continuationToken: string | undefined;
     const allKeys: string[] = [];
+    const sizes = new Map<string, number>();
 
     do {
       const list = await this.s3.send(
@@ -463,8 +470,11 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
         })
       );
 
-      const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
-      allKeys.push(...keys);
+      for (const object of list.Contents || []) {
+        if (!object.Key) continue;
+        allKeys.push(object.Key);
+        if (typeof object.Size === 'number') sizes.set(object.Key, object.Size);
+      }
       continuationToken = list.NextContinuationToken;
     } while (continuationToken);
 
@@ -484,13 +494,9 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     await forEachWithConcurrency(allKeys, RENAME_COPY_CONCURRENCY, async (key) => {
       const newKey = key.replace(oldPrefix, newPrefix);
       try {
-        await this.s3.send(
-          new CopyObjectCommand({
-            Bucket: bucket,
-            CopySource: `${bucket}/${encodeURIComponent(key)}`,
-            Key: newKey,
-          })
-        );
+        // Any size: a plain CopyObject stops at 5 GiB, and one video in the
+        // folder that size used to fail the whole rename.
+        await copyObject(this.s3, bucket, key, newKey, { size: sizes.get(key) });
         copiedCount++;
         params.onProgress?.({
           phase: 'copying',
@@ -649,6 +655,7 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
       folders: foldersMatching,
       totalFolders,
       totalKeys: allKeysMatched,
+      scannedKeys: contents.length,
       nextToken: response.NextContinuationToken,
       isTruncated: response.IsTruncated,
     };

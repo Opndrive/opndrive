@@ -4,6 +4,8 @@ import { useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useDriveStore } from '@/context/data-context';
 import { generateFolderUrl, getParentPrefix } from '@/features/folder-navigation/folder-navigation';
+import { useUploadQueueStore } from '../stores/use-upload-queue-store';
+import { useUploadExecutor } from '../context/upload-context';
 
 /** The two routes that stand the user inside a folder. */
 const FOLDER_VIEWS = ['/dashboard', '/dashboard/browse'];
@@ -19,7 +21,9 @@ const FOLDER_VIEWS = ['/dashboard', '/dashboard/browse'];
  * page is reloaded by hand.
  *
  * So the cached listings go, and if the folder we were in went with them, we
- * step out to its parent.
+ * step out to its parent. The folder names this session's uploads were holding
+ * under it are given back too, so dropping a folder of the same name again
+ * keeps its name.
  *
  * @returns true when the folder the app was pointing at is gone, so refreshing
  * that prefix would only fetch an empty listing.
@@ -28,6 +32,7 @@ export function useDeletedFolderCleanup() {
   const router = useRouter();
   const pathname = usePathname();
   const removeDeletedFolder = useDriveStore((state) => state.removeDeletedFolder);
+  const executor = useUploadExecutor();
 
   return useCallback(
     (prefix: string): boolean => {
@@ -39,6 +44,9 @@ export function useDeletedFolderCleanup() {
       if (normalized === '/') return false;
 
       removeDeletedFolder(normalized);
+      useUploadQueueStore
+        .getState()
+        .forgetClaimsUnder(normalized, (taskId) => (executor?.uploadsFor(taskId).length ?? 0) > 0);
 
       // startsWith covers standing in the folder itself as well as any depth
       // below it, since both are gone now.
@@ -61,6 +69,6 @@ export function useDeletedFolderCleanup() {
 
       return true;
     },
-    [removeDeletedFolder, router, pathname]
+    [removeDeletedFolder, executor, router, pathname]
   );
 }

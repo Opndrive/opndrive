@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FolderStructureProcessor } from './folder-structure-processor';
+import { FolderStructureProcessor, createLimiter } from './folder-structure-processor';
 import {
   makeFile,
   makeFileWithPath,
@@ -24,6 +24,7 @@ import {
   mockDirectoryEntry,
   mockFileEntry,
   READ_ENTRIES_BATCH_SIZE,
+  readTracker,
 } from '@/tests/dnd-mocks';
 
 const process = (items: DataTransferItem[]) =>
@@ -159,21 +160,57 @@ describe('dropping a folder', () => {
     expect(dir.readCallCount()).toBe(4);
   });
 
-  it('skips a folder that contains nothing', async () => {
+  it('brings along a folder that contains nothing, to be created empty', async () => {
+    // It used to be left out, so dropping an empty folder did nothing at all.
     const empty = mockDirectoryEntry('empty', []);
 
     const result = await process([mockDataTransferItem(empty)]);
 
-    // Creating a zero-file upload would leave a phantom folder in the UI.
-    expect(result.folderStructures).toEqual([]);
+    expect(result.folderStructures).toEqual([
+      { name: 'empty', files: [], totalSize: 0, relativePath: 'empty', emptyFolders: [''] },
+    ]);
   });
 
-  it('skips a folder whose subfolders are all empty', async () => {
+  it('names only the innermost of nested empty folders', async () => {
+    // outer/inner/ implies outer/, so one marker covers both.
     const dir = mockDirectoryEntry('outer', [mockDirectoryEntry('inner', [])]);
 
     const result = await process([mockDataTransferItem(dir)]);
 
+    expect(result.folderStructures[0]!.emptyFolders).toEqual(['inner']);
+    expect(result.folderStructures[0]!.files).toEqual([]);
+  });
+
+  it('keeps the empty folders that sit beside files', async () => {
+    const dir = mockDirectoryEntry('project', [
+      mockFileEntry(makeFile('README.md')),
+      mockDirectoryEntry('logs', []),
+      mockDirectoryEntry('src', [
+        mockFileEntry(makeFile('main.py')),
+        mockDirectoryEntry('fixtures', [mockDirectoryEntry('empty-case', [])]),
+      ]),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
+    expect(result.folderStructures[0]!.emptyFolders).toEqual(['logs', 'src/fixtures/empty-case']);
+    expect(pathsOf(result.folderStructures[0]!.files)).toEqual([
+      'project/README.md',
+      'project/src/main.py',
+    ]);
+  });
+
+  it('does not count a folder whose files could not be read as empty', async () => {
+    // Creating it bare would pass for a successful upload of nothing. The
+    // files are reported as skipped instead.
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('locked.txt'), { failWith: new Error('locked') }),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
     expect(result.folderStructures).toEqual([]);
+    expect(result.skipped.map((s) => s.path)).toEqual(['docs/locked.txt']);
   });
 
   it('sums the total size across nested folders', async () => {
@@ -254,6 +291,170 @@ describe('dropping a folder', () => {
     // structures with the same name, so both upload to the same prefix and the
     // second overwrites the first. Nothing here merges or disambiguates them.
     expect(result.folderStructures.map((f) => f.name)).toEqual(['photos', 'photos']);
+  });
+});
+
+describe('createLimiter', () => {
+  /** Tasks that run until the test finishes them, counting how many run at once. */
+  function heldTasks() {
+    const finishers: (() => void)[] = [];
+    let running = 0;
+    let peak = 0;
+    const task = () =>
+      new Promise<void>((resolve) => {
+        running++;
+        peak = Math.max(peak, running);
+        finishers.push(() => {
+          running--;
+          resolve();
+        });
+      });
+    return {
+      task,
+      finishNext: () => finishers.shift()!(),
+      get running() {
+        return running;
+      },
+      get peak() {
+        return peak;
+      },
+      get left() {
+        return finishers.length;
+      },
+    };
+  }
+
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('runs at most its limit, and the rest as places free up', async () => {
+    const limit = createLimiter(2);
+    const tasks = heldTasks();
+
+    const runs = Array.from({ length: 5 }, () => limit(tasks.task));
+    await flush();
+    expect(tasks.running).toBe(2);
+
+    while (tasks.left > 0) {
+      tasks.finishNext();
+      await flush();
+    }
+    await Promise.all(runs);
+    expect(tasks.peak).toBe(2);
+  });
+
+  it('keeps the limit when a task arrives as a place is handed to one waiting', async () => {
+    // A finished task freed its place and woke the next in line, which only
+    // took the place a moment later. A task arriving in that moment found it
+    // free too, and both ran: 17 reads against a limit of 16.
+    const limit = createLimiter(2);
+    const tasks = heldTasks();
+    const runs = [limit(tasks.task), limit(tasks.task), limit(tasks.task)];
+    await flush();
+
+    tasks.finishNext();
+    // Queued now, it runs after the finished task gives up its place and
+    // before the waiting one takes it.
+    queueMicrotask(() => runs.push(limit(tasks.task)));
+    await flush();
+
+    expect(tasks.running).toBe(2);
+    while (tasks.left > 0) {
+      tasks.finishNext();
+      await flush();
+    }
+    await Promise.all(runs);
+    expect(tasks.peak).toBe(2);
+  });
+
+  it('hands on its place when a task fails', async () => {
+    const limit = createLimiter(1);
+    const failing = limit(() => Promise.reject(new Error('unreadable')));
+    const next = limit(async () => 'read');
+
+    await expect(failing).rejects.toThrow('unreadable');
+    await expect(next).resolves.toBe('read');
+  });
+});
+
+describe('reading a big folder', () => {
+  it('reads its files several at a time, within a bound', async () => {
+    // Each file() is a round trip to the browser's file system. One at a
+    // time, a folder of thousands took thousands of round trips end to end.
+    const tracker = readTracker();
+    const children = Array.from({ length: 60 }, (_, i) =>
+      mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 3, tracker })
+    );
+
+    const result = await process([mockDataTransferItem(mockDirectoryEntry('big', children))]);
+
+    expect(result.folderStructures[0]!.files).toHaveLength(60);
+    expect(tracker.peak).toBeGreaterThan(1);
+    expect(tracker.peak).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps the bound across nested folders, not per folder', async () => {
+    const tracker = readTracker();
+    const folders = Array.from({ length: 10 }, (_, f) =>
+      mockDirectoryEntry(
+        `sub${f}`,
+        Array.from({ length: 10 }, (_, i) =>
+          mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 3, tracker })
+        )
+      )
+    );
+
+    await process([mockDataTransferItem(mockDirectoryEntry('root', folders))]);
+
+    expect(tracker.peak).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps entry order, however the reads finish', async () => {
+    // Earlier files take longer, so they finish last.
+    const children = Array.from({ length: 12 }, (_, i) =>
+      mockFileEntry(makeFile(`f${i}.txt`), { readDelayTicks: 12 - i })
+    );
+    const inner = mockDirectoryEntry('inner', [mockFileEntry(makeFile('deep.txt'))]);
+
+    const result = await process([
+      mockDataTransferItem(
+        mockDirectoryEntry('docs', [...children.slice(0, 6), inner, ...children.slice(6)])
+      ),
+    ]);
+
+    expect(pathsOf(result.folderStructures[0]!.files)).toEqual([
+      ...Array.from({ length: 6 }, (_, i) => `docs/f${i}.txt`),
+      'docs/inner/deep.txt',
+      ...Array.from({ length: 6 }, (_, i) => `docs/f${i + 6}.txt`),
+    ]);
+  });
+
+  it('reports skipped entries in entry order too', async () => {
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('a.txt'), { failWith: new Error('locked'), readDelayTicks: 8 }),
+      mockDirectoryEntry('broken', [], { failWith: new Error('SecurityError') }),
+      mockFileEntry(makeFile('c.txt'), { failWith: new Error('locked') }),
+    ]);
+
+    const result = await process([mockDataTransferItem(dir)]);
+
+    expect(result.skipped.map((s) => s.path)).toEqual(['docs/a.txt', 'docs/broken', 'docs/c.txt']);
+  });
+
+  it('says as each file is found, for the progress shown while reading', async () => {
+    const onFileFound = vi.fn();
+    const dir = mockDirectoryEntry('docs', [
+      mockFileEntry(makeFile('a.txt')),
+      mockFileEntry(makeFile('locked.txt'), { failWith: new Error('locked') }),
+      mockDirectoryEntry('inner', [mockFileEntry(makeFile('b.txt'))]),
+    ]);
+
+    await FolderStructureProcessor.processDataTransferItems(
+      mockDataTransferItemList([mockDataTransferItem(dir)]),
+      { onFileFound }
+    );
+
+    // Found means read: the locked file never was.
+    expect(onFileFound).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -418,15 +619,16 @@ describe('processFileList', () => {
     expect(result.folderStructures).toEqual([]);
   });
 
-  it('skips the zero-byte entries browsers emit for directories', () => {
-    const directoryMarker = new File([], 'subdir');
+  it('keeps an empty file that has no extension', () => {
+    // LICENSE, Makefile, CODEOWNERS. These used to be skipped without a word,
+    // mistaken for the zero-byte entry a browser makes for a dropped folder -
+    // which a file picker, the only caller, never produces.
+    const license = new File([], 'LICENSE');
     const real = makeFile('a.txt');
 
-    const result = FolderStructureProcessor.processFileList([directoryMarker, real]);
+    const result = FolderStructureProcessor.processFileList([license, real]);
 
-    // Uploading these would create phantom zero-byte objects shadowing real
-    // folder prefixes.
-    expect(result.individualFiles).toEqual([real]);
+    expect(result.individualFiles).toEqual([license, real]);
   });
 
   it('keeps a genuinely empty file that has an extension', () => {
@@ -434,7 +636,6 @@ describe('processFileList', () => {
 
     const result = FolderStructureProcessor.processFileList([empty]);
 
-    // Only extension-less, type-less, zero-byte entries look like directories.
     expect(result.individualFiles).toEqual([empty]);
   });
 

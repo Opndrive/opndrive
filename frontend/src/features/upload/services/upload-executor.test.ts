@@ -21,6 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { UploadStatus } from '@opndrive/s3-api';
 import {
   createUploadExecutor,
   keyForPlannedFile,
@@ -41,29 +42,50 @@ function fakeManager() {
     progress: [],
     statusChange: [],
   };
-  const added: { id: string; key: string; file: File }[] = [];
+  const added: { id: string; key: string; contentType?: string; file: File }[] = [];
   const cancelled: string[] = [];
+  // What getStatus answers: the last thing each upload was said to be.
+  const statuses = new Map<string, { status: UploadStatus; progress: number }>();
   let nextId = 0;
 
   const manager: UploadManagerLike & {
     added: typeof added;
     cancelled: typeof cancelled;
+    retried: string[];
+    discarded: string[];
     emit(event: 'progress' | 'statusChange', payload: ManagerEvent): void;
     listenerCount(): number;
     failCancel: Set<string>;
+    refuseRetry: boolean;
   } = {
     added,
     cancelled,
+    retried: [],
+    discarded: [],
     failCancel: new Set<string>(),
+    refuseRetry: false,
+    discardUpload(id) {
+      manager.discarded.push(id);
+      return true;
+    },
+    // As the real one does: only a failed upload, announced as queued again.
+    retryUpload(id) {
+      if (manager.refuseRetry || statuses.get(id)?.status !== 'failed') return false;
+      manager.retried.push(id);
+      manager.emit('statusChange', { id, status: 'queued', progress: 0 });
+      return true;
+    },
     addUpload(file, config) {
       const id = `upload-${nextId++}`;
-      added.push({ id, key: config.key, file });
+      added.push({ id, key: config.key, contentType: config.contentType, file });
+      statuses.set(id, { status: 'queued', progress: 0 });
       return id;
     },
     async cancelUpload(id) {
       cancelled.push(id);
       if (manager.failCancel.has(id)) throw new Error(`abort failed for ${id}`);
     },
+    getStatus: (id) => statuses.get(id),
     on(event, listener) {
       listeners[event]!.push(listener);
     },
@@ -71,6 +93,10 @@ function fakeManager() {
       listeners[event] = listeners[event]!.filter((l) => l !== listener);
     },
     emit(event, payload) {
+      statuses.set(payload.id, {
+        status: payload.status as UploadStatus,
+        progress: payload.progress,
+      });
       for (const listener of [...listeners[event]!]) listener(payload);
     },
     listenerCount: () => listeners.progress!.length + listeners.statusChange!.length,
@@ -244,6 +270,17 @@ describe('start', () => {
     ]);
   });
 
+  it('gives every file a content type, filling in from the extension', () => {
+    const photo = new File([new Uint8Array(10)], 'IMG_0001.heic');
+    const scan = new File([new Uint8Array(10)], 'scan.pdf', { type: 'application/pdf' });
+
+    executor.start([filePlan({ files: [photo, scan] })]);
+
+    // The browser had nothing to say about the HEIC photo. Sent without a
+    // type, S3 would store it as binary.
+    expect(manager.added.map((a) => a.contentType)).toEqual(['image/heic', 'application/pdf']);
+  });
+
   it('reports the manager ids it produced for each task', () => {
     const results = executor.start([folderPlan({ files: [makeFile('a', 'photos/a')] })]);
 
@@ -262,6 +299,80 @@ describe('start', () => {
     expect(executor.taskFor('upload-0')).toBe('task-a');
     expect(executor.taskFor('upload-1')).toBe('task-b');
     expect(executor.taskFor('upload-nope')).toBeUndefined();
+  });
+
+  it('creates each empty folder as a marker object ending in a slash', () => {
+    executor.start([
+      folderPlan({
+        prefix: 'photos/',
+        files: [makeFile('a.jpg', 'photos/a.jpg')],
+        emptyFolders: ['raw', 'edits/2024'],
+      }),
+    ]);
+
+    expect(manager.added.map((a) => [a.key, a.file.size])).toEqual([
+      ['photos/a.jpg', 10],
+      ['photos/raw/', 0],
+      ['photos/edits/2024/', 0],
+    ]);
+    // A marker has no content type, the same as "New folder" writes.
+    expect(manager.added.slice(1).map((a) => a.contentType)).toEqual([undefined, undefined]);
+  });
+
+  it('creates a dropped empty folder as the marker for its own prefix', () => {
+    // A renamed folder lands under its resolved name, like its files would.
+    executor.start([
+      folderPlan({
+        prefix: 'docs/photos (1)/',
+        resolvedName: 'photos (1)',
+        files: [],
+        emptyFolders: [''],
+      }),
+    ]);
+
+    expect(manager.added.map((a) => a.key)).toEqual(['docs/photos (1)/']);
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0']);
+  });
+
+  it('holds the claim of an empty folder until its marker lands', () => {
+    queue().reservePrefix('photos', '', 'task-folder');
+
+    executor.start([folderPlan({ files: [], emptyFolders: [''] })]);
+
+    // Released at dispatch, the name would be free for the next drop while
+    // this folder is still being created.
+    expect(queue().claimedPrefixes()).toEqual(['photos/']);
+
+    manager.emit('statusChange', { id: 'upload-0', status: 'completed', progress: 100 });
+    expect(queue().claims[0]).toMatchObject({ prefix: 'photos/', committed: true });
+  });
+
+  it('creates no markers for a plan of loose files', () => {
+    executor.start([filePlan({ files: [makeFile('a.txt')], emptyFolders: [''] })]);
+
+    expect(manager.added.map((a) => a.key)).toEqual(['a.txt']);
+  });
+
+  it('reports where an upload already is, for the card created after it', () => {
+    // The real manager starts the first files inside addUpload, before it
+    // returns the id, so a card made afterwards has missed that event.
+    const eager = fakeManager();
+    const plainAdd = eager.addUpload.bind(eager);
+    eager.addUpload = (file, config) => {
+      const id = plainAdd(file, config);
+      eager.emit('statusChange', { id, status: 'uploading', progress: 0 });
+      return id;
+    };
+    const eagerExecutor = createUploadExecutor(eager);
+
+    const [result] = eagerExecutor.start([folderPlan()]);
+
+    expect(eagerExecutor.statusOf(result!.files[0]!.uploadId)).toEqual({
+      status: 'uploading',
+      progress: 0,
+    });
+    expect(eagerExecutor.statusOf('upload-nope')).toBeUndefined();
+    eagerExecutor.dispose();
   });
 
   it('dispatches several plans in one call', () => {
@@ -624,6 +735,205 @@ describe('cancelTask', () => {
     await expect(executor.cancelTask('never-dispatched')).resolves.toBeUndefined();
 
     expect(manager.cancelled).toEqual([]);
+  });
+});
+
+/**
+ * Retry, through the executor rather than straight to the manager.
+ *
+ * The executor counted a failed upload as finished. Retried behind its back,
+ * the upload ran with nothing tracking it: a folder settled while a retried
+ * file was still going, and a folder that had settled had given its name back,
+ * so a retry could upload into a name another drop had since been given.
+ */
+describe('retry', () => {
+  const failed = (id: string, progress = 0) =>
+    manager.emit('statusChange', { id, status: 'failed', progress });
+  const completed = (id: string) =>
+    manager.emit('statusChange', { id, status: 'completed', progress: 100 });
+
+  function startFolder(...names: string[]) {
+    queue().reservePrefix('photos', '', 'task-folder');
+    executor.start([folderPlan({ files: names.map((name) => makeFile(name, `photos/${name}`)) })]);
+  }
+
+  it('counts a retried file as still going, so its folder waits for it', () => {
+    startFolder('a.jpg', 'b.jpg');
+    failed('upload-1');
+
+    expect(executor.retry('upload-1')).toEqual({ ok: true });
+    completed('upload-0');
+
+    // The folder is not done: its retried file is still uploading.
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0', 'upload-1']);
+    completed('upload-1');
+    expect(executor.uploadsFor('task-folder')).toEqual([]);
+  });
+
+  it('takes its name back for a folder that gave it up, and tracks it again', () => {
+    // Every file failed before anything landed, so the folder let go of
+    // "photos" when it settled.
+    startFolder('a.jpg');
+    failed('upload-0');
+    expect(queue().claimedPrefixes()).toEqual([]);
+
+    expect(executor.retry('upload-0')).toEqual({ ok: true });
+
+    expect(queue().claimedPrefixes()).toEqual(['photos/']);
+    expect(executor.uploadsFor('task-folder')).toEqual(['upload-0']);
+    expect(manager.retried).toEqual(['upload-0']);
+
+    // And it commits the name once the retry lands, like any upload.
+    completed('upload-0');
+    expect(queue().claims).toEqual([{ prefix: 'photos/', taskId: 'task-folder', committed: true }]);
+  });
+
+  it('does not retry into a name another drop has been given since', () => {
+    startFolder('a.jpg');
+    failed('upload-0');
+    queue().reservePrefix('photos', '', 'task-other');
+
+    const outcome = executor.retry('upload-0');
+
+    // Two folders' files under one prefix is what claims exist to prevent.
+    expect(outcome).toEqual({ ok: false, reason: expect.stringContaining('"photos"') });
+    expect(manager.retried).toEqual([]);
+    expect(queue().claims).toEqual([{ prefix: 'photos/', taskId: 'task-other', committed: false }]);
+  });
+
+  it('keeps the name a folder still holds, and tracks the retry under it', () => {
+    // a.jpg landed, so "photos" stayed taken when the folder settled.
+    startFolder('a.jpg', 'b.jpg');
+    completed('upload-0');
+    failed('upload-1');
+
+    expect(executor.retry('upload-1')).toEqual({ ok: true });
+
+    expect(queue().claims).toEqual([{ prefix: 'photos/', taskId: 'task-folder', committed: true }]);
+    // A delete of the folder now leaves the name alone while the retry runs.
+    queue().forgetClaimsUnder('photos/', (taskId) => executor.uploadsFor(taskId).length > 0);
+    expect(queue().claimedPrefixes()).toEqual(['photos/']);
+  });
+
+  it('retries a loose file, which holds no name', () => {
+    executor.start([filePlan()]);
+    failed('upload-0');
+
+    expect(executor.retry('upload-0')).toEqual({ ok: true });
+    expect(executor.taskFor('upload-0')).toBe('task-files');
+    expect(queue().claims).toEqual([]);
+  });
+
+  it('gives back the name it took when the manager will not retry', () => {
+    startFolder('a.jpg');
+    failed('upload-0');
+    manager.refuseRetry = true;
+
+    expect(executor.retry('upload-0')).toMatchObject({ ok: false });
+
+    expect(queue().claimedPrefixes()).toEqual([]);
+    expect(executor.uploadsFor('task-folder')).toEqual([]);
+    // Still failed, so it can be tried again later.
+    manager.refuseRetry = false;
+    expect(executor.retry('upload-0')).toEqual({ ok: true });
+  });
+
+  it('does not retry the same failure twice', () => {
+    startFolder('a.jpg', 'b.jpg');
+    failed('upload-1');
+
+    expect(executor.retry('upload-1')).toEqual({ ok: true });
+    // Queued again by the first retry. Counting it twice would hold the
+    // folder open for a file that only runs once.
+    expect(executor.retry('upload-1')).toMatchObject({ ok: false });
+    completed('upload-0');
+    completed('upload-1');
+    expect(executor.uploadsFor('task-folder')).toEqual([]);
+  });
+
+  it('does not retry the files of a cancelled folder', async () => {
+    startFolder('a.jpg', 'b.jpg');
+    failed('upload-0');
+    await executor.cancelTask('task-folder');
+    manager.emit('statusChange', { id: 'upload-1', status: 'cancelled', progress: 0 });
+
+    expect(executor.retry('upload-0')).toMatchObject({ ok: false });
+    expect(manager.retried).toEqual([]);
+  });
+
+  it('refuses an upload it never dispatched', () => {
+    expect(executor.retry('someone-elses-upload')).toMatchObject({ ok: false });
+  });
+
+  /**
+   * Whether Retry is worth offering. A card that failed because the manager
+   * refused its whole plan, after a logout mid-drop, has no upload behind it,
+   * and a Retry there did nothing at all.
+   */
+  /**
+   * Done with: the cards are gone. A failed upload's file was kept for a
+   * retry that can no longer be asked for, so the manager is told to let go
+   * of it, and the executor forgets it could be retried.
+   */
+  describe('discard', () => {
+    it('has the manager let go, and stops offering the retry', () => {
+      startFolder('a.jpg');
+      failed('upload-0');
+
+      executor.discard(['task-folder', 'upload-0']);
+
+      expect(manager.discarded).toEqual(['task-folder', 'upload-0']);
+      expect(executor.canRetry('upload-0')).toBe(false);
+      expect(executor.retry('upload-0')).toMatchObject({ ok: false });
+    });
+
+    it('stops a live folder offering a discarded failure once it settles', () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-0');
+
+      executor.discard(['upload-0']);
+      completed('upload-1');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+  });
+
+  describe('canRetry', () => {
+    it('is true for a failed upload, before and after its task settles', () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-1');
+      expect(executor.canRetry('upload-1')).toBe(true);
+
+      completed('upload-0');
+      expect(executor.canRetry('upload-1')).toBe(true);
+    });
+
+    it('is false for an upload that has not failed', () => {
+      startFolder('a.jpg');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false once it has been retried', () => {
+      startFolder('a.jpg');
+      failed('upload-0');
+      executor.retry('upload-0');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false for a failed file of a cancelled folder', async () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-0');
+      await executor.cancelTask('task-folder');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+
+    it('is false for anything it did not dispatch, such as a refused plan', () => {
+      // A refused plan's card carries the task id, which is no upload at all.
+      expect(executor.canRetry('task-folder')).toBe(false);
+    });
   });
 });
 

@@ -11,7 +11,7 @@
  * These tests exist to make that specific failure loud.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { StrictMode } from 'react';
 import { render, act } from '@testing-library/react';
 
@@ -22,7 +22,9 @@ vi.mock('@/hooks/use-auth', () => ({
 
 import { UploadProvider, useUploadExecutor } from './upload-context';
 import { useUploadQueueStore, type PlannedUpload } from '../stores/use-upload-queue-store';
+import { useUploadStore } from '../stores/use-upload-store';
 import type { UploadExecutor } from '../services/upload-executor';
+import { UPLOAD_EVENT_WINDOW_MS } from '../services/upload-event-batcher';
 
 function fakeManager() {
   const listeners: Record<string, ((p: unknown) => void)[]> = { progress: [], statusChange: [] };
@@ -145,5 +147,97 @@ describe('executor lifecycle', () => {
     const { executor } = mountProvider(false);
 
     expect(executor()).toBeNull();
+  });
+});
+
+describe('card updates', () => {
+  // Every store update copies every card and redraws the panel, so a drop of
+  // thousands of files must not cost one update per manager event.
+  const cards = ['u-0', 'u-1', 'u-2'];
+
+  beforeEach(() => {
+    useUploadStore.setState({
+      uploads: Object.fromEntries(
+        cards.map((id) => [
+          id,
+          { id, name: `${id}.txt`, type: 'file' as const, status: 'queued' as const, progress: 0 },
+        ])
+      ),
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function countUpdates() {
+    const counter = { updates: 0 };
+    const unsubscribe = useUploadStore.subscribe(() => counter.updates++);
+    return { counter, unsubscribe };
+  }
+
+  it("hands a burst of the manager's events to the store as one update", () => {
+    mountProvider(false);
+    vi.useFakeTimers();
+    const { counter, unsubscribe } = countUpdates();
+
+    act(() => {
+      for (const id of cards) {
+        manager.emit('statusChange', { id, status: 'uploading', progress: 0 });
+        manager.emit('progress', { id, status: 'uploading', progress: 50 });
+      }
+      manager.emit('statusChange', { id: 'u-0', status: 'completed', progress: 100 });
+    });
+    expect(counter.updates).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(UPLOAD_EVENT_WINDOW_MS);
+    });
+    unsubscribe();
+
+    expect(counter.updates).toBe(1);
+    const { uploads } = useUploadStore.getState();
+    expect(uploads['u-0']).toMatchObject({ status: 'completed', progress: 100 });
+    expect(uploads['u-1']).toMatchObject({ status: 'uploading', progress: 50 });
+    expect(uploads['u-2']).toMatchObject({ status: 'uploading', progress: 50 });
+  });
+
+  it('keeps the reason an upload failed, and drops it once it is tried again', () => {
+    mountProvider(false);
+    vi.useFakeTimers();
+
+    act(() => {
+      manager.emit('statusChange', {
+        id: 'u-0',
+        status: 'failed',
+        progress: 40,
+        error: 'Access Denied',
+      });
+      vi.advanceTimersByTime(UPLOAD_EVENT_WINDOW_MS);
+    });
+    expect(useUploadStore.getState().uploads['u-0']).toMatchObject({
+      status: 'failed',
+      error: 'Access Denied',
+    });
+
+    // Retried: the reason was about the attempt that failed.
+    act(() => {
+      manager.emit('statusChange', { id: 'u-0', status: 'queued', progress: 0 });
+      vi.advanceTimersByTime(UPLOAD_EVENT_WINDOW_MS);
+    });
+    expect(useUploadStore.getState().uploads['u-0']!.error).toBeUndefined();
+  });
+
+  it('still delivers the last window when the provider goes away', () => {
+    const { unmount } = mountProvider(false);
+    vi.useFakeTimers();
+
+    act(() => {
+      manager.emit('statusChange', { id: 'u-1', status: 'cancelled', progress: 0 });
+    });
+    unmount();
+
+    // Not waiting on the timer: the provider is gone, and the batch with it.
+    expect(useUploadStore.getState().uploads['u-1']!.status).toBe('cancelled');
   });
 });

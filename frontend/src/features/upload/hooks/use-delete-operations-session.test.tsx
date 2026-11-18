@@ -84,6 +84,15 @@ const apiS3 = {
   })),
   deleteFile: vi.fn(async (_key: string) => {}),
   getBucketName: () => 'test-bucket',
+  /** Pages of up to a thousand, from whatever listFromPrefix answers. */
+  listPagesFromPrefix: async function* (prefix: string) {
+    const listed = await apiS3.listFromPrefix(prefix);
+    let offset = 0;
+    do {
+      yield listed.slice(offset, offset + 1000);
+      offset += 1000;
+    } while (offset < listed.length);
+  },
 };
 
 vi.mock('@/hooks/use-auth-guard', () => ({

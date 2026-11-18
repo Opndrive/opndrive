@@ -65,16 +65,24 @@ class FakeXhr {
   fireProgress(event: { lengthComputable: boolean; loaded: number; total: number }) {
     (this.uploadListeners.get('progress') ?? []).forEach((cb) => cb(event));
   }
+
+  /** The request body has been sent in full; the answer is still to come. */
+  fireBodySent() {
+    (this.uploadListeners.get('load') ?? []).forEach((cb) => cb());
+  }
 }
 
 const uploadWithPreSignedUrl = vi.fn(async () => 'https://signed.example.com/put');
 
-function makeUploader(overrides: { key?: string; expiresInSeconds?: number } = {}) {
+function makeUploader(
+  overrides: { key?: string; expiresInSeconds?: number; contentType?: string } = {}
+) {
   return new SignedUrlUploader({
     apiProvider: { uploadWithPreSignedUrl } as unknown as BYOS3ApiProvider,
     key: overrides.key ?? 'users/alice/a.txt',
     fileName: 'a.txt',
     expiresInSeconds: overrides.expiresInSeconds,
+    contentType: overrides.contentType,
   });
 }
 
@@ -164,6 +172,28 @@ describe('the request', () => {
     await promise;
   });
 
+  it('sends the content type it was given when the file has none', async () => {
+    const { promise, xhr } = await startUpload(
+      makeUploader({ contentType: 'image/heic' }),
+      new File(['x'], 'IMG_0001.HEIC')
+    );
+
+    expect(xhr.headers['Content-Type']).toBe('image/heic');
+    xhr.fire('load');
+    await promise;
+  });
+
+  it('prefers the content type it was given over the file one', async () => {
+    const { promise, xhr } = await startUpload(
+      makeUploader({ contentType: 'text/csv' }),
+      new File(['x'], 'export.csv', { type: 'application/vnd.ms-excel' })
+    );
+
+    expect(xhr.headers['Content-Type']).toBe('text/csv');
+    xhr.fire('load');
+    await promise;
+  });
+
   it('falls back to a binary content type when the file has none', async () => {
     const { promise, xhr } = await startUpload(makeUploader(), new File(['x'], 'unknown'));
 
@@ -208,6 +238,150 @@ describe('completion', () => {
     xhr.fire('abort');
 
     await expect(promise).rejects.toThrow('Upload cancelled');
+  });
+
+  it('marks a refusal with its status, so it is not retried as if it were a blip', async () => {
+    const { promise, xhr } = await startUpload(makeUploader(), new File([''], 'a'));
+
+    xhr.status = 403;
+    xhr.fire('load');
+
+    await expect(promise).rejects.toMatchObject({ $metadata: { httpStatusCode: 403 } });
+  });
+
+  it('marks a dropped connection as a network error', async () => {
+    const { promise, xhr } = await startUpload(makeUploader(), new File([''], 'a'));
+
+    xhr.fire('error');
+
+    await expect(promise).rejects.toMatchObject({ name: 'NetworkError' });
+  });
+});
+
+/**
+ * A request that goes quiet without failing. XHR only offers a total-time
+ * limit, which any value gets wrong for a big file on a slow line, so the
+ * uploader watches for silence instead.
+ */
+describe('stall watchdog', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function stallingUploader() {
+    return new SignedUrlUploader({
+      apiProvider: { uploadWithPreSignedUrl } as unknown as BYOS3ApiProvider,
+      key: 'users/alice/a.txt',
+      fileName: 'a.txt',
+      stallTimeoutMs: 1_000,
+      responseTimeoutMs: 10_000,
+    });
+  }
+
+  async function started() {
+    const promise = stallingUploader().upload(new File(['x'], 'a.txt'));
+    await vi.waitFor(() => expect(FakeXhr.instances).toHaveLength(1));
+    return { promise, xhr: FakeXhr.instances[0]! };
+  }
+
+  it('gives up on a request that sends nothing for too long', async () => {
+    const { promise, xhr } = await started();
+    const settled = expect(promise).rejects.toMatchObject({ name: 'UploadStalledError' });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(xhr.aborted).toBe(true);
+    await settled;
+  });
+
+  it('waits for as long as bytes keep moving', async () => {
+    const { promise, xhr } = await started();
+
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(800);
+      xhr.fireProgress({ lengthComputable: true, loaded: i + 1, total: 10 });
+    }
+
+    // Four seconds in, past the one second limit several times over, and
+    // still going, because it never went quiet for a whole second.
+    expect(xhr.aborted).toBe(false);
+    xhr.fire('load');
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('waits longer for the answer once every byte has been sent', async () => {
+    // Nothing is sent while the server stores the file, so there is no
+    // progress to restart the silence timer. Given up on then, a file that
+    // may well be stored already was sent again from the start.
+    const { promise, xhr } = await started();
+    xhr.fireProgress({ lengthComputable: true, loaded: 1, total: 1 });
+    xhr.fireBodySent();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(xhr.aborted).toBe(false);
+    xhr.fire('load');
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('still gives up on an answer that never comes', async () => {
+    const { promise, xhr } = await started();
+    const settled = expect(promise).rejects.toMatchObject({
+      name: 'UploadStalledError',
+      message: expect.stringContaining('no answer'),
+    });
+    xhr.fireBodySent();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(xhr.aborted).toBe(true);
+    await settled;
+  });
+
+  it('stops watching once the request is over', async () => {
+    const { promise, xhr } = await started();
+    xhr.fire('load');
+    await promise;
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(xhr.aborted).toBe(false);
+  });
+});
+
+/**
+ * A cancel that lands while the URL is being signed. The request did not
+ * exist yet, so there was nothing for cancel() to abort, and the upload went
+ * ahead the moment the URL came back: the file was stored although the card
+ * said cancelled. Every retry signs again, so every retry had this window.
+ */
+describe('cancelling before the request exists', () => {
+  it('sends nothing when cancelled while the URL is being signed', async () => {
+    let signed!: (url: string) => void;
+    uploadWithPreSignedUrl.mockImplementationOnce(
+      () => new Promise<string>((resolve) => (signed = resolve))
+    );
+    const uploader = makeUploader();
+    const promise = uploader.upload(new File(['x'], 'a.txt'));
+    const settled = expect(promise).rejects.toThrow('Upload cancelled');
+
+    uploader.cancel();
+    signed('https://signed.example.com/put');
+
+    await settled;
+    expect(FakeXhr.instances).toHaveLength(0);
+  });
+
+  it('sends nothing once cancelled, even if asked to upload afterwards', async () => {
+    const uploader = makeUploader();
+    uploader.cancel();
+
+    await expect(uploader.upload(new File(['x'], 'a.txt'))).rejects.toThrow('Upload cancelled');
+    expect(FakeXhr.instances).toHaveLength(0);
   });
 });
 

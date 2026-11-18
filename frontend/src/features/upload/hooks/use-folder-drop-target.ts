@@ -20,7 +20,7 @@
 import { useCallback } from 'react';
 import { useEnhancedDragDrop } from '../providers/enhanced-drag-drop-provider';
 import { DragDropTarget } from '../types/drag-drop-types';
-import { FolderStructureProcessor } from '../utils/folder-structure-processor';
+import { readDroppedItems } from '../utils/drop-preparation';
 import { ProcessedDragData } from '../types/folder-upload-types';
 import { DROP_TARGET_ATTRIBUTE, folderTargetId, isExternalFileDrag } from '../utils/drag-events';
 
@@ -79,9 +79,7 @@ export function useFolderDropTarget({ folder, onFilesDropped }: UseFolderDropTar
       };
 
       try {
-        const processedData = await FolderStructureProcessor.processDataTransferItems(
-          e.dataTransfer.items
-        );
+        const processedData = await readDroppedItems(e.dataTransfer.items);
 
         if (!processedData) return;
 

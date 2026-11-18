@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useUploadStore } from '@/features/upload/stores/use-upload-store';
+import { useUploadStore, type UploadProgress } from '@/features/upload/stores/use-upload-store';
 import { useDownloadList } from '@/features/dashboard/hooks/use-download';
 import { HiOutlineXMark, HiOutlineChevronUp, HiOutlineChevronDown } from 'react-icons/hi2';
 import { DuplicateDialog } from './duplicate-dialog';
 import { OperationRow, type OperationType } from './operation-row';
 import { QueueNotices } from './queue-notices';
+import { PreparingRow } from './preparing-row';
 import { useUploadExecutor } from '../context/upload-context';
 import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import type { FileExtension } from '@/config/file-extensions';
@@ -30,6 +31,8 @@ interface OperationItem {
   error?: string;
   extension?: FileExtension;
   queuePosition?: number;
+  /** For a failed upload: whether there is something Retry can send. */
+  retriable?: boolean;
 }
 
 /**
@@ -99,48 +102,69 @@ type UploadsMap = ReturnType<typeof useUploadStore.getState>['uploads'];
  * for no benefit.
  */
 
-// Calculate folder progress based on its files
-function getFolderProgress(uploads: UploadsMap, folderId: string): number {
+/**
+ * A folder card's status and progress, worked out from its files, and why it
+ * failed when it has.
+ *
+ * One pass over the files for all of it. This runs for every folder on every
+ * update the panel sees, and the version it replaces walked a folder's files
+ * up to eight times each round.
+ *
+ * The reason is the folder's own when it has one - a folder that could not
+ * start at all has no files to ask - and otherwise the first failed file's.
+ */
+export function summariseFolder(
+  uploads: UploadsMap,
+  folderId: string
+): { status: string; progress: number; error?: string } {
   const folder = uploads[folderId];
-  if (!folder || !folder.fileIds) return 0;
-
-  const fileProgresses = folder.fileIds.map((id) => uploads[id]?.progress || 0);
-  return fileProgresses.reduce((sum, progress) => sum + progress, 0) / fileProgresses.length;
-}
-
-// Calculate folder status based on its files
-function getFolderStatus(uploads: UploadsMap, folderId: string): string {
-  const folder = uploads[folderId];
-  if (!folder || !folder.fileIds) return folder?.status || 'queued';
-
-  const fileStatuses = folder.fileIds.map((id) => uploads[id]?.status).filter(Boolean);
-
-  // If folder itself is cancelled, return cancelled
-  if (folder.status === 'cancelled') return 'cancelled';
-
-  // If any file is uploading, folder is uploading
-  if (fileStatuses.some((status) => status === 'uploading')) return 'uploading';
-
-  // If any file is paused, folder is paused
-  if (fileStatuses.some((status) => status === 'paused')) return 'paused';
-
-  // If all files are completed, folder is completed
-  if (fileStatuses.length > 0 && fileStatuses.every((status) => status === 'completed'))
-    return 'completed';
-
-  // If some files are completed but others are not, folder is still uploading
-  if (
-    fileStatuses.some((status) => status === 'completed') &&
-    fileStatuses.some((status) => ['uploading', 'queued', 'paused'].includes(status))
-  ) {
-    return 'uploading';
+  if (!folder || !folder.fileIds) {
+    return { status: folder?.status || 'queued', progress: 0, error: folder?.error };
   }
 
-  // If any file failed, folder has failed
-  if (fileStatuses.some((status) => status === 'failed')) return 'failed';
+  let progressSum = 0;
+  let present = 0;
+  let uploading = 0;
+  let paused = 0;
+  let completed = 0;
+  let queued = 0;
+  let failed = 0;
+  let firstFailure: string | undefined;
 
-  // Default to queued if all files are queued
-  return 'queued';
+  for (const id of folder.fileIds) {
+    const file = uploads[id];
+    progressSum += file?.progress || 0;
+    // A file whose card is gone counts towards progress as nothing done, and
+    // towards status not at all.
+    if (!file) continue;
+
+    present++;
+    if (file.status === 'uploading') uploading++;
+    else if (file.status === 'paused') paused++;
+    else if (file.status === 'completed') completed++;
+    else if (file.status === 'queued') queued++;
+    else if (file.status === 'failed') {
+      failed++;
+      firstFailure ??= file.error;
+    }
+  }
+
+  const progress = folder.fileIds.length > 0 ? progressSum / folder.fileIds.length : 0;
+
+  let status: string;
+  if (folder.status === 'cancelled') status = 'cancelled';
+  else if (uploading > 0) status = 'uploading';
+  else if (paused > 0) status = 'paused';
+  else if (present > 0 && completed === present) status = 'completed';
+  // Files still waiting their turn: the folder is under way once any file
+  // before them has finished, landed or failed. Called failed while files
+  // still waited, its card offered Remove, which took their cards away too.
+  else if (queued > 0) status = completed > 0 || failed > 0 ? 'uploading' : 'queued';
+  else if (failed > 0) status = 'failed';
+  else status = 'queued';
+
+  const error = status === 'failed' ? (folder.error ?? firstFailure) : undefined;
+  return { status, progress, error };
 }
 
 // Extract file extension from filename
@@ -160,9 +184,10 @@ export const OperationsModal: React.FC = () => {
   // prompt re-rendered this panel along with each of its rows.
   const uploads = useUploadStore((state) => state.uploads);
   const deletes = useUploadStore((state) => state.deletes);
-  const removeUpload = useUploadStore((state) => state.removeUpload);
+  const removeUploads = useUploadStore((state) => state.removeUploads);
   const removeDeleteOperation = useUploadStore((state) => state.removeDeleteOperation);
   const updateUpload = useUploadStore((state) => state.updateUpload);
+  const updateUploads = useUploadStore((state) => state.updateUploads);
   const duplicateQueue = useUploadStore((state) => state.duplicateQueue);
   const resolveDuplicate = useUploadStore((state) => state.resolveDuplicate);
 
@@ -179,6 +204,8 @@ export const OperationsModal: React.FC = () => {
   // Only the count, so the panel re-renders when notices appear or disappear
   // but not when their contents change - QueueNotices owns that.
   const noticeCount = useUploadQueueStore((state) => state.notices.length);
+  // A drop being read or planned, before it has any cards to show.
+  const isPreparing = useUploadQueueStore((state) => state.preparingDrops > 0);
 
   // Check if pause/resume is supported in current mode
   const supportsPauseResume = uploadMode === 'multipart';
@@ -251,10 +278,33 @@ export const OperationsModal: React.FC = () => {
     [executor, uploadManager, updateUpload, removeDeleteOperation, cancelDownload]
   );
 
+  /**
+   * Removes upload cards, and has the executor let go of what they stood for.
+   *
+   * A failed upload keeps its file so it can be retried, and once its card
+   * is gone nothing can ask for that any more, but the file was held until
+   * logout all the same. A folder card stands for its files, so they go with
+   * it. One store update for all of them.
+   */
+  const removeUploadCards = useCallback(
+    (ids: readonly string[]) => {
+      const all = useUploadStore.getState().uploads;
+      const uploadIds: string[] = [];
+      for (const id of ids) {
+        uploadIds.push(id);
+        for (const fileId of all[id]?.fileIds ?? []) uploadIds.push(fileId);
+      }
+
+      executor?.discard(uploadIds);
+      removeUploads(ids);
+    },
+    [executor, removeUploads]
+  );
+
   const removeOperation = useCallback(
     (itemId: string, operationType: OperationType) => {
       if (operationType === 'upload') {
-        removeUpload(itemId);
+        removeUploadCards([itemId]);
       } else if (operationType === 'delete') {
         removeDeleteOperation(itemId);
       } else if (operationType === 'download') {
@@ -265,7 +315,7 @@ export const OperationsModal: React.FC = () => {
         removeDownload(itemId);
       }
     },
-    [removeUpload, removeDeleteOperation, removeDownload]
+    [removeUploadCards, removeDeleteOperation, removeDownload]
   );
 
   const pauseOperation = useCallback(
@@ -278,26 +328,83 @@ export const OperationsModal: React.FC = () => {
     [uploadManager]
   );
 
+  /**
+   * Sends a failed upload again, through the executor, which keeps the task's
+   * books: see `UploadExecutor.retry`.
+   *
+   * A folder card has no upload of its own - it stands for its files - so it
+   * retries the ones that failed and leaves the rest alone. The folder's own
+   * status is worked out from its files, so it follows them back to active.
+   *
+   * A retried card's reason is cleared: it describes the attempt being
+   * replaced. A refused retry says why on the card that was pressed. All of
+   * it is one store update, however many files a folder retries.
+   */
+  const retryOperation = useCallback(
+    (itemId: string, isFolder: boolean) => {
+      if (!executor) return;
+
+      const all = useUploadStore.getState().uploads;
+      const ids = isFolder
+        ? (all[itemId]?.fileIds ?? []).filter((fileId) => all[fileId]?.status === 'failed')
+        : [itemId];
+
+      const changes = new Map<string, Partial<UploadProgress>>();
+      let refusal: string | undefined;
+      for (const id of ids) {
+        const outcome = executor.retry(id);
+        if (outcome.ok) changes.set(id, { error: undefined });
+        else refusal ??= outcome.reason;
+      }
+      // A folder's own reason is set either way, so an old refusal goes once
+      // a retry gets through.
+      if (isFolder || refusal) changes.set(itemId, { error: refusal });
+
+      updateUploads(changes);
+    },
+    [executor, updateUploads]
+  );
+
   // Derivation lives above the `uploadManager` guard because useMemo is a
   // hook and hooks cannot follow an early return.
   const sortedOperations = useMemo(() => {
+    // Whether Retry has anything to send. A card for a plan the manager
+    // refused outright carries the task's id and no files, and the executor
+    // knows no upload by either.
+    const canRetryCard = (upload: UploadProgress) =>
+      executor !== null &&
+      (upload.type === 'folder'
+        ? (upload.fileIds ?? []).some((fileId) => executor.canRetry(fileId))
+        : executor.canRetry(upload.id));
+
     // Combine and transform operations into unified format
     const allOperations: OperationItem[] = [
       // Upload operations
       ...Object.values(uploads)
         .filter((u) => u.type === 'folder' || (u.type === 'file' && !u.parentFolderId))
-        .map((upload) => ({
-          id: upload.id,
-          name: upload.name,
-          type: upload.type,
-          operationType: 'upload' as const,
-          status: upload.type === 'folder' ? getFolderStatus(uploads, upload.id) : upload.status,
-          progress:
-            upload.type === 'folder' ? getFolderProgress(uploads, upload.id) : upload.progress,
-          fileIds: upload.fileIds,
-          parentFolderId: upload.parentFolderId,
-          extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
-        })),
+        .map((upload) => {
+          // With the reason it failed. Left out, every failed upload said
+          // only "Failed", whether its key was refused or its connection
+          // dropped, which want different things from the person reading it.
+          const summary =
+            upload.type === 'folder'
+              ? summariseFolder(uploads, upload.id)
+              : { status: upload.status, progress: upload.progress, error: upload.error };
+
+          return {
+            id: upload.id,
+            name: upload.name,
+            type: upload.type,
+            operationType: 'upload' as const,
+            ...summary,
+            // Asked only of a failed card, so a folder's files are not
+            // walked again on every update for nothing.
+            retriable: summary.status === 'failed' && canRetryCard(upload),
+            fileIds: upload.fileIds,
+            parentFolderId: upload.parentFolderId,
+            extension: upload.type === 'file' ? getFileExtension(upload.name) : undefined,
+          };
+        }),
       // Delete operations
       ...Object.values(deletes).map((deleteOp) => ({
         id: deleteOp.id,
@@ -377,7 +484,7 @@ export const OperationsModal: React.FC = () => {
       // This means newer operations with the same status will appear after older ones
       return 0;
     });
-  }, [uploads, deletes, downloads]);
+  }, [uploads, deletes, downloads, executor]);
 
   if (!uploadManager) {
     return 'Loading...';
@@ -387,7 +494,7 @@ export const OperationsModal: React.FC = () => {
   // modal. Notices count: a drop where every folder was skipped starts no
   // uploads at all, and hiding the panel would leave the user with no
   // indication that anything happened.
-  if (sortedOperations.length === 0 && !currentDuplicate && noticeCount === 0) {
+  if (sortedOperations.length === 0 && !currentDuplicate && noticeCount === 0 && !isPreparing) {
     return null;
   }
 
@@ -425,6 +532,10 @@ export const OperationsModal: React.FC = () => {
     // If only duplicate dialog is open, show appropriate title
     if (sortedOperations.length === 0 && currentDuplicate) {
       return 'File Upload';
+    }
+
+    if (sortedOperations.length === 0 && isPreparing) {
+      return 'Preparing upload';
     }
 
     const hasActiveOperations = activeUploads > 0 || activeDeletes > 0 || activeDownloads > 0;
@@ -673,9 +784,21 @@ export const OperationsModal: React.FC = () => {
                     // so a kind of operation cannot be handled in one and
                     // forgotten in the other, which is how downloads were left
                     // out of this in the first place.
-                    sortedOperations.forEach((op) => removeOperation(op.id, op.operationType));
+                    //
+                    // Uploads are the exception, taken in one update: removed
+                    // one by one, a drop of 4,000 loose files copied the rest
+                    // of the map 4,000 times.
+                    removeUploadCards(
+                      sortedOperations
+                        .filter((op) => op.operationType === 'upload')
+                        .map((op) => op.id)
+                    );
+                    sortedOperations
+                      .filter((op) => op.operationType !== 'upload')
+                      .forEach((op) => removeOperation(op.id, op.operationType));
                   }
                 }}
+                aria-label="Close the operations panel"
                 className="p-2 sm:p-1 rounded transition-colors duration-200"
                 style={{
                   color: 'var(--muted-foreground)',
@@ -721,6 +844,8 @@ export const OperationsModal: React.FC = () => {
           {/* What the drop could not do quietly: renames, skipped files, and
               folders we could not verify against the bucket. Subscribes to the
               queue store, which no progress tick touches. */}
+          {isExpanded && isPreparing && <PreparingRow />}
+
           {isExpanded && <QueueNotices />}
 
           {/* Operations List */}
@@ -748,6 +873,8 @@ export const OperationsModal: React.FC = () => {
                   onRemove={removeOperation}
                   onPause={pauseOperation}
                   onResume={resumeOperation}
+                  onRetry={retryOperation}
+                  retriable={operation.retriable}
                 />
               ))}
             </div>

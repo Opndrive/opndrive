@@ -40,6 +40,15 @@ export interface MultipartUploadParams {
    */
   partSizeBytes: number;
   concurrency: number;
+  /**
+   * Stored as the object's Content-Type.
+   *
+   * Optional. Without it the File's own `type` is used, and when the browser
+   * left that empty too, none is sent and S3 stores its default,
+   * `binary/octet-stream`. Uploads used to send none at all, so every file
+   * uploaded this way was stored as binary whatever it was.
+   */
+  contentType?: string;
 }
 
 export interface MultipartUploadConfig extends MultipartUploadParams {
@@ -57,6 +66,13 @@ export interface SignedUrlParams {
   expiryInSeconds: number;
   isPreview: boolean;
   responseContentType?: string;
+  /**
+   * `Cache-Control` for the presigned response, overriding whatever the object
+   * was stored with. Only honoured when `isPreview` is true. Most objects carry
+   * none, which leaves the browser to guess how long it may keep them; a page
+   * that shows the same image again and again can say so instead.
+   */
+  responseCacheControl?: string;
   /**
    * Name the browser should save the file as. Only honoured when `isPreview` is
    * false; sets `Content-Disposition: attachment` on the presigned response so
@@ -179,7 +195,14 @@ export interface SearchResult {
   totalFiles: number;
   folders: _Object[];
   totalFolders: number;
+  /** Keys that matched: `totalFiles + totalFolders`. */
   totalKeys: number;
+  /**
+   * Keys the page listed, matched or not. What a caller budgeting how much of
+   * a bucket to read should count: `totalKeys` stays at zero across a whole
+   * bucket of objects that do not match.
+   */
+  scannedKeys?: number;
   nextToken?: string;
   isTruncated?: boolean;
 }
@@ -253,7 +276,7 @@ export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'completed' | 'fa
 export interface UploadItem {
   id: string;
   /**
-   * The file being uploaded, or undefined once the item has finished.
+   * The file being uploaded, or undefined once the item no longer needs it.
    *
    * The manager keeps every item it has ever been given so `getStatus` can
    * still answer for finished work, but a `File` pins an OS-level handle and
@@ -262,8 +285,10 @@ export interface UploadItem {
    * back until logout, so they are dropped the moment an item reaches
    * 'completed', 'failed', or 'cancelled'.
    *
-   * Invariant: present for 'queued', 'uploading', and 'paused' (a paused item
-   * must keep them to resume); absent for terminal states.
+   * Invariant: both present for 'queued', 'uploading', and 'paused' (a paused
+   * item must keep them to resume). A 'failed' item keeps its file, so
+   * retryUpload() can send it again, but not its uploader: that session was
+   * aborted. Both absent for 'completed' and 'cancelled'.
    */
   file?: File;
   status: UploadStatus;
@@ -274,6 +299,8 @@ export interface UploadItem {
   config: {
     key: string;
     folderId?: string;
+    /** See MultipartUploadParams.contentType. */
+    contentType?: string;
   };
 }
 
@@ -284,6 +311,12 @@ export type UploadManagerConfig = {
   maxConcurrency?: number;
   /** Default part size for all uploads, in MEGABYTES. Converted to bytes before reaching MultipartUploader. */
   partSizeMB?: number;
+  /**
+   * How long to wait before each automatic retry of an upload that failed for
+   * a reason that may clear by itself, such as a dropped connection. Its
+   * length is the number of retries. Defaults to 2, 8 and 30 seconds.
+   */
+  retryDelaysMs?: readonly number[];
 };
 
 // For the event emitter

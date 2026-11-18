@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
-import { objectExists, objectKey } from './object-existence';
+import { findExistingNames, objectExists, objectKey } from './object-existence';
 
 function fakeApi(exists = vi.fn(async (_key: string) => false)) {
   return { objectExists: exists } as unknown as BYOS3ApiProvider & { objectExists: typeof exists };
@@ -127,5 +127,155 @@ describe('objectKey', () => {
 
   it('drops a leading slash, which S3 would store as an empty folder name', () => {
     expect(objectKey('/docs/', 'report.pdf')).toBe('docs/report.pdf');
+  });
+});
+
+/**
+ * Checking many names against one listing.
+ *
+ * The rule that matters most: a name is only ever reported free when the
+ * listing has been read to its end. Anything short of that is "could not
+ * rule it out", because the alternative is an overwrite.
+ */
+describe('findExistingNames', () => {
+  type Page = { keys: string[]; next?: string };
+
+  /** A provider whose listing serves `pages` in order, keyed by token. */
+  function listingApi(pages: Page[]) {
+    const byToken = new Map(pages.map((page, i) => [i === 0 ? undefined : String(i), page]));
+    const fetchDirectoryStructure = vi.fn(
+      async (_prefix: string, _maxKeys: number, token?: string) => {
+        const page = byToken.get(token)!;
+        return {
+          files: page.keys.map((Key) => ({ Key })),
+          folders: [],
+          nextToken: page.next,
+          isTruncated: page.next !== undefined,
+        };
+      }
+    );
+    return {
+      api: { fetchDirectoryStructure } as unknown as BYOS3ApiProvider,
+      fetchDirectoryStructure,
+    };
+  }
+
+  it('answers every name from a listing that fits in one page', async () => {
+    const { api, fetchDirectoryStructure } = listingApi([{ keys: ['docs/a.txt', 'docs/c.txt'] }]);
+
+    const result = await findExistingNames(api, 'docs', ['a.txt', 'b.txt', 'c.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt', 'c.txt']), unknown: [] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledExactlyOnceWith('docs/', 1000, undefined);
+  });
+
+  it('reads on through every page until the listing ends', async () => {
+    const { api, fetchDirectoryStructure } = listingApi([
+      { keys: ['a.txt'], next: '1' },
+      { keys: ['m.txt'], next: '2' },
+      { keys: ['z.txt'] },
+    ]);
+
+    const result = await findExistingNames(api, '', ['a.txt', 'z.txt', 'new.txt'], 10);
+
+    expect(result).toEqual({ existing: new Set(['a.txt', 'z.txt']), unknown: [] });
+    expect(fetchDirectoryStructure.mock.calls.map((call) => call[2])).toEqual([
+      undefined,
+      '1',
+      '2',
+    ]);
+  });
+
+  it('leaves unknown whatever it did not find when the page budget runs out', async () => {
+    const { api, fetchDirectoryStructure } = listingApi([
+      { keys: ['a.txt'], next: '1' },
+      { keys: ['m.txt'], next: '2' },
+      { keys: ['z.txt'] },
+    ]);
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt', 'z.txt'], 2);
+
+    // b.txt sorts before m.txt, so a sorted listing would have shown it by
+    // now. Not every bucket lists in order, so it stays unknown all the same.
+    expect(result).toEqual({ existing: new Set(['a.txt']), unknown: ['b.txt', 'z.txt'] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+  });
+
+  it('matches whole names directly under the prefix only', async () => {
+    const { api } = listingApi([{ keys: ['docs/a.txt.bak', 'docs/xa.txt'] }]);
+
+    const result = await findExistingNames(api, 'docs/', ['a.txt'], 1);
+
+    expect(result.existing).toEqual(new Set());
+  });
+
+  it('lists the bucket root for an empty prefix', async () => {
+    const { api, fetchDirectoryStructure } = listingApi([{ keys: ['a.txt'] }]);
+
+    await findExistingNames(api, '', ['a.txt'], 1);
+
+    expect(fetchDirectoryStructure.mock.calls[0]![0]).toBe('');
+  });
+
+  it('leaves unknown what it did not find when a page says there is more but not how to get it', async () => {
+    // S3 always sends the token with a truncated page; a service that does
+    // not has said the listing is incomplete all the same. Read as finished,
+    // every name past that page looked free, and was overwritten.
+    const fetchDirectoryStructure = vi.fn(async () => ({
+      files: [{ Key: 'a.txt' }],
+      folders: [],
+      nextToken: undefined,
+      isTruncated: true,
+    }));
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt']), unknown: ['b.txt'] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
+  });
+
+  it('trusts a page that says it is the last, whatever token it carries', async () => {
+    // S3 sends a token only with a truncated page. Asked with one it should
+    // not have sent, a service could only refuse, or list the same again.
+    const fetchDirectoryStructure = vi.fn(async () => ({
+      files: [{ Key: 'a.txt' }],
+      folders: [],
+      nextToken: 'stray',
+      isTruncated: false,
+    }));
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt']), unknown: [] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows a token from a page that does not say either way', async () => {
+    // With no flag, the token is the only word on whether there is more,
+    // and ignoring it could call a name free that is on the next page.
+    const pages = [
+      { files: [{ Key: 'a.txt' }], folders: [], nextToken: '1', isTruncated: undefined },
+      { files: [{ Key: 'b.txt' }], folders: [], nextToken: undefined, isTruncated: false },
+    ];
+    const fetchDirectoryStructure = vi.fn(async (_p: string, _m: number, token?: string) =>
+      token ? pages[1]! : pages[0]!
+    );
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt', 'c.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt', 'b.txt']), unknown: [] });
+  });
+
+  it('propagates a failed listing instead of calling the names free', async () => {
+    const api = {
+      fetchDirectoryStructure: vi.fn(async () => {
+        throw new Error('AccessDenied');
+      }),
+    } as unknown as BYOS3ApiProvider;
+
+    await expect(findExistingNames(api, 'docs', ['a.txt'], 3)).rejects.toThrow('AccessDenied');
   });
 });

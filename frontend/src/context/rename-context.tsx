@@ -443,11 +443,16 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           await renameFolder(renameDialog.item as Folder, newName, renameDialog.currentPath);
         }
         hideRenameDialog();
-      } catch (error) {
-        console.error('Rename failed:', error);
+      } catch (failure) {
+        // What reaches here is a name that could not be checked: the renames
+        // themselves report their own failures. It used to be logged and
+        // nothing else, so pressing Rename appeared to do nothing at all.
+        // The dialog stays open, so trying again is one click.
+        console.error('Rename failed:', failure);
+        error(failure instanceof Error ? failure.message : 'Rename failed');
       }
     },
-    [renameDialog, renameFile, renameFolder, hideRenameDialog]
+    [renameDialog, renameFile, renameFolder, hideRenameDialog, error]
   );
 
   const isRenaming = useCallback(

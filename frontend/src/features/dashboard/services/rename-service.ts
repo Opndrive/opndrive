@@ -3,6 +3,7 @@ import { Folder } from '@/features/dashboard/types/folder';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
+import { objectExists } from '@/services/object-existence';
 
 export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
@@ -242,32 +243,40 @@ class RenameService {
     }
   }
 
+  /**
+   * Whether a file of this name is already where the rename would put it.
+   *
+   * @throws when it could not be checked. This used to ask `fetchMetadata`,
+   * which answers null for a missing object and for a failed lookup alike, and
+   * then caught anything else as `false` too - so a refused or timed-out check
+   * read as "that name is free", and the rename copied over whatever was
+   * there. Same rule as `checkFolderExists`: only a definite no is a no.
+   */
   async checkFileExists(
     fileName: string,
     currentPath: string,
     baseFileKey?: string
   ): Promise<boolean> {
-    try {
-      let fileKey: string;
+    let fileKey: string;
 
-      if (baseFileKey) {
-        // If we have a base file key (from existing file), construct new key by replacing filename
-        const pathParts = baseFileKey.split('/');
-        pathParts[pathParts.length - 1] = fileName;
-        fileKey = pathParts.join('/');
-      } else {
-        // Fallback to the old method for new file creation
-        let normalizedPath = currentPath || '';
-        if (normalizedPath.startsWith('/')) {
-          normalizedPath = normalizedPath.slice(1);
-        }
-        fileKey = generateS3Key(fileName, normalizedPath);
+    if (baseFileKey) {
+      // If we have a base file key (from existing file), construct new key by replacing filename
+      const pathParts = baseFileKey.split('/');
+      pathParts[pathParts.length - 1] = fileName;
+      fileKey = pathParts.join('/');
+    } else {
+      // Fallback to the old method for new file creation
+      let normalizedPath = currentPath || '';
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.slice(1);
       }
+      fileKey = generateS3Key(fileName, normalizedPath);
+    }
 
-      const metadata = await this.api.fetchMetadata(fileKey);
-      return metadata !== null;
+    try {
+      return await objectExists(this.api, fileKey);
     } catch {
-      return false;
+      throw new Error(describeFolderCheckError('the rename'));
     }
   }
 

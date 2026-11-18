@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/shared/utils/utils';
-import { FolderStructureProcessor } from '@/features/upload/utils/folder-structure-processor';
+import { readDroppedItems } from '@/features/upload/utils/drop-preparation';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { useEnhancedDragDrop } from '@/features/upload/providers/enhanced-drag-drop-provider';
 import { isExternalFileDrag } from '@/features/upload/utils/drag-events';
@@ -29,9 +29,7 @@ export function EmptyStateDropzone({ onFilesDropped, className = '' }: EmptyStat
     if (!onFilesDropped) return;
 
     try {
-      const processedData = await FolderStructureProcessor.processDataTransferItems(
-        e.dataTransfer.items
-      );
+      const processedData = await readDroppedItems(e.dataTransfer.items);
 
       onFilesDropped(processedData);
     } catch (error) {

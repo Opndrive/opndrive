@@ -527,6 +527,22 @@ export default function SearchPage() {
                 <FolderSkeletonList count={3} />
               </div>
             </div>
+          ) : totalDisplayed === 0 && canLoadMore ? (
+            // Nothing yet, but the search stopped at its limit with more of
+            // the bucket still unread. "No results found" would be a claim
+            // about objects nobody has looked at.
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Search className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">No results yet</h3>
+                <p className="text-muted-foreground mb-4">
+                  Nothing matched in the files searched so far, and there are more to go.
+                </p>
+                <Button onClick={loadMore} disabled={isLoading} variant="outline">
+                  {isLoading ? 'Searching...' : 'Keep searching'}
+                </Button>
+              </div>
+            </div>
           ) : totalDisplayed === 0 ? (
             // Empty state - no results found
             <div className="flex items-center justify-center h-64">

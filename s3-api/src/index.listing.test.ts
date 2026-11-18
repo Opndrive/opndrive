@@ -272,6 +272,49 @@ describe('objectExists', () => {
   });
 });
 
+describe('listPagesFromPrefix', () => {
+  it('hands over each page as it arrives, not all of them at the end', async () => {
+    s3Mock
+      .on(ListObjectsV2Command)
+      .resolvesOnce({ Contents: [{ Key: 'docs/a.txt' }], NextContinuationToken: 'page-2' })
+      .resolvesOnce({ Contents: [{ Key: 'docs/b.txt' }] });
+
+    const pages = makeApi().listPagesFromPrefix('docs/');
+
+    // The first page is available after one request; the second has not been
+    // asked for yet.
+    expect((await pages.next()).value).toEqual(['docs/a.txt']);
+    expect(s3Mock).toHaveReceivedCommandTimes(ListObjectsV2Command, 1);
+    expect((await pages.next()).value).toEqual(['docs/b.txt']);
+    expect((await pages.next()).done).toBe(true);
+  });
+
+  it('stops listing when the caller stops reading', async () => {
+    s3Mock
+      .on(ListObjectsV2Command)
+      .resolves({ Contents: [{ Key: 'docs/a.txt' }], NextContinuationToken: 'more' });
+
+    for await (const page of makeApi().listPagesFromPrefix('docs/')) {
+      expect(page).toEqual(['docs/a.txt']);
+      break;
+    }
+
+    expect(s3Mock).toHaveReceivedCommandTimes(ListObjectsV2Command, 1);
+  });
+
+  it('throws at the page that failed, after handing over the pages before it', async () => {
+    s3Mock
+      .on(ListObjectsV2Command)
+      .resolvesOnce({ Contents: [{ Key: 'docs/a.txt' }], NextContinuationToken: 'page-2' })
+      .rejectsOnce(new Error('SlowDown'));
+
+    const pages = makeApi().listPagesFromPrefix('docs/');
+
+    expect((await pages.next()).value).toEqual(['docs/a.txt']);
+    await expect(pages.next()).rejects.toThrow('SlowDown');
+  });
+});
+
 describe('listFromPrefix', () => {
   it('follows continuation tokens until the listing is exhausted', async () => {
     s3Mock
@@ -386,6 +429,20 @@ describe('search', () => {
     expect(result.folders.map((f) => f.Key)).toEqual(['docs/reports/', 'docs/archive/']);
   });
 
+  it('says how many keys it listed, not only how many matched', async () => {
+    s3Mock.on(ListObjectsV2Command).resolves(page);
+
+    const result = await makeApi().search({
+      prefix: 'docs/',
+      searchTerm: 'nothing-like-this',
+      nextToken: undefined,
+    });
+
+    // A caller limiting how much it reads has to count what was read. Counting
+    // matches, a search for something absent never reaches any limit.
+    expect(result).toMatchObject({ totalKeys: 0, scannedKeys: 5 });
+  });
+
   it('matches on the name only, ignoring the directory part of the key', async () => {
     s3Mock.on(ListObjectsV2Command).resolves({
       Contents: [{ Key: 'invoices/2026/summary.txt' }],
@@ -453,6 +510,7 @@ describe('search', () => {
       folders: [],
       totalFolders: 0,
       totalKeys: 0,
+      scannedKeys: 0,
       nextToken: undefined,
       isTruncated: undefined,
     });

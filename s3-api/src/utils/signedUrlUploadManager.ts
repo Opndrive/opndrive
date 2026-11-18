@@ -3,19 +3,28 @@ import { v4 as uuidv4 } from 'uuid';
 import { SignedUrlUploader } from './signedUrlUploader.js';
 import { BYOS3ApiProvider } from '../index.js';
 import { UploadStatus, UploadEvent, EventListener, EventPayload } from '../core/types.js';
+import {
+  DEFAULT_RETRY_DELAYS_MS,
+  failedOffline,
+  isTransientUploadError,
+  waitBeforeRetry,
+} from './retry.js';
+import { folderUploadKey, isDroppedFolderEntry } from './folder-entries.js';
 
 interface SignedUrlUploadItem {
   id: string;
   /**
-   * Released once the item is terminal, so a finished upload stops pinning an
-   * OS file handle. See UploadManager.releaseResources for the full reasoning;
-   * the item itself is kept so getStatus() can still answer.
+   * Released once the item is finished, so it stops pinning an OS file
+   * handle. See UploadManager.releaseResources for the full reasoning; the
+   * item itself is kept so getStatus() can still answer. A failed item keeps
+   * its file so retryUpload() can send it again.
    */
   file?: File;
   uploader?: SignedUrlUploader;
   config: {
     key: string;
     folderId?: string;
+    contentType?: string;
   };
   status: UploadStatus;
   progress: number;
@@ -26,6 +35,18 @@ export interface SignedUrlUploadManagerConfig {
   apiProvider: BYOS3ApiProvider;
   maxConcurrency?: number;
   expiresInSeconds?: number;
+  /** See UploadManagerConfig.retryDelaysMs. */
+  retryDelaysMs?: readonly number[];
+}
+
+/**
+ * One worker's run of an upload. See UploadManager's Worker: owning the
+ * upload and holding a concurrency slot are kept apart for the same reason.
+ */
+interface Worker {
+  holdsSlot: boolean;
+  /** Fired when the upload is taken away, so a wait to retry ends at once. */
+  stop: AbortController;
 }
 
 export class SignedUrlUploadManager {
@@ -36,14 +57,25 @@ export class SignedUrlUploadManager {
   private activeUploads = 0;
   private maxConcurrency: number;
   private expiresInSeconds: number;
+  private retryDelaysMs: readonly number[];
   private listeners = new Map<UploadEvent, Set<EventListener>>();
   // See UploadManager.isDisposed for why this exists.
   private isDisposed = false;
+  /**
+   * The worker each upload belongs to. See UploadManager.workers.
+   *
+   * There is no pause here, but the same split matters: 'failed' is emitted
+   * while the failed worker is still running, and a listener that retries
+   * right then starts a new worker beside it. The failed worker gave its slot
+   * back only if the upload was still 'failed', so that slot was lost.
+   */
+  private workers = new Map<string, Worker>();
 
   private constructor(config: SignedUrlUploadManagerConfig) {
     this.apiProvider = config.apiProvider;
     this.maxConcurrency = config.maxConcurrency ?? 2;
     this.expiresInSeconds = config.expiresInSeconds ?? 3600;
+    this.retryDelaysMs = config.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   }
 
   public static getInstance(config: SignedUrlUploadManagerConfig): SignedUrlUploadManager {
@@ -100,7 +132,7 @@ export class SignedUrlUploadManager {
   /**
    * Add a file to the upload queue
    */
-  public addUpload(file: File, config: { key: string }): string {
+  public addUpload(file: File, config: { key: string; contentType?: string }): string {
     if (this.isDisposed) {
       throw new Error(
         'This SignedUrlUploadManager instance has been disposed. Obtain a new one via getInstance().'
@@ -108,17 +140,11 @@ export class SignedUrlUploadManager {
     }
 
     const id = uuidv4();
-    const uploader = new SignedUrlUploader({
-      apiProvider: this.apiProvider,
-      key: config.key,
-      fileName: file.name,
-      expiresInSeconds: this.expiresInSeconds,
-    });
 
     const uploadItem: SignedUrlUploadItem = {
       id,
       file,
-      uploader,
+      uploader: this.uploaderFor(file, config),
       config,
       status: 'queued',
       progress: 0,
@@ -132,6 +158,34 @@ export class SignedUrlUploadManager {
     return id;
   }
 
+  /** A fresh uploader for one file, for a new upload or a retry of a failed one. */
+  private uploaderFor(file: File, config: SignedUrlUploadItem['config']): SignedUrlUploader {
+    return new SignedUrlUploader({
+      apiProvider: this.apiProvider,
+      key: config.key,
+      fileName: file.name,
+      expiresInSeconds: this.expiresInSeconds,
+      contentType: config.contentType,
+    });
+  }
+
+  /** See UploadManager.retryUpload - same contract. */
+  public retryUpload(id: string): boolean {
+    if (this.isDisposed) return false;
+
+    const item = this.uploads.get(id);
+    if (!item || item.status !== 'failed' || !item.file) return false;
+
+    item.uploader = this.uploaderFor(item.file, item.config);
+    item.error = undefined;
+
+    this.updateItemStatus(id, 'queued', 0);
+    this.queue.push(id);
+    this.processQueue();
+
+    return true;
+  }
+
   /**
    * Add a folder upload (batch of files)
    */
@@ -143,17 +197,10 @@ export class SignedUrlUploadManager {
     const fileIds: string[] = [];
 
     for (const file of Array.from(files)) {
-      if (file.size === 0 && file.type === '') continue;
+      // See folder-entries: only the entry a dropped folder adds is skipped.
+      if (isDroppedFolderEntry(file)) continue;
 
-      let key = '';
-
-      if (!config.basePrefix) {
-        key = file.webkitRelativePath;
-      } else {
-        key = `${config.basePrefix}${file.webkitRelativePath}`;
-      }
-
-      const fileId = this.addUpload(file, { key });
+      const fileId = this.addUpload(file, { key: folderUploadKey(file, config.basePrefix) });
       fileIds.push(fileId);
     }
 
@@ -181,12 +228,24 @@ export class SignedUrlUploadManager {
       // Non-null: resources are released only on terminal states, and the
       // terminal check above has already returned.
       item.uploader!.cancel();
-      this.activeUploads--;
     }
+    // The worker stops on seeing the upload is no longer its own, so its slot
+    // is freed here. A queued retry has no worker yet: a failed one still
+    // finishing keeps its slot until it is done.
+    this.takeFromWorker(id);
 
     this.updateItemStatus(id, 'cancelled');
     this.releaseResources(id);
     this.processQueue();
+  }
+
+  /** See UploadManager.discardUpload. */
+  public discardUpload(id: string): boolean {
+    const item = this.uploads.get(id);
+    if (!item || !['completed', 'failed', 'cancelled'].includes(item.status)) return false;
+
+    this.releaseResources(id);
+    return true;
   }
 
   /** See UploadManager.releaseResources - same leak, same reasoning. */
@@ -258,8 +317,13 @@ export class SignedUrlUploadManager {
       return;
     }
 
+    const worker: Worker = { holdsSlot: true, stop: new AbortController() };
+    this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
+
+    // Whether this worker still has the upload. See `workers`.
+    const ownsUpload = () => this.workers.get(id) === worker;
 
     (async () => {
       try {
@@ -268,33 +332,103 @@ export class SignedUrlUploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        // Non-null: the item was just moved to 'uploading'.
-        await item.uploader!.upload(item.file!, onProgress);
+        // See UploadManager.processQueue. Each attempt signs a fresh URL, so
+        // a retry cannot be refused for an expired one.
+        //
+        // Unlike there, getting further does not give the retries back. Each
+        // attempt here sends the whole file again from its first byte, so
+        // nothing an attempt sent is kept for the next, and a connection that
+        // always drops part way would otherwise be retried for good.
+        let retriesUsed = 0;
+        for (;;) {
+          try {
+            // Non-null: the item is 'uploading'.
+            await item.uploader!.upload(item.file!, onProgress);
+            break;
+          } catch (err) {
+            // Cancelled underneath this attempt, which is what ended it.
+            if (!ownsUpload()) return;
 
-        if (this.uploads.get(id)?.status === 'uploading') {
+            // Offline costs no retry. See UploadManager.processQueue.
+            const offline = failedOffline(err);
+            if (!offline && !this.shouldRetry(id, err, retriesUsed)) throw err;
+
+            const delayMs = offline ? 0 : this.retryDelaysMs[retriesUsed++]!;
+            console.warn(
+              offline
+                ? `Signed-url upload ${id} lost its connection, waiting for the network:`
+                : `Signed-url upload ${id} failed, retrying (${retriesUsed} of ${this.retryDelaysMs.length}):`,
+              err
+            );
+            await waitBeforeRetry(delayMs, { signal: worker.stop.signal });
+
+            if (this.isDisposed || !ownsUpload()) return;
+          }
+        }
+
+        if (ownsUpload() && this.uploads.get(id)?.status === 'uploading') {
           this.updateItemStatus(id, 'completed', 100);
         }
       } catch (err) {
-        const currentStatus = this.uploads.get(id)?.status;
-        if (currentStatus !== 'cancelled') {
+        // Not owned any more means cancelled, which is no failure.
+        if (ownsUpload()) {
           console.error(`Upload failed for ${id}:`, err);
+
+          // Let go of the upload before saying it failed, so a retry made in
+          // answer gets a worker of its own. See UploadManager.processQueue.
+          this.workers.delete(id);
+          const uploader = item.uploader;
           this.updateItemStatus(
             id,
             'failed',
             item.progress,
             err instanceof Error ? err.message : String(err)
           );
+
+          // Done with. The file stays, so it can be retried - unless a retry
+          // has already given the item an uploader of its own.
+          if (item.uploader === uploader) item.uploader = undefined;
         }
       } finally {
-        const finalStatus = this.uploads.get(id)?.status;
-        if (finalStatus === 'completed' || finalStatus === 'failed') {
-          // 'cancelled' is already released by cancelUpload().
+        // 'cancelled' is already released by cancelUpload().
+        if (ownsUpload() && this.uploads.get(id)?.status === 'completed') {
+          this.workers.delete(id);
           this.releaseResources(id);
-          this.activeUploads--;
+        }
+
+        if (worker.holdsSlot) {
+          this.freeSlot(worker);
           this.processQueue();
         }
       }
     })();
+  }
+
+  /** See UploadManager.takeFromWorker. */
+  private takeFromWorker(id: string): void {
+    const worker = this.workers.get(id);
+    this.workers.delete(id);
+    if (!worker) return;
+
+    worker.stop.abort();
+    this.freeSlot(worker);
+  }
+
+  /** Gives back a worker's concurrency slot, once. */
+  private freeSlot(worker: Worker): void {
+    if (!worker.holdsSlot) return;
+    worker.holdsSlot = false;
+    this.activeUploads--;
+  }
+
+  /** See UploadManager.shouldRetry. */
+  private shouldRetry(id: string, err: unknown, attempt: number): boolean {
+    return (
+      attempt < this.retryDelaysMs.length &&
+      !this.isDisposed &&
+      this.uploads.get(id)?.status === 'uploading' &&
+      isTransientUploadError(err)
+    );
   }
 
   /**
@@ -317,9 +451,9 @@ export class SignedUrlUploadManager {
   }
 
   /**
-   * Emit events to listeners
+   * Emit events to listeners. See UploadManager.emit - listeners must be
+   * isolated from each other.
    */
-  /** See UploadManager.emit - listeners must be isolated from each other. */
   private emit(event: UploadEvent, payload: EventPayload): void {
     this.listeners.get(event)?.forEach((listener) => {
       try {

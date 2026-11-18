@@ -7,8 +7,8 @@
  * segregated and filtered; what this layer adds is the traversal, the 50-result
  * batch limit, deduplication, and the opaque continuation token.
  *
- * `isTruncated` reads backwards here and is easy to misremember: the service
- * paginates while it is `true` and stops when it is `false`.
+ * The service follows a prefix for as long as S3 hands back a continuation
+ * token, and moves on to the next queued prefix when it stops.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -98,25 +98,22 @@ describe('searching', () => {
 });
 
 describe('recursive traversal', () => {
-  it('queues matched folders and searches inside them', async () => {
-    // isTruncated must be left undefined here: `false` breaks the whole walk
-    // (see the test below), and `true` + a token keeps paginating this prefix
-    // instead of moving on to the queued folder.
-    const api = apiReturning(
-      { folders: [folderKey('docs/reports/')], totalKeys: 1, isTruncated: undefined },
-      { files: [file('docs/reports/q4.pdf')], totalKeys: 1 }
-    );
+  it('does not list a matched folder again: the listing already reaches inside it', async () => {
+    // s3-api lists with no delimiter, so one listing returns everything below
+    // the prefix - the matched folder and what is in it. Following the folder
+    // as well read its whole subtree a second time.
+    const api = apiReturning({
+      folders: [folderKey('docs/reports/')],
+      files: [file('docs/reports/q4.pdf')],
+      scannedKeys: 2,
+    });
 
     const result = await createSearchService(api).search('q4', 'docs/');
 
-    // A match nested one level down is only found if the folder is followed.
-    expect(api.search).toHaveBeenCalledTimes(2);
-    expect(api.search).toHaveBeenLastCalledWith(
-      expect.objectContaining({ prefix: 'docs/reports/' })
-    );
+    expect(api.search).toHaveBeenCalledOnce();
     expect(result.files.map((f) => f.Key)).toEqual(['docs/reports/q4.pdf']);
+    expect(result.folders.map((f) => f.Key)).toEqual(['docs/reports/']);
   });
-
   it('paginates a prefix while the page says there is more', async () => {
     const api = apiReturning(
       { files: [file('a.txt')], nextToken: 'page-2', isTruncated: true, totalKeys: 1 },
@@ -129,28 +126,20 @@ describe('recursive traversal', () => {
     expect(result.files.map((f) => f.Key)).toEqual(['a.txt', 'b.txt']);
   });
 
-  it('KNOWN BUG: a complete first page abandons folders already queued for search', async () => {
-    const api = apiReturning(
-      { files: [file('a.txt')], folders: [folderKey('sub/')], isTruncated: false, totalKeys: 2 },
-      { files: [file('sub/b.txt')] }
-    );
+  it('still searches prefixes a resume token queued, after one finishes', async () => {
+    // Tokens from before folders stopped being queued can carry a queue. A
+    // prefix that finished listing used to end the whole search, so those
+    // queued prefixes were dropped from a search that said it was complete.
+    const token = btoa(JSON.stringify({ queue: ['docs/old/'], current: { prefix: 'docs/' } }));
+    const api = apiReturning({ files: [file('docs/a.txt')] }, { files: [file('docs/old/b.txt')] });
 
-    const result = await createSearchService(api).search('x', 'docs/');
+    const result = await createSearchService(api).search('x', 'docs/', token);
 
-    // `isTruncated: false` from s3-api means "this prefix's listing is
-    // complete" - it says nothing about the folders this walk has queued. The
-    // service treats it as "stop everything" and `break`s out of the loop, so
-    // sub/ is never searched and sub/b.txt is silently missing from a search
-    // that reports itself finished and not truncated.
-    //
-    // Pinned, not endorsed. Replacing the `break` with `current = undefined`
-    // (move on to the next queued prefix) would make this fail, which is the
-    // prompt to confirm the intended traversal semantics.
-    expect(api.search).toHaveBeenCalledOnce();
-    expect(result.files.map((f) => f.Key)).toEqual(['a.txt']);
+    expect(api.search).toHaveBeenCalledTimes(2);
+    expect(api.search).toHaveBeenLastCalledWith(expect.objectContaining({ prefix: 'docs/old/' }));
+    expect(result.files.map((f) => f.Key)).toEqual(['docs/a.txt', 'docs/old/b.txt']);
     expect(result.isTruncated).toBe(false);
   });
-
   it('removes duplicate keys from the results', async () => {
     const api = apiReturning({
       files: [file('a.txt'), file('a.txt'), file('b.txt')],
@@ -240,6 +229,73 @@ describe('batch limit and resuming', () => {
   });
 });
 
+describe('how much one search reads', () => {
+  /** Endless pages of `perPage` objects, none of which match. */
+  function bucketWithNoMatches(perPage = 1000) {
+    let n = 0;
+    const search = vi.fn(async (_params: { prefix: string; nextToken?: string }) => ({
+      files: [],
+      folders: [],
+      totalFiles: 0,
+      totalFolders: 0,
+      totalKeys: 0,
+      scannedKeys: perPage,
+      nextToken: `page-${++n}`,
+      isTruncated: true,
+    }));
+    return { search } as unknown as BYOS3ApiProvider & { search: typeof search };
+  }
+
+  it('stops at 100,000 objects read even when nothing matches', async () => {
+    // The ceiling used to count matches. With none, it was never reached,
+    // and a search for something absent read the entire bucket in one go.
+    const api = bucketWithNoMatches();
+
+    const result = await createSearchService(api).search('absent', 'docs/');
+
+    expect(api.search).toHaveBeenCalledTimes(100);
+    expect(result.files).toEqual([]);
+    expect(result.isTruncated).toBe(true);
+    expect(result.nextToken).toBeTruthy();
+  });
+
+  it('carries on from where the ceiling stopped it', async () => {
+    const api = bucketWithNoMatches();
+    const first = await createSearchService(api).search('absent', 'docs/');
+
+    await createSearchService(api).search('absent', 'docs/', first.nextToken);
+
+    // Picks up at the page after the hundredth rather than starting over.
+    expect(api.search.mock.calls[100]![0]).toMatchObject({
+      prefix: 'docs/',
+      nextToken: 'page-100',
+    });
+    expect(api.search).toHaveBeenCalledTimes(200);
+  });
+
+  it('counts matches when a provider does not say how much it read', async () => {
+    // An older provider without scannedKeys still stops eventually.
+    const api = apiReturning({ files: [file('a.txt')], totalKeys: 1 });
+
+    const result = await createSearchService(api).search('x', 'docs/');
+
+    expect(result.files.map((f) => f.Key)).toEqual(['a.txt']);
+  });
+
+  it('offers no resume token when nothing is left, however full the batch', async () => {
+    // Fifty results on the last page used to come back "truncated", with a
+    // token for nothing, so "Load more" appeared for a finished search.
+    const fifty = Array.from({ length: 50 }, (_, i) => file(`f${i}.txt`));
+    const api = apiReturning({ files: fifty, scannedKeys: 50 });
+
+    const result = await createSearchService(api).search('x', 'docs/');
+
+    expect(result.files).toHaveLength(50);
+    expect(result.isTruncated).toBe(false);
+    expect(result.nextToken).toBeUndefined();
+  });
+});
+
 describe('progress callbacks', () => {
   it('reports searching then success', async () => {
     const onProgress = vi.fn();
@@ -297,8 +353,8 @@ describe('progress callbacks', () => {
   it('reports how many requests the walk has made', async () => {
     const onRequestCountUpdate = vi.fn();
     const api = apiReturning(
-      { folders: [folderKey('sub/')], totalKeys: 1, isTruncated: undefined },
-      { files: [file('sub/a.txt')], totalKeys: 1 }
+      { files: [file('a.txt')], nextToken: 'p2', isTruncated: true },
+      { files: [file('b.txt')] }
     );
 
     await createSearchService(api).search('x', 'docs/', undefined, { onRequestCountUpdate });

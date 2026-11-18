@@ -551,6 +551,16 @@ export const THUMBNAIL_PREVIEWABLE_CATEGORIES: FileCategory[] = [
 ];
 
 /**
+ * The largest image, in bytes, the grid view draws as its own thumbnail.
+ *
+ * Smaller than the preview limit, and on purpose. A bucket holds only the
+ * originals, so a thumbnail is the whole file scaled down in the browser: a
+ * grid of fifty photos downloads fifty photos. Opening one image to look at
+ * it is worth 25 MB; a tile in a grid is not. Larger images show their icon.
+ */
+export const THUMBNAIL_SIZE_LIMIT = 10 * 1024 * 1024;
+
+/**
  * Utility Functions
  */
 
