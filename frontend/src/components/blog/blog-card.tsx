@@ -8,9 +8,6 @@ interface BlogCardProps {
 }
 
 export function BlogCard({ post }: BlogCardProps) {
-  // Strip HTML tags from excerpt
-  const cleanExcerpt = post.excerpt.replace(/<[^>]*>/g, '');
-
   return (
     <Link href={`/blog/${post.slug}`} className="group block h-full">
       <article className="h-full overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-xl flex flex-col">
@@ -47,7 +44,7 @@ export function BlogCard({ post }: BlogCardProps) {
 
           {/* Excerpt */}
           <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3 flex-1">
-            {cleanExcerpt}
+            {post.excerpt}
           </p>
         </div>
       </article>

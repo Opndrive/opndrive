@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeHtmlEntities } from './entities';
+import { decodeHtmlEntities, htmlToText } from './entities';
 
 describe('decodeHtmlEntities', () => {
   it("decodes what WordPress's texturizer writes into titles and excerpts", () => {
@@ -33,7 +33,36 @@ describe('decodeHtmlEntities', () => {
     expect(decodeHtmlEntities('&#0;|&#xD800;')).toBe('�|�');
   });
 
+  it('leaves a raw & that is not a closed reference as written', () => {
+    // A browser would read "&not" in "x&notation" as the not sign.
+    expect(decodeHtmlEntities('x&notation, ?a=1&copy=2, &copy2026')).toBe(
+      'x&notation, ?a=1&copy=2, &copy2026'
+    );
+  });
+
   it('leaves text without entities alone', () => {
     expect(decodeHtmlEntities('Plain text, 100% & more')).toBe('Plain text, 100% & more');
+  });
+});
+
+describe('htmlToText', () => {
+  it('drops tags and decodes what is left', () => {
+    expect(htmlToText('<p>Why the <em>preflight</em> fails &hellip;</p>')).toBe(
+      'Why the preflight fails …'
+    );
+  });
+
+  it('leaves no tag behind, however the markup is nested', () => {
+    for (const html of [
+      '<<b>script>alert(1)<</b>/script>',
+      '<scr<i>ipt>x</scr</i>ipt>',
+      '<a<b<c>>>',
+    ]) {
+      expect(htmlToText(html)).not.toMatch(/<[^>]*>/);
+    }
+  });
+
+  it('keeps text the author wrote with encoded angle brackets', () => {
+    expect(htmlToText('<p>Use &lt;code&gt; for keys</p>')).toBe('Use <code> for keys');
   });
 });

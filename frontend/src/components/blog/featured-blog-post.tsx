@@ -10,8 +10,6 @@ interface FeaturedBlogPostProps {
 }
 
 export function FeaturedBlogPost({ post }: FeaturedBlogPostProps) {
-  const cleanExcerpt = post.excerpt.replace(/<[^>]*>/g, '');
-
   return (
     <Link href={`/blog/${post.slug}`} className="group block">
       <article className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 overflow-hidden transition-all duration-300">
@@ -54,7 +52,7 @@ export function FeaturedBlogPost({ post }: FeaturedBlogPostProps) {
 
             {/* Excerpt */}
             <p className="text-sm sm:text-base text-muted-foreground leading-relaxed line-clamp-4 lg:line-clamp-5">
-              {cleanExcerpt}
+              {post.excerpt}
             </p>
           </div>
         </div>
