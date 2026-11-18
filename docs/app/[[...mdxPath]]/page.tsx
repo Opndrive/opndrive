@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { generateStaticParamsFor, importPage } from 'nextra/pages';
 import { BASE_OPEN_GRAPH, pageUrl } from '@/lib/site';
+import { breadcrumbJsonLd, jsonLdScript, websiteJsonLd } from '@/lib/structured-data';
 import { useMDXComponents as getMDXComponents } from '../../mdx-components';
 
 export const generateStaticParams = generateStaticParamsFor('mdxPath');
@@ -35,8 +36,18 @@ export default async function Page(props: { params: Promise<{ mdxPath?: string[]
   const params = await props.params;
   const result = await importPage(params.mdxPath);
   const { default: MDXContent, toc, metadata } = result;
+  const isHome = !params.mdxPath?.some(Boolean);
+  // The home names the site; every other page says where it sits.
+  const structuredData = isHome ? websiteJsonLd() : await breadcrumbJsonLd(params.mdxPath);
+
   return (
     <Wrapper toc={toc} metadata={metadata}>
+      {structuredData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(structuredData) }}
+        />
+      )}
       <MDXContent {...props} params={params} />
     </Wrapper>
   );
