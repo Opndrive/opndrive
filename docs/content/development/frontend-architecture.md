@@ -1,3 +1,9 @@
+---
+description:
+  "The architecture of Opndrive's Next.js frontend: component organisation,
+  routing, styling, performance work, data flow and testing."
+---
+
 # Frontend Architecture
 
 This document explains the frontend architecture of Opndrive, including design

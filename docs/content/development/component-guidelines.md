@@ -1,3 +1,9 @@
+---
+description:
+  "How Opndrive's React components are organised and built, the patterns they
+  follow, and a checklist for writing and testing a new one."
+---
+
 # Component Guidelines
 
 This guide explains how components are organized and used in Opndrive. It's

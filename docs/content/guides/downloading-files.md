@@ -1,3 +1,10 @@
+---
+description:
+  'How downloads work: Opndrive signs a short-lived presigned URL and the
+  browser downloads straight from your bucket. Also covers the current
+  limitations.'
+---
+
 # Downloading Files
 
 ## Single Files

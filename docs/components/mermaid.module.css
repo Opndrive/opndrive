@@ -1,0 +1,13 @@
+/* The diagram's Mermaid source, printed in place of a diagram that has not
+   been drawn yet. Hidden on screen, where the diagram draws as it nears. */
+.printSource {
+  display: none;
+}
+
+@media print {
+  .printSource {
+    display: block;
+    white-space: pre-wrap;
+    font-size: 0.75rem;
+  }
+}

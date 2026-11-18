@@ -1,3 +1,9 @@
+---
+description:
+  'A map of the Opndrive monorepo as it is today: the root, the frontend and
+  s3-api packages, import aliases, file naming and where to start reading.'
+---
+
 # Repository Structure
 
 A map of the codebase as it exists today, not as originally planned - every path

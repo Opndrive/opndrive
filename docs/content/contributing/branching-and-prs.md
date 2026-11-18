@@ -1,3 +1,9 @@
+---
+description:
+  'Branch naming, opening a pull request, who reviews it, the checks that must
+  pass, and how to report a bug or request a feature.'
+---
+
 # Branching & Pull Requests
 
 ## Branch Naming

@@ -1,3 +1,9 @@
+---
+description:
+  'Deploy Opndrive anywhere that runs Next.js, including Vercel, Netlify and
+  Docker. It is stateless, with no server-side secrets and no database.'
+---
+
 # Deployment
 
 Opndrive is a stateless Next.js app - it holds no server-side secrets and no

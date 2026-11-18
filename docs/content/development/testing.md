@@ -1,3 +1,9 @@
+---
+description:
+  'Test coverage in Opndrive as it really is today, how to run the test suites,
+  and how to write a test for the s3-api package.'
+---
+
 # Testing
 
 An honest picture of test coverage today, not an aspirational one. The frontend

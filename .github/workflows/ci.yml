@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
       s3api: ${{ steps.filter.outputs.s3api }}
       root: ${{ steps.filter.outputs.root }}
       docker: ${{ steps.filter.outputs.docker }}
@@ -35,6 +36,13 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+            # The docs site has no test runner; its tests (the CORS guide kept
+            # identical to the app, breadcrumbs, canonical URLs, the link
+            # plugin) live in the frontend suite, so a docs-only change runs
+            # that suite and the format check, but not the app build. Vercel
+            # builds the docs site itself on every pull request.
+            docs:
+              - 'docs/**'
             s3api:
               - 's3-api/**'
             root:
@@ -56,7 +64,7 @@ jobs:
   quality:
     name: Lint & format
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -87,7 +95,7 @@ jobs:
   frontend:
     name: Frontend (typecheck, test, build)
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -121,6 +129,8 @@ jobs:
         run: pnpm test
 
       - name: Build
+        # Not for a docs-only change: nothing in the app changed to build.
+        if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
         run: pnpm build
         env:
           NEXT_PUBLIC_ENABLE_BLOG: 'false'

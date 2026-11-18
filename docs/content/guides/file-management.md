@@ -1,3 +1,9 @@
+---
+description:
+  'Rename, delete, search and navigate files and folders in Opndrive, and what
+  each of those does in your bucket.'
+---
+
 # File & Folder Management
 
 ## Renaming

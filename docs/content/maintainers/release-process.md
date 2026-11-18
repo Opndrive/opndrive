@@ -1,3 +1,9 @@
+---
+description:
+  'How Opndrive is released: one version for the whole monorepo, changesets,
+  cutting a release and publishing the @opndrive/s3-api package.'
+---
+
 # Release Process
 
 Opndrive uses one version number for the whole monorepo: the root app, the

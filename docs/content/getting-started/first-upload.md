@@ -1,9 +1,15 @@
+---
+description:
+  'Connect your S3 bucket on the /connect page and upload your first file, with
+  where your credentials are kept and what to check if connecting fails.'
+---
+
 # First Upload
 
 With Opndrive running locally ([Installation](./installation.md)), connect your
 S3 bucket and upload your first file.
 
-<!-- SCREENSHOT: Opndrive landing page with the "Get Started" button -->
+![The Opndrive home page: the heading "Open-source web UI for S3, R2, MinIO and more" with the Get Started and Learn More buttons](../../public/screenshots/opndrive-landing-page-get-started.webp)
 
 ## 1. Connect Your Bucket
 
@@ -16,18 +22,23 @@ S3 bucket and upload your first file.
 3. Click **Connect**. Opndrive verifies the credentials against the bucket, then
    redirects you to the dashboard.
 
-<!-- SCREENSHOT: The /connect form -->
+![The connect form for Amazon S3, filled in with AWS's documented example access key, a masked secret, a bucket name and the us-east-1 region](../../public/screenshots/opndrive-connect-form-amazon-s3.webp)
 
 Don't have an AWS account or bucket yet?
 
 1. Create a free account at [aws.amazon.com](https://aws.amazon.com) (S3 has a
    free tier).
 2. Create a bucket and generate access keys in the AWS console.
-3. Come back and connect through the form above.
+3. Give the bucket a CORS policy that allows the address you open Opndrive at.
+   Without it the browser refuses every request and connecting fails with "Could
+   not reach your storage". [Configure CORS](../guides/configure-cors.md) has
+   the policy to paste.
+4. Come back and connect through the form above.
 
-Using a non-AWS S3-compatible service (MinIO, DigitalOcean Spaces)? See
-[Connecting Storage](../guides/connecting-storage.md) for the custom-endpoint
-option.
+Using Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces or MinIO? Each
+has its own page on [/connect](https://opndrive.app/connect) with its setup
+steps; any other S3-compatible service uses the custom endpoint option. See
+[Connecting Storage](../guides/connecting-storage.md).
 
 ## 2. Your Credentials, Your Browser
 
@@ -38,7 +49,7 @@ Session** at any time to remove them.
 
 ## 3. Upload a File
 
-<!-- SCREENSHOT: Dashboard with an empty bucket and the upload button visible -->
+![The Opndrive dashboard on an empty bucket, with the New button for uploads at the top of the sidebar](../../public/screenshots/opndrive-dashboard-empty-bucket.webp)
 
 From the dashboard, use the upload button (or drag a file onto the file list).
 See [Uploading Files](../guides/uploading-files.md) for the different upload
@@ -62,10 +73,12 @@ pnpm dev:frontend
 
 ## Troubleshooting
 
-**AWS/S3 connection errors** - double-check the access key, secret, region, and
-that the bucket name is exact. Opndrive surfaces the S3 error message directly
-in the UI, which is usually specific enough to point at the problem (wrong
-region, insufficient IAM permissions, bucket doesn't exist).
+**Connecting fails** - Opndrive shows one of a few messages, such as "Could not
+reach your storage" or "Those keys were rejected", and the browser console (F12)
+names the cause.
+[Fixing Connection Errors](../guides/fixing-connection-errors.md) goes through
+each one. The most common is a missing CORS policy on the bucket, which
+[Configure CORS](../guides/configure-cors.md) covers for every provider.
 
 ---
 

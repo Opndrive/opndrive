@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
+import { DiscordIcon } from 'nextra/icons';
 import { getPageMap } from 'nextra/page-map';
 import { APP_URL, DISCORD_URL, DOCS_URL } from '@/lib/links';
 import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/site';
@@ -23,18 +25,39 @@ export const metadata: Metadata = {
   twitter: BASE_TWITTER,
 };
 
+/**
+ * The navbar, with both of its icon links named.
+ *
+ * Nextra wraps the logo in a link labelled "Home page", which hides the
+ * visible "Opndrive" from assistive tech and fails WCAG's label-in-name rule.
+ * With `logoLink={false}` Nextra renders the logo as given, so the logo here
+ * is its own link, named by its visible text. The classes are Nextra's own,
+ * from the link it would have rendered.
+ *
+ * Nextra's default Discord icon has no label, unlike its GitHub one, so the
+ * chat link had no accessible name at all. This passes the same icon with one.
+ */
 const navbar = (
   <Navbar
+    logoLink={false}
     logo={
-      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <Link
+        href="/"
+        className="x:flex x:items-center x:transition-opacity x:focus-visible:nextra-focus x:hover:opacity-75"
+        style={{ gap: '0.5rem' }}
+      >
         <Image src="/logo.png" alt="" width={24} height={24} priority unoptimized />
         <b>Opndrive</b>
-      </span>
+      </Link>
     }
     projectLink="https://github.com/Opndrive/opndrive"
-    // Nextra renders this beside the project link and defaults the icon to
-    // Discord, mirroring the app's own navbar pairing.
+    // Nextra renders this beside the project link, mirroring the app's own
+    // navbar pairing.
     chatLink={DISCORD_URL}
+    // The link's only content is this icon, so its name is the link's name.
+    // role="img" makes every screen reader read an <svg> with a label as an
+    // image with that name; without it some skip the svg altogether.
+    chatIcon={<DiscordIcon width="24" role="img" aria-label="Join our Discord" />}
   />
 );
 

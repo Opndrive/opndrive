@@ -1,3 +1,9 @@
+---
+description:
+  'Preview images, PDFs, video, audio, code and spreadsheets in Opndrive, either
+  in a modal over the file list or on a preview page you can share.'
+---
+
 # Previewing Files
 
 Opndrive supports two ways to preview a file, depending on whether you want to
@@ -13,7 +19,7 @@ stay in context or open it somewhere shareable.
 Supported file types include images, PDFs, video, audio, text/code, and
 spreadsheets.
 
-<!-- SCREENSHOT: Modal preview open over the file browser, with prev/next arrows visible -->
+![An image open in the preview, showing image 2 of 4, with previous and next arrows, download and close at the top and zoom controls below](../../public/screenshots/opndrive-file-preview-modal.webp)
 
 ## Route Preview and File Versions
 

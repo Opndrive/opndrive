@@ -1,0 +1,15 @@
+/*
+ * The docs home subtitle.
+ *
+ * It used one grey for both themes, which read fine on white but failed
+ * contrast on Nextra's dark background (rgb(17, 17, 17)). Each theme now gets
+ * its own: #4b5563 on white is about 7.6:1, #a3a3a3 on the dark background
+ * about 7.5:1, both past WCAG AA's 4.5:1 for body text.
+ */
+.subtitle {
+  color: #4b5563;
+}
+
+:global(html.dark) .subtitle {
+  color: #a3a3a3;
+}

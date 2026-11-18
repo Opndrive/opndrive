@@ -1,3 +1,10 @@
+---
+description:
+  'What Opndrive is: an open-source web UI that keeps your files in a bucket you
+  own and your keys in your browser. Why it exists, what you get and how it is
+  built.'
+---
+
 # Introduction
 
 Opndrive is an open-source web UI for Amazon S3 and S3-compatible storage. Think

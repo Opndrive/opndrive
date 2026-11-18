@@ -85,6 +85,14 @@ export function pageUrl(segments: readonly string[] = []): string {
 }
 
 /**
+ * Whether these segments are the docs home. The one test for it: page
+ * metadata and the structured data choice both use it.
+ */
+export function isHomePage(segments?: readonly string[]): boolean {
+  return pageUrl(segments) === DOCS_URL;
+}
+
+/**
  * A page's metadata as Nextra gives it: its frontmatter, with a plain-string
  * title. Written out rather than taken from Nextra's own type so this module
  * stays free of Nextra imports, which is what lets the frontend suite test it.
@@ -103,7 +111,7 @@ type PageOwnMetadata = Omit<Metadata, 'title'> & { title?: string };
  */
 export function pageMetadata(own: PageOwnMetadata, segments?: readonly string[]): Metadata {
   const url = pageUrl(segments);
-  const isHome = url === DOCS_URL;
+  const isHome = isHomePage(segments);
 
   return {
     ...own,

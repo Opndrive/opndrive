@@ -34,7 +34,8 @@ export function CommunityCard() {
             Every other day @ 5 PM UTC
           </span>
 
-          <h3 className={styles.heading}>Build Opndrive with us</h3>
+          {/* An h2: the card sits right under the page's h1, so an h3 skipped a level. */}
+          <h2 className={styles.heading}>Build Opndrive with us</h2>
           <p className={styles.copy}>
             Live demos, reviews on your PRs, and a hand when you get stuck.
           </p>
