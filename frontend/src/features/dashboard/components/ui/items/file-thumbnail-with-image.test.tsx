@@ -121,6 +121,23 @@ describe('a URL that has expired by the time the image loads', () => {
     expect(getSignedUrl).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for a different URL when the fresh one comes out the same', async () => {
+    // A presigned URL changes only with the second it was signed in. Signed
+    // again within the same second, the "fresh" URL was the one that had
+    // just failed, and the tile kept its icon.
+    getSignedUrl
+      .mockImplementationOnce(async ({ key }) => `https://s3/${key}?sig=same`)
+      .mockImplementationOnce(async ({ key }) => `https://s3/${key}?sig=same`);
+    render(tile(image('a.jpg', MB, { value: 1, unit: 'MB' })));
+
+    fireEvent.error(await screen.findByRole('img'));
+
+    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toContain('sig=1'), {
+      timeout: 3000,
+    });
+    expect(getSignedUrl).toHaveBeenCalledTimes(3);
+  });
+
   it('never puts the old file back in a tile reused for another meanwhile', async () => {
     const { rerender } = render(tile(image('a.jpg', MB, { value: 1, unit: 'MB' })));
     fireEvent.error(await screen.findByRole('img', { name: 'a.jpg' }));

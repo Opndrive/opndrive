@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileIconLarge } from '@/shared/components/icons/file-icons';
+import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { forgetThumbnailUrl, thumbnailUrlFor } from '@/services/thumbnail-urls';
 import { FileItem } from '@/features/dashboard/types/file';
 import {
@@ -17,6 +18,28 @@ interface FileThumbnailWithImageProps {
   name: string;
   file?: FileItem;
   className?: string;
+}
+
+/**
+ * How long to wait before signing again when the fresh URL came out the same
+ * as the one that failed. A presigned URL carries the second it was signed
+ * in, so one signed again within that second is the same URL.
+ */
+const RESIGN_AFTER_MS = 1000;
+
+/** A URL for the image other than `failed`, which would not load. */
+async function freshThumbnailUrl(
+  apiS3: BYOS3ApiProvider,
+  object: { key: string; version?: string },
+  failed: string
+): Promise<string> {
+  forgetThumbnailUrl(apiS3, object, failed);
+  const fresh = await thumbnailUrlFor(apiS3, object);
+  if (fresh !== failed) return fresh;
+
+  await new Promise((resolve) => setTimeout(resolve, RESIGN_AFTER_MS));
+  forgetThumbnailUrl(apiS3, object, fresh);
+  return thumbnailUrlFor(apiS3, object);
 }
 
 /**
@@ -88,9 +111,8 @@ export function FileThumbnailWithImage({
     if (!apiS3 || !key || renewedFor.current === objectId) return;
     renewedFor.current = objectId;
 
-    forgetThumbnailUrl(apiS3, { key, version }, failed);
     const forObject = objectId;
-    thumbnailUrlFor(apiS3, { key, version }).then(
+    freshThumbnailUrl(apiS3, { key, version }, failed).then(
       // Only over the URL that failed: by now the tile may be showing
       // another file, which its own URL belongs to.
       (fresh) =>

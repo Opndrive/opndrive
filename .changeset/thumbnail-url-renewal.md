@@ -11,4 +11,6 @@ was handed the same dead link.
 
 When a thumbnail will not load, the tile now drops that link from the cache,
 signs a fresh one and tries once more, showing the icon in the meantime. An
-image that fails on the fresh link too keeps the icon.
+image that fails on the fresh link too keeps the icon. A link signed again
+within the same second is the same link, so then the tile waits a second and
+signs once more.
