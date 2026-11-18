@@ -69,12 +69,25 @@ export interface S3Provider {
      * that would shut out every other site relying on the default.
      */
     corsRequired: boolean;
+    /**
+     * True where the provider's own CORS answers already expose ETag, so a
+     * hidden ETag is not something its CORS settings can fix. MinIO Community
+     * Edition lists ETag among the exposed headers of its CORS handler
+     * (`commonS3Headers` in cmd/api-router.go).
+     */
+    etagExposedByDefault?: boolean;
     corsInstructions: string;
     permissions: string[];
     docsUrl: string;
     docsLabel: string;
     /** Anything about this provider that trips people up. */
     gotcha?: string;
+    /**
+     * Failures particular to this provider, shown after the ones every
+     * provider shares in the "If it fails" section. Each must be something
+     * the provider documents or the app's own code shows, never a guess.
+     */
+    troubleshooting?: string[];
   };
 }
 
@@ -136,6 +149,9 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       docsLabel: 'AWS S3 CORS documentation',
       gotcha:
         'Scope the IAM policy to this one bucket. A key with account-wide S3 access is stored in your browser and does far more than this app needs.',
+      troubleshooting: [
+        "A region that does not match the bucket's makes AWS refuse the request with AuthorizationHeaderMalformed (\"the region 'us-east-1' is wrong; expecting 'eu-west-1'\"), which Opndrive shows as \"Those keys were rejected\". The keys are fine: pick the region the bucket was created in, shown in the S3 console's bucket list.",
+      ],
     },
   },
   {
@@ -172,6 +188,9 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       docsLabel: 'Cloudflare R2 CORS documentation',
       gotcha:
         'The region is almost always "auto". The endpoint contains your account ID, not a region, so copy it from the R2 bucket settings page.',
+      troubleshooting: [
+        'Use the S3 API endpoint, https://<account-id>.r2.cloudflarestorage.com. Cloudflare documents that signed requests, which is everything Opndrive sends, work on that domain and not on a custom domain set up for public access.',
+      ],
     },
   },
   {
@@ -245,6 +264,53 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       docsLabel: 'Backblaze B2 CORS rules documentation',
       gotcha:
         "Backblaze's own CORS rule format covers S3 GET, HEAD, PUT and DELETE but has no operation for POST, which multipart uploads and deleting several files at once need. That is why the rules go in through the S3 API here. If the bucket already has rules from the native API - set with the b2 command-line tool, as Opndrive's setup steps used to say - the S3 API cannot change them: Backblaze says they can only be changed through the native API (b2 bucket update --cors-rules). Remove them there first, then run the command above.",
+      troubleshooting: [
+        'Small files upload but large ones, or deleting several files at once, fail with "Could not reach your storage": the rules are probably in Backblaze\'s own format, which cannot allow the POST requests those use. Remove those through the native API, as the setup steps above say, and apply the policy above through the S3 API instead.',
+      ],
+    },
+  },
+  {
+    slug: 'digitalocean-spaces',
+    id: 'digitalocean',
+    name: 'DigitalOcean Spaces',
+    tagline: 'S3-compatible storage with a built-in CDN',
+    endpoint: 'https://{{region}}.digitaloceanspaces.com',
+    defaultRegion: 'nyc3',
+    // Every datacenter DigitalOcean lists Spaces Standard Storage in, named
+    // the way its regional availability page names them.
+    regions: [
+      { value: 'nyc3', label: 'New York City - nyc3' },
+      { value: 'ams3', label: 'Amsterdam - ams3' },
+      { value: 'sfo2', label: 'San Francisco - sfo2' },
+      { value: 'sfo3', label: 'San Francisco - sfo3' },
+      { value: 'sgp1', label: 'Singapore - sgp1' },
+      { value: 'lon1', label: 'London - lon1' },
+      { value: 'fra1', label: 'Frankfurt - fra1' },
+      { value: 'tor1', label: 'Toronto - tor1' },
+      { value: 'blr1', label: 'Bangalore - blr1' },
+      { value: 'syd1', label: 'Sydney - syd1' },
+      { value: 'atl1', label: 'Atlanta - atl1' },
+      { value: 'ric1', label: 'Richmond - ric1' },
+      { value: 'mkc1', label: 'Kansas City - mkc1' },
+    ],
+    requiresCustomEndpoint: false,
+    seo: {
+      title: 'DigitalOcean Spaces File Browser and Web UI',
+      description:
+        'Browse, upload and share files in a DigitalOcean Space from your browser with a Spaces access key. Your keys stay in your browser.',
+      h1: 'Connect Opndrive to DigitalOcean Spaces',
+      intro:
+        'Spaces speaks the S3 API, so Opndrive connects with a Spaces access key and the endpoint of the datacenter your Space lives in. Pick that datacenter as the region and the endpoint follows from it.',
+    },
+    setup: {
+      corsRequired: true,
+      corsInstructions:
+        'The Spaces control panel can add CORS rules (your Space, then Settings, then CORS Configurations), but it has no field for exposed headers, and uploads sent in parts need ETag exposed. DigitalOcean points to an XML file applied with s3cmd for that: configure s3cmd for Spaces, save the policy below as cors.xml, and run the command under it with your Space name.',
+      permissions: ['Read/Write/Delete'],
+      docsUrl: 'https://docs.digitalocean.com/products/spaces/how-to/configure-cors/',
+      docsLabel: 'DigitalOcean Spaces CORS documentation',
+      gotcha:
+        'Create the access key with Limited Access and Read/Write/Delete on this Space only. A Full Access key works too, but it reaches every Space in the account.',
     },
   },
   {
@@ -257,15 +323,16 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     regions: [{ value: 'us-east-1', label: 'US East 1 - us-east-1' }],
     requiresCustomEndpoint: true,
     seo: {
-      title: 'MinIO Browser and Web UI for Your Own Server',
+      title: 'MinIO Object Browser and Web UI for Your Own Server',
       description:
-        'A web UI for a self-hosted MinIO server. Point Opndrive at your endpoint, use your access keys, and browse buckets from the browser.',
+        'An object browser for a self-hosted MinIO server: browse buckets, upload, preview and share files. Not an admin console - users and policies stay in mc.',
       h1: 'Connect Opndrive to MinIO',
       intro:
-        'MinIO runs on your own infrastructure, so there is no region list to choose from and you supply the endpoint yourself. Anything the S3 API supports, Opndrive can use.',
+        'Opndrive is an object browser, not an admin console. It lists, uploads, previews, renames, shares and deletes the objects in a bucket; users, policies and server settings stay with the mc command-line client. That is also the part of the MinIO Community Edition console that remained after its admin pages were removed in 2025. MinIO runs on your own infrastructure, so you supply the endpoint yourself.',
     },
     setup: {
       corsRequired: false,
+      etagExposedByDefault: true,
       corsInstructions:
         'MinIO Community Edition sets CORS for the whole server rather than per bucket, and allows every origin until told otherwise, so a server whose CORS you have not changed needs nothing here. If you have restricted it with MINIO_API_CORS_ALLOW_ORIGIN or cors_allow_origin, run the command below with your mc alias in place of myminio; it applies without a restart. The value replaces the old list, so include every origin that should keep working, comma-separated.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
@@ -275,6 +342,9 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       docsLabel: 'MinIO CORS settings (AIStor docs)',
       gotcha:
         'Your browser has to be able to reach the endpoint. A MinIO server on a private network will not work from the hosted app, so self-host Opndrive alongside it.',
+      troubleshooting: [
+        'On an https:// page such as opndrive.app, the page\'s security policy upgrades an http:// endpoint to https://, so a MinIO server without TLS shows "Could not reach your storage". Put TLS in front of MinIO, or self-host Opndrive and open it over http on the same network.',
+      ],
     },
   },
   /**
@@ -305,7 +375,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     seo: {
       title: 'Connect Any S3-Compatible Storage by Custom Endpoint',
       description:
-        'Point Opndrive at any S3-compatible endpoint - DigitalOcean Spaces, Scaleway, Storj, Hetzner, Ceph or a gateway you run yourself. Your keys stay in your browser.',
+        'Point Opndrive at any S3-compatible endpoint - Scaleway, Storj, Hetzner, Ceph or a gateway you run yourself. Your keys stay in your browser.',
       h1: 'Connect Opndrive to any S3-compatible storage',
       intro:
         'If a service speaks the S3 API, this is the way in. You supply the endpoint URL and the region string that service documents, and from there Opndrive treats it exactly as it treats Amazon S3.',
@@ -325,6 +395,16 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
 
 /** Every provider slug, for generateStaticParams and the sitemap. */
 export const PROVIDER_SLUGS: readonly string[] = S3_PROVIDERS.map((provider) => provider.slug);
+
+/**
+ * The named providers as a phrase for copy - "Amazon S3, Cloudflare R2, ...,
+ * MinIO" - in registry order, without the catch-all custom endpoint. Built
+ * here so the landing page and the /connect description name a new provider
+ * as soon as it is added.
+ */
+export const NAMED_PROVIDERS_PHRASE: string = S3_PROVIDERS.filter((p) => p.id !== 'custom')
+  .map((p) => p.name)
+  .join(', ');
 
 export function getProviderBySlug(slug: string): S3Provider | undefined {
   return S3_PROVIDERS.find((provider) => provider.slug === slug);

@@ -1,37 +1,49 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { assets } from '@/assets';
 
 type FeatureId = 'oneplace' | 'integrations' | 'filetypes';
 
-const features: {
+interface Feature {
   id: FeatureId;
   title: string;
   description: string;
   imageAlt: string;
-}[] = [
-  {
-    id: 'oneplace',
-    title: 'One place for all storage',
-    description: 'Connect your personal and cloud storage, and view everything in one place.',
-    imageAlt: 'Dashboard showing unified storage view',
-  },
-  {
-    id: 'integrations',
-    title: 'Integrate with many providers',
-    description:
-      'OpenDrive works with popular storage services so you can use what you already have.',
-    imageAlt: 'Logos of supported storage providers',
-  },
-  {
-    id: 'filetypes',
-    title: 'Store any file type securely',
-    description: 'From photos, documents, videos to code—upload, preview, and protect them all.',
-    imageAlt: 'Illustration showing multiple file types',
-  },
-];
+}
+
+/**
+ * The features this section rotates through. A function of the provider
+ * phrase, which the server page builds from the provider registry - so the
+ * list stays in step without shipping the registry to the browser. Exported
+ * for the test that guards the copy against claims the app cannot back up:
+ * only the active item reaches the server HTML, so the markup alone cannot.
+ */
+export function landingFeatures(namedProviders: string): Feature[] {
+  return [
+    {
+      id: 'oneplace',
+      title: 'One place for all storage',
+      description:
+        'Browse every bucket your keys can reach and switch between them without entering your keys again.',
+      imageAlt: 'Dashboard showing unified storage view',
+    },
+    {
+      id: 'integrations',
+      title: 'Integrate with many providers',
+      description: `Works with ${namedProviders} and any other S3-compatible service.`,
+      imageAlt: 'Logos of supported storage providers',
+    },
+    {
+      id: 'filetypes',
+      title: 'Open any file type',
+      description:
+        'Upload anything, and preview images, video, audio, PDFs, spreadsheets and code without downloading them.',
+      imageAlt: 'Illustration showing multiple file types',
+    },
+  ];
+}
 
 const featureImages: Record<FeatureId, { light: string; dark: string }> = {
   oneplace: {
@@ -51,7 +63,8 @@ const featureImages: Record<FeatureId, { light: string; dark: string }> = {
 /** How long each feature holds before the next one takes over. */
 const ROTATE_INTERVAL_MS = 6000;
 
-export default function FeaturesSection() {
+export default function FeaturesSection({ namedProviders }: { namedProviders: string }) {
+  const features = useMemo(() => landingFeatures(namedProviders), [namedProviders]);
   const [activeFeature, setActiveFeature] = useState(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -91,7 +104,7 @@ export default function FeaturesSection() {
     intervalRef.current = setInterval(() => {
       if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % features.length);
     }, ROTATE_INTERVAL_MS);
-  }, []);
+  }, [features.length]);
 
   /**
    * Run only while the section is actually on screen. It used to tick for as
@@ -166,10 +179,10 @@ export default function FeaturesSection() {
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 md:mb-16">
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6">
-            Store & Secure Everything
+            Your storage, in one place
           </h2>
           <p className="text-sm sm:text-base md:text-lg lg:text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
-            Keep all your files safe, backed up, and easy to access from any device.
+            Your files stay in your own bucket, and you can reach them from any browser.
           </p>
         </div>
 

@@ -27,6 +27,21 @@ export type ConnectionFailureKind =
   /** Genuinely unrecognised. Says so rather than guessing. */
   | 'unknown';
 
+/**
+ * The heading shown for each kind of failure.
+ *
+ * Exported because the troubleshooting section on every /connect page quotes
+ * these word for word, and a quote that drifts from the screen it describes is
+ * worse than none. Both read from here.
+ */
+export const CONNECTION_FAILURE_TITLES: Record<ConnectionFailureKind, string> = {
+  network: 'Could not reach your storage',
+  credentials: 'Those keys were rejected',
+  bucket: 'That bucket was not found',
+  permissions: 'These keys are not allowed to do that',
+  unknown: 'Something went wrong reaching your storage',
+};
+
 export interface ConnectionFailure {
   kind: ConnectionFailureKind;
   /** Short enough to be a heading. */
@@ -64,6 +79,20 @@ const BUCKET_ERRORS = new Set([
   'PermanentRedirect',
   'AuthorizationQueryParameters',
 ]);
+
+/**
+ * The error names, and the HTTP status used when a response has no name we
+ * know, that decide each kind. Exported because the "If it fails" section on
+ * every /connect page lists them, and reading them from here is what keeps the
+ * page and the classifier from drifting apart.
+ */
+export const CONNECTION_FAILURE_CODES = {
+  credentials: { names: [...CREDENTIAL_ERRORS], status: 401 },
+  bucket: { names: [...BUCKET_ERRORS], status: 404 },
+  permissions: { names: [...PERMISSION_ERRORS], status: 403 },
+} as const satisfies Partial<
+  Record<ConnectionFailureKind, { names: readonly string[]; status: number }>
+>;
 
 interface SdkErrorShape {
   name?: unknown;
@@ -103,7 +132,7 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
   if (isNetworkFailure(name, message, status)) {
     return {
       kind: 'network',
-      title: 'Could not reach your storage',
+      title: CONNECTION_FAILURE_TITLES.network,
       detail:
         'The request never completed. This is usually a missing CORS rule on the bucket, which the setup steps for your provider cover. It can also just be a dropped connection.',
       retryable: true,
@@ -111,10 +140,10 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
     };
   }
 
-  if (CREDENTIAL_ERRORS.has(name) || status === 401) {
+  if (CREDENTIAL_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.credentials.status) {
     return {
       kind: 'credentials',
-      title: 'Those keys were rejected',
+      title: CONNECTION_FAILURE_TITLES.credentials,
       detail:
         'Your storage provider did not accept the access key or secret. Check both for a typo or a stray space, and that the key has not been revoked.',
       retryable: false,
@@ -122,10 +151,10 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
     };
   }
 
-  if (BUCKET_ERRORS.has(name) || status === 404) {
+  if (BUCKET_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.bucket.status) {
     return {
       kind: 'bucket',
-      title: 'That bucket was not found',
+      title: CONNECTION_FAILURE_TITLES.bucket,
       detail:
         'The keys worked, but no bucket by that name exists in this region. Check the spelling and that the region matches where you created it.',
       retryable: false,
@@ -136,10 +165,10 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
   // Checked after the bucket case on purpose. A bucket in another account
   // answers with AccessDenied rather than NoSuchBucket, so a 403 here means
   // "not yours or not allowed", which is the same fix either way.
-  if (PERMISSION_ERRORS.has(name) || status === 403) {
+  if (PERMISSION_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.permissions.status) {
     return {
       kind: 'permissions',
-      title: 'These keys are not allowed to do that',
+      title: CONNECTION_FAILURE_TITLES.permissions,
       detail:
         'Your provider recognised the key but refused the request. The key needs list and read permission on this bucket - the setup steps for your provider list exactly which.',
       retryable: false,
@@ -149,7 +178,7 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
 
   return {
     kind: 'unknown',
-    title: 'Something went wrong reaching your storage',
+    title: CONNECTION_FAILURE_TITLES.unknown,
     detail:
       'Your provider returned an error we do not recognise. Trying again is worth a go; if it keeps happening the browser console has the original message.',
     retryable: true,

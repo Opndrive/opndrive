@@ -6,6 +6,7 @@ import { ConnectShell } from '@/features/connect/components/connect-shell';
 import { ConnectWizard } from '@/features/connect/components/connect-wizard';
 import { ProviderMark } from '@/features/connect/components/provider-mark';
 import { SetupGuide } from '@/features/connect/components/setup-guide';
+import { ConnectionTroubleshooting } from '@/features/connect/components/connection-troubleshooting';
 import { WizardSection } from '@/features/connect/components/wizard-section';
 import { pageSocialMetadata } from '@/lib/seo/social';
 
@@ -93,6 +94,10 @@ export default async function ProviderConnectPage({ params }: ProviderPageProps)
 
       <div className="mt-4">
         <SetupGuide provider={provider} />
+      </div>
+
+      <div className="mt-4">
+        <ConnectionTroubleshooting provider={provider} />
       </div>
     </ConnectShell>
   );

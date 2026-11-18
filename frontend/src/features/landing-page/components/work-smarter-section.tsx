@@ -15,7 +15,8 @@ const features: {
   {
     id: 'upload',
     title: 'Upload without friction',
-    description: 'Upload files or whole folders easily, with versioning and backup built in.',
+    description:
+      'Upload files or whole folders. Large files go up in parts you can pause and resume.',
     imageAlt: 'Upload files and folders preview',
   },
   {
@@ -27,14 +28,14 @@ const features: {
   {
     id: 'preview',
     title: 'Preview inside drive',
-    description: 'View or edit documents, code, or media without downloading.',
+    description: 'View documents, code and media without downloading them.',
     imageAlt: 'Preview of a document inside Opndrive',
   },
   {
     id: 'share',
-    title: 'Secure sharing & permissions',
-    description: 'Share files and set link expiry, permissions, and collaboration options.',
-    imageAlt: 'Sharing options with expiry and permissions',
+    title: 'Share with links that expire',
+    description: 'Share a file with a link that stops working when you choose, up to a week.',
+    imageAlt: 'Share dialog with link expiry options',
   },
 ];
 
@@ -56,6 +57,13 @@ const featureImages: Record<FeatureId, { light: string; dark: string }> = {
     dark: assets.DarkShare.src,
   },
 };
+
+/**
+ * Exported for the test that guards the copy against claims the app cannot
+ * back up: only the active item reaches the server HTML, so the markup alone
+ * cannot.
+ */
+export { features as WORK_SMARTER_FEATURES };
 
 /** How long each feature holds before the next one takes over. */
 const ROTATE_INTERVAL_MS = 6000;

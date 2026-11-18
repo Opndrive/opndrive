@@ -102,18 +102,22 @@ export default function HeroSection({
             </div>
 
             <div>
+              {/* The heading says what this is, in the words people search
+                  for; the slogan, which says it well to someone already here,
+                  sits under it. */}
               <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-foreground mb-3 sm:mb-4 text-balance leading-tight">
-                <span className="block">Buckets made beautiful</span>
-                <span
-                  className="block text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl mt-1 sm:mt-2"
-                  style={{ color: 'var(--primary)' }}
-                >
-                  Across every provider
-                </span>
+                Open-source web UI for S3, R2, MinIO and more
               </h1>
+              <p
+                className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-balance leading-tight"
+                style={{ color: 'var(--primary)' }}
+              >
+                Buckets made beautiful, across every provider
+              </p>
               <p className="text-sm sm:text-base md:text-lg text-muted-foreground max-w-none lg:max-w-lg text-pretty leading-relaxed mt-4 sm:mt-6 mx-auto lg:mx-0">
-                Open-source web interface for S3 compatible storage. Connect your own bucket and
-                manage files with complete control over your data.
+                Browse, upload, preview and share the files in a bucket you already own, right from
+                the browser. Use it here, or self-host it as a Google Drive alternative for your own
+                S3 storage.
               </p>
             </div>
 
