@@ -2,12 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PROVIDER_SLUGS, getProviderBySlug } from '@/config/providers';
-import { getCorsConfig } from '@/config/cors';
 import { ConnectShell } from '@/features/connect/components/connect-shell';
 import { ConnectWizard } from '@/features/connect/components/connect-wizard';
 import { ProviderMark } from '@/features/connect/components/provider-mark';
 import { SetupGuide } from '@/features/connect/components/setup-guide';
+import { ConnectionTroubleshooting } from '@/features/connect/components/connection-troubleshooting';
 import { WizardSection } from '@/features/connect/components/wizard-section';
+import { pageSocialMetadata } from '@/lib/seo/social';
 
 interface ProviderPageProps {
   params: Promise<{ provider: string }>;
@@ -39,17 +40,13 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     // Self-canonicalising. Derived from the slug rather than hard-coded, so a
     // new provider cannot accidentally inherit another one's canonical.
     alternates: { canonical: path },
-    openGraph: {
+    // Built from the shared fields, so the page keeps the site's share image
+    // rather than replacing the layout's openGraph with one that has none.
+    ...pageSocialMetadata({
       title: provider.seo.title,
       description: provider.seo.description,
-      url: path,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: provider.seo.title,
-      description: provider.seo.description,
-    },
+      path,
+    }),
   };
 }
 
@@ -96,7 +93,11 @@ export default async function ProviderConnectPage({ params }: ProviderPageProps)
       </div>
 
       <div className="mt-4">
-        <SetupGuide provider={provider} corsConfig={getCorsConfig(provider.id)} />
+        <SetupGuide provider={provider} />
+      </div>
+
+      <div className="mt-4">
+        <ConnectionTroubleshooting provider={provider} />
       </div>
     </ConnectShell>
   );

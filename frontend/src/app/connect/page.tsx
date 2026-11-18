@@ -5,6 +5,7 @@ import { S3_PROVIDERS } from '@/config/providers';
 import { ConnectShell } from '@/features/connect/components/connect-shell';
 import { ProviderPicker } from '@/features/connect/components/provider-picker';
 import { WizardSection } from '@/features/connect/components/wizard-section';
+import { pageSocialMetadata } from '@/lib/seo/social';
 
 /**
  * The hub. Targets the unbranded intent, and links to every provider page so
@@ -17,15 +18,16 @@ import { WizardSection } from '@/features/connect/components/wizard-section';
 export const metadata: Metadata = {
   title: 'Connect Your S3 Bucket - Browser Client for S3 Storage',
   description:
-    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, MinIO or any S3-compatible endpoint. Your keys stay in your browser and your files never touch our servers.',
+    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO or any S3-compatible endpoint. Your keys stay in your browser and your files never touch our servers.',
   alternates: { canonical: '/connect' },
-  openGraph: {
+  // Shares the site's preview image; setting openGraph here would otherwise
+  // drop it, along with the Twitter card the layout sets.
+  ...pageSocialMetadata({
     title: 'Connect Your S3 Bucket - Opndrive',
     description:
       'A browser client for S3-compatible storage. Bring your own bucket, keep your own keys.',
-    url: '/connect',
-    type: 'website',
-  },
+    path: '/connect',
+  }),
 };
 
 export default function ConnectHubPage() {
@@ -42,8 +44,9 @@ export default function ConnectHubPage() {
 
           {/*
             This used to point at /connect/minio, which sent anyone on
-            DigitalOcean or Scaleway to a page about self-hosting MinIO. There
-            is a real catch-all provider now, and this links to it.
+            Scaleway or a similar service to a page about self-hosting MinIO.
+            There is a real catch-all provider now, and this links to it.
+            DigitalOcean Spaces has its own page and card above.
           */}
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             Using something else? Any S3-compatible service works.{' '}

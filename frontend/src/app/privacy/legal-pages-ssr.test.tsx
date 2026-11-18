@@ -129,12 +129,29 @@ describe('the landing page renders for crawlers', () => {
   });
 
   it('renders the pitch into the markup', () => {
-    expect(html).toContain('Open-source web interface for S3 compatible storage');
+    // The heading says what the product is, in the words people search for.
+    expect(html).toMatch(/<h1[^>]*>Open-source web UI for S3, R2, MinIO and more<\/h1>/);
+    expect(html).toContain('Buckets made beautiful, across every provider');
   });
 
   // The call to action is the point of the page, and it is rendered before any
   // session has been looked for. If it ever goes back to reporting that, this
   // is what a crawler would index in its place.
+  // Each of these promised something the app does not do: it keeps no file
+  // versions or backups, sharing has a link expiry and nothing else, nothing
+  // can be edited in a preview, and "completely secure" is not a claim any
+  // software should make. The brand was misspelt too.
+  it.each([
+    'versioning',
+    'backed up',
+    'collaboration',
+    'completely secure',
+    'OpenDrive',
+    'View or edit',
+  ])('makes no claim the app cannot back up: "%s"', (claim) => {
+    expect(decodeEntities(html).toLowerCase()).not.toContain(claim.toLowerCase());
+  });
+
   it('renders a real call to action rather than a loading state', () => {
     expect(html).toContain('Get Started');
   });

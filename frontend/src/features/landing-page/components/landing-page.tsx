@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { FaGithub } from 'react-icons/fa';
 import { Menu, X } from 'lucide-react';
@@ -27,7 +28,12 @@ const navItems = [
   { label: 'Get Started', href: '#get-started' },
 ];
 
-export default function LandingPage() {
+interface LandingPageProps {
+  /** Passed straight to the hero; see hero-image-priority.ts. */
+  heroImagePriorityScript?: React.ReactNode;
+}
+
+export default function LandingPage({ heroImagePriorityScript }: LandingPageProps = {}) {
   const router = useRouter();
   const { userCreds } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -119,7 +125,14 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Opndrive Logo" className="w-6 h-6 sm:w-7 sm:h-7" />
+              <Image
+                src="/logo.png"
+                alt="Opndrive Logo"
+                width={28}
+                height={28}
+                className="w-6 h-6 sm:w-7 sm:h-7"
+                loading="eager"
+              />
               <span className="text-base sm:text-lg font-bold text-foreground">Opndrive</span>
             </div>
 
@@ -218,7 +231,11 @@ export default function LandingPage() {
         />
       )}
 
-      <HeroSection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />
+      <HeroSection
+        handleGetStarted={handleGetStarted}
+        ctaLabel={ctaLabel}
+        imagePriorityScript={heroImagePriorityScript}
+      />
 
       {/* Room for the fixed mobile bar, reserved always rather than at the
           moment it appears. Toggling it pushed everything below the hero down

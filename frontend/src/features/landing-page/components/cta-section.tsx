@@ -35,8 +35,8 @@ export default function CTASection({
             <Image
               src="/logo.png"
               alt="Opndrive"
-              width={48}
-              height={48}
+              width={80}
+              height={80}
               className="object-contain w-full h-full sm:w-16 sm:h-16 md:w-20 md:h-20"
             />
           </div>

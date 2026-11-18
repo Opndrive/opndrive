@@ -1,14 +1,14 @@
 import type { IconType } from 'react-icons';
 import { FaAws } from 'react-icons/fa6';
 import { LuSlidersHorizontal } from 'react-icons/lu';
-import { SiBackblaze, SiCloudflare, SiMinio, SiWasabi } from 'react-icons/si';
+import { SiBackblaze, SiCloudflare, SiDigitalocean, SiMinio, SiWasabi } from 'react-icons/si';
 import type { S3Provider } from '@/config/providers';
 
 /**
  * The provider's own logo on a tinted tile.
  *
  * Icons come from react-icons, which is already a dependency: Simple Icons for
- * four of them and Font Awesome's brand set for AWS, whose marks Simple Icons
+ * five of them and Font Awesome's brand set for AWS, whose marks Simple Icons
  * dropped over Amazon's trademark policy. We show them to identify what
  * Opndrive connects to, which is nominative use, but the marks belong to their
  * owners and each vendor's brand guidelines still apply.
@@ -36,6 +36,10 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
   wasabi: { Icon: SiWasabi, palette: 'bg-provider-wasabi-soft text-provider-wasabi' },
   'backblaze-b2': { Icon: SiBackblaze, palette: 'bg-provider-b2-soft text-provider-b2' },
   minio: { Icon: SiMinio, palette: 'bg-provider-minio-soft text-provider-minio' },
+  'digitalocean-spaces': {
+    Icon: SiDigitalocean,
+    palette: 'bg-provider-do-soft text-provider-do',
+  },
   'custom-endpoint': {
     Icon: LuSlidersHorizontal,
     palette: 'bg-provider-custom-soft text-provider-custom',

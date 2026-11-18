@@ -22,22 +22,21 @@ export function generateOrganizationSchema() {
 
 /**
  * Generate WebSite Schema
+ *
+ * The name Google should use for the site, set on the home page as its site
+ * names documentation asks. Name and URL only: there is no alternateName
+ * because the site goes by "Opndrive" and nothing else.
+ *
+ * It used to carry a SearchAction for the sitelinks search box. Google retired
+ * that feature in November 2024, and the URL it advertised (/blog?search=)
+ * never existed, so it is gone.
  */
 export function generateWebSiteSchema() {
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: SEO_CONFIG.siteName,
-    url: SEO_CONFIG.siteUrl,
-    description: SEO_CONFIG.siteDescription,
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${SEO_CONFIG.siteUrl}/blog?search={search_term_string}`,
-      },
-      'query-input': 'required name=search_term_string',
-    },
+    url: `${SEO_CONFIG.siteUrl}/`,
   };
 }
 

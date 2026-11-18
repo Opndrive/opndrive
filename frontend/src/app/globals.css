@@ -101,8 +101,10 @@
   --provider-b2-soft: rgba(226, 30, 41, 0.14);
   --provider-minio: #c72e49;
   --provider-minio-soft: rgba(199, 46, 73, 0.14);
+  --provider-do: #0080ff;
+  --provider-do-soft: rgba(0, 128, 255, 0.14);
   /* The custom-endpoint tile. No vendor, so no brand colour, and unlike the
-     five above it does follow the theme - it should read as part of our UI
+     six above it does follow the theme - it should read as part of our UI
      rather than as a sixth logo. The glyph tracks --muted-foreground, which
      var() resolves per theme; the tint is a neutral alpha that lifts on a dark
      card and darkens on a light one. */
@@ -174,6 +176,8 @@
   --color-provider-b2-soft: var(--provider-b2-soft);
   --color-provider-minio: var(--provider-minio);
   --color-provider-minio-soft: var(--provider-minio-soft);
+  --color-provider-do: var(--provider-do);
+  --color-provider-do-soft: var(--provider-do-soft);
   --color-provider-custom: var(--provider-custom);
   --color-provider-custom-soft: var(--provider-custom-soft);
   --color-destructive: var(--destructive);
@@ -419,7 +423,9 @@ body {
  * decoration.
  */
 .hero-divider-art {
-  background-image: url('/hero-divider.png');
+  /* WebP at quality 85: 14 KB against the 307 KB PNG it replaces, and every
+     browser this app supports decodes it. */
+  background-image: url('/hero-divider.webp');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;

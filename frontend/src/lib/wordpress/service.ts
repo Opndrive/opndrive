@@ -22,6 +22,18 @@ import type {
 } from './types';
 
 /**
+ * A WPGraphQL "...Gmt" field as an ISO string Date can read.
+ *
+ * WPGraphQL gives these in UTC without a zone designator, so without a "Z"
+ * they would be read in whatever zone the server runs in. A value that already
+ * carries a zone is left alone.
+ */
+export function gmtToIso(gmt: string | undefined | null): string | undefined {
+  if (!gmt) return undefined;
+  return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(gmt) ? gmt : `${gmt}Z`;
+}
+
+/**
  * Transform WordPress post to simplified BlogPost format
  */
 function transformPost(post: WordPressPost): BlogPost {
@@ -35,6 +47,7 @@ function transformPost(post: WordPressPost): BlogPost {
     excerpt: cleanExcerpt,
     content: post.content,
     publishedDate: post.date,
+    publishedDateUtc: gmtToIso(post.dateGmt),
     modifiedDate: post.modified,
     author: {
       name: post.author?.node?.name || 'Anonymous',
@@ -116,10 +129,13 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
 }
 
 /**
- * Get all post slugs for static generation
+ * Every published post's slug and the date WordPress last saw it change, for
+ * the sitemap. Pages through the whole list, 100 at a time.
  */
-export async function getAllPostSlugs(): Promise<string[]> {
-  const slugs: string[] = [];
+export async function getAllPostSitemapData(): Promise<
+  Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>
+> {
+  const posts: Array<Pick<BlogPost, 'slug' | 'modifiedDate'>> = [];
   let hasNextPage = true;
   let after: string | null = null;
 
@@ -129,13 +145,21 @@ export async function getAllPostSlugs(): Promise<string[]> {
       { first: 100, after }
     );
 
-    slugs.push(...data.posts.nodes.map((post: WordPressPost) => post.slug));
+    posts.push(
+      ...data.posts.nodes.map((post: WordPressPost) => ({
+        slug: post.slug,
+        // WPGraphQL's `modified` is the site's local time with no offset, so
+        // it would be read as whatever zone the server runs in. `modifiedGmt`
+        // is UTC; gmtToIso marks it as such.
+        modifiedDate: gmtToIso(post.modifiedGmt) ?? '',
+      }))
+    );
 
     hasNextPage = data.posts.pageInfo.hasNextPage;
     after = data.posts.pageInfo.endCursor;
   }
 
-  return slugs;
+  return posts;
 }
 
 /**
