@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { generateStaticParamsFor, importPage } from 'nextra/pages';
-import { BASE_OPEN_GRAPH, pageUrl } from '@/lib/site';
+import { isHomePage, pageMetadata } from '@/lib/site';
 import { breadcrumbJsonLd, jsonLdScript, websiteJsonLd } from '@/lib/structured-data';
 import { useMDXComponents as getMDXComponents } from '../../mdx-components';
 
@@ -11,19 +11,7 @@ export async function generateMetadata(props: {
 }): Promise<Metadata> {
   const params = await props.params;
   const { metadata } = await importPage(params.mdxPath);
-  const url = pageUrl(params.mdxPath);
-  const isHome = !params.mdxPath?.some(Boolean);
-
-  return {
-    ...metadata,
-    // The home page's own title already names the product, so the layout's
-    // "%s - Opndrive Docs" template would only say it twice.
-    ...(isHome && { title: { absolute: metadata.title } }),
-    alternates: { canonical: url },
-    // Restates the shared fields: setting openGraph here replaces the
-    // layout's rather than adding to it.
-    openGraph: { ...BASE_OPEN_GRAPH, url },
-  };
+  return pageMetadata(metadata, params.mdxPath);
 }
 
 const Wrapper = getMDXComponents().wrapper as React.ComponentType<{
@@ -36,9 +24,11 @@ export default async function Page(props: { params: Promise<{ mdxPath?: string[]
   const params = await props.params;
   const result = await importPage(params.mdxPath);
   const { default: MDXContent, toc, metadata } = result;
-  const isHome = !params.mdxPath?.some(Boolean);
-  // The home names the site; every other page says where it sits.
-  const structuredData = isHome ? websiteJsonLd() : await breadcrumbJsonLd(params.mdxPath);
+  // The home names the site; every other page says where it sits. The same
+  // home test pageMetadata uses, so the two cannot disagree.
+  const structuredData = isHomePage(params.mdxPath)
+    ? websiteJsonLd()
+    : await breadcrumbJsonLd(params.mdxPath);
 
   return (
     <Wrapper toc={toc} metadata={metadata}>
