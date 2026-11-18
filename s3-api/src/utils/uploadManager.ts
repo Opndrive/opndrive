@@ -2,7 +2,12 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { MultipartUploader } from './multipartUploader.js';
-import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
+import {
+  DEFAULT_RETRY_DELAYS_MS,
+  failedOffline,
+  isTransientUploadError,
+  waitBeforeRetry,
+} from './retry.js';
 import { folderUploadKey, isDroppedFolderEntry } from './folder-entries.js';
 import {
   UploadItem,
@@ -23,6 +28,8 @@ import {
  */
 interface Worker {
   holdsSlot: boolean;
+  /** Fired when the upload is taken away, so a wait to retry ends at once. */
+  stop: AbortController;
 }
 
 export class UploadManager {
@@ -372,7 +379,7 @@ export class UploadManager {
       return;
     }
 
-    const worker: Worker = { holdsSlot: true };
+    const worker: Worker = { holdsSlot: true, stop: new AbortController() };
     this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
@@ -387,7 +394,8 @@ export class UploadManager {
           this.emit('progress', { id, status: item.status, progress });
         };
 
-        for (let attempt = 0; ; attempt++) {
+        let retriesUsed = 0;
+        for (;;) {
           try {
             await this.runAttempt(item, onProgress);
             break;
@@ -395,13 +403,22 @@ export class UploadManager {
             // Paused or cancelled underneath this attempt, which is what
             // ended it. Not a failure, and not this worker's to retry.
             if (!ownsUpload()) return;
-            if (!this.shouldRetry(id, err, attempt)) throw err;
 
+            // Failing while the browser says it is offline is the network's
+            // doing, not the upload's, so it spends no retry: the upload
+            // waits for the network instead, however long that takes, and
+            // tries again every so often in case the browser has it wrong.
+            const offline = failedOffline(err);
+            if (!offline && !this.shouldRetry(id, err, retriesUsed)) throw err;
+
+            const delayMs = offline ? 0 : this.retryDelaysMs[retriesUsed++]!;
             console.warn(
-              `Upload ${id} failed, retrying (${attempt + 1} of ${this.retryDelaysMs.length}):`,
+              offline
+                ? `Upload ${id} lost its connection, waiting for the network:`
+                : `Upload ${id} failed, retrying (${retriesUsed} of ${this.retryDelaysMs.length}):`,
               err
             );
-            await waitBeforeRetry(this.retryDelaysMs[attempt]!);
+            await waitBeforeRetry(delayMs, { signal: worker.stop.signal });
 
             // Paused, cancelled or torn down while waiting, and perhaps
             // resumed since, by a worker of its own. Either way there is
@@ -480,7 +497,10 @@ export class UploadManager {
   private takeFromWorker(id: string): void {
     const worker = this.workers.get(id);
     this.workers.delete(id);
-    if (worker) this.freeSlot(worker);
+    if (!worker) return;
+
+    worker.stop.abort();
+    this.freeSlot(worker);
   }
 
   /** Gives back a worker's concurrency slot, once. */

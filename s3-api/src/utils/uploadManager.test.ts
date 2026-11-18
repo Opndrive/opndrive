@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { UploadManager } from './uploadManager.js';
+import { OFFLINE_RECHECK_MS } from './retry.js';
 import type { EventPayload } from '../core/types.js';
 
 /**
@@ -700,6 +701,107 @@ describe('automatic retry', () => {
       'uploading',
       'queued',
     ]);
+  });
+
+  /**
+   * Offline. A failure then is the network's, not the upload's, so it costs
+   * no retry: the upload waits for the network, and tries again now and then
+   * in case the browser has it wrong. A pause or cancel ends that wait.
+   */
+  describe('while the browser is offline', () => {
+    function goOffline() {
+      const browser = { onLine: false };
+      let listeners: (() => void)[] = [];
+      vi.stubGlobal('navigator', browser);
+      vi.stubGlobal('window', {
+        addEventListener: (_event: string, listener: () => void) => listeners.push(listener),
+        removeEventListener: (_event: string, listener: () => void) => {
+          listeners = listeners.filter((other) => other !== listener);
+        },
+      });
+      return {
+        goOnline: () => {
+          browser.onLine = true;
+          [...listeners].forEach((listener) => listener());
+        },
+        waiting: () => listeners.length,
+      };
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    });
+
+    it('spends no retry, and carries on once the network is back', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const browser = goOffline();
+      // No retries at all: an online failure here fails the upload.
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+
+      browser.goOnline();
+      await settle();
+      uploaderInstances[0]!.gate.resolve();
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+    });
+
+    it('stops waiting for the network when paused', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const browser = goOffline();
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+      expect(browser.waiting()).toBe(1);
+
+      manager.pauseUpload(id);
+      await settle();
+
+      // The listener, and the upload it held, are let go of.
+      expect(browser.waiting()).toBe(0);
+      expect(manager.getStatus(id)).toMatchObject({ status: 'paused' });
+    });
+
+    it('still fails on a refusal, which proves the network is there', async () => {
+      // The browser says offline, but the server answered. Treated as an
+      // outage, this would be tried again every so often for good.
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      goOffline();
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    });
+
+    it('tries again now and then, in case the browser is wrong', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.useFakeTimers();
+      goOffline();
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await vi.advanceTimersByTimeAsync(0);
+      uploaderInstances[0]!.gate.reject(dropped());
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Still "offline", but tried again, and it works.
+      await vi.advanceTimersByTimeAsync(OFFLINE_RECHECK_MS);
+      expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(2);
+      uploaderInstances[0]!.gate.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+    });
   });
 
   it('keeps its concurrency slot while it waits to retry', async () => {

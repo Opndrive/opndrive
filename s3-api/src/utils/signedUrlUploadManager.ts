@@ -3,7 +3,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { SignedUrlUploader } from './signedUrlUploader.js';
 import { BYOS3ApiProvider } from '../index.js';
 import { UploadStatus, UploadEvent, EventListener, EventPayload } from '../core/types.js';
-import { DEFAULT_RETRY_DELAYS_MS, isTransientUploadError, waitBeforeRetry } from './retry.js';
+import {
+  DEFAULT_RETRY_DELAYS_MS,
+  failedOffline,
+  isTransientUploadError,
+  waitBeforeRetry,
+} from './retry.js';
 import { folderUploadKey, isDroppedFolderEntry } from './folder-entries.js';
 
 interface SignedUrlUploadItem {
@@ -40,6 +45,8 @@ export interface SignedUrlUploadManagerConfig {
  */
 interface Worker {
   holdsSlot: boolean;
+  /** Fired when the upload is taken away, so a wait to retry ends at once. */
+  stop: AbortController;
 }
 
 export class SignedUrlUploadManager {
@@ -310,7 +317,7 @@ export class SignedUrlUploadManager {
       return;
     }
 
-    const worker: Worker = { holdsSlot: true };
+    const worker: Worker = { holdsSlot: true, stop: new AbortController() };
     this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
@@ -327,7 +334,8 @@ export class SignedUrlUploadManager {
 
         // See UploadManager.processQueue. Each attempt signs a fresh URL, so
         // a retry cannot be refused for an expired one.
-        for (let attempt = 0; ; attempt++) {
+        let retriesUsed = 0;
+        for (;;) {
           try {
             // Non-null: the item is 'uploading'.
             await item.uploader!.upload(item.file!, onProgress);
@@ -335,13 +343,19 @@ export class SignedUrlUploadManager {
           } catch (err) {
             // Cancelled underneath this attempt, which is what ended it.
             if (!ownsUpload()) return;
-            if (!this.shouldRetry(id, err, attempt)) throw err;
 
+            // Offline costs no retry. See UploadManager.processQueue.
+            const offline = failedOffline(err);
+            if (!offline && !this.shouldRetry(id, err, retriesUsed)) throw err;
+
+            const delayMs = offline ? 0 : this.retryDelaysMs[retriesUsed++]!;
             console.warn(
-              `Signed-url upload ${id} failed, retrying (${attempt + 1} of ${this.retryDelaysMs.length}):`,
+              offline
+                ? `Signed-url upload ${id} lost its connection, waiting for the network:`
+                : `Signed-url upload ${id} failed, retrying (${retriesUsed} of ${this.retryDelaysMs.length}):`,
               err
             );
-            await waitBeforeRetry(this.retryDelaysMs[attempt]!);
+            await waitBeforeRetry(delayMs, { signal: worker.stop.signal });
 
             if (this.isDisposed || !ownsUpload()) return;
           }
@@ -389,7 +403,10 @@ export class SignedUrlUploadManager {
   private takeFromWorker(id: string): void {
     const worker = this.workers.get(id);
     this.workers.delete(id);
-    if (worker) this.freeSlot(worker);
+    if (!worker) return;
+
+    worker.stop.abort();
+    this.freeSlot(worker);
   }
 
   /** Gives back a worker's concurrency slot, once. */

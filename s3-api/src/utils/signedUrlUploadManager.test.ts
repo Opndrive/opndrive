@@ -441,6 +441,66 @@ describe('automatic retry', () => {
   });
 });
 
+// See UploadManager's suite of the same name.
+describe('while the browser is offline', () => {
+  function goOffline() {
+    const browser = { onLine: false };
+    let listeners: (() => void)[] = [];
+    vi.stubGlobal('navigator', browser);
+    vi.stubGlobal('window', {
+      addEventListener: (_event: string, listener: () => void) => listeners.push(listener),
+      removeEventListener: (_event: string, listener: () => void) => {
+        listeners = listeners.filter((other) => other !== listener);
+      },
+    });
+    return {
+      goOnline: () => {
+        browser.onLine = true;
+        [...listeners].forEach((listener) => listener());
+      },
+      waiting: () => listeners.length,
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('spends no retry, and carries on once the network is back', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const browser = goOffline();
+    const manager = SignedUrlUploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+
+    browser.goOnline();
+    await settle();
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+  });
+
+  it('stops waiting for the network when cancelled', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const browser = goOffline();
+    const manager = SignedUrlUploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    expect(browser.waiting()).toBe(1);
+
+    await manager.cancelUpload(id);
+    await settle();
+
+    expect(browser.waiting()).toBe(0);
+  });
+});
+
 describe('retryUpload', () => {
   it('sends a failed upload again, with a fresh uploader', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

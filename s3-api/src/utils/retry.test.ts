@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isTransientUploadError, waitBeforeRetry } from './retry.js';
+import { failedOffline, isTransientUploadError, waitBeforeRetry } from './retry.js';
 
 const withStatus = (status: number, name = 'S3Error') =>
   Object.assign(new Error(name), { name, $metadata: { httpStatusCode: status } });
@@ -63,6 +63,30 @@ describe('isTransientUploadError', () => {
   });
 });
 
+describe('failedOffline', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is a failure with no answer while the browser says it is offline', () => {
+    vi.stubGlobal('navigator', { onLine: false });
+
+    expect(failedOffline(new TypeError('Failed to fetch'))).toBe(true);
+  });
+
+  it('is not one the server answered, whatever the browser says', () => {
+    vi.stubGlobal('navigator', { onLine: false });
+
+    expect(failedOffline(withStatus(403, 'AccessDenied'))).toBe(false);
+  });
+
+  it('is not anything while the browser says it is online', () => {
+    vi.stubGlobal('navigator', { onLine: true });
+
+    expect(failedOffline(new TypeError('Failed to fetch'))).toBe(false);
+  });
+});
+
 describe('waitBeforeRetry', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -76,8 +100,14 @@ describe('waitBeforeRetry', () => {
       addEventListener: (event: string, listener: () => void) => {
         (listeners[event] ??= []).push(listener);
       },
+      removeEventListener: (event: string, listener: () => void) => {
+        listeners[event] = (listeners[event] ?? []).filter((other) => other !== listener);
+      },
     });
-    return { goOnline: () => listeners.online?.forEach((listener) => listener()) };
+    return {
+      goOnline: () => [...(listeners.online ?? [])].forEach((listener) => listener()),
+      onlineListeners: () => (listeners.online ?? []).length,
+    };
   }
 
   it('waits the delay it is given', async () => {
@@ -109,5 +139,63 @@ describe('waitBeforeRetry', () => {
     stubBrowser(true);
 
     await expect(waitBeforeRetry(0)).resolves.toBeUndefined();
+  });
+
+  /**
+   * Told to stop: the upload was paused, cancelled or torn down. The wait
+   * used to run on regardless, and one for the network kept its listener,
+   * and the upload it was holding, until the browser came back online.
+   */
+  describe('when told to stop', () => {
+    it('stops during the delay', async () => {
+      vi.useFakeTimers();
+      const stop = new AbortController();
+      let done = false;
+      void waitBeforeRetry(30_000, { signal: stop.signal }).then(() => (done = true));
+
+      stop.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(done).toBe(true);
+    });
+
+    it('stops waiting for the network, and lets go of its listener', async () => {
+      const browser = stubBrowser(false);
+      const stop = new AbortController();
+      let done = false;
+      void waitBeforeRetry(0, { signal: stop.signal }).then(() => (done = true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(browser.onlineListeners()).toBe(1);
+
+      stop.abort();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(done).toBe(true);
+      expect(browser.onlineListeners()).toBe(0);
+    });
+
+    it('does not wait at all once already told', async () => {
+      stubBrowser(false);
+      const stop = new AbortController();
+      stop.abort();
+
+      await expect(waitBeforeRetry(30_000, { signal: stop.signal })).resolves.toBeUndefined();
+    });
+  });
+
+  it('tries again after a while even if the browser still says it is offline', async () => {
+    // A browser can be wrong about it, behind some VPNs for one. Waiting for
+    // an 'online' event that never comes left the upload "uploading" for good.
+    vi.useFakeTimers();
+    const browser = stubBrowser(false);
+    let done = false;
+    void waitBeforeRetry(0, { offlineRecheckMs: 30_000 }).then(() => (done = true));
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(done).toBe(true);
+    expect(browser.onlineListeners()).toBe(0);
   });
 });

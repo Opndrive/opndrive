@@ -75,22 +75,91 @@ export function isTransientUploadError(error: unknown): boolean {
 }
 
 /**
- * Waits `delayMs`, and then for as long as the browser says it is offline.
+ * How long an upload waits for the browser's `online` event before trying
+ * again anyway. Trying while really offline fails at once and costs nothing.
+ */
+export const OFFLINE_RECHECK_MS = 30_000;
+
+/** Whether the browser says it has no network. Never true outside a browser. */
+export function isBrowserOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/**
+ * Whether a failure is the network being gone: the browser says it is
+ * offline, and the request got no answer at all.
  *
- * Retrying while offline only spends the retry. Waiting for the `online` event
- * instead means an upload interrupted by a lost connection carries on when the
- * connection comes back, however long that takes.
+ * Both, because the browser can be wrong. A failure that came with an HTTP
+ * status was answered by a server, which proves there is a network, so it
+ * counts like any other failure. Otherwise a refusal while the browser
+ * wrongly said "offline" would be tried again every so often for good.
+ */
+export function failedOffline(error: unknown): boolean {
+  if (!isBrowserOffline()) return false;
+
+  const status = (error as { $metadata?: { httpStatusCode?: unknown } } | null)?.$metadata
+    ?.httpStatusCode;
+  return typeof status !== 'number';
+}
+
+export interface WaitBeforeRetryOptions {
+  /** Ends the wait at once: the upload was paused, cancelled or torn down. */
+  signal?: AbortSignal;
+  /** See OFFLINE_RECHECK_MS. */
+  offlineRecheckMs?: number;
+}
+
+/**
+ * Waits `delayMs`, and then, while the browser says it is offline, for the
+ * network to come back.
+ *
+ * Retrying while offline only spends the retry, and waiting for the `online`
+ * event means an upload interrupted by a lost connection carries on when the
+ * connection comes back. That wait is capped at `offlineRecheckMs`, after
+ * which the caller tries again: a browser can be wrong about being offline,
+ * and an `online` event that never comes left the upload "uploading" for
+ * good. The caller decides what a try made while still offline costs; see
+ * UploadManager.processQueue.
+ *
+ * `signal` ends the wait early, and lets go of the `online` listener, which
+ * a paused or cancelled upload used to keep, with the upload it held, until
+ * the browser came back online.
  *
  * Outside a browser there is no `navigator.onLine` to consult, and only the
  * delay applies.
  */
-export async function waitBeforeRetry(delayMs: number): Promise<void> {
-  if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+export async function waitBeforeRetry(
+  delayMs: number,
+  { signal, offlineRecheckMs = OFFLINE_RECHECK_MS }: WaitBeforeRetryOptions = {}
+): Promise<void> {
+  if (delayMs > 0) await wait(delayMs, signal);
 
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
-  if (navigator.onLine !== false) return;
+  if (signal?.aborted || typeof window === 'undefined' || !isBrowserOffline()) return;
 
   await new Promise<void>((resolve) => {
-    window.addEventListener('online', () => resolve(), { once: true });
+    const done = () => {
+      clearTimeout(timer);
+      window.removeEventListener('online', done);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, offlineRecheckMs);
+    window.addEventListener('online', done);
+    signal?.addEventListener('abort', done);
+  });
+}
+
+/** `ms`, or until `signal` fires, whichever is first. */
+function wait(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done);
   });
 }
