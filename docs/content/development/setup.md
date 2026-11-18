@@ -1,3 +1,9 @@
+---
+description:
+  'Set up a development environment for Opndrive: prerequisites, the scripts
+  that actually exist in the repository, debugging and working against S3.'
+---
+
 # Development Setup
 
 This guide gets Opndrive running locally for development. It reflects the actual

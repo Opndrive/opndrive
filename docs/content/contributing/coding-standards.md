@@ -1,3 +1,9 @@
+---
+description:
+  'The code style, component conventions, commit message format and pre-commit
+  hook used in the Opndrive repository.'
+---
+
 # Coding Standards
 
 ## Code Style

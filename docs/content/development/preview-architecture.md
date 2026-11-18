@@ -1,3 +1,9 @@
+---
+description:
+  'Implementation reference for file previews: how the route-based preview works
+  alongside the modal preview, and the components and API methods they share.'
+---
+
 # Preview Architecture
 
 For the user-facing behavior, see

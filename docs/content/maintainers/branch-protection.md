@@ -1,3 +1,9 @@
+---
+description:
+  'The intended branch protection on main: the required CI OK status check,
+  CODEOWNERS review and the recommended baseline settings.'
+---
+
 # Branch Protection
 
 Branch protection rules live in GitHub's repository settings (**Settings →

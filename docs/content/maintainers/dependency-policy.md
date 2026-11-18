@@ -1,3 +1,9 @@
+---
+description:
+  "How Dependabot keeps Opndrive's dependencies current: weekly grouped updates,
+  no automatic major versions, and how to change the policy."
+---
+
 # Dependency Policy
 
 Dependabot is configured in `.github/dependabot.yml` with three npm scopes

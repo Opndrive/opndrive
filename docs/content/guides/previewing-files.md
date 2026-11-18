@@ -1,3 +1,9 @@
+---
+description:
+  'Preview images, PDFs, video, audio, code and spreadsheets in Opndrive, either
+  in a modal over the file list or on a preview page you can share.'
+---
+
 # Previewing Files
 
 Opndrive supports two ways to preview a file, depending on whether you want to

@@ -1,3 +1,9 @@
+---
+description:
+  'A beginner-friendly tour of the Opndrive code: the folder layout, the
+  feature-based organisation, how data flows and where to start making changes.'
+---
+
 # Understanding the Opndrive Code
 
 Now that you have Opndrive running, let's take a tour of how the code is

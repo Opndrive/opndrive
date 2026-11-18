@@ -1,3 +1,10 @@
+---
+description:
+  'Upload files and folders in multipart or signed-URL mode, pause and resume
+  large uploads, and add the lifecycle rule that cleans up incomplete multipart
+  uploads.'
+---
+
 # Uploading Files
 
 Opndrive supports two upload modes. You choose between them in Settings, and the

@@ -1,3 +1,9 @@
+---
+description:
+  'What runs on every push and pull request in Opndrive, read from ci.yml and
+  codeql.yml, and how to run the same checks locally.'
+---
+
 # CI/CD Pipeline
 
 What actually runs when you push or open a PR, read straight from

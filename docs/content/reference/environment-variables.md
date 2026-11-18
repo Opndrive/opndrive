@@ -1,3 +1,9 @@
+---
+description:
+  'Every environment variable Opndrive reads - none of them storage credentials
+  - including the optional settings for the WordPress blog.'
+---
+
 # Environment Variables
 
 Opndrive reads a small, specific set of environment variables. **None of them

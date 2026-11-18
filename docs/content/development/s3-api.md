@@ -1,3 +1,9 @@
+---
+description:
+  'Reference for @opndrive/s3-api, the package behind every S3 operation in
+  Opndrive: its public API, upload managers, concurrency helper and tests.'
+---
+
 # S3 API Layer
 
 `@opndrive/s3-api` is the workspace package that does every S3 operation

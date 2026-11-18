@@ -1,3 +1,10 @@
+---
+description:
+  'How the /connect page works: the built-in providers, any other S3-compatible
+  endpoint, what happens when you connect, switching buckets and the permissions
+  a key needs.'
+---
+
 # Connecting Your Storage
 
 The `/connect` page is how every user configures Opndrive - there's no config

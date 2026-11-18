@@ -1,3 +1,10 @@
+---
+description:
+  'Run Opndrive locally: clone the repository, install the dependencies with
+  pnpm and start the dev server. No storage setup is needed until your first
+  upload.'
+---
+
 # Installation
 
 Get Opndrive running locally. No AWS setup needed yet - that happens through the

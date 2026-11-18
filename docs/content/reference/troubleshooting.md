@@ -1,3 +1,10 @@
+---
+description:
+  'Fixes for problems while developing Opndrive: the dev server, dependencies,
+  linting, formatting and CI. For connection errors, see Fixing Connection
+  Errors.'
+---
+
 # Troubleshooting
 
 For setup-specific issues (won't install, won't start, can't connect a bucket),

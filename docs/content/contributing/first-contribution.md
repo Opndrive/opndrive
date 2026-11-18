@@ -1,3 +1,9 @@
+---
+description:
+  'A step-by-step path from forking Opndrive to an open pull request: set up,
+  branch, change, test, commit and get it reviewed.'
+---
+
 # Your First Contribution
 
 A straight path from "I want to help" to an open pull request. For the deeper

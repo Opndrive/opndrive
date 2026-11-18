@@ -1,3 +1,9 @@
+---
+description:
+  'The three kinds of state in Opndrive - React context, Zustand stores and the
+  bridge between them - and how to choose the right one.'
+---
+
 # State Management
 
 Opndrive doesn't use a single state library for everything. Three mechanisms

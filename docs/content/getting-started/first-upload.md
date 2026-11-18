@@ -1,3 +1,9 @@
+---
+description:
+  'Connect your S3 bucket on the /connect page and upload your first file, with
+  where your credentials are kept and what to check if connecting fails.'
+---
+
 # First Upload
 
 With Opndrive running locally ([Installation](./installation.md)), connect your

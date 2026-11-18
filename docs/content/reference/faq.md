@@ -1,3 +1,10 @@
+---
+description:
+  'Answers to common questions about Opndrive: where credentials are kept, which
+  storage works, upload modes, self-hosting, the licence and reporting security
+  issues.'
+---
+
 # FAQ
 
 **Where are my AWS credentials stored?** In your browser's `localStorage`,

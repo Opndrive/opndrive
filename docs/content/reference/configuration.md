@@ -1,3 +1,9 @@
+---
+description:
+  'Reference for the configuration files you will touch while developing
+  Opndrive: shadcn/ui, TypeScript path aliases, ESLint and Prettier.'
+---
+
 # Configuration Files
 
 Reference for the config files you'll actually touch while developing, as
