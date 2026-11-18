@@ -21,19 +21,9 @@ export function CommunityCard() {
     <div className={styles.tile}>
       <span className={styles.glowPrimary} aria-hidden="true" />
       <span className={styles.glowBrand} aria-hidden="true" />
-      <span
-        className={styles.cornerArt}
-        aria-hidden="true"
-        style={{ backgroundImage: "url('/discord-bento/builders.svg')" }}
-      />
 
       <div className={styles.body}>
         <div>
-          <span className={styles.badge}>
-            <span className={styles.pulse} />
-            Every other day @ 5 PM UTC
-          </span>
-
           {/* An h2: the card sits right under the page's h1, so an h3 skipped a level. */}
           <h2 className={styles.heading}>Build Opndrive with us</h2>
           <p className={styles.copy}>

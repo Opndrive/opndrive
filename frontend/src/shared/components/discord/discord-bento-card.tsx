@@ -1,18 +1,11 @@
 'use client';
 
-import { Calendar, GitPullRequest, MessageSquare, ArrowRight } from 'lucide-react';
+import { GitPullRequest, MessageSquare, ArrowRight } from 'lucide-react';
 import { FaDiscord } from 'react-icons/fa';
 import { cn } from '@/shared/utils/utils';
 import { DISCORD_URL } from '@/config/links';
 
-import {
-  BENTO_EMOJI,
-  BuilderAvatars,
-  CornerEmoji,
-  LiveBadge,
-  Noise,
-  TILE_BASE,
-} from './bento-primitives';
+import { BENTO_EMOJI, BuilderAvatars, CornerEmoji, Noise, TILE_BASE } from './bento-primitives';
 
 export function DiscordBentoCard({ className }: { className?: string }) {
   return (
@@ -38,34 +31,13 @@ export function DiscordBentoCard({ className }: { className?: string }) {
           className="pointer-events-none absolute -left-8 -top-10 h-32 w-32 rounded-full bg-primary/30 blur-2xl"
         />
         <Noise />
-        <CornerEmoji src={BENTO_EMOJI.hangouts} className="-right-5 -top-5 h-24 w-24 rotate-12" />
 
         <div className="relative">
-          <LiveBadge className="mb-2.5" />
-
           <h3 className="text-sm font-semibold leading-snug text-foreground">
             Community Meetups
             <br />
             &amp; Live Demos
           </h3>
-
-          {/* calendar visualizer - alternating days lit, matching the cadence */}
-          <div className="mt-3 flex items-center gap-1">
-            <Calendar className="mr-1 h-3 w-3 text-muted-foreground" />
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => (
-              <span
-                key={i}
-                className={cn(
-                  'flex h-4 w-4 items-center justify-center rounded text-[9px] font-medium',
-                  i % 2 === 0
-                    ? 'bg-primary text-primary-foreground shadow-md shadow-primary/40'
-                    : 'bg-foreground/10 text-muted-foreground'
-                )}
-              >
-                {day}
-              </span>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -131,8 +103,6 @@ export function DiscordBentoCard({ className }: { className?: string }) {
       {/* ---------- Card D - compact status tile ---------- */}
       <div className={cn(TILE_BASE, 'col-span-1 p-3')}>
         <Noise opacity={0.25} />
-        {/* the rocket art already carries a -15deg tilt, so this only nudges it */}
-        <CornerEmoji src={BENTO_EMOJI.builders} className="-right-4 -top-4 h-16 w-16 -rotate-6" />
 
         <div className="relative">
           {/* stacked member avatars - illustrations, not real members */}

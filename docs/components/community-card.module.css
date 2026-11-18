@@ -12,9 +12,6 @@
   --tile-heading: var(--x-color-gray-900, #111827);
   --tile-muted: var(--x-color-gray-600, #4b5563);
   --tile-glow: rgba(26, 115, 232, 0.22);
-  --tile-live: #1e8e3e;
-  --tile-live-bg: rgba(30, 142, 62, 0.1);
-  --tile-live-border: rgba(30, 142, 62, 0.3);
   --tile-ring: #ffffff;
   --discord-brand: #5865f2;
   --discord-brand-hover: #4752c4;
@@ -40,9 +37,6 @@
   --tile-heading: #e8eaed;
   --tile-muted: #9aa0a6;
   --tile-glow: rgba(138, 180, 248, 0.2);
-  --tile-live: #81c995;
-  --tile-live-bg: rgba(129, 201, 149, 0.1);
-  --tile-live-border: rgba(129, 201, 149, 0.3);
   --tile-ring: #292a2d;
 }
 
@@ -76,26 +70,6 @@
   background: rgba(88, 101, 242, 0.2);
 }
 
-/* oversized art bled past the corner, clipped by the tile */
-.cornerArt {
-  position: absolute;
-  top: -1.5rem;
-  right: -1.5rem;
-  width: 7rem;
-  height: 7rem;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  opacity: 0.8;
-  transform: rotate(-6deg);
-  transition: transform 0.3s ease-in-out;
-  pointer-events: none;
-}
-
-.tile:hover .cornerArt {
-  transform: rotate(-6deg) scale(1.1);
-}
-
 .body {
   position: relative;
   display: flex;
@@ -109,55 +83,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 2rem;
-  }
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin-bottom: 0.75rem;
-  padding: 0.125rem 0.5rem;
-  border: 1px solid var(--tile-live-border);
-  border-radius: 9999px;
-  background: var(--tile-live-bg);
-  color: var(--tile-live);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.pulse {
-  position: relative;
-  display: inline-flex;
-  width: 0.375rem;
-  height: 0.375rem;
-}
-
-.pulse::before,
-.pulse::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: var(--tile-live);
-}
-
-.pulse::before {
-  animation: tilePing 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@keyframes tilePing {
-  75%,
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse::before {
-    animation: none;
   }
 }
 
