@@ -73,12 +73,67 @@ describe('which images get a picture', () => {
     expect(getSignedUrl).not.toHaveBeenCalled();
   });
 
-  it('falls back to the icon when the image will not load', async () => {
+  it('falls back to the icon when the image will not load, even on a fresh URL', async () => {
     render(tile(image('broken.jpg', MB, { value: 1, unit: 'MB' })));
 
     fireEvent.error(await screen.findByRole('img'));
-
+    // The icon while a fresh URL is signed, in case the first had expired.
     expect(screen.queryByRole('img')).toBeNull();
+    const retried = await screen.findByRole('img');
+    expect(retried.getAttribute('src')).toContain('sig=2');
+
+    fireEvent.error(retried);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Once is enough: an image that is not one fails on every URL.
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(getSignedUrl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a URL that has expired by the time the image loads', () => {
+  // Tiles load their image when scrolled into view, which can be long after
+  // the URL was handed out. An expired one failed, and the tile showed its
+  // icon until it was mounted again, and was then handed the same dead URL.
+
+  it('signs a fresh one and loads the image from it', async () => {
+    render(tile(image('a.jpg', MB, { value: 1, unit: 'MB' })));
+    const expired = await screen.findByRole('img');
+    expect(expired.getAttribute('src')).toContain('sig=1');
+
+    fireEvent.error(expired);
+
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'a.jpg' }).getAttribute('src')).toContain('sig=2')
+    );
+  });
+
+  it('hands the fresh one to the next tile, not the dead one', async () => {
+    const file = image('a.jpg', MB, { value: 1, unit: 'MB' });
+    const first = render(tile(file));
+    fireEvent.error(await screen.findByRole('img'));
+    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toContain('sig=2'));
+    first.unmount();
+
+    render(tile(file));
+
+    expect((await screen.findByRole('img')).getAttribute('src')).toContain('sig=2');
+    expect(getSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('never puts the old file back in a tile reused for another meanwhile', async () => {
+    const { rerender } = render(tile(image('a.jpg', MB, { value: 1, unit: 'MB' })));
+    fireEvent.error(await screen.findByRole('img', { name: 'a.jpg' }));
+
+    rerender(tile(image('b.jpg', MB, { value: 1, unit: 'MB' })));
+
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'b.jpg' }).getAttribute('src')).toContain(
+        'photos/b.jpg'
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole('img').getAttribute('src')).toContain('photos/b.jpg');
   });
 });
 

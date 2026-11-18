@@ -31,6 +31,8 @@ const EVICT_TO = Math.floor(MAX_CACHED_THUMBNAIL_URLS * 0.9);
 
 interface CachedUrl {
   url: Promise<string>;
+  /** What `url` resolved to, once it has. What forgetThumbnailUrl matches. */
+  signed?: string;
   expiresAt: number;
 }
 
@@ -66,7 +68,7 @@ export function thumbnailUrlFor(
     cache.set(apiS3, urls);
   }
 
-  const id = `${object.key}\u0000${object.version ?? ''}`;
+  const id = cacheId(object);
   const cached = urls.get(id);
   if (cached && cached.expiresAt - RENEW_BEFORE_MS > now) {
     // Moved to the end: a Map iterates in insertion order, so making room
@@ -92,11 +94,44 @@ export function thumbnailUrlFor(
 
   // A signing that failed is not remembered, so the next thumbnail tries again.
   const owned = urls;
-  url.catch(() => {
-    if (owned.get(id) === entry) owned.delete(id);
-  });
+  url.then(
+    (signed) => {
+      entry.signed = signed;
+    },
+    () => {
+      if (owned.get(id) === entry) owned.delete(id);
+    }
+  );
 
   return url;
+}
+
+/**
+ * Lets go of a URL whose image would not load, so the next tile to ask for
+ * the image is given a freshly signed one.
+ *
+ * A tile loads its image only when it is scrolled into view, which can be
+ * long after it was handed the URL, and a URL handed out with minutes to
+ * spare can have expired by then. Nothing replaced it: the tile showed its
+ * icon, and every tile after it was handed the same dead URL until it aged
+ * out of here too.
+ *
+ * Only that URL goes. If another tile has already replaced it, the
+ * replacement stays.
+ */
+export function forgetThumbnailUrl(
+  apiS3: BYOS3ApiProvider,
+  object: { key: string; version?: string },
+  url: string
+): void {
+  const urls = cache.get(apiS3);
+  const id = cacheId(object);
+  if (urls?.get(id)?.signed === url) urls.delete(id);
+}
+
+/** An image's place in the cache: its key, and which version of it. */
+function cacheId(object: { key: string; version?: string }): string {
+  return `${object.key}\u0000${object.version ?? ''}`;
 }
 
 /** The expired go first, then the least recently used, down to EVICT_TO. */

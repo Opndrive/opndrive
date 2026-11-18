@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
-import { MAX_CACHED_THUMBNAIL_URLS, thumbnailUrlFor } from './thumbnail-urls';
+import { MAX_CACHED_THUMBNAIL_URLS, forgetThumbnailUrl, thumbnailUrlFor } from './thumbnail-urls';
 
 function provider() {
   let n = 0;
@@ -106,6 +106,47 @@ describe('thumbnailUrlFor', () => {
     await expect(thumbnailUrlFor(api, { key: 'photos/a.jpg' }, t0)).resolves.toContain('sig=');
 
     expect(getSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
+  describe('forgetThumbnailUrl', () => {
+    // A tile loads its image only when scrolled into view, which can be long
+    // after it was handed the URL, and by then the URL may have expired.
+    // Nothing replaced it: every tile kept being handed the dead one.
+
+    it('lets a URL that would not load go, so the next ask signs anew', async () => {
+      const { api, getSignedUrl } = provider();
+      const object = { key: 'photos/a.jpg', version: '"e1"' };
+      const dead = await thumbnailUrlFor(api, object, t0);
+
+      forgetThumbnailUrl(api, object, dead);
+      const fresh = await thumbnailUrlFor(api, object, t0 + 10_000);
+
+      expect(fresh).not.toBe(dead);
+      expect(getSignedUrl).toHaveBeenCalledTimes(2);
+      // And the fresh one is what everyone gets from now on.
+      expect(await thumbnailUrlFor(api, object, t0 + 20_000)).toBe(fresh);
+    });
+
+    it('leaves a URL another tile has already replaced', async () => {
+      // Two tiles of one image both fail on the old URL. The second must not
+      // throw away the URL the first has just signed.
+      const { api, getSignedUrl } = provider();
+      const object = { key: 'photos/a.jpg' };
+      const dead = await thumbnailUrlFor(api, object, t0);
+      forgetThumbnailUrl(api, object, dead);
+      const fresh = await thumbnailUrlFor(api, object, t0);
+
+      forgetThumbnailUrl(api, object, dead);
+
+      expect(await thumbnailUrlFor(api, object, t0)).toBe(fresh);
+      expect(getSignedUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('is harmless for an image or a provider it has never seen', () => {
+      const { api } = provider();
+
+      expect(() => forgetThumbnailUrl(api, { key: 'nope.jpg' }, 'https://s3/x')).not.toThrow();
+    });
   });
 
   /**
