@@ -353,6 +353,38 @@ describe('stall watchdog', () => {
   });
 });
 
+/**
+ * A cancel that lands while the URL is being signed. The request did not
+ * exist yet, so there was nothing for cancel() to abort, and the upload went
+ * ahead the moment the URL came back: the file was stored although the card
+ * said cancelled. Every retry signs again, so every retry had this window.
+ */
+describe('cancelling before the request exists', () => {
+  it('sends nothing when cancelled while the URL is being signed', async () => {
+    let signed!: (url: string) => void;
+    uploadWithPreSignedUrl.mockImplementationOnce(
+      () => new Promise<string>((resolve) => (signed = resolve))
+    );
+    const uploader = makeUploader();
+    const promise = uploader.upload(new File(['x'], 'a.txt'));
+    const settled = expect(promise).rejects.toThrow('Upload cancelled');
+
+    uploader.cancel();
+    signed('https://signed.example.com/put');
+
+    await settled;
+    expect(FakeXhr.instances).toHaveLength(0);
+  });
+
+  it('sends nothing once cancelled, even if asked to upload afterwards', async () => {
+    const uploader = makeUploader();
+    uploader.cancel();
+
+    await expect(uploader.upload(new File(['x'], 'a.txt'))).rejects.toThrow('Upload cancelled');
+    expect(FakeXhr.instances).toHaveLength(0);
+  });
+});
+
 describe('progress', () => {
   it('reports rounded percentages', async () => {
     const progress: number[] = [];

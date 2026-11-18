@@ -51,6 +51,11 @@ function stalledError(timeoutMs: number) {
   );
 }
 
+/** The same error an abort in flight gives, for one stopped before it began. */
+function cancelledError() {
+  return new Error('Upload cancelled');
+}
+
 /** Same name as a stall, so it is retried the same way. */
 function noAnswerError(timeoutMs: number) {
   return Object.assign(
@@ -71,6 +76,7 @@ export class SignedUrlUploader {
   private responseTimeoutMs: number;
   private abortController: AbortController | null = null;
   private isPaused = false;
+  private isCancelled = false;
 
   constructor(config: SignedUrlUploadConfig) {
     this.apiProvider = config.apiProvider;
@@ -88,14 +94,20 @@ export class SignedUrlUploader {
    * @param onProgress - Progress callback (progress percentage)
    */
   async upload(file: File, onProgress?: (progress: number) => void): Promise<void> {
-    // Generate signed URL
+    // The controller comes first, before the URL is signed. Made after, a
+    // cancel that landed while signing found nothing to abort - or the last
+    // attempt's controller - and the file went up the moment the URL came
+    // back, although the upload had been cancelled.
+    if (this.isCancelled) throw cancelledError();
+    const controller = new AbortController();
+    this.abortController = controller;
+
     const signedUrl = await this.apiProvider.uploadWithPreSignedUrl({
       key: this.key,
       expiresInSeconds: this.expiresInSeconds,
     });
 
-    // Create abort controller for cancellation
-    this.abortController = new AbortController();
+    if (controller.signal.aborted) throw cancelledError();
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -158,15 +170,13 @@ export class SignedUrlUploader {
       // Handle abort
       xhr.addEventListener('abort', () => {
         settle();
-        reject(stalled ?? new Error('Upload cancelled'));
+        reject(stalled ?? cancelledError());
       });
 
       // Listen to abort signal
-      if (this.abortController) {
-        this.abortController.signal.addEventListener('abort', () => {
-          xhr.abort();
-        });
-      }
+      controller.signal.addEventListener('abort', () => {
+        xhr.abort();
+      });
 
       // Open and send request
       xhr.open('PUT', signedUrl);
@@ -183,6 +193,8 @@ export class SignedUrlUploader {
    * Cancel the upload
    */
   cancel(): void {
+    // For good: an upload asked for after this sends nothing.
+    this.isCancelled = true;
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
