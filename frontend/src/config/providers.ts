@@ -23,7 +23,7 @@ export interface RegionOption {
 export interface S3Provider {
   /** URL segment. Written the way people search, not the way we store it. */
   slug: string;
-  /** Key into the CORS snippets in config/cors.ts. */
+  /** Key into the CORS policies in config/cors.ts. */
   id: string;
   name: string;
   /** One line on the picker card. */
@@ -118,7 +118,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'Open the S3 console, choose your bucket, then Permissions, then Cross-origin resource sharing (CORS).',
+        'Open the S3 console, choose General purpose buckets and then your bucket, and open the Permissions tab. In the Cross-origin resource sharing (CORS) section choose Edit, paste the policy below, and choose Save changes.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
       docsUrl: 'https://docs.aws.amazon.com/AmazonS3/latest/userguide/cors.html',
       docsLabel: 'AWS S3 CORS documentation',
@@ -153,10 +153,10 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'Open the Cloudflare dashboard, go to R2 Object Storage, choose your bucket, then Settings, then CORS Policy.',
+        'In the Cloudflare dashboard, go to R2 object storage and choose your bucket. Open Settings, and under CORS Policy choose Add CORS policy. Paste the policy below into the JSON tab and choose Save. A change can take up to 30 seconds to apply.',
       permissions: ['Read', 'Write', 'Delete', 'List'],
-      docsUrl: 'https://developers.cloudflare.com/r2/api/s3/api/',
-      docsLabel: 'Cloudflare R2 S3 API documentation',
+      docsUrl: 'https://developers.cloudflare.com/r2/buckets/cors/',
+      docsLabel: 'Cloudflare R2 CORS documentation',
       gotcha:
         'The region is almost always "auto". The endpoint contains your account ID, not a region, so copy it from the R2 bucket settings page.',
     },
@@ -193,10 +193,9 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'Log into the Wasabi console, choose your bucket, then Policies, then CORS Configuration.',
+        'In the Wasabi Console, open Buckets and choose your bucket, then Settings. On the Permissions tab, choose Cross-Origin Resource Sharing (CORS) at the bottom, then Edit, and paste the policy below. Until a bucket has a CORS configuration of its own, Wasabi answers every origin, so this matters once one has been saved.',
       permissions: ['GetObject', 'PutObject', 'DeleteObject', 'ListBucket'],
-      docsUrl:
-        'https://wasabi-support.zendesk.com/hc/en-us/articles/360015106031-How-do-I-enable-CORS-on-my-bucket-',
+      docsUrl: 'https://docs.wasabi.com/docs/cross-origin-resource-sharing-cors',
       docsLabel: 'Wasabi CORS documentation',
       gotcha:
         'Wasabi regions are not interchangeable with AWS ones. Using the wrong region gives an authorization error rather than a helpful redirect.',
@@ -225,13 +224,12 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'CORS on B2 is set from the command line. Install the b2 CLI, authenticate, then apply a CORS rules file to the bucket.',
+        'Set the rules through the B2 S3-compatible API, which takes them in the same format as Amazon S3. Configure the AWS CLI with your B2 application key ID and key, save the policy below as cors.json, and run the command under it with your bucket name and region filled in.',
       permissions: ['listFiles', 'readFiles', 'writeFiles', 'deleteFiles'],
-      docsUrl:
-        'https://www.backblaze.com/docs/cloud-storage-enable-cors-with-the-cli#add-cors-rules-with-a-json-file-(macos-and-linux)',
-      docsLabel: 'Backblaze B2 CORS documentation',
+      docsUrl: 'https://www.backblaze.com/docs/cloud-storage-cross-origin-resource-sharing-rules',
+      docsLabel: 'Backblaze B2 CORS rules documentation',
       gotcha:
-        'The B2 console has no CORS editor, so this is the one provider here where you cannot finish setup in a web dashboard.',
+        "Backblaze's own CORS rule format covers S3 GET, HEAD, PUT and DELETE but has no operation for POST, which multipart uploads and deleting several files at once need. That is why the rules go in through the S3 API here. Backblaze also notes that the S3 API cannot change rules created through its native API.",
     },
   },
   {
@@ -253,10 +251,10 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'Configure CORS with the MinIO client (mc) or through the MinIO Console under Buckets, then your bucket, then Summary and Access Policy.',
+        'MinIO Community Edition sets CORS for the whole server rather than per bucket, and allows every origin until told otherwise, so a server whose CORS you have not changed needs nothing here. If you have restricted it with MINIO_API_CORS_ALLOW_ORIGIN or cors_allow_origin, run the command below with your mc alias in place of myminio; it applies without a restart. The value replaces the old list, so include every origin that should keep working, comma-separated.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
-      docsUrl: 'https://min.io/docs/minio/linux/developers/javascript/API.html',
-      docsLabel: 'MinIO JavaScript API documentation',
+      docsUrl: 'https://docs.min.io/aistor/administration/cors-configuration/',
+      docsLabel: 'MinIO CORS configuration',
       gotcha:
         'Your browser has to be able to reach the endpoint. A MinIO server on a private network will not work from the hosted app, so self-host Opndrive alongside it.',
     },
@@ -296,7 +294,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsInstructions:
-        'Look for CORS, cross-origin or allowed origins in the bucket settings on your provider. Most accept the same JSON policy S3 does; some expose it only through their CLI or API, and a few need a support request.',
+        'Look for CORS, cross-origin or allowed origins in the bucket settings on your provider. Most accept the same JSON policy the S3 console does. Some take it only through their CLI or API - with the AWS CLI that is put-bucket-cors, with the same rules wrapped as {"CORSRules": [...]} - and a few need a support request.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
       docsUrl: 'https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html',
       docsLabel: 'The S3 CORS API that compatible services implement',
