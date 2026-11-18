@@ -91,6 +91,18 @@ describe('after a folder is deleted', () => {
     expect(queue().claimedPrefixes()).toEqual(['photos-2026/']);
   });
 
+  it('keeps the name of a drop still being planned into it', () => {
+    // Reserved, but not yet handed to the executor, which knows nothing of it.
+    // Released, a second drop of the same name could be given the same prefix
+    // while this one is still on its way, and the two would mix.
+    queue().reservePrefix('photos', 'docs', 'task-planning');
+    const cleanUp = renderHook(() => useDeletedFolderCleanup()).result.current;
+
+    cleanUp('docs/');
+
+    expect(queue().claimedPrefixes()).toEqual(['docs/photos/']);
+  });
+
   it('keeps the name of a folder still being uploaded into', () => {
     // Its files are still arriving. Handing the name to a new drop would mix
     // the two folders' files under one prefix.
