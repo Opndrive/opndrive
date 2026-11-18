@@ -4,21 +4,25 @@ import { Layout, Navbar, Footer } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
 import { APP_URL, DISCORD_URL } from '@/lib/links';
+import { BASE_OPEN_GRAPH, DOCS_URL } from '@/lib/site';
 import { AnalyticsGate } from '@/components/analytics-gate';
 import 'nextra-theme-docs/style.css';
 
 export const metadata: Metadata = {
+  // Without this, relative image URLs resolve against localhost in a local
+  // build and only come out right on Vercel by way of its fallback.
+  metadataBase: new URL(DOCS_URL),
   title: {
     default: 'Opndrive Docs',
     template: '%s - Opndrive Docs',
   },
   description:
     'Documentation for Opndrive, an open-source web UI for Amazon S3 and S3-compatible storage.',
-  openGraph: {
-    images: ['/og-image.png'],
-  },
+  openGraph: BASE_OPEN_GRAPH,
   twitter: {
     card: 'summary_large_image',
+    // The same handle the main site uses, from frontend/src/lib/seo/config.ts.
+    site: '@opndrive',
     images: ['/og-image.png'],
   },
 };
