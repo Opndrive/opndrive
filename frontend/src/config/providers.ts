@@ -60,10 +60,13 @@ export interface S3Provider {
   setup: {
     /**
      * Whether a CORS policy has to be applied before connecting at all.
-     * False where the provider's default already lets every origin through
-     * (MinIO's server-wide default, Wasabi until a bucket has its own), so the
-     * steps only matter once CORS has been restricted - and applying ours then
-     * would shut out every other site that was relying on the default.
+     * False where the provider's default already lets this site through:
+     * MinIO's server-wide default allows every origin, and Wasabi, until a
+     * bucket has a configuration of its own, answers with
+     * Access-Control-Allow-Origin, -Allow-Headers and -Expose-Headers of "*"
+     * and allows POST (Wasabi's "Bucket CORS Support" page). The steps then
+     * only matter once CORS has been restricted - and applying ours before
+     * that would shut out every other site relying on the default.
      */
     corsRequired: boolean;
     /**
@@ -336,7 +339,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       docsUrl: 'https://docs.min.io/aistor/administration/cors-configuration/',
       // The CORS page MinIO still publishes is in its AIStor docs, which also
       // cover AIStor's per-bucket rules; the label keeps them apart.
-      docsLabel: 'MinIO CORS settings (AIStor docs; per-bucket rules there are AIStor only)',
+      docsLabel: 'MinIO CORS settings (AIStor docs)',
       gotcha:
         'Your browser has to be able to reach the endpoint. A MinIO server on a private network will not work from the hosted app, so self-host Opndrive alongside it.',
       troubleshooting: [

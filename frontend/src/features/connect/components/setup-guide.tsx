@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BookOpen, Check, ChevronDown, Copy, ExternalLink } from 'lucide-react';
 import type { S3Provider } from '@/config/providers';
 import { getCorsPolicy } from '@/config/cors';
@@ -36,32 +36,59 @@ function useCurrentOrigin(): string {
   );
 }
 
+/** How long "Copied" stays up after a copy. */
+const COPIED_FOR_MS = 2000;
+
 /**
- * Copies a snippet. Its name starts with its visible text and adds what it
- * copies ("Copy policy", "Copied policy"), so the name always contains what is
- * on screen (WCAG 2.5.3); and the result is said aloud through a status region,
- * because a button's own name changing is not reliably announced (4.1.3).
+ * Copies a snippet.
+ *
+ * The button always reads "Copy" and is named "Copy policy" (its visible text
+ * plus what it copies, WCAG 2.5.3), so its name never changes under focus.
+ * The result goes to a status region beside it (4.1.3): "Copied" on screen,
+ * "Copied the policy" to a screen reader. The region is emptied and filled
+ * again on every copy, so a second copy is announced too, and its timers are
+ * cleared when the guide unmounts.
  */
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((timer) => window.clearTimeout(timer));
+  }, []);
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard can be blocked by permissions. The snippet is on screen and
       // selectable either way, so there is nothing useful to say here.
+      return;
     }
+    // The same array throughout, so the unmount cleanup clears these too.
+    timers.current.splice(0).forEach((timer) => window.clearTimeout(timer));
+    setCopied(false);
+    timers.current.push(
+      // A tick later, so the emptied region renders before it is filled again.
+      window.setTimeout(() => setCopied(true), 50),
+      window.setTimeout(() => setCopied(false), COPIED_FOR_MS)
+    );
   };
 
   return (
-    <>
+    <span className="inline-flex items-center gap-1.5">
+      <span role="status" className="text-xs text-muted-foreground">
+        {copied && (
+          <>
+            Copied<span className="sr-only"> the {label}</span>
+          </>
+        )}
+      </span>
       <button
         type="button"
         onClick={copy}
-        aria-label={`${copied ? 'Copied' : 'Copy'} ${label}`}
+        aria-label={`Copy ${label}`}
         className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         {copied ? (
@@ -69,12 +96,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
         ) : (
           <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         )}
-        {copied ? 'Copied' : 'Copy'}
+        Copy
       </button>
-      <span role="status" className="sr-only">
-        {copied ? `The ${label} is on your clipboard` : ''}
-      </span>
-    </>
+    </span>
   );
 }
 
