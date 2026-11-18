@@ -45,11 +45,13 @@ export function remarkStripMdLinks() {
       // A folder's index file is served at the folder's path with no trailing
       // slash (`guides/index.md` is `/guides`), matching the canonical URLs;
       // `/guides/` would only answer with a redirect. The same goes for a link
-      // to the folder itself (`./`, `../`), and for INDEX.MD as for index.md.
+      // to the folder itself (`./`, `../`). Only a file named exactly `index`
+      // is a folder's index to Nextra (to-page-map.js), so INDEX.md is a page
+      // of its own and keeps its name.
       const joined = path.posix
         .join(currentDir, target)
         .replace(/\.mdx?$/i, '')
-        .replace(/(^|\/)index$/i, '')
+        .replace(/(^|\/)index$/, '')
         .replace(/\/+$/, '');
       const resolved = joined === '.' ? '' : joined;
 
