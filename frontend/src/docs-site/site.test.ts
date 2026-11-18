@@ -42,6 +42,11 @@ describe('pageUrl', () => {
     expect(pageUrl(['guides', 'a#b'])).toBe(`${DOCS}/guides/a%23b`);
   });
 
+  it('percent-encodes the characters XML gives meaning to, for the sitemap', () => {
+    // Next.js writes <loc> without escaping it, so these cannot stay raw.
+    expect(pageUrl(['guides', "s3-&-r2's"])).toBe(`${DOCS}/guides/s3-%26-r2%27s`);
+  });
+
   it('keeps a segment that is not valid percent-encoding, encoded', () => {
     expect(pageUrl(['guides', '100%'])).toBe(`${DOCS}/guides/100%25`);
   });

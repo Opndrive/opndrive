@@ -37,7 +37,8 @@ describe('remarkStripMdLinks', () => {
     expect(rewrite('../guides/index.md')).toBe('/guides');
     expect(rewrite('./index.md')).toBe('/guides');
     expect(rewrite('../index.mdx')).toBe('/');
-    expect(rewrite('../guides/INDEX.MD')).toBe('/guides');
+    // Only a lowercase index is one to Nextra; INDEX.MD is a page of its own.
+    expect(rewrite('../guides/INDEX.MD')).toBe('/guides/INDEX');
   });
 
   it('links a folder itself with no trailing slash, and the parent of the top folder as the home', () => {

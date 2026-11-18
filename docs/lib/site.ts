@@ -53,10 +53,21 @@ export function pageRoute(segments?: readonly string[]): string {
 /**
  * A decoded segment as it goes into a URL: what a path cannot carry is
  * percent-encoded, and what it can (letters, `-`, `+`, `@`, `:` and the like)
- * is left as Nextra's own links write it, so the canonical matches them.
+ * is left as Nextra's own links write it, so the canonical matches them. The
+ * exceptions are the characters XML gives meaning to (`&`, `'`): Next.js writes
+ * sitemap URLs into <loc> unescaped, so a raw `&` would make the whole sitemap
+ * malformed XML.
  */
+const RESERVED_IN_SEGMENT: Record<string, string> = {
+  '#': '%23',
+  '?': '%3F',
+  '&': '%26',
+  "'": '%27',
+};
+
 function encodeSegment(segment: string): string {
-  return encodeURI(segment).replace(/[#?]/g, (ch) => encodeURIComponent(ch));
+  // encodeURI leaves all four alone (and encodeURIComponent leaves `'`).
+  return encodeURI(segment).replace(/[#?&']/g, (ch) => RESERVED_IN_SEGMENT[ch]!);
 }
 
 /**
