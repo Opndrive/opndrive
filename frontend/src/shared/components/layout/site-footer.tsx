@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { FaGithub } from 'react-icons/fa';
 import { DISCORD_URL, DOCS_URL } from '@/config/links';
@@ -112,7 +113,9 @@ export function SiteFooter() {
 
         <div className="mt-10 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="" className="h-5 w-5" />
+            {/* Through the image optimiser, which serves it at the 20px it is
+                shown at rather than the 280px source. */}
+            <Image src="/logo.png" alt="" width={20} height={20} className="h-5 w-5" />
             <span className="text-sm text-muted-foreground">
               &copy; {new Date().getFullYear()} Opndrive
             </span>

@@ -35,6 +35,7 @@ function transformPost(post: WordPressPost): BlogPost {
     excerpt: cleanExcerpt,
     content: post.content,
     publishedDate: post.date,
+    publishedDateUtc: post.dateGmt ? `${post.dateGmt}Z` : undefined,
     modifiedDate: post.modified,
     author: {
       name: post.author?.node?.name || 'Anonymous',
@@ -116,10 +117,13 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
 }
 
 /**
- * Get all post slugs for static generation
+ * Every published post's slug and the date WordPress last saw it change, for
+ * the sitemap. Pages through the whole list, 100 at a time.
  */
-export async function getAllPostSlugs(): Promise<string[]> {
-  const slugs: string[] = [];
+export async function getAllPostSitemapData(): Promise<
+  Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>
+> {
+  const posts: Array<Pick<BlogPost, 'slug' | 'modifiedDate'>> = [];
   let hasNextPage = true;
   let after: string | null = null;
 
@@ -129,13 +133,21 @@ export async function getAllPostSlugs(): Promise<string[]> {
       { first: 100, after }
     );
 
-    slugs.push(...data.posts.nodes.map((post: WordPressPost) => post.slug));
+    posts.push(
+      ...data.posts.nodes.map((post: WordPressPost) => ({
+        slug: post.slug,
+        // WPGraphQL's `modified` is the site's local time with no offset, so
+        // it would be read as whatever zone the server runs in. `modifiedGmt`
+        // is UTC, also without a suffix, so the suffix is added here.
+        modifiedDate: post.modifiedGmt ? `${post.modifiedGmt}Z` : '',
+      }))
+    );
 
     hasNextPage = data.posts.pageInfo.hasNextPage;
     after = data.posts.pageInfo.endCursor;
   }
 
-  return slugs;
+  return posts;
 }
 
 /**

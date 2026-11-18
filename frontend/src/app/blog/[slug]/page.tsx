@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getPostBySlug, getAllPostSlugs, getRelatedPosts } from '@/lib/wordpress/service';
+import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
 import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
@@ -19,23 +19,21 @@ import {
 } from '@/lib/seo';
 import { isBlogEnabled } from '@/config/features';
 
-// Revalidate every 60 seconds
-export const revalidate = 60;
-
-// Generate static params for all blog posts
-export async function generateStaticParams() {
-  if (!isBlogEnabled()) {
-    return [];
-  }
-
-  try {
-    const slugs = await getAllPostSlugs();
-    return slugs.map((slug) => ({ slug }));
-  } catch (error) {
-    console.error('Error generating static params for blog posts:', error);
-    return [];
-  }
-}
+/*
+ * Deliberately no `generateStaticParams` and no `revalidate` here.
+ *
+ * Both used to be exported, asking Next.js to pre-render the posts and treat
+ * any other slug as an incremental static page built on first request. That
+ * cannot work in this app: the root layout reads headers() for the CSP nonce,
+ * so no page can be static. With posts to pre-render, the build found that out
+ * and quietly made the route dynamic. With none, it never tried, registered
+ * the route as incremental static, and every request then failed with a 500
+ * (DYNAMIC_SERVER_USAGE) before this page's own notFound() could answer -
+ * /blog/rss.xml included, which had no route of its own and landed here.
+ *
+ * Rendered per request instead, the WordPress responses are still cached:
+ * the client asks fetch for force-cache with a 60 second revalidate.
+ */
 
 // Generate metadata for each post
 export async function generateMetadata({

@@ -11,7 +11,11 @@ export interface WordPressPost {
   excerpt: string;
   content: string;
   date: string;
+  /** UTC, without a zone suffix. */
+  dateGmt?: string;
   modified: string;
+  /** UTC, without a zone suffix. Only the sitemap query asks for it. */
+  modifiedGmt?: string;
   author: WordPressAuthor;
   featuredImage?: WordPressFeaturedImage;
   categories: {
@@ -125,6 +129,13 @@ export interface BlogPost {
   excerpt: string;
   content: string;
   publishedDate: string;
+  /**
+   * The publish time in UTC, as an ISO string, when WordPress gave one.
+   * `publishedDate` is the site's local time with no offset, which reads as
+   * whatever zone the server is in; anything that needs the exact instant, like
+   * the RSS feed, uses this.
+   */
+  publishedDateUtc?: string;
   modifiedDate: string;
   author: {
     name: string;

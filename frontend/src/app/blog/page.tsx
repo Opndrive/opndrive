@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { getRecentPosts } from '@/lib/wordpress/service';
+import { blogIndexRobots, loadBlogIndexPosts } from '@/lib/wordpress/blog-index';
 import { BlogCard } from '@/components/blog/blog-card';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import FAQSection from '@/features/landing-page/components/faq-section';
@@ -9,10 +9,13 @@ import { StructuredData } from '@/components/seo';
 import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
 import { isBlogEnabled } from '@/config/features';
 
-// Revalidate every 60 seconds
-export const revalidate = 60;
+/*
+ * No `revalidate` export: every page in this app is rendered per request (the
+ * root layout reads the CSP nonce from headers()), so it never applied. The
+ * WordPress responses are what is cached, by the fetch in the client.
+ */
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: 'Blog - Cloud Storage Insights & Tutorials | Opndrive',
   description:
     'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides. Expert tutorials and insights for managing your data effectively.',
@@ -59,19 +62,19 @@ export const metadata: Metadata = {
       ],
     },
   },
-
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
-  },
 };
+
+/**
+ * Indexable only once there is something to read. An empty index says "No
+ * blog posts available yet", which Google may report as a soft 404; see
+ * lib/wordpress/blog-index for the rule, which flips by itself with the first
+ * published post.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const posts = await loadBlogIndexPosts();
+
+  return { ...BASE_METADATA, robots: blogIndexRobots(posts.length) };
+}
 
 const POSTS_PER_PAGE = 10;
 
@@ -88,14 +91,8 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   const params = await searchParams;
   const currentPage = parseInt(params.page || '1', 10);
 
-  // Fetch posts with error handling
-  let allPosts: Awaited<ReturnType<typeof getRecentPosts>> = [];
-  try {
-    allPosts = await getRecentPosts(50); // Fetch more posts for pagination
-  } catch (error) {
-    console.error('Error fetching blog posts:', error);
-    allPosts = [];
-  }
+  // The same request generateMetadata made; cache() hands back its result.
+  const allPosts = await loadBlogIndexPosts();
 
   // Separate featured post (latest)
   const featuredPost = allPosts[0];

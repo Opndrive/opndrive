@@ -8,6 +8,7 @@ import { ConnectWizard } from '@/features/connect/components/connect-wizard';
 import { ProviderMark } from '@/features/connect/components/provider-mark';
 import { SetupGuide } from '@/features/connect/components/setup-guide';
 import { WizardSection } from '@/features/connect/components/wizard-section';
+import { pageSocialMetadata } from '@/lib/seo/social';
 
 interface ProviderPageProps {
   params: Promise<{ provider: string }>;
@@ -39,17 +40,13 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     // Self-canonicalising. Derived from the slug rather than hard-coded, so a
     // new provider cannot accidentally inherit another one's canonical.
     alternates: { canonical: path },
-    openGraph: {
+    // Built from the shared fields, so the page keeps the site's share image
+    // rather than replacing the layout's openGraph with one that has none.
+    ...pageSocialMetadata({
       title: provider.seo.title,
       description: provider.seo.description,
-      url: path,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: provider.seo.title,
-      description: provider.seo.description,
-    },
+      path,
+    }),
   };
 }
 

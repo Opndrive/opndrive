@@ -1,6 +1,8 @@
 import { headers } from 'next/headers';
 import LandingPage from '@/features/landing-page/components/landing-page';
 import { faqData } from '@/features/landing-page/config/faq-section';
+import { generateWebSiteSchema } from '@/lib/seo';
+import { HERO_IMAGE_PRIORITY_SCRIPT } from '@/features/landing-page/hero-image-priority';
 
 /**
  * A server shell around the landing page, which is a client component and so
@@ -20,6 +22,13 @@ export default async function Page() {
 
   return (
     <>
+      {/* The site's name for Google's site names, which reads it from the home
+          page. */}
+      <script
+        nonce={nonce}
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(generateWebSiteSchema()) }}
+      />
       <script
         nonce={nonce}
         type="application/ld+json"
@@ -35,7 +44,17 @@ export default async function Page() {
           }),
         }}
       />
-      <LandingPage />
+      <LandingPage
+        heroImagePriorityScript={
+          // The browser hides a nonce from the DOM once it has used it, so the
+          // attribute never matches on hydration; that is expected.
+          <script
+            nonce={nonce}
+            suppressHydrationWarning
+            dangerouslySetInnerHTML={{ __html: HERO_IMAGE_PRIORITY_SCRIPT }}
+          />
+        }
+      />
     </>
   );
 }
