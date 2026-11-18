@@ -120,7 +120,10 @@ describe('CORS policies', () => {
     }
   );
 
-  it('still has a policy for every real provider id', () => {
-    expect(getCorsPolicy('aws', ORIGIN)?.text).toContain(ORIGIN);
-  });
+  it.each(S3_PROVIDERS.map((p) => [p.id] as const))(
+    'still finds the policy for a real provider id (%s) after the own-key check',
+    (id) => {
+      expect(getCorsPolicy(id, ORIGIN)?.text).toContain(ORIGIN);
+    }
+  );
 });
