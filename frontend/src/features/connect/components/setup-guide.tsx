@@ -52,10 +52,15 @@ const COPIED_FOR_MS = 2000;
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
+  const mounted = useRef(true);
 
   useEffect(() => {
     const pending = timers.current;
-    return () => pending.forEach((timer) => window.clearTimeout(timer));
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      pending.forEach((timer) => window.clearTimeout(timer));
+    };
   }, []);
 
   const copy = async () => {
@@ -66,6 +71,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       // selectable either way, so there is nothing useful to say here.
       return;
     }
+    // The guide may have gone while the clipboard answered (a permission
+    // prompt, say): its cleanup has run, so start no timers it cannot clear.
+    if (!mounted.current) return;
     // The same array throughout, so the unmount cleanup clears these too.
     timers.current.splice(0).forEach((timer) => window.clearTimeout(timer));
     setCopied(false);

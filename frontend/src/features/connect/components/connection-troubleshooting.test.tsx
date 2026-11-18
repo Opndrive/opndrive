@@ -96,6 +96,13 @@ describe('ConnectionTroubleshooting', () => {
     );
   });
 
+  it('says it once on the AWS page, where the provider notes already explain it', () => {
+    render(<ConnectionTroubleshooting provider={getProviderBySlug('aws-s3')!} />);
+    expect(section().textContent).not.toContain('AuthorizationHeaderMalformed is filed here too');
+    const box = screen.getByText(/Particular to Amazon S3/).parentElement!;
+    expect(box.textContent).toContain('AuthorizationHeaderMalformed');
+  });
+
   it.each(['credentials', 'bucket', 'permissions'] as const)(
     'names in its own words only codes the classifier really files under %s',
     (kind) => {

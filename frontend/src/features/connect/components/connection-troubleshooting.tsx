@@ -50,6 +50,11 @@ function CodeList({ codes }: { codes: NonNullable<Failure['codes']> }) {
  * provider already exposes ETag (MinIO) its CORS settings are not the fix.
  */
 function sharedFailures(provider: S3Provider): Failure[] {
+  // Said once per page: a provider whose own notes already explain it (AWS)
+  // does not get the general version as well.
+  const ownRegionNote = (provider.setup.troubleshooting ?? []).some((line) =>
+    line.includes('AuthorizationHeaderMalformed')
+  );
   const corsFix = provider.setup.corsRequired
     ? 'means the bucket does not allow this site yet: apply the CORS policy from the setup steps above.'
     : `means CORS on your ${provider.name} storage has been restricted and does not include this site: add it as the setup steps above describe.`;
@@ -74,9 +79,14 @@ function sharedFailures(provider: S3Provider): Failure[] {
         <>
           Your provider did not accept the key. <code>InvalidAccessKeyId</code> means the access key
           ID does not exist; <code>SignatureDoesNotMatch</code> means the secret does not belong to
-          it. Check both for typos and stray spaces, and that the key has not been deleted.{' '}
-          <code>AuthorizationHeaderMalformed</code> is filed here too, but on Amazon S3 it means the
-          region does not match the bucket&apos;s, so check the region before the keys.
+          it. Check both for typos and stray spaces, and that the key has not been deleted.
+          {!ownRegionNote && (
+            <>
+              {' '}
+              <code>AuthorizationHeaderMalformed</code> is filed here too, but on Amazon S3 it means
+              the region does not match the bucket&apos;s, so check the region before the keys.
+            </>
+          )}
         </>
       ),
       codes: CONNECTION_FAILURE_CODES.credentials,

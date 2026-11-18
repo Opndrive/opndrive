@@ -110,6 +110,23 @@ describe('SetupGuide', () => {
     expect(status()).toBe('Copied the policy');
   });
 
+  it('starts no timer when the guide is gone before the clipboard answers', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const { unmount } = render(<SetupGuide provider={getProviderBySlug('aws-s3')!} />);
+    const before = vi.getTimerCount();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy policy' }));
+    unmount();
+    await act(async () => {
+      finish();
+    });
+
+    expect(vi.getTimerCount()).toBe(before);
+  });
+
   it('leaves no timer running once the guide is gone', async () => {
     vi.useFakeTimers();
     fakeClipboard();
