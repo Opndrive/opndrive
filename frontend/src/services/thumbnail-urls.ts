@@ -13,8 +13,21 @@ const URL_LIFETIME_SECONDS = 60 * 60;
  */
 const RENEW_BEFORE_MS = 5 * 60 * 1000;
 
-/** Past this many URLs, expired ones are swept out when another is added. */
-const SWEEP_ABOVE = 1_000;
+/**
+ * The most URLs kept per provider. Making room lets the expired go, then the
+ * least recently used, down to EVICT_TO.
+ *
+ * A bound, because nothing here expires for an hour: sweeping only expired
+ * URLs let browsing a few big folders grow this by every image seen.
+ */
+export const MAX_CACHED_THUMBNAIL_URLS = 2_000;
+
+/**
+ * Where making room stops. Well under the limit, so it happens once for many
+ * new images rather than walking the whole cache for each one, which is what
+ * sweeping on every insert past a threshold did.
+ */
+const EVICT_TO = Math.floor(MAX_CACHED_THUMBNAIL_URLS * 0.9);
 
 interface CachedUrl {
   url: Promise<string>;
@@ -55,11 +68,17 @@ export function thumbnailUrlFor(
 
   const id = `${object.key}\u0000${object.version ?? ''}`;
   const cached = urls.get(id);
-  if (cached && cached.expiresAt - RENEW_BEFORE_MS > now) return cached.url;
-
-  if (urls.size > SWEEP_ABOVE) {
-    for (const [other, entry] of urls) if (entry.expiresAt <= now) urls.delete(other);
+  if (cached && cached.expiresAt - RENEW_BEFORE_MS > now) {
+    // Moved to the end: a Map iterates in insertion order, so making room
+    // takes the least recently used first.
+    urls.delete(id);
+    urls.set(id, cached);
+    return cached.url;
   }
+
+  // Replaced, if it was here: deleted first so the new one goes at the end.
+  urls.delete(id);
+  if (urls.size >= MAX_CACHED_THUMBNAIL_URLS) makeRoom(urls, now);
 
   const url = apiS3.getSignedUrl({
     key: object.key,
@@ -78,4 +97,14 @@ export function thumbnailUrlFor(
   });
 
   return url;
+}
+
+/** The expired go first, then the least recently used, down to EVICT_TO. */
+function makeRoom(urls: Map<string, CachedUrl>, now: number): void {
+  for (const [id, entry] of urls) if (entry.expiresAt <= now) urls.delete(id);
+
+  for (const id of urls.keys()) {
+    if (urls.size <= EVICT_TO) break;
+    urls.delete(id);
+  }
 }

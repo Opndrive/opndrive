@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
-import { thumbnailUrlFor } from './thumbnail-urls';
+import { MAX_CACHED_THUMBNAIL_URLS, thumbnailUrlFor } from './thumbnail-urls';
 
 function provider() {
   let n = 0;
@@ -106,5 +106,57 @@ describe('thumbnailUrlFor', () => {
     await expect(thumbnailUrlFor(api, { key: 'photos/a.jpg' }, t0)).resolves.toContain('sig=');
 
     expect(getSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * Bounded. Nothing in it expires for an hour, so sweeping only expired URLs
+   * kept none from piling up: browsing a few big folders grew it by every
+   * image seen, and once past a thousand, every new thumbnail walked all of
+   * it for nothing.
+   */
+  describe('once it holds as many as it keeps', () => {
+    async function fill(api: BYOS3ApiProvider) {
+      for (let i = 0; i < MAX_CACHED_THUMBNAIL_URLS; i++) {
+        await thumbnailUrlFor(api, { key: `photos/${i}.jpg` }, t0);
+      }
+    }
+
+    it('lets the least recently used go to make room', async () => {
+      const { api, getSignedUrl } = provider();
+      await fill(api);
+      // Seen again, so it is the most recent now, not the oldest.
+      await thumbnailUrlFor(api, { key: 'photos/0.jpg' }, t0);
+
+      await thumbnailUrlFor(api, { key: 'photos/new.jpg' }, t0);
+      getSignedUrl.mockClear();
+
+      await thumbnailUrlFor(api, { key: 'photos/0.jpg' }, t0);
+      expect(getSignedUrl).not.toHaveBeenCalled();
+      await thumbnailUrlFor(api, { key: 'photos/1.jpg' }, t0);
+      expect(getSignedUrl).toHaveBeenCalledOnce();
+    });
+
+    it('makes room for many at once, not one image at a time', async () => {
+      // Making room walks the whole cache. Done for one image at a time, that
+      // walk came back with every new thumbnail, which is the cost removed.
+      // Done for many, the next walk is a long way off.
+      const { api, getSignedUrl } = provider();
+      await fill(api);
+      for (let i = 0; i < 100; i++) {
+        await thumbnailUrlFor(api, { key: `photos/new-${i}.jpg` }, t0);
+      }
+      getSignedUrl.mockClear();
+
+      // Further in than a hundred one-at-a-time evictions would reach, and
+      // gone in the one go that made room.
+      const amongTheOldest = Math.floor(MAX_CACHED_THUMBNAIL_URLS * 0.075);
+      await thumbnailUrlFor(api, { key: `photos/${amongTheOldest}.jpg` }, t0);
+      expect(getSignedUrl).toHaveBeenCalledOnce();
+
+      // And the newest of the first fill are all still there.
+      getSignedUrl.mockClear();
+      await thumbnailUrlFor(api, { key: `photos/${MAX_CACHED_THUMBNAIL_URLS - 1}.jpg` }, t0);
+      expect(getSignedUrl).not.toHaveBeenCalled();
+    });
   });
 });
