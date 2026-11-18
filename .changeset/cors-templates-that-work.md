@@ -13,7 +13,9 @@ multipart uploads and multi-file deletes need.
 Every policy is now in the exact format its provider takes, allows the methods
 and headers the app sends, exposes ETag for multipart uploads, and is filled in
 with the address the page is open at instead of a placeholder. The setup guide
-is open by default and marked required. Backblaze rules go in through its S3
-API, where POST is allowed, and the MinIO steps describe how MinIO Community
-Edition really handles CORS: one server-wide origin list, every origin by
-default.
+is open by default and marked required, except on MinIO and Wasabi, whose
+defaults already allow every origin. Backblaze rules go in through its S3 API,
+where POST is allowed, with a note for buckets that still have rules from the
+old b2 tool steps, and the MinIO steps describe how MinIO Community Edition
+really handles CORS: one server-wide origin list, every origin by default. Copy
+buttons now say aloud when something has been copied.

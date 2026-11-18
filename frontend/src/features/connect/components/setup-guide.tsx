@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { BookOpen, Check, ChevronDown, Copy, ExternalLink } from 'lucide-react';
 import type { S3Provider } from '@/config/providers';
 import { getCorsPolicy } from '@/config/cors';
@@ -22,20 +22,26 @@ interface SetupGuideProps {
  * policy has to allow.
  *
  * The server cannot know it - a self-hosted copy runs under its own domain - so
- * the server render and the first client render both use SITE_URL, and the
- * real one replaces it once the page is in the browser. Reading `window`
- * during render instead would make the two renders disagree.
+ * the server render and hydration both use SITE_URL, and React swaps in the
+ * real one straight after. A client-only render (navigating here from another
+ * page) reads it at once. The origin never changes, so nothing subscribes.
  */
+const NEVER_CHANGES = () => () => {};
+
 function useCurrentOrigin(): string {
-  const [origin, setOrigin] = useState(SITE_URL);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  return origin;
+  return useSyncExternalStore(
+    NEVER_CHANGES,
+    () => window.location.origin,
+    () => SITE_URL
+  );
 }
 
+/**
+ * Copies a snippet. Its name starts with its visible text and adds what it
+ * copies ("Copy policy", "Copied policy"), so the name always contains what is
+ * on screen (WCAG 2.5.3); and the result is said aloud through a status region,
+ * because a button's own name changing is not reliably announced (4.1.3).
+ */
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -51,19 +57,24 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={copied ? `${label} copied` : `Copy ${label}`}
-      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      {copied ? (
-        <Check className="h-3.5 w-3.5" aria-hidden="true" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-      )}
-      {copied ? 'Copied' : 'Copy'}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`${copied ? 'Copied' : 'Copy'} ${label}`}
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <span role="status" className="sr-only">
+        {copied ? `The ${label} is on your clipboard` : ''}
+      </span>
+    </>
   );
 }
 
@@ -80,9 +91,12 @@ const STEP_HEADING = 'text-xs font-semibold uppercase tracking-wide text-foregro
 /**
  * The provider-specific setup steps.
  *
- * Open by default and marked required: without the CORS policy the browser
- * refuses every request to the bucket, so connecting fails before anything
- * else can. Built on <details>, which keeps the steps in the DOM where a
+ * Open by default, and marked required where it is: without a CORS policy that
+ * allows this site the browser refuses every request to the bucket, so
+ * connecting fails before anything else can. Where the provider's default
+ * already allows every origin (MinIO, Wasabi), it says so instead, since
+ * applying a policy there is only needed once CORS has been restricted. Built
+ * on <details>, which keeps the steps in the DOM where a
  * crawler reads them and still lets someone who has done this collapse it.
  *
  * This content is also what makes these pages legitimate rather than doorway
@@ -98,7 +112,9 @@ export function SetupGuide({ provider }: SetupGuideProps) {
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 text-sm font-medium text-foreground sm:px-6 [&::-webkit-details-marker]:hidden">
         <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="flex-1">Setting up {provider.name}</span>
-        <span className="text-xs font-normal text-muted-foreground">Required</span>
+        <span className="text-xs font-normal text-muted-foreground">
+          {provider.setup.corsRequired ? 'Required' : 'Only if CORS is restricted'}
+        </span>
         <ChevronDown
           className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
           aria-hidden="true"

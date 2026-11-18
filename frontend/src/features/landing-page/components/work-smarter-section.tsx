@@ -58,6 +58,13 @@ const featureImages: Record<FeatureId, { light: string; dark: string }> = {
   },
 };
 
+/**
+ * Exported for the test that guards the copy against claims the app cannot
+ * back up: only the active item reaches the server HTML, so the markup alone
+ * cannot.
+ */
+export { features as WORK_SMARTER_FEATURES };
+
 /** How long each feature holds before the next one takes over. */
 const ROTATE_INTERVAL_MS = 6000;
 

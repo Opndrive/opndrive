@@ -7,6 +7,8 @@ import CTASection from '@/features/landing-page/components/cta-section';
 import { BlogPagination, FeaturedBlogPost } from '@/components/blog';
 import { StructuredData } from '@/components/seo';
 import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
+import { SEO_CONFIG } from '@/lib/seo/config';
+import { pageSocialMetadata } from '@/lib/seo/social';
 import { isBlogEnabled } from '@/config/features';
 
 /*
@@ -14,6 +16,18 @@ import { isBlogEnabled } from '@/config/features';
  * root layout reads the CSP nonce from headers()), so it never applied. The
  * WordPress responses are what is cached, by the fetch in the client.
  */
+
+const BLOG_SOCIAL = pageSocialMetadata({
+  title: SEO_CONFIG.blog.title,
+  description: SEO_CONFIG.blog.description,
+  path: '/blog',
+  image: {
+    url: SEO_CONFIG.blog.ogImage,
+    width: SEO_CONFIG.ogImageWidth,
+    height: SEO_CONFIG.ogImageHeight,
+    alt: 'Opndrive Blog',
+  },
+});
 
 const BASE_METADATA: Metadata = {
   title: 'Blog - Cloud Storage Insights & Tutorials | Opndrive',
@@ -25,33 +39,13 @@ const BASE_METADATA: Metadata = {
   creator: 'Opndrive',
   publisher: 'Opndrive',
 
-  openGraph: {
-    title: 'Opndrive Blog - Cloud Storage Insights & Tutorials',
-    description:
-      'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides for managing your data effectively.',
-    type: 'website',
-    url: getAbsoluteUrl('/blog'),
-    siteName: 'Opndrive',
-    locale: 'en_US',
-    images: [
-      {
-        url: getAbsoluteUrl('/og-blog.png'),
-        width: 1200,
-        height: 630,
-        alt: 'Opndrive Blog',
-        type: 'image/png',
-      },
-    ],
-  },
-
+  // The shared builder, with the blog's own image and words; the Twitter handle
+  // the blog has always named on top.
+  openGraph: BLOG_SOCIAL.openGraph,
   twitter: {
-    card: 'summary_large_image',
-    title: 'Opndrive Blog - Cloud Storage Insights & Tutorials',
-    description:
-      'Learn about cloud storage management, S3 best practices, and file organization tips.',
-    images: [getAbsoluteUrl('/og-blog.png')],
-    creator: '@opndrive',
-    site: '@opndrive',
+    ...BLOG_SOCIAL.twitter,
+    creator: SEO_CONFIG.twitterCreator,
+    site: SEO_CONFIG.twitterHandle,
   },
 
   alternates: {
@@ -71,9 +65,10 @@ const BASE_METADATA: Metadata = {
  * published post.
  */
 export async function generateMetadata(): Promise<Metadata> {
+  // null when WordPress could not be reached: unknown, so still indexable.
   const posts = await loadBlogIndexPosts();
 
-  return { ...BASE_METADATA, robots: blogIndexRobots(posts.length) };
+  return { ...BASE_METADATA, robots: blogIndexRobots(posts?.length ?? null) };
 }
 
 const POSTS_PER_PAGE = 10;
@@ -92,7 +87,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   const currentPage = parseInt(params.page || '1', 10);
 
   // The same request generateMetadata made; cache() hands back its result.
-  const allPosts = await loadBlogIndexPosts();
+  const allPosts = (await loadBlogIndexPosts()) ?? [];
 
   // Separate featured post (latest)
   const featuredPost = allPosts[0];

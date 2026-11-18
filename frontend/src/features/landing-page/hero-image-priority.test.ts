@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HERO_IMAGE_PRIORITY_SCRIPT, HERO_THEME_ATTRIBUTE } from './hero-image-priority';
+import {
+  activeHeroTheme,
+  HERO_IMAGE_PRIORITY_SCRIPT,
+  HERO_THEME_ATTRIBUTE,
+} from './hero-image-priority';
 
 function setUp(theme: string | null, systemDark = false) {
   document.documentElement.removeAttribute('data-theme');
@@ -51,5 +55,35 @@ describe('hero image priority script', () => {
     setUp('dark');
     document.body.innerHTML = '';
     expect(run).not.toThrow();
+  });
+});
+
+describe('activeHeroTheme', () => {
+  // The hero uses this when the inline script cannot run (a client-only
+  // render), so the two have to pick the same copy in every case.
+  it.each([
+    ['light', false],
+    ['dark', false],
+    ['light', true],
+    ['dark', true],
+    [null, false],
+    [null, true],
+    ['sepia', true],
+  ] as const)(
+    'picks the copy the script promotes (data-theme %s, system dark %s)',
+    (theme, systemDark) => {
+      setUp(theme, systemDark);
+      run();
+
+      const promoted = document.querySelector(`img[${HERO_THEME_ATTRIBUTE}][fetchpriority="high"]`);
+      expect(promoted?.getAttribute(HERO_THEME_ATTRIBUTE)).toBe(activeHeroTheme());
+    }
+  );
+
+  it('falls back to light, as the script leaves things, if the page cannot be read', () => {
+    vi.stubGlobal('matchMedia', () => {
+      throw new Error('no matchMedia');
+    });
+    expect(activeHeroTheme()).toBe('light');
   });
 });

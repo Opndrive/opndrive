@@ -20,6 +20,8 @@
  * cors-request-headers.test.ts checks that list against the real client.
  */
 
+import { escapeXml } from '@/lib/xml';
+
 /** Every HTTP method the app sends to a bucket. */
 export const CORS_ALLOWED_METHODS = ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'] as const;
 
@@ -102,9 +104,6 @@ function s3Rule(
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
-const XML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
-const xmlText = (value: string) => value.replace(/[&<>]/g, (ch) => XML_ESCAPES[ch]!);
-
 /**
  * The S3 XML CORS configuration, elements in the order DigitalOcean's own
  * example lists them.
@@ -113,7 +112,7 @@ function s3Xml(origin: string, maxAgeSeconds: number): string {
   return [
     '<CORSConfiguration>',
     '  <CORSRule>',
-    `    <AllowedOrigin>${xmlText(origin)}</AllowedOrigin>`,
+    `    <AllowedOrigin>${escapeXml(origin)}</AllowedOrigin>`,
     ...CORS_ALLOWED_METHODS.map((method) => `    <AllowedMethod>${method}</AllowedMethod>`),
     `    <MaxAgeSeconds>${maxAgeSeconds}</MaxAgeSeconds>`,
     ...CORS_EXPOSE_HEADERS.map((header) => `    <ExposeHeader>${header}</ExposeHeader>`),
@@ -187,5 +186,6 @@ const POLICIES: Record<string, (origin: string) => CorsPolicy> = {
  * from - as its one allowed origin. Null for a provider with no policy.
  */
 export function getCorsPolicy(providerId: string, origin: string): CorsPolicy | null {
-  return POLICIES[providerId]?.(origin) ?? null;
+  // Own keys only: 'toString' or 'constructor' must not find Object.prototype.
+  return Object.hasOwn(POLICIES, providerId) ? POLICIES[providerId]!(origin) : null;
 }

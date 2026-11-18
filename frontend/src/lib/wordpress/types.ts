@@ -128,14 +128,20 @@ export interface BlogPost {
   title: string;
   excerpt: string;
   content: string;
+  /**
+   * When the post was published, as an ISO string in UTC (from WPGraphQL's
+   * `dateGmt`). This is the exact instant, for everything a machine reads: Open
+   * Graph, article meta tags, structured data, `<time dateTime>`, the feed.
+   */
   publishedDate: string;
   /**
-   * The publish time in UTC, as an ISO string, when WordPress gave one.
-   * `publishedDate` is the site's local time with no offset, which reads as
-   * whatever zone the server is in; anything that needs the exact instant, like
-   * the RSS feed, uses this.
+   * The publish date as the site's own clock gave it, with no offset - what the
+   * author saw in WordPress. Only for showing the date to readers: parsed
+   * without a zone, it gives the same calendar day wherever it is rendered,
+   * where the UTC instant could fall on the day before or after.
    */
-  publishedDateUtc?: string;
+  publishedDateLocal: string;
+  /** When the post last changed, as an ISO string in UTC (from `modifiedGmt`). */
   modifiedDate: string;
   author: {
     name: string;

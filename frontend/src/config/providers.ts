@@ -58,6 +58,21 @@ export interface S3Provider {
     intro: string;
   };
   setup: {
+    /**
+     * Whether a CORS policy has to be applied before connecting at all.
+     * False where the provider's default already lets every origin through
+     * (MinIO's server-wide default, Wasabi until a bucket has its own), so the
+     * steps only matter once CORS has been restricted - and applying ours then
+     * would shut out every other site that was relying on the default.
+     */
+    corsRequired: boolean;
+    /**
+     * True where the provider's own CORS answers already expose ETag, so a
+     * hidden ETag is not something its CORS settings can fix. MinIO Community
+     * Edition lists ETag among the exposed headers of its CORS handler
+     * (`commonS3Headers` in cmd/api-router.go).
+     */
+    etagExposedByDefault?: boolean;
     corsInstructions: string;
     permissions: string[];
     docsUrl: string;
@@ -123,6 +138,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'Opndrive talks to the S3 API directly from your browser using IAM credentials you supply. There is no account to create and no server of ours in the path, so your objects go straight between your machine and AWS.',
     },
     setup: {
+      corsRequired: true,
       corsInstructions:
         'Open the S3 console, choose General purpose buckets and then your bucket, and open the Permissions tab. In the Cross-origin resource sharing (CORS) section choose Edit, paste the policy below, and choose Save changes.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
@@ -161,6 +177,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'R2 speaks the S3 API, so Opndrive works with it directly. You will need your account ID for the endpoint, since R2 addresses buckets per account rather than per region.',
     },
     setup: {
+      corsRequired: true,
       corsInstructions:
         'In the Cloudflare dashboard, go to R2 object storage and choose your bucket. Open Settings, and under CORS Policy choose Add CORS policy. Paste the policy below into the JSON tab and choose Save. A change can take up to 30 seconds to apply.',
       permissions: ['Read', 'Write', 'Delete', 'List'],
@@ -204,6 +221,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'Wasabi is S3-compatible, so Opndrive connects with a normal access key pair. The endpoint is derived from the region you pick, and the region must match the one your bucket was created in.',
     },
     setup: {
+      corsRequired: false,
       corsInstructions:
         'In the Wasabi Console, open Buckets and choose your bucket, then Settings. On the Permissions tab, choose Cross-Origin Resource Sharing (CORS) at the bottom, then Edit, and paste the policy below. Until a bucket has a CORS configuration of its own, Wasabi answers every origin, so this matters once one has been saved.',
       permissions: ['GetObject', 'PutObject', 'DeleteObject', 'ListBucket'],
@@ -235,15 +253,16 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'B2 offers an S3-compatible endpoint alongside its native API, and Opndrive uses the former. Create an application key scoped to the bucket you want to browse.',
     },
     setup: {
+      corsRequired: true,
       corsInstructions:
         'Set the rules through the B2 S3-compatible API, which takes them in the same format as Amazon S3. Configure the AWS CLI with your B2 application key ID and key, save the policy below as cors.json, and run the command under it with your bucket name and region filled in.',
       permissions: ['listFiles', 'readFiles', 'writeFiles', 'deleteFiles'],
       docsUrl: 'https://www.backblaze.com/docs/cloud-storage-cross-origin-resource-sharing-rules',
       docsLabel: 'Backblaze B2 CORS rules documentation',
       gotcha:
-        "Backblaze's own CORS rule format covers S3 GET, HEAD, PUT and DELETE but has no operation for POST, which multipart uploads and deleting several files at once need. That is why the rules go in through the S3 API here. Backblaze also notes that the S3 API cannot change rules created through its native API.",
+        "Backblaze's own CORS rule format covers S3 GET, HEAD, PUT and DELETE but has no operation for POST, which multipart uploads and deleting several files at once need. That is why the rules go in through the S3 API here. If the bucket already has rules from the native API - set with the b2 command-line tool, as Opndrive's setup steps used to say - the S3 API cannot change them: Backblaze says they can only be changed through the native API (b2 bucket update --cors-rules). Remove them there first, then run the command above.",
       troubleshooting: [
-        'Small files upload but large ones, or deleting several files at once, fail with "Could not reach your storage": the rules are probably in Backblaze\'s own format, which cannot allow the POST requests those use. Apply the policy above through the S3 API instead.',
+        'Small files upload but large ones, or deleting several files at once, fail with "Could not reach your storage": the rules are probably in Backblaze\'s own format, which cannot allow the POST requests those use. Remove those through the native API, as below, and apply the policy above through the S3 API instead.',
       ],
     },
   },
@@ -281,6 +300,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'Spaces speaks the S3 API, so Opndrive connects with a Spaces access key and the endpoint of the datacenter your Space lives in. Pick that datacenter as the region and the endpoint follows from it.',
     },
     setup: {
+      corsRequired: true,
       corsInstructions:
         'The Spaces control panel can add CORS rules (your Space, then Settings, then CORS Configurations), but it has no field for exposed headers, and uploads sent in parts need ETag exposed. DigitalOcean points to an XML file applied with s3cmd for that: configure s3cmd for Spaces, save the policy below as cors.xml, and run the command under it with your Space name.',
       permissions: ['Read/Write/Delete'],
@@ -308,11 +328,15 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'Opndrive is an object browser, not an admin console. It lists, uploads, previews, renames, shares and deletes the objects in a bucket; users, policies and server settings stay with the mc command-line client. That is also the part of the MinIO Community Edition console that remained after its admin pages were removed in 2025. MinIO runs on your own infrastructure, so you supply the endpoint yourself.',
     },
     setup: {
+      corsRequired: false,
+      etagExposedByDefault: true,
       corsInstructions:
         'MinIO Community Edition sets CORS for the whole server rather than per bucket, and allows every origin until told otherwise, so a server whose CORS you have not changed needs nothing here. If you have restricted it with MINIO_API_CORS_ALLOW_ORIGIN or cors_allow_origin, run the command below with your mc alias in place of myminio; it applies without a restart. The value replaces the old list, so include every origin that should keep working, comma-separated.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
       docsUrl: 'https://docs.min.io/aistor/administration/cors-configuration/',
-      docsLabel: 'MinIO CORS configuration',
+      // The CORS page MinIO still publishes is in its AIStor docs, which also
+      // cover AIStor's per-bucket rules; the label keeps them apart.
+      docsLabel: 'MinIO CORS settings (AIStor docs; per-bucket rules there are AIStor only)',
       gotcha:
         'Your browser has to be able to reach the endpoint. A MinIO server on a private network will not work from the hosted app, so self-host Opndrive alongside it.',
       troubleshooting: [
@@ -354,6 +378,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
         'If a service speaks the S3 API, this is the way in. You supply the endpoint URL and the region string that service documents, and from there Opndrive treats it exactly as it treats Amazon S3.',
     },
     setup: {
+      corsRequired: true,
       corsInstructions:
         'Look for CORS, cross-origin or allowed origins in the bucket settings on your provider. Most accept the same JSON policy the S3 console does. Some take it only through their CLI or API - with the AWS CLI that is put-bucket-cors, with the same rules wrapped as {"CORSRules": [...]} - and a few need a support request.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
@@ -367,6 +392,16 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
 
 /** Every provider slug, for generateStaticParams and the sitemap. */
 export const PROVIDER_SLUGS: readonly string[] = S3_PROVIDERS.map((provider) => provider.slug);
+
+/**
+ * The named providers as a phrase for copy - "Amazon S3, Cloudflare R2, ...,
+ * MinIO" - in registry order, without the catch-all custom endpoint. Built
+ * here so the landing page and the /connect description name a new provider
+ * as soon as it is added.
+ */
+export const NAMED_PROVIDERS_PHRASE: string = S3_PROVIDERS.filter((p) => p.id !== 'custom')
+  .map((p) => p.name)
+  .join(', ');
 
 export function getProviderBySlug(slug: string): S3Provider | undefined {
   return S3_PROVIDERS.find((provider) => provider.slug === slug);

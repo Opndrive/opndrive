@@ -31,9 +31,14 @@ const navItems = [
 interface LandingPageProps {
   /** Passed straight to the hero; see hero-image-priority.ts. */
   heroImagePriorityScript?: React.ReactNode;
+  /**
+   * "Amazon S3, Cloudflare R2, ...", from the provider registry. The server
+   * page builds it so the registry itself stays out of this bundle.
+   */
+  namedProviders: string;
 }
 
-export default function LandingPage({ heroImagePriorityScript }: LandingPageProps = {}) {
+export default function LandingPage({ heroImagePriorityScript, namedProviders }: LandingPageProps) {
   const router = useRouter();
   const { userCreds } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -263,7 +268,7 @@ export default function LandingPage({ heroImagePriorityScript }: LandingPageProp
       </div>
 
       <Navbar scrolledPastHero={scrolledPastHero} />
-      <FeaturesSection />
+      <FeaturesSection namedProviders={namedProviders} />
       <WorkSmarterSection />
       <FAQSection />
       <CTASection handleGetStarted={handleGetStarted} ctaLabel={ctaLabel} />

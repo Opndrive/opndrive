@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateWebSiteSchema } from './structured-data';
-import { pageSocialMetadata, SHARE_IMAGE } from './social';
+import { BASE_OPEN_GRAPH, pageSocialMetadata, SHARE_IMAGE } from './social';
 import { SEO_CONFIG } from './config';
 
 describe('generateWebSiteSchema', () => {
@@ -44,5 +44,31 @@ describe('pageSocialMetadata', () => {
       description: 'A web UI for a self-hosted MinIO server.',
       images: [SHARE_IMAGE.url],
     });
+  });
+});
+
+describe('shared social fields', () => {
+  it('take the site name and share image from SEO_CONFIG, the one place they are set', () => {
+    expect(SHARE_IMAGE).toMatchObject({
+      url: SEO_CONFIG.ogImage,
+      width: SEO_CONFIG.ogImageWidth,
+      height: SEO_CONFIG.ogImageHeight,
+    });
+    expect(BASE_OPEN_GRAPH.siteName).toBe(SEO_CONFIG.siteName);
+    // Metadata wants a literal here, so it is written out; this keeps it in step.
+    expect(BASE_OPEN_GRAPH.type).toBe(SEO_CONFIG.ogType);
+  });
+
+  it("uses a page's own image in both previews when it has one", () => {
+    const image = { url: '/og-blog.png', width: 1200, height: 630, alt: 'Opndrive Blog' };
+    const social = pageSocialMetadata({
+      title: 'Blog',
+      description: 'Posts',
+      path: '/blog',
+      image,
+    });
+
+    expect(social.openGraph).toMatchObject({ images: [image], url: '/blog' });
+    expect(social.twitter).toMatchObject({ images: ['/og-blog.png'] });
   });
 });

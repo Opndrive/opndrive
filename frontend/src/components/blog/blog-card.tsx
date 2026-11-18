@@ -42,7 +42,7 @@ export function BlogCard({ post }: BlogCardProps) {
 
           {/* Date */}
           <time dateTime={post.publishedDate} className="text-sm text-muted-foreground mb-4">
-            {formatDate(post.publishedDate)}
+            {formatDate(post.publishedDateLocal)}
           </time>
 
           {/* Excerpt */}
