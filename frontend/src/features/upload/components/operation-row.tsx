@@ -175,7 +175,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'cancelled' && (
-          <p className="text-xs" style={{ color: '#ef4444' }}>
+          <p className="text-xs" style={{ color: 'var(--destructive)' }}>
             {operationType === 'upload'
               ? 'Upload cancelled'
               : operationType === 'delete'
@@ -207,7 +207,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           </p>
         )}
         {status === 'paused' && (
-          <p className="text-xs" style={{ color: '#f59e0b' }}>
+          <p className="text-xs" style={{ color: 'var(--warning)' }}>
             Paused
           </p>
         )}
@@ -216,7 +216,7 @@ const OperationRowInner: React.FC<OperationRowProps> = ({
           // downloads use 'error'. Matching on 'error' alone meant a failed or
           // partly-failed delete rendered no reason at all - the summary naming
           // the objects that survived was written to the store and never shown.
-          <p className="text-xs" style={{ color: '#ef4444' }}>
+          <p className="text-xs" style={{ color: 'var(--destructive)' }}>
             {error || 'Failed'}
           </p>
         )}
