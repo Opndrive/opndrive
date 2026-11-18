@@ -26,29 +26,36 @@ const GUIDE = readFileSync(
 
 const ORIGIN = 'https://opndrive.app';
 
-function blocks(kind: 'policy' | 'command'): Map<string, string> {
+/** Every block of a kind, by provider id, and the ids that appear more than once. */
+function blocks(kind: 'policy' | 'command') {
   const found = new Map<string, string>();
+  const repeated: string[] = [];
   const pattern = new RegExp(
     `<!-- cors-${kind}:(\\w+) -->\\s*\`\`\`\\w+\\n([\\s\\S]*?)\\n\`\`\``,
     'g'
   );
   for (const [, id, body] of GUIDE.matchAll(pattern)) {
-    expect(found.has(id!), `two cors-${kind} blocks for ${id}`).toBe(false);
+    if (found.has(id!)) repeated.push(id!);
     found.set(id!, body!);
   }
-  return found;
+  return { found, repeated };
 }
 
-/** The guide's section for a provider: from its heading to the next one. */
-function section(heading: string): string {
-  const start = GUIDE.indexOf(`\n## ${heading}\n`);
-  expect(start, `no "## ${heading}" section in the guide`).toBeGreaterThan(-1);
-  const end = GUIDE.indexOf('\n## ', start + 1);
+/**
+ * The guide's section that holds a provider's policy: from the heading before
+ * its marker to the next heading. Found by the marker, so a heading can be
+ * worded freely.
+ */
+function sectionOf(id: string): string {
+  const marker = GUIDE.indexOf(`<!-- cors-policy:${id} -->`);
+  expect(marker, `no policy block for ${id} in the guide`).toBeGreaterThan(-1);
+  const start = GUIDE.lastIndexOf('\n## ', marker);
+  const end = GUIDE.indexOf('\n## ', marker);
   return GUIDE.slice(start, end === -1 ? undefined : end);
 }
 
-const policies = blocks('policy');
-const commands = blocks('command');
+const { found: policies, repeated: repeatedPolicies } = blocks('policy');
+const { found: commands, repeated: repeatedCommands } = blocks('command');
 const known = new Set(S3_PROVIDERS.map((p) => p.id));
 
 describe('the Configure CORS guide', () => {
@@ -71,10 +78,14 @@ describe('the Configure CORS guide', () => {
     S3_PROVIDERS.filter((p) => getCorsPolicy(p.id, ORIGIN)?.file).map((p) => [p.name, p] as const)
   )('tells %s users to save the policy under the name the command reads', (_name, provider) => {
     const { file } = getCorsPolicy(provider.id, ORIGIN)!;
-    const heading = provider.id === 'custom' ? 'Any Other S3-Compatible Service' : provider.name;
 
-    expect(section(heading)).toContain(`\`${file!.name}\``);
+    expect(sectionOf(provider.id)).toContain(`\`${file!.name}\``);
     expect(file!.command).toContain(file!.name);
+  });
+
+  it('has one block of each kind per provider, not two', () => {
+    expect(repeatedPolicies).toEqual([]);
+    expect(repeatedCommands).toEqual([]);
   });
 
   it('has no policy or command block for a provider the app does not have', () => {

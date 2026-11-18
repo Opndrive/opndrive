@@ -18,9 +18,11 @@ their own page on [/connect](https://opndrive.app/connect) with their setup
 steps, and any other S3-compatible service works through the custom endpoint
 option. See [Connecting Storage](../guides/connecting-storage.md).
 
-**Connecting fails. What now?** Every bucket needs a CORS policy that allows the
-address you open Opndrive at; [Configure CORS](../guides/configure-cors.md) has
-the one for each provider. For the message Opndrive shows, see
+**Connecting fails. What now?** The bucket's CORS settings have to allow the
+address you open Opndrive at. Most providers need a policy for that, which
+[Configure CORS](../guides/configure-cors.md) gives for each one; MinIO, and
+Wasabi until a bucket has a policy of its own, allow every origin by default.
+For the message Opndrive shows, see
 [Fixing Connection Errors](../guides/fixing-connection-errors.md).
 
 **How many times do I run `pnpm install` when setting up?** Once, from the

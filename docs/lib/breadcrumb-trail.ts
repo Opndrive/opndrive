@@ -36,6 +36,17 @@ export function titleText(title: unknown): string {
 }
 
 /**
+ * A name from the route when a title has no text of its own (a component that
+ * renders its own label): "uploading-files" becomes "Uploading files". Google
+ * requires every crumb to have a name.
+ */
+function nameFromRoute(route: string): string {
+  const segment = route.split('/').filter(Boolean).pop() ?? '';
+  const words = segment.replace(/[-_]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
  * The breadcrumb trail for a route, built the way Nextra's own breadcrumb is.
  *
  * Nextra's activePath holds the section folders and the page. A section has
@@ -47,8 +58,8 @@ export function titleText(title: unknown): string {
  *
  * This mirrors Nextra's component rather than calling it, so it could drift
  * on a Nextra upgrade; structured-data.ts checks every URL it produces
- * against the real pages at build time, which turns any drift into a failed
- * build instead of wrong structured data.
+ * against the real pages and leaves out, with a build warning, any that is
+ * not one.
  */
 export function breadcrumbTrail(activePath: readonly TrailItem[]): Crumb[] {
   const crumbs: Crumb[] = [{ name: 'Opndrive Docs', url: DOCS_URL }];
@@ -59,7 +70,8 @@ export function breadcrumbTrail(activePath: readonly TrailItem[]): Crumb[] {
     const route = !next || isPage ? item.route : item.children?.[0]?.route;
     if (!route || (next && route === next.route)) return;
 
-    crumbs.push({ name: titleText(item.title), url: pageUrl(route.split('/')) });
+    const name = titleText(item.title).trim() || nameFromRoute(item.route);
+    crumbs.push({ name, url: pageUrl(route.split('/')) });
   });
 
   return crumbs;

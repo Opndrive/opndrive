@@ -104,10 +104,12 @@ part in the list, you must provide the `PartNumber` value and the `ETag` value
 that are returned after that part was uploaded."
 
 **Fix:** add `ETag` to the exposed headers. Every policy in
-[Configure CORS](./configure-cors.md) already has it. MinIO Community Edition
-exposes `ETag` in its own CORS answers, so with MinIO this points at something
-in front of it that answers CORS instead, such as a reverse proxy; expose `ETag`
-there.
+[Configure CORS](./configure-cors.md) already has it. Wasabi's default CORS,
+before a bucket has a policy of its own, exposes every header, so there this
+means a saved policy left `ETag` out. MinIO Community Edition exposes `ETag` in
+its own CORS answers, so with MinIO this points at something else answering
+CORS: per-bucket rules on MinIO AIStor, or a reverse proxy in front of the
+server. Expose `ETag` there.
 
 ## "Those keys were rejected"
 

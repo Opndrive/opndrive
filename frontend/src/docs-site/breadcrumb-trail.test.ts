@@ -73,6 +73,16 @@ describe('titleText', () => {
     expect(titleText({})).toBe('');
   });
 
+  it('names a crumb from its route when its title has no text of its own', () => {
+    const Label = () => null;
+    const section = { ...guides, title: createElement(Label) };
+    const [, crumb] = breadcrumbTrail([
+      section,
+      page('/guides/uploading-files', 'Uploading Files'),
+    ]);
+    expect(crumb).toEqual({ name: 'Guides', url: `${DOCS}/guides/connecting-storage` });
+  });
+
   it('names a crumb by the text of its JSX title', () => {
     const section = { ...guides, title: createElement('span', null, 'Guides') };
     const [, crumb] = breadcrumbTrail([

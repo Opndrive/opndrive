@@ -1,7 +1,7 @@
 import { getPageMap } from 'nextra/page-map';
 import { normalizePages } from 'nextra/normalize-pages';
 import { DOCS_URL } from './links';
-import { isHomePage, pageUrl } from './site';
+import { pageRoute, pageUrl } from './site';
 import { breadcrumbTrail, type TrailItem } from './breadcrumb-trail';
 
 /**
@@ -16,41 +16,53 @@ interface PageMapNode {
 }
 
 /** Every page's URL, from the page map: an entry with frontmatter is a page. */
-function pageUrls(nodes: readonly PageMapNode[], into = new Set<string>()): Set<string> {
+function collectPageUrls(nodes: readonly PageMapNode[], into: Set<string>): Set<string> {
   for (const node of nodes) {
     if ('frontMatter' in node && node.route) into.add(pageUrl(node.route.split('/')));
-    if (node.children) pageUrls(node.children, into);
+    if (node.children) collectPageUrls(node.children, into);
   }
   return into;
 }
 
+/** Built once per page map, not once per page. */
+const pageUrlsByMap = new WeakMap<object, Set<string>>();
+
+function pageUrls(pageMap: readonly PageMapNode[]): Set<string> {
+  let urls = pageUrlsByMap.get(pageMap);
+  if (!urls) {
+    urls = collectPageUrls(pageMap, new Set());
+    pageUrlsByMap.set(pageMap, urls);
+  }
+  return urls;
+}
+
 /**
- * The BreadcrumbList for a page, or null where there is no trail to show.
+ * The BreadcrumbList for a page below the home, or null where there is no
+ * trail to show. The page route decides the home (isHomePage) and asks for a
+ * WebSite there instead, so this does not check for it again.
  *
- * Every crumb's URL is checked against the real pages, and a miss fails the
- * build. breadcrumbTrail mirrors Nextra's breadcrumb rather than calling it,
- * so a Nextra upgrade that changes how sections link would otherwise ship
- * structured data pointing at pages that do not exist, with nothing to notice.
+ * Every crumb but the docs home must be a real page. breadcrumbTrail mirrors
+ * Nextra's breadcrumb, which links a section to its first child even when that
+ * child is a folder; such a crumb is left out, with a build warning, rather
+ * than published pointing at a URL that is not a page.
  */
 export async function breadcrumbJsonLd(segments: readonly string[] = []) {
-  if (isHomePage(segments)) return null;
-
-  const route = `/${segments.filter(Boolean).join('/')}`;
+  // Decoded the way importPage decodes, so every spelling finds its page.
+  const route = pageRoute(segments);
   const pageMap = await getPageMap();
   const { activePath } = normalizePages({ list: pageMap, route });
-  const crumbs = breadcrumbTrail(activePath as TrailItem[]);
+  const pages = pageUrls(pageMap as PageMapNode[]);
+
+  const crumbs = breadcrumbTrail(activePath as TrailItem[]).filter((crumb, index) => {
+    if (index === 0 || pages.has(crumb.url)) return true;
+    console.warn(
+      `Breadcrumb "${crumb.name}" on ${route} points at ${crumb.url}, which is not a page; ` +
+        'left out of the BreadcrumbList.'
+    );
+    return false;
+  });
   // Google needs at least two crumbs for a breadcrumb rich result.
   if (crumbs.length < 2) return null;
-
-  const pages = pageUrls(pageMap as PageMapNode[]);
-  for (const crumb of crumbs.slice(1)) {
-    if (!pages.has(crumb.url)) {
-      throw new Error(
-        `Breadcrumb "${crumb.name}" on ${route} points at ${crumb.url}, which is not a page. ` +
-          "breadcrumbTrail (docs/lib/breadcrumb-trail.ts) no longer matches Nextra's breadcrumb."
-      );
-    }
-  }
 
   return {
     '@context': 'https://schema.org',
@@ -79,5 +91,5 @@ export function websiteJsonLd() {
  * script element early.
  */
 export function jsonLdScript(data: unknown): string {
-  return JSON.stringify(data).replace(/</g, '\\u003c');
+  return (JSON.stringify(data) ?? '').replace(/</g, '\\u003c');
 }

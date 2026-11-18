@@ -46,24 +46,38 @@ export function Mermaid({ chart }: { chart: string }) {
       return;
     }
 
-    const drawForPrint = () => setNear(true);
-    window.addEventListener('beforeprint', drawForPrint);
+    // Called only from events and the observer, by when `stop` exists.
+    function draw() {
+      setNear(true);
+      stop();
+    }
+    // A jump past the diagram - a table-of-contents link, a #heading, a
+    // restored scroll position - never makes it intersect the margin. Draw it
+    // as soon as it is above the viewport, before the reader scrolls back up
+    // to it, so it does not grow under the text being read later.
+    function drawIfPassed() {
+      if (el!.getBoundingClientRect().bottom < 0) draw();
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNear(true);
-          observer.disconnect();
-        }
+        if (entries.some((entry) => entry.isIntersecting)) draw();
       },
       { rootMargin: LOAD_MARGIN }
     );
+    const stop = () => {
+      observer.disconnect();
+      window.removeEventListener('beforeprint', draw);
+      window.removeEventListener('scroll', drawIfPassed);
+      window.removeEventListener('hashchange', drawIfPassed);
+    };
+
+    window.addEventListener('beforeprint', draw);
+    window.addEventListener('scroll', drawIfPassed, { passive: true });
+    window.addEventListener('hashchange', drawIfPassed);
     observer.observe(el);
 
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('beforeprint', drawForPrint);
-    };
+    return stop;
   }, []);
 
   useEffect(() => {

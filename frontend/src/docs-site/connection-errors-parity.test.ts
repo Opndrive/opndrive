@@ -19,6 +19,15 @@ const PAGE = readFileSync(
   'utf8'
 ).replace(/\r\n/g, '\n');
 
+/** The page's section under a message's heading, failing clearly if it is missing. */
+function sectionFor(kind: string): string {
+  const title = CONNECTION_FAILURE_TITLES[kind as keyof typeof CONNECTION_FAILURE_TITLES];
+  const start = PAGE.indexOf(`\n## "${title}"\n`);
+  expect(start, `no section headed "${title}" on the page`).toBeGreaterThan(-1);
+  const end = PAGE.indexOf('\n## ', start + 1);
+  return PAGE.slice(start, end === -1 ? undefined : end);
+}
+
 describe('the Fixing Connection Errors page', () => {
   it.each(Object.entries(CONNECTION_FAILURE_TITLES))(
     'has a section for the %s message, under its exact words',
@@ -32,22 +41,14 @@ describe('the Fixing Connection Errors page', () => {
       names.map((name) => [name, kind] as const)
     )
   )('names %s under the %s message', (name, kind) => {
-    const title = CONNECTION_FAILURE_TITLES[kind as keyof typeof CONNECTION_FAILURE_TITLES];
-    const start = PAGE.indexOf(`\n## "${title}"\n`);
-    const end = PAGE.indexOf('\n## ', start + 1);
-
     // As a heading of its own or in code: the whole word, in the right section.
-    expect(PAGE.slice(start, end === -1 ? undefined : end)).toMatch(new RegExp(`\\b${name}\\b`));
+    expect(sectionFor(kind)).toMatch(new RegExp(`\\b${name}\\b`));
   });
 
   it.each(Object.entries(CONNECTION_FAILURE_CODES))(
     'says which HTTP status also leads to the %s message',
     (kind, { status }) => {
-      const title = CONNECTION_FAILURE_TITLES[kind as keyof typeof CONNECTION_FAILURE_TITLES];
-      const start = PAGE.indexOf(`\n## "${title}"\n`);
-      const end = PAGE.indexOf('\n## ', start + 1);
-
-      expect(PAGE.slice(start, end === -1 ? undefined : end)).toContain(`HTTP status ${status}`);
+      expect(sectionFor(kind)).toContain(`HTTP status ${status}`);
     }
   );
 });
