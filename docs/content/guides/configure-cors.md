@@ -36,19 +36,32 @@ Open the S3 console, choose **General purpose buckets** and then your bucket,
 and open the **Permissions** tab. In the **Cross-origin resource sharing
 (CORS)** section choose **Edit**, paste the policy, and choose **Save changes**.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:aws -->
-
 ```json
 [
   {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-    "AllowedOrigins": ["https://opndrive.app"],
-    "ExposeHeaders": ["ETag"],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedOrigins": [
+      "https://opndrive.app"
+    ],
+    "ExposeHeaders": [
+      "ETag"
+    ],
     "MaxAgeSeconds": 3000
   }
 ]
 ```
+<!-- prettier-ignore-end -->
 
 Setup page: [Connect to Amazon S3](https://opndrive.app/connect/aws-s3).
 
@@ -65,8 +78,8 @@ every header Opndrive sends. One case it cannot cover: renaming a file over 5
 GiB that carries custom metadata sends that metadata as `x-amz-meta-<name>`
 headers, and those names have to be added by hand.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:cloudflare -->
-
 ```json
 [
   {
@@ -90,13 +103,24 @@ headers, and those names have to be added by hand.
       "x-amz-tagging",
       "x-amz-user-agent"
     ],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-    "AllowedOrigins": ["https://opndrive.app"],
-    "ExposeHeaders": ["ETag"],
+    "AllowedMethods": [
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedOrigins": [
+      "https://opndrive.app"
+    ],
+    "ExposeHeaders": [
+      "ETag"
+    ],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
+<!-- prettier-ignore-end -->
 
 Setup page:
 [Connect to Cloudflare R2](https://opndrive.app/connect/cloudflare-r2).
@@ -110,19 +134,32 @@ In the Wasabi Console, open **Buckets** and choose your bucket, then
 Until a bucket has a CORS configuration of its own, Wasabi answers every origin,
 so this matters once one has been saved.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:wasabi -->
-
 ```json
 [
   {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-    "AllowedOrigins": ["https://opndrive.app"],
-    "ExposeHeaders": ["ETag"],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedOrigins": [
+      "https://opndrive.app"
+    ],
+    "ExposeHeaders": [
+      "ETag"
+    ],
     "MaxAgeSeconds": 3000
   }
 ]
 ```
+<!-- prettier-ignore-end -->
 
 Setup page: [Connect to Wasabi](https://opndrive.app/connect/wasabi).
 
@@ -136,29 +173,43 @@ rules that way: configure the AWS CLI with your B2 application key ID and key,
 save the policy as `cors.json`, and run the command with your bucket name and
 region.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:backblaze -->
-
 ```json
 {
   "CORSRules": [
     {
-      "AllowedHeaders": ["*"],
-      "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-      "AllowedOrigins": ["https://opndrive.app"],
-      "ExposeHeaders": ["ETag"],
+      "AllowedHeaders": [
+        "*"
+      ],
+      "AllowedMethods": [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE",
+        "HEAD"
+      ],
+      "AllowedOrigins": [
+        "https://opndrive.app"
+      ],
+      "ExposeHeaders": [
+        "ETag"
+      ],
       "MaxAgeSeconds": 3600
     }
   ]
 }
 ```
+<!-- prettier-ignore-end -->
 
 Then apply it:
 
+<!-- prettier-ignore-start -->
 <!-- cors-command:backblaze -->
-
 ```bash
 aws s3api put-bucket-cors --bucket YOUR_BUCKET --cors-configuration file://cors.json --endpoint-url https://s3.YOUR_REGION.backblazeb2.com
 ```
+<!-- prettier-ignore-end -->
 
 Backblaze notes that the S3 API cannot change CORS rules that were created with
 its native API.
@@ -174,8 +225,8 @@ points to an XML file applied with `s3cmd` for options the panel lacks:
 configure `s3cmd` for Spaces, save the policy as `cors.xml`, and run the command
 with your Space name.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:digitalocean -->
-
 ```xml
 <CORSConfiguration>
   <CORSRule>
@@ -191,14 +242,16 @@ with your Space name.
   </CORSRule>
 </CORSConfiguration>
 ```
+<!-- prettier-ignore-end -->
 
 Then apply it:
 
+<!-- prettier-ignore-start -->
 <!-- cors-command:digitalocean -->
-
 ```bash
 s3cmd setcors cors.xml s3://YOUR_SPACE
 ```
+<!-- prettier-ignore-end -->
 
 Setup page:
 [Connect to DigitalOcean Spaces](https://opndrive.app/connect/digitalocean-spaces).
@@ -216,11 +269,12 @@ place of `myminio`. The `api` settings apply without a restart. The value
 replaces the old list, so include every origin that should keep working,
 separated by commas.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:minio -->
-
 ```bash
 mc admin config set myminio api cors_allow_origin="https://opndrive.app"
 ```
+<!-- prettier-ignore-end -->
 
 MinIO AIStor also supports per-bucket rules, set with `mc cors set` and an S3
 XML CORS file.
@@ -234,19 +288,32 @@ services accept the same JSON policy the S3 console does. Some take it only
 through their CLI or API: with the AWS CLI that is `put-bucket-cors`, with the
 same rules wrapped as `{"CORSRules": [...]}`.
 
+<!-- prettier-ignore-start -->
 <!-- cors-policy:custom -->
-
 ```json
 [
   {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-    "AllowedOrigins": ["https://opndrive.app"],
-    "ExposeHeaders": ["ETag"],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedOrigins": [
+      "https://opndrive.app"
+    ],
+    "ExposeHeaders": [
+      "ETag"
+    ],
     "MaxAgeSeconds": 3000
   }
 ]
 ```
+<!-- prettier-ignore-end -->
 
 Setup page:
 [Connect a custom endpoint](https://opndrive.app/connect/custom-endpoint).
