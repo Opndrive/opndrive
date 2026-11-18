@@ -21,6 +21,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CreateBucketCommand,
   CreateMultipartUploadCommand,
   DeleteObjectsCommand,
@@ -524,6 +525,96 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       expect(statuses[statuses.length - 1]).toBe('completed');
       expect(sha256(await readBack(key))).toBe(sha256(bytes));
       expect(await openUploadsFor(key)).toEqual([]);
+    });
+  });
+
+  describe('a pause and resume while a request cannot be aborted', () => {
+    it('opens one session, and sends each part once, while the session is opening', async () => {
+      // Opening the session cannot be aborted, so the paused run is still
+      // waiting on it when the resumed one starts. The two used to run side
+      // by side: two sessions, every part twice, two completions.
+      const key = keyFor('paused-while-opening.bin');
+      const bytes = randomBytes(12 * MiB);
+      let answer!: () => void;
+      const answered = new Promise<void>((resolve) => (answer = resolve));
+      let held = false;
+      const { s3, sent } = interceptedClient((command) => {
+        if (!(command instanceof CreateMultipartUploadCommand) || held) return undefined;
+        held = true;
+        // Really opens it, but answers only when the test says so.
+        return answered.then(() => client.send(command));
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        partSizeMB: 5,
+        retryDelaysMs: [],
+      });
+
+      const id = manager.addUpload(new File([bytes], 'paused-while-opening.bin'), { key });
+      while (!held) await new Promise((resolve) => setTimeout(resolve, 10));
+      manager.pauseUpload(id);
+      await manager.resumeUpload(id);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      answer();
+      await waitForStatus(manager, id, 'completed');
+      // Long enough for anything a second run would do to have happened.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const count = (name: string) => sent.filter((sentName) => sentName === name).length;
+      expect(count('CreateMultipartUploadCommand')).toBe(1);
+      expect(count('UploadPartCommand')).toBe(3);
+      expect(count('CompleteMultipartUploadCommand')).toBe(1);
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
+    it('stays complete when paused and resumed while completing', async () => {
+      // Resumed after its completion went through, the upload asked S3 for
+      // the parts of a session that no longer existed, and was marked failed
+      // over a file that was stored.
+      const key = keyFor('paused-while-completing.bin');
+      const bytes = randomBytes(7 * MiB);
+      let answer!: () => void;
+      const answered = new Promise<void>((resolve) => (answer = resolve));
+      let held = false;
+      const { s3, sent } = interceptedClient((command) => {
+        if (!(command instanceof CompleteMultipartUploadCommand) || held) return undefined;
+        held = true;
+        return client.send(command).then((output) => answered.then(() => output));
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        partSizeMB: 5,
+        retryDelaysMs: [],
+      });
+      const statuses: string[] = [];
+      const { error } = console;
+      console.error = () => {};
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'paused-while-completing.bin'), { key });
+        manager.on('statusChange', (payload) => {
+          if (payload.id === id) statuses.push(payload.status);
+        });
+        while (!held) await new Promise((resolve) => setTimeout(resolve, 10));
+        manager.pauseUpload(id);
+        await manager.resumeUpload(id);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        answer();
+        await waitForStatus(manager, id, 'completed');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } finally {
+        console.error = error;
+      }
+
+      expect(statuses).not.toContain('failed');
+      expect(statuses[statuses.length - 1]).toBe('completed');
+      expect(sent).not.toContain('ListPartsCommand');
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
     });
   });
 

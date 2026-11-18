@@ -114,6 +114,13 @@ const controllersOf = (u: MultipartUploader) => u['controllers'];
 /** What the uploader is holding in memory to resume from. */
 const completedPartsOf = (u: MultipartUploader) => u['completedParts'];
 
+/** What S3 answers about a session that has been completed or aborted. */
+const noSuchUpload = () =>
+  Object.assign(new Error('The specified multipart upload does not exist.'), {
+    name: 'NoSuchUpload',
+    $metadata: { httpStatusCode: 404 },
+  });
+
 function stubHappyPath() {
   s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
   s3Mock.on(UploadPartCommand).resolves({ ETag: '"etag"' });
@@ -1089,6 +1096,159 @@ describe('resume', () => {
 
     // Part 1 was already there, so the first report jumps straight to 100%.
     expect(progress).toEqual([100]);
+  });
+});
+
+/**
+ * A request held open until the test answers it, the way a slow server holds
+ * one. Each call gets its own; `answer` settles the oldest still waiting.
+ */
+function heldRequests<T>() {
+  const waiting: { resolve: (value: T) => void; reject: (error: unknown) => void }[] = [];
+  return {
+    fake: () => new Promise<T>((resolve, reject) => waiting.push({ resolve, reject })),
+    answer: (value: T) => waiting.shift()!.resolve(value),
+    fail: (error: unknown) => waiting.shift()!.reject(error),
+    get count() {
+      return waiting.length;
+    },
+  };
+}
+
+describe('one run at a time', () => {
+  // Pausing aborts every part in flight, but three requests cannot be aborted
+  // part way: opening the session, listing its parts, and completing it. A
+  // pause and resume while one of them was out used to start a second run
+  // beside the first, both driving the same uploader.
+
+  it('waits for a session still opening, rather than opening a second one', async () => {
+    const create = heldRequests<{ UploadId: string }>();
+    s3Mock.on(CreateMultipartUploadCommand).callsFake(create.fake);
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+
+    const first = uploader.start(makeFile(15 * MB));
+    await settle();
+    uploader.pause();
+    // What UploadManager does on resume: the session has not opened, so it
+    // asks for a fresh start.
+    const second = uploader.start(makeFile(15 * MB));
+    await settle();
+
+    // Only the first run's request is out; the second is waiting its turn.
+    expect(create.count).toBe(1);
+    create.answer({ UploadId: 'upload-1' });
+    await Promise.all([first, second]);
+
+    expect(s3Mock.commandCalls(CreateMultipartUploadCommand)).toHaveLength(1);
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(3);
+    expect(s3Mock).toHaveReceivedCommandExactlyOnceWith(CompleteMultipartUploadCommand, {
+      UploadId: 'upload-1',
+    });
+  });
+
+  it('sends each part once when paused and resumed while listing parts', async () => {
+    const list = heldRequests<{ Parts: [] }>();
+    s3Mock.on(ListPartsCommand).callsFake(list.fake);
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+    uploader['uploadId'] = 'upload-1';
+
+    const first = uploader.resume(makeFile(15 * MB));
+    await settle();
+    uploader.pause();
+    const second = uploader.resume(makeFile(15 * MB));
+    await settle();
+
+    list.answer({ Parts: [] });
+    await settle();
+    // The second run lists the parts for itself once the first has stopped.
+    list.answer({ Parts: [] });
+    await Promise.all([first, second]);
+
+    const sent = s3Mock.commandCalls(UploadPartCommand).map((c) => c.args[0].input.PartNumber);
+    expect(sent).toEqual([1, 2, 3]);
+    expect(s3Mock.commandCalls(CompleteMultipartUploadCommand)).toHaveLength(1);
+  });
+
+  it('finishes, without asking about the session again, when paused while completing', async () => {
+    // Asked about after it has completed, the session is gone, and S3 answers
+    // NoSuchUpload: the resumed run used to list its parts and fail.
+    const complete = heldRequests<object>();
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).callsFake(complete.fake);
+    s3Mock.on(ListPartsCommand).rejects(noSuchUpload());
+    const uploader = makeUploader();
+
+    const first = uploader.start(makeFile(15 * MB));
+    while (complete.count === 0) await settle();
+    uploader.pause();
+    const second = uploader.resume(makeFile(15 * MB));
+    await settle();
+
+    complete.answer({});
+    await expect(Promise.all([first, second])).resolves.toBeDefined();
+
+    expect(s3Mock).not.toHaveReceivedCommand(ListPartsCommand);
+    expect(s3Mock.commandCalls(CompleteMultipartUploadCommand)).toHaveLength(1);
+  });
+
+  it('does nothing at all for a run paused before its turn came', async () => {
+    const create = heldRequests<{ UploadId: string }>();
+    s3Mock.on(CreateMultipartUploadCommand).callsFake(create.fake);
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+
+    const first = uploader.start(makeFile(15 * MB));
+    await settle();
+    uploader.pause();
+    const second = uploader.start(makeFile(15 * MB));
+    uploader.pause();
+    create.answer({ UploadId: 'upload-1' });
+    await Promise.all([first, second]);
+
+    // Paused, and still paused: nothing went up, and the session is kept.
+    expect(s3Mock).not.toHaveReceivedCommand(UploadPartCommand);
+    expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
+    expect(uploadIdOf(uploader)).toBe('upload-1');
+  });
+
+  it('aborts a session that opens after the upload was cancelled', async () => {
+    // cancel() found no session to abort, because it had not opened yet.
+    // Left alone, it stayed open on the server for good, billing its parts.
+    const create = heldRequests<{ UploadId: string }>();
+    s3Mock.on(CreateMultipartUploadCommand).callsFake(create.fake);
+    s3Mock.on(AbortMultipartUploadCommand).resolves({});
+    const uploader = makeUploader();
+
+    const run = uploader.start(makeFile(15 * MB));
+    await settle();
+    await uploader.cancel();
+    expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
+
+    create.answer({ UploadId: 'upload-1' });
+    await run;
+
+    expect(s3Mock).toHaveReceivedCommandExactlyOnceWith(AbortMultipartUploadCommand, {
+      UploadId: 'upload-1',
+    });
+    expect(s3Mock).not.toHaveReceivedCommand(UploadPartCommand);
+  });
+
+  it('does not abort a session that is already complete when cancelled', async () => {
+    stubHappyPath();
+    const uploader = makeUploader();
+    await uploader.start(makeFile(15 * MB));
+
+    await uploader.cancel();
+
+    // The object is stored; there is no session left to abort, and asking
+    // would only bring back NoSuchUpload.
+    expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
   });
 });
 

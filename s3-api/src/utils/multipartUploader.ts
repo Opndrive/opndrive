@@ -43,6 +43,9 @@ export function partSizeFor(fileSize: number, preferred: number): number | null 
   return partSize <= MAX_PART_SIZE ? partSize : null;
 }
 
+/** Told the percentage done as parts finish. */
+type OnProgress = ((p: number) => void) | undefined;
+
 /**
  * Uploads one file to S3.
  *
@@ -77,13 +80,23 @@ export class MultipartUploader {
    * request and multipart. A very large file may use bigger parts than this.
    */
   private partSize: number;
-  private isPaused = false;
   private isCancelled = false;
+  /** Set once S3 has stored the object. Nothing is sent after that. */
+  private completed = false;
   private concurrency = 3;
   /** See MultipartUploadParams.contentType. */
   private contentType?: string;
 
   private controllers: AbortController[] = [];
+
+  /**
+   * Moved on by every pause() and cancel(). A run belongs to the generation it
+   * was asked for in, and stops once that has moved on. See exclusively().
+   */
+  private generation = 0;
+
+  /** The run in progress or waiting, as a promise that never rejects. */
+  private running: Promise<void> | null = null;
 
   constructor(config: MultipartUploadConfig) {
     this.s3 = config.s3;
@@ -97,16 +110,70 @@ export class MultipartUploader {
     this.partSize = Math.min(MAX_PART_SIZE, Math.max(MIN_PART_SIZE, requested));
   }
 
-  async start(file: File, onProgress?: (p: number) => void) {
-    // A start is a fresh attempt, so any pause belongs to one that has ended.
-    // An upload paused and resumed while waiting to retry, before its session
-    // had opened, carried that pause in here: every part was skipped, and so
-    // was the completion, and the upload was reported done with nothing
-    // stored. resume() clears it the same way.
-    this.isPaused = false;
+  /**
+   * Uploads the file: in one request if it fits in one part, otherwise by
+   * opening a session (or carrying on with the one already open), sending the
+   * parts and completing it.
+   *
+   * A pause made before this call does not hold it back: it belongs to an
+   * attempt that has already ended. An upload paused and resumed while
+   * waiting to retry, before its session had opened, used to carry that pause
+   * in here: every part was skipped, and so was the completion, and the
+   * upload was reported done with nothing stored.
+   */
+  start(file: File, onProgress?: (p: number) => void): Promise<void> {
+    return this.exclusively((isLive) => this.startRun(file, onProgress, isLive));
+  }
+
+  /**
+   * Carries on with the session already open, from the parts S3 holds. A file
+   * small enough for one request has no session, and is sent again whole.
+   */
+  resume(file: File, onProgress?: (p: number) => void): Promise<void> {
+    return this.exclusively((isLive) => this.resumeRun(file, onProgress, isLive));
+  }
+
+  /**
+   * Runs one start or resume at a time, each once the one before has settled.
+   *
+   * pause() aborts every part in flight, but three requests cannot be aborted
+   * part way: opening the session, listing its parts, and completing it. A
+   * pause and resume while one of those was out started a second run beside
+   * the first, and both drove this uploader at once. Parts went up twice, a
+   * second session was opened and left behind, or a completed upload was
+   * resumed, and failed on a session that no longer existed. Now the second
+   * run waits, and the first stops as soon as its request comes back.
+   *
+   * A run belongs to the generation it was asked for in. pause() and cancel()
+   * move the generation on, which stops a run already going and makes one
+   * still waiting do nothing at all when its turn comes.
+   */
+  private exclusively(run: (isLive: () => boolean) => Promise<void>): Promise<void> {
+    const generation = this.generation;
+    const isLive = () => generation === this.generation && !this.isCancelled;
+    const go = () => (isLive() ? run(isLive) : Promise.resolve());
+
+    // Straight away when nothing is running, so a run's first request goes
+    // out in the same tick as it always has.
+    const result = this.running ? this.running.then(go) : go();
+
+    const settled = result.then(
+      () => undefined,
+      () => undefined
+    );
+    this.running = settled;
+    void settled.then(() => {
+      if (this.running === settled) this.running = null;
+    });
+
+    return result;
+  }
+
+  private async startRun(file: File, onProgress: OnProgress, isLive: () => boolean) {
+    if (this.completed) return;
 
     if (!this.uploadId && this.fitsInOneRequest(file)) {
-      await this.uploadInOneRequest(file, onProgress);
+      await this.uploadInOneRequest(file, onProgress, isLive);
       return;
     }
 
@@ -136,13 +203,18 @@ export class MultipartUploader {
       }
 
       this.uploadId = UploadId;
+
+      // Cancelled while the session was opening. cancel() found no session
+      // to abort then, so it is aborted here, or it stays open for good.
+      if (this.isCancelled) {
+        await this.abortSession();
+        return;
+      }
     }
 
-    await this.uploadParts(file, partSize, onProgress);
+    await this.uploadParts(file, partSize, onProgress, isLive);
 
-    if (!this.isPaused && !this.isCancelled) {
-      await this.completeUpload();
-    }
+    if (isLive()) await this.completeUpload();
   }
 
   /** partSizeFor this file and the configured size, or why it cannot be uploaded. */
@@ -180,14 +252,7 @@ export class MultipartUploader {
    * again from the beginning, which for a file of one part is all a multipart
    * resume would have done anyway.
    */
-  private async uploadInOneRequest(file: File, onProgress?: (p: number) => void) {
-    if (this.isCancelled) return;
-
-    // Any earlier pause belongs to an attempt that has already been thrown
-    // away. Left set, it would also hide a genuine failure of this attempt:
-    // the catch below would read it as "paused" and report success.
-    this.isPaused = false;
-
+  private async uploadInOneRequest(file: File, onProgress: OnProgress, isLive: () => boolean) {
     const controller = new AbortController();
     this.controllers.push(controller);
 
@@ -202,17 +267,25 @@ export class MultipartUploader {
         { abortSignal: controller.signal }
       );
     } catch (err) {
-      // Our own abort, from pause() or cancel().
-      if (this.isPaused || this.isCancelled) return;
+      // Our own abort, from pause() or cancel(). A pause from before this run
+      // does not count: it cannot have aborted this request, and reading it
+      // as one would report a real failure as success.
+      if (!isLive()) return;
       throw err;
     } finally {
       this.controllers = this.controllers.filter((c) => c !== controller);
     }
 
+    this.completed = true;
     onProgress?.(100);
   }
 
-  private async uploadParts(file: File, partSize: number, onProgress?: (p: number) => void) {
+  private async uploadParts(
+    file: File,
+    partSize: number,
+    onProgress: OnProgress,
+    isLive: () => boolean
+  ) {
     const totalParts = Math.ceil(file.size / partSize);
     let nextPart = 1;
 
@@ -237,7 +310,7 @@ export class MultipartUploader {
     let failure = null as { error: unknown } | null;
 
     const worker = async () => {
-      while (nextPart <= totalParts && !this.isPaused && !this.isCancelled && !failure) {
+      while (nextPart <= totalParts && isLive() && !failure) {
         const partNumber = nextPart++;
         if (uploadedNumbers.has(partNumber)) continue;
 
@@ -272,7 +345,7 @@ export class MultipartUploader {
         } catch (err) {
           // Our own abort - from pause(), cancel(), or a failure below - is
           // not a failure of its own.
-          if (this.isCancelled || this.isPaused || failure) return;
+          if (!isLive() || failure) return;
 
           failure = { error: err };
           this.abortInFlight();
@@ -316,13 +389,17 @@ export class MultipartUploader {
         MultipartUpload: { Parts: sortedParts },
       })
     );
+
+    this.completed = true;
   }
 
-  async resume(file: File, onProgress?: (p: number) => void) {
+  private async resumeRun(file: File, onProgress: OnProgress, isLive: () => boolean) {
+    if (this.completed) return;
+
     if (!this.uploadId) {
       // A single-request upload has no session to resume. Sending it again
       // is what resuming means for it.
-      if (this.fitsInOneRequest(file)) return this.uploadInOneRequest(file, onProgress);
+      if (this.fitsInOneRequest(file)) return this.uploadInOneRequest(file, onProgress, isLive);
 
       throw new Error('No uploadId found. Start a new upload.');
     }
@@ -330,8 +407,6 @@ export class MultipartUploader {
     // The same size the upload started with: partSizeFor depends only on the
     // file and the configured size, so the parts S3 already holds line up.
     const partSize = this.partSizeForFile(file);
-    this.isPaused = false;
-    this.isCancelled = false;
 
     const listed = await this.s3.send(
       new ListPartsCommand({
@@ -340,6 +415,7 @@ export class MultipartUploader {
         UploadId: this.uploadId,
       })
     );
+    if (!isLive()) return;
 
     const remoteParts = (listed.Parts || []).map((p) => ({
       ETag: p.ETag!,
@@ -354,29 +430,40 @@ export class MultipartUploader {
     }
     this.completedParts = Array.from(deduped.values());
 
-    await this.uploadParts(file, partSize, onProgress);
+    await this.uploadParts(file, partSize, onProgress, isLive);
 
-    if (!this.isPaused && !this.isCancelled) {
-      await this.completeUpload();
-    }
+    if (isLive()) await this.completeUpload();
   }
 
+  /**
+   * Stops the upload where it is, keeping what it needs to resume. A run
+   * waiting on a request that cannot be aborted stops when it comes back.
+   */
   pause() {
-    this.isPaused = true;
+    this.generation++;
     this.abortInFlight();
   }
 
+  /**
+   * Stops the upload for good, and aborts its session on the server so the
+   * parts already sent are not left there, billed. A session still opening is
+   * aborted by its run once it opens.
+   */
   async cancel() {
     this.isCancelled = true;
+    this.generation++;
     this.abortInFlight();
-    if (this.uploadId) {
-      await this.s3.send(
-        new AbortMultipartUploadCommand({
-          Bucket: this.bucket,
-          Key: this.key,
-          UploadId: this.uploadId,
-        })
-      );
-    }
+    // A completed upload has no session left to abort: the object is stored.
+    if (this.uploadId && !this.completed) await this.abortSession();
+  }
+
+  private async abortSession() {
+    await this.s3.send(
+      new AbortMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.key,
+        UploadId: this.uploadId,
+      })
+    );
   }
 }
