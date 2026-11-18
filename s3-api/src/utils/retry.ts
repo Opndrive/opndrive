@@ -54,24 +54,40 @@ const NETWORK_MESSAGE =
  * before it is treated as a failure.
  */
 export function isTransientUploadError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
+  const facts = readError(error);
+  if (!facts) return false;
+
+  if (typeof facts.name === 'string' && SERVER_HICCUPS.has(facts.name)) return true;
+
+  if (typeof facts.status === 'number') {
+    return facts.status >= 500 || facts.status === 429 || facts.status === 408;
+  }
+
+  return gotNoAnswer(facts);
+}
+
+/** The parts of an error the decisions here are made on, or null for a non-object. */
+function readError(error: unknown) {
+  if (!error || typeof error !== 'object') return null;
 
   const { name, message, $metadata } = error as {
     name?: unknown;
     message?: unknown;
     $metadata?: { httpStatusCode?: unknown };
   };
-  const status = $metadata?.httpStatusCode;
+  return { name, message, status: $metadata?.httpStatusCode };
+}
 
-  if (typeof name === 'string' && SERVER_HICCUPS.has(name)) return true;
-
-  if (typeof status === 'number') {
-    return status >= 500 || status === 429 || status === 408;
-  }
-
-  if (typeof name === 'string' && NO_ANSWER.has(name)) return true;
-
-  return typeof message === 'string' && NETWORK_MESSAGE.test(message);
+/**
+ * Whether a failure says its request got no answer at all: no HTTP status,
+ * and a name or message that means a lost connection. Without the second
+ * half, any error with no status would do, including the upload's own, such
+ * as a file too large to send, which are thrown before anything goes out.
+ */
+function gotNoAnswer(facts: NonNullable<ReturnType<typeof readError>>): boolean {
+  if (typeof facts.status === 'number') return false;
+  if (typeof facts.name === 'string' && NO_ANSWER.has(facts.name)) return true;
+  return typeof facts.message === 'string' && NETWORK_MESSAGE.test(facts.message);
 }
 
 /**
@@ -93,13 +109,17 @@ export function isBrowserOffline(): boolean {
  * status was answered by a server, which proves there is a network, so it
  * counts like any other failure. Otherwise a refusal while the browser
  * wrongly said "offline" would be tried again every so often for good.
+ *
+ * And "no answer" means one that looks like a lost connection, not merely
+ * one without a status. A failure of the upload's own has no status either,
+ * and was waited on and tried again every 30 seconds while offline, only to
+ * fail the same way once the network came back.
  */
 export function failedOffline(error: unknown): boolean {
   if (!isBrowserOffline()) return false;
 
-  const status = (error as { $metadata?: { httpStatusCode?: unknown } } | null)?.$metadata
-    ?.httpStatusCode;
-  return typeof status !== 'number';
+  const facts = readError(error);
+  return facts !== null && gotNoAnswer(facts);
 }
 
 export interface WaitBeforeRetryOptions {

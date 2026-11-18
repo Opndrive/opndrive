@@ -829,6 +829,22 @@ describe('automatic retry', () => {
       expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
     });
 
+    it("fails at once on a failure of the upload's own", async () => {
+      // No HTTP status, like a dropped connection, but nothing to do with the
+      // network: waiting for it to come back would only fail again after.
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const browser = goOffline();
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(new Error('a.txt is too large to upload.'));
+      await settle();
+
+      expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+      expect(browser.waiting()).toBe(0);
+    });
+
     it('tries again now and then, in case the browser is wrong', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.useFakeTimers();

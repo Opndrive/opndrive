@@ -85,6 +85,34 @@ describe('failedOffline', () => {
 
     expect(failedOffline(new TypeError('Failed to fetch'))).toBe(false);
   });
+
+  it("is not a failure of the upload's own, which has no status either", () => {
+    // Thrown before anything is sent. Read as the network's, it was tried
+    // again every 30 seconds for as long as the browser said offline.
+    vi.stubGlobal('navigator', { onLine: false });
+
+    expect(
+      failedOffline(new Error('big.bin is too large to upload. A multipart upload can have…'))
+    ).toBe(false);
+    expect(failedOffline(new Error('No uploadId found. Start a new upload.'))).toBe(false);
+  });
+
+  it('is every kind of no answer the uploaders report', () => {
+    vi.stubGlobal('navigator', { onLine: false });
+
+    for (const name of ['NetworkError', 'TimeoutError', 'UploadStalledError']) {
+      expect(failedOffline(Object.assign(new Error('x'), { name }))).toBe(true);
+    }
+    expect(failedOffline(new Error('NetworkError when attempting to fetch resource.'))).toBe(true);
+  });
+
+  it('is not anything it cannot read', () => {
+    vi.stubGlobal('navigator', { onLine: false });
+
+    expect(failedOffline('Failed')).toBe(false);
+    expect(failedOffline(null)).toBe(false);
+    expect(failedOffline({})).toBe(false);
+  });
 });
 
 describe('waitBeforeRetry', () => {
