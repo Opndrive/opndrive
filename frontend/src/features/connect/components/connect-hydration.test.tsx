@@ -37,7 +37,7 @@ vi.mock('@opndrive/s3-api', () => ({
 
 import { AuthProvider } from '@/context/auth-context';
 import { getProviderBySlug } from '@/config/providers';
-import { getCorsConfig } from '@/config/cors';
+import { SITE_URL } from '@/config/links';
 import { ConnectWizard } from './connect-wizard';
 import { SetupGuide } from './setup-guide';
 
@@ -47,7 +47,7 @@ function tree() {
   return (
     <AuthProvider>
       <ConnectWizard provider={wasabi} />
-      <SetupGuide provider={wasabi} corsConfig={getCorsConfig(wasabi.id)} />
+      <SetupGuide provider={wasabi} />
     </AuthProvider>
   );
 }
@@ -72,14 +72,17 @@ describe('server output', () => {
     expect(html).toContain('Connect to your S3 storage');
   });
 
-  // The setup steps are the content that makes this page worth indexing, so
-  // they have to be in the markup even though the disclosure starts closed.
-  it('includes the setup guide content even while collapsed', () => {
+  // The setup steps are the content that makes this page worth indexing, and
+  // the CORS policy is required, so they are in the markup and open.
+  it('includes the setup guide content, open', () => {
     const html = renderToString(tree());
 
-    expect(html).toContain('<details');
+    expect(html).toContain('<details open=""');
     expect(html).toContain(wasabi.setup.corsInstructions);
     expect(html).toContain('AllowedMethods');
+    // The server cannot know which address the page is open at, so it fills
+    // in the site's own; the browser swaps in the real one after hydrating.
+    expect(html).toContain(SITE_URL);
   });
 
   it('starts the secret masked and the region list closed', () => {

@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PROVIDER_SLUGS, getProviderBySlug } from '@/config/providers';
-import { getCorsConfig } from '@/config/cors';
 import { ConnectShell } from '@/features/connect/components/connect-shell';
 import { ConnectWizard } from '@/features/connect/components/connect-wizard';
 import { ProviderMark } from '@/features/connect/components/provider-mark';
@@ -93,7 +92,7 @@ export default async function ProviderConnectPage({ params }: ProviderPageProps)
       </div>
 
       <div className="mt-4">
-        <SetupGuide provider={provider} corsConfig={getCorsConfig(provider.id)} />
+        <SetupGuide provider={provider} />
       </div>
     </ConnectShell>
   );
