@@ -59,7 +59,10 @@ const navbar = (
     // Nextra renders this beside the project link, mirroring the app's own
     // navbar pairing.
     chatLink={DISCORD_URL}
-    chatIcon={<DiscordIcon width="24" aria-label="Join our Discord" />}
+    // The link's only content is this icon, so its name is the link's name.
+    // role="img" makes every screen reader read an <svg> with a label as an
+    // image with that name; without it some skip the svg altogether.
+    chatIcon={<DiscordIcon width="24" role="img" aria-label="Join our Discord" />}
   />
 );
 

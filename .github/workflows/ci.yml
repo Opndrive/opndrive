@@ -35,6 +35,11 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              # The docs site has no test runner; its tests (the CORS guide
+              # kept identical to the app, breadcrumbs, canonical URLs, the
+              # link plugin) live in the frontend suite, so a docs-only change
+              # has to run it too.
+              - 'docs/**'
             s3api:
               - 's3-api/**'
             root:

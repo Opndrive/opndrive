@@ -211,8 +211,11 @@ aws s3api put-bucket-cors --bucket YOUR_BUCKET --cors-configuration file://cors.
 ```
 <!-- prettier-ignore-end -->
 
-Backblaze notes that the S3 API cannot change CORS rules that were created with
-its native API.
+If the bucket already has CORS rules from Backblaze's native API, for example
+set with the `b2` tool as Opndrive's setup steps used to say, the S3 API cannot
+change them: Backblaze says they can only be changed through the native API
+(`b2 bucket update --cors-rules`). Remove them there first, then run the
+command.
 
 Setup page:
 [Connect to Backblaze B2](https://opndrive.app/connect/backblaze-b2).

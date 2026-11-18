@@ -29,11 +29,16 @@ Don't have an AWS account or bucket yet?
 1. Create a free account at [aws.amazon.com](https://aws.amazon.com) (S3 has a
    free tier).
 2. Create a bucket and generate access keys in the AWS console.
-3. Come back and connect through the form above.
+3. Give the bucket a CORS policy that allows the address you open Opndrive at.
+   Without it the browser refuses every request and connecting fails with "Could
+   not reach your storage". [Configure CORS](../guides/configure-cors.md) has
+   the policy to paste.
+4. Come back and connect through the form above.
 
-Using a non-AWS S3-compatible service (MinIO, DigitalOcean Spaces)? See
-[Connecting Storage](../guides/connecting-storage.md) for the custom-endpoint
-option.
+Using Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces or MinIO? Each
+has its own page on [/connect](https://opndrive.app/connect) with its setup
+steps; any other S3-compatible service uses the custom endpoint option. See
+[Connecting Storage](../guides/connecting-storage.md).
 
 ## 2. Your Credentials, Your Browser
 

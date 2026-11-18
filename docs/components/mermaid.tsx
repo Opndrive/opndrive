@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import styles from './mermaid.module.css';
 
 /**
  * How far ahead of the viewport a diagram starts loading.
@@ -19,6 +20,13 @@ const LOAD_MARGIN = '600px';
  * diagram well below the first screen - so every visit paid for it up front
  * whether or not the reader scrolled that far. Now nothing is fetched until the
  * diagram nears the viewport.
+ *
+ * Two cases draw straight away instead, as before: a diagram already above
+ * the viewport when the page mounts (opened at a #heading further down, or
+ * with the scroll position restored), whose growth would otherwise push the
+ * text being read; and printing, which starts drawing every diagram. A print
+ * taken before a diagram is drawn shows its Mermaid source rather than a gap,
+ * since the browser does not wait for the drawing.
  */
 export function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -32,10 +40,14 @@ export function Mermaid({ chart }: { chart: string }) {
     if (!el) return;
 
     // Without IntersectionObserver there is no way to wait, so draw it now.
-    if (typeof IntersectionObserver === 'undefined') {
+    // Nor is there a reason to wait for one already scrolled past.
+    if (typeof IntersectionObserver === 'undefined' || el.getBoundingClientRect().bottom < 0) {
       setNear(true);
       return;
     }
+
+    const drawForPrint = () => setNear(true);
+    window.addEventListener('beforeprint', drawForPrint);
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -48,7 +60,10 @@ export function Mermaid({ chart }: { chart: string }) {
     );
     observer.observe(el);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('beforeprint', drawForPrint);
+    };
   }, []);
 
   useEffect(() => {
@@ -79,7 +94,13 @@ export function Mermaid({ chart }: { chart: string }) {
   }
 
   if (!svg) {
-    return <div ref={ref} style={{ minHeight: '4rem' }} />;
+    return (
+      <div ref={ref} style={{ minHeight: '4rem' }}>
+        <pre className={styles.printSource} aria-hidden="true">
+          {chart}
+        </pre>
+      </div>
+    );
   }
 
   return <div className="nextra-mermaid" dangerouslySetInnerHTML={{ __html: svg }} />;

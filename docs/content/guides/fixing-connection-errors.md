@@ -2,16 +2,16 @@
 description:
   'What each connection error in Opndrive means and how to fix it: blocked CORS
   requests, failed preflights, a missing ETag on large uploads,
-  SignatureDoesNotMatch, AccessDenied, InvalidAccessKeyId and a wrong region or
-  endpoint.'
+  SignatureDoesNotMatch, AccessDenied, InvalidAccessKeyId, unrecognised errors
+  and a wrong region or endpoint.'
 ---
 
 # Fixing Connection Errors
 
-When Opndrive cannot use your storage it shows a short message, and the browser
-usually knows more: open the developer console (**F12**, then **Console**) and
-look for the line about the request that failed. Find either the message or the
-console line below.
+When Opndrive cannot use your storage it shows one of five messages, and the
+browser usually knows more: open the developer console (**F12**, then
+**Console**) and look for the line about the request that failed. Find either
+the message or the console line below.
 
 This page is for using Opndrive. For problems while developing it, see
 [Development Troubleshooting](../reference/troubleshooting.md).
@@ -42,6 +42,9 @@ this way.
 
 **Fix:** apply the policy for your provider from
 [Configure CORS](./configure-cors.md), with your address as the allowed origin.
+On MinIO, and on Wasabi until a bucket has a policy of its own, CORS allows
+every origin by default, so this means it has been restricted; the guide covers
+adding Opndrive's address back.
 
 ### Response to preflight request doesn't pass access control check: It does not have HTTP ok status
 
@@ -90,17 +93,21 @@ unreachable from the hosted app: put TLS in front of it, or
 [self-host Opndrive](../getting-started/deployment.md) and open it over `http`
 on the same network.
 
-## Large uploads never finish (ETag not exposed)
+## Large uploads fail or keep retrying at the end (ETag not exposed)
 
-Small files upload, but larger ones, which go up in parts, stall at the end.
-There is no console error: each part uploads fine, but the browser hides the
-part's `ETag` response header unless the CORS policy exposes it, and finishing a
-multipart upload needs it. Amazon S3's documentation for completing an upload:
-"For each part in the list, you must provide the `PartNumber` value and the
-`ETag` value that are returned after that part was uploaded."
+Opndrive shows no message of its own for this one. Small files upload, but
+larger ones, which go up in parts, fail at the last step, and Opndrive may keep
+retrying it. Each part uploads fine, but the browser hides the part's `ETag`
+response header unless the CORS policy exposes it, and finishing a multipart
+upload needs it. Amazon S3's documentation for completing an upload: "For each
+part in the list, you must provide the `PartNumber` value and the `ETag` value
+that are returned after that part was uploaded."
 
 **Fix:** add `ETag` to the exposed headers. Every policy in
-[Configure CORS](./configure-cors.md) already has it.
+[Configure CORS](./configure-cors.md) already has it. MinIO Community Edition
+exposes `ETag` in its own CORS answers, so with MinIO this points at something
+in front of it that answers CORS instead, such as a reverse proxy; expose `ETag`
+there.
 
 ## "Those keys were rejected"
 
@@ -129,6 +136,17 @@ The request was signed for a different region from the bucket's. Opndrive files
 this under "Those keys were rejected", but the keys are fine: pick the region
 the bucket was created in.
 
+### ExpiredToken and TokenRefreshRequired
+
+Amazon S3: "The provided token has expired." and "The provided token must be
+refreshed." These come with temporary credentials that carry a session token;
+connect again with current keys.
+
+### Also filed here
+
+Opndrive also shows "Those keys were rejected" for `InvalidClientTokenId`,
+`UnrecognizedClientException` and any other answer with HTTP status 401.
+
 ## "That bucket was not found"
 
 The keys worked, but the bucket did not answer as expected.
@@ -144,6 +162,11 @@ Amazon S3: "The bucket you are attempting to access must be addressed using the
 specified endpoint." The bucket exists, but in another region or behind another
 endpoint. See [Wrong region or endpoint](#wrong-region-or-endpoint).
 
+### Also filed here
+
+Opndrive also shows "That bucket was not found" for
+`AuthorizationQueryParameters` and for any other answer with HTTP status 404.
+
 ## "These keys are not allowed to do that"
 
 ### AccessDenied
@@ -153,6 +176,21 @@ policy does not allow the request. Give the key list, read, write and delete on
 the bucket, as listed in
 [Required IAM Permissions](./connecting-storage.md#required-iam-permissions) and
 in the setup guide on each provider's page.
+
+### AllAccessDisabled and AccountProblem
+
+Amazon S3: "All access to this Amazon S3 resource has been disabled." and "There
+is a problem with your AWS account that prevents the action from completing
+successfully." Both say to contact AWS Support; nothing in Opndrive or the
+bucket's settings can fix them. Opndrive also shows this message for any other
+answer with HTTP status 403.
+
+## "Something went wrong reaching your storage"
+
+The provider answered, but with an error Opndrive does not recognise, such as a
+server error. Opndrive says so rather than guessing. Try again; if it keeps
+happening, the browser console shows the request and the provider's own message,
+and the provider's status page may show an outage.
 
 ## Wrong Region or Endpoint
 

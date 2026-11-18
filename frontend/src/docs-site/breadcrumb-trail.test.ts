@@ -5,7 +5,8 @@
  * suite CI runs. The module has no Nextra imports, so it runs outside Next.
  */
 import { describe, expect, it } from 'vitest';
-import { breadcrumbTrail } from '../../../docs/lib/breadcrumb-trail';
+import { createElement, Fragment } from 'react';
+import { breadcrumbTrail, titleText } from '../../../docs/lib/breadcrumb-trail';
 
 const DOCS = 'https://docs.opndrive.app';
 
@@ -45,5 +46,39 @@ describe('breadcrumbTrail', () => {
       expect(new URL(crumb.url).origin).toBe(DOCS);
       expect(crumb.url.endsWith('/')).toBe(false);
     }
+  });
+});
+
+describe('titleText', () => {
+  it('reads a plain title as it is', () => {
+    expect(titleText('Guides')).toBe('Guides');
+    expect(titleText(42)).toBe('42');
+  });
+
+  it("reads the text out of a JSX title, as Nextra's _meta files allow", () => {
+    const title = createElement(
+      Fragment,
+      null,
+      createElement('span', null, 'Getting'),
+      ' ',
+      createElement('b', null, 'Started')
+    );
+    expect(titleText(title)).toBe('Getting Started');
+  });
+
+  it('gives nothing, not "[object Object]", for what has no text', () => {
+    expect(titleText(undefined)).toBe('');
+    expect(titleText(null)).toBe('');
+    expect(titleText(false)).toBe('');
+    expect(titleText({})).toBe('');
+  });
+
+  it('names a crumb by the text of its JSX title', () => {
+    const section = { ...guides, title: createElement('span', null, 'Guides') };
+    const [, crumb] = breadcrumbTrail([
+      section,
+      page('/guides/uploading-files', 'Uploading Files'),
+    ]);
+    expect(crumb).toEqual({ name: 'Guides', url: `${DOCS}/guides/connecting-storage` });
   });
 });

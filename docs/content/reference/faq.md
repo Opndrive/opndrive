@@ -12,10 +12,16 @@ entered through the `/connect` form. Opndrive has no backend server and no
 database, so there's nowhere else for them to go. See
 [Connecting Storage](../guides/connecting-storage.md).
 
-**Does Opndrive work with storage other than AWS S3?** Yes. AWS, Wasabi,
-Backblaze B2, and Cloudflare R2 have built-in presets, and any other
-S3-compatible endpoint (MinIO, DigitalOcean Spaces, ...) works by entering a
-custom endpoint URL. See [Connecting Storage](../guides/connecting-storage.md).
+**Does Opndrive work with storage other than AWS S3?** Yes. Amazon S3,
+Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces and MinIO each have
+their own page on [/connect](https://opndrive.app/connect) with their setup
+steps, and any other S3-compatible service works through the custom endpoint
+option. See [Connecting Storage](../guides/connecting-storage.md).
+
+**Connecting fails. What now?** Every bucket needs a CORS policy that allows the
+address you open Opndrive at; [Configure CORS](../guides/configure-cors.md) has
+the one for each provider. For the message Opndrive shows, see
+[Fixing Connection Errors](../guides/fixing-connection-errors.md).
 
 **How many times do I run `pnpm install` when setting up?** Once, from the
 repository root. The repo uses `pnpm-workspace.yaml`, so `pnpm install` installs
@@ -46,6 +52,8 @@ want to fix it, it's a good first contribution).
 [SECURITY.md](https://github.com/Opndrive/opndrive/blob/main/SECURITY.md). Don't
 open a public issue for it.
 
-**Something's not covered here.** Check [Troubleshooting](./troubleshooting.md),
-then [open an issue](https://github.com/Opndrive/opndrive/issues) or a GitHub
+**Something's not covered here.** Using Opndrive, check
+[Fixing Connection Errors](../guides/fixing-connection-errors.md); working on
+it, check [Development Troubleshooting](./troubleshooting.md). Then
+[open an issue](https://github.com/Opndrive/opndrive/issues) or a GitHub
 Discussion.

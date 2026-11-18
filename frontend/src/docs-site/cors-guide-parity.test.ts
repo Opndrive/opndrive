@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The docs' Configure CORS guide and the app's setup guide give the same
  * policies, character for character.
@@ -6,20 +7,20 @@
  * This is what keeps them one policy: every block in the guide is checked
  * against getCorsPolicy for its provider, filled in with https://opndrive.app
  * as the guide is, and every provider the app knows has to be in the guide.
+ * CI runs it for changes under docs/ as well as frontend/.
  *
  * It lives in the frontend's suite because the docs site has no test runner of
- * its own, and this is the suite CI runs.
+ * its own. Node environment, so the guide is found from this file's own
+ * location whichever directory the suite is started from.
  */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { getCorsPolicy } from '@/config/cors';
 import { S3_PROVIDERS } from '@/config/providers';
 
-// The suite runs from frontend/ (pnpm --filter frontend test); jsdom's
-// import.meta.url is not a file URL, so the path is taken from there.
 const GUIDE = readFileSync(
-  resolve(process.cwd(), '../docs/content/guides/configure-cors.md'),
+  fileURLToPath(new URL('../../../docs/content/guides/configure-cors.md', import.meta.url)),
   'utf8'
 ).replace(/\r\n/g, '\n');
 
@@ -31,26 +32,53 @@ function blocks(kind: 'policy' | 'command'): Map<string, string> {
     `<!-- cors-${kind}:(\\w+) -->\\s*\`\`\`\\w+\\n([\\s\\S]*?)\\n\`\`\``,
     'g'
   );
-  for (const [, id, body] of GUIDE.matchAll(pattern)) found.set(id!, body!);
+  for (const [, id, body] of GUIDE.matchAll(pattern)) {
+    expect(found.has(id!), `two cors-${kind} blocks for ${id}`).toBe(false);
+    found.set(id!, body!);
+  }
   return found;
+}
+
+/** The guide's section for a provider: from its heading to the next one. */
+function section(heading: string): string {
+  const start = GUIDE.indexOf(`\n## ${heading}\n`);
+  expect(start, `no "## ${heading}" section in the guide`).toBeGreaterThan(-1);
+  const end = GUIDE.indexOf('\n## ', start + 1);
+  return GUIDE.slice(start, end === -1 ? undefined : end);
 }
 
 const policies = blocks('policy');
 const commands = blocks('command');
+const known = new Set(S3_PROVIDERS.map((p) => p.id));
 
 describe('the Configure CORS guide', () => {
   it.each(S3_PROVIDERS.map((p) => [p.name, p.id] as const))(
     'gives %s the policy the app gives',
-    (_name, id) => {
-      const policy = getCorsPolicy(id, ORIGIN)!;
-      expect(policies.get(id)).toBe(policy.text);
-      if (policy.file) expect(commands.get(id)).toBe(policy.file.command);
-      else expect(commands.has(id)).toBe(false);
+    (name, id) => {
+      const policy = getCorsPolicy(id, ORIGIN);
+      expect(policy, `the app has no CORS policy for ${name}`).not.toBeNull();
+      expect(policies.get(id), `the guide has no policy block for ${name}`).toBe(policy!.text);
+
+      if (policy!.file) {
+        expect(commands.get(id)).toBe(policy!.file.command);
+      } else {
+        expect(commands.has(id)).toBe(false);
+      }
     }
   );
 
-  it('has no policy for a provider the app does not have', () => {
-    const known = new Set(S3_PROVIDERS.map((p) => p.id));
+  it.each(
+    S3_PROVIDERS.filter((p) => getCorsPolicy(p.id, ORIGIN)?.file).map((p) => [p.name, p] as const)
+  )('tells %s users to save the policy under the name the command reads', (_name, provider) => {
+    const { file } = getCorsPolicy(provider.id, ORIGIN)!;
+    const heading = provider.id === 'custom' ? 'Any Other S3-Compatible Service' : provider.name;
+
+    expect(section(heading)).toContain(`\`${file!.name}\``);
+    expect(file!.command).toContain(file!.name);
+  });
+
+  it('has no policy or command block for a provider the app does not have', () => {
     expect([...policies.keys()].filter((id) => !known.has(id))).toEqual([]);
+    expect([...commands.keys()].filter((id) => !known.has(id))).toEqual([]);
   });
 });

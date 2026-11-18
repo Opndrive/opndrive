@@ -5,7 +5,7 @@
  * suite CI runs. The module has no Nextra imports, so it runs outside Next.
  */
 import { describe, expect, it } from 'vitest';
-import { pageMetadata, pageUrl } from '../../../docs/lib/site';
+import { isHomePage, pageMetadata, pageUrl } from '../../../docs/lib/site';
 
 const DOCS = 'https://docs.opndrive.app';
 
@@ -88,5 +88,15 @@ describe('pageMetadata', () => {
       absolute: 'Opndrive Documentation',
     });
     expect(pageMetadata({ title: 'FAQ' }, ['reference', 'faq']).title).toBe('FAQ');
+  });
+});
+
+describe('isHomePage', () => {
+  it('is true for every spelling of the home and false for any page', () => {
+    expect(isHomePage()).toBe(true);
+    expect(isHomePage([])).toBe(true);
+    expect(isHomePage([''])).toBe(true);
+    expect(isHomePage(['guides'])).toBe(false);
+    expect(isHomePage(['guides', 'uploading-files'])).toBe(false);
   });
 });
