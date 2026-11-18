@@ -613,7 +613,9 @@ describe('3. the permission lock and skip path', () => {
     await untilIdle(bucket);
 
     render(<QueueNotices />);
-    fireEvent.click(screen.getByText('Clear all'));
+    // One notice, so its own dismiss button: "Clear all" only appears over
+    // two or more.
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss notice/ }));
 
     expect(queue().notices).toEqual([]);
     expect(screen.queryByTestId('queue-notices')).toBeNull();
