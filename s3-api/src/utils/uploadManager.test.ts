@@ -617,6 +617,50 @@ describe('automatic retry', () => {
     expect(uploaderInstances[0]!.cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('has its retries back after an attempt that got further', async () => {
+    // Retries are for an upload that is stuck. Hours into a big one, a fourth
+    // short drop failed it outright, though parts went up between every two,
+    // and the parts already sent were aborted with it.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    for (let drop = 1; drop <= 6; drop++) {
+      uploaderInstances[0]!.onProgress!(drop * 10);
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+    }
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+  });
+
+  it('still gives up once it stops getting further', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    // A drop, then an attempt that gets further, then nothing but drops.
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    uploaderInstances[0]!.onProgress!(40);
+    uploaderInstances[0]!.gate.reject(dropped());
+    await settle();
+    for (let drop = 0; drop < 3; drop++) {
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+    }
+
+    // Three retries counted from the last progress, and then no more.
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(5);
+    expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+  });
+
   it('stops retrying once the upload is paused', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const manager = UploadManager.getInstance({ ...config, retryDelaysMs: [50] });

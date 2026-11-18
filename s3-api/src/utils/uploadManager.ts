@@ -396,6 +396,7 @@ export class UploadManager {
 
         let retriesUsed = 0;
         for (;;) {
+          const progressBefore = item.progress;
           try {
             await this.runAttempt(item, onProgress);
             break;
@@ -403,6 +404,13 @@ export class UploadManager {
             // Paused or cancelled underneath this attempt, which is what
             // ended it. Not a failure, and not this worker's to retry.
             if (!ownsUpload()) return;
+
+            // Retries are for an upload that is stuck. One whose last attempt
+            // got further is moving, and the parts it sent are kept, so it has
+            // its retries back. Counted over the whole upload instead, four
+            // short drops in the hours of a big one failed it outright, and
+            // aborted every part it had sent.
+            if (item.progress > progressBefore) retriesUsed = 0;
 
             // Failing while the browser says it is offline is the network's
             // doing, not the upload's, so it spends no retry: the upload

@@ -334,6 +334,11 @@ export class SignedUrlUploadManager {
 
         // See UploadManager.processQueue. Each attempt signs a fresh URL, so
         // a retry cannot be refused for an expired one.
+        //
+        // Unlike there, getting further does not give the retries back. Each
+        // attempt here sends the whole file again from its first byte, so
+        // nothing an attempt sent is kept for the next, and a connection that
+        // always drops part way would otherwise be retried for good.
         let retriesUsed = 0;
         for (;;) {
           try {
