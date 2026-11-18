@@ -30,6 +30,12 @@ docs/**
 !docs/patches
 !docs/patches/**
 
+# The docs site's tests live in the frontend suite and import files from docs/,
+# which the image does not have, nor docs' dependencies. next build type-checks
+# every file tsconfig includes, so they have to stay out of the build context.
+# They are tests only; nothing in the app imports them.
+frontend/src/docs-site
+
 Dockerfile
 .dockerignore
 
