@@ -12,14 +12,35 @@
 /** How long to wait before each automatic retry. Its length is how many there are. */
 export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [2_000, 8_000, 30_000];
 
-/** Error names that mean the request never got a real answer. */
-const NO_ANSWER = new Set([
-  'NetworkError',
-  'TypeError',
-  'AbortError',
-  'TimeoutError',
-  'UploadStalledError',
-]);
+/**
+ * Error names that mean the request never got a real answer.
+ *
+ * Not TypeError, though a fetch that gets no answer throws one: so does code
+ * reading a property of undefined, which fails the same way every time. A
+ * TypeError counts only when its message is a browser's word for a failed
+ * fetch. See FETCH_FAILED.
+ */
+const NO_ANSWER = new Set(['NetworkError', 'AbortError', 'TimeoutError', 'UploadStalledError']);
+
+/**
+ * What a fetch that got no answer says, as a TypeError: Chrome and Edge,
+ * Firefox, Safari, and Node.
+ */
+const FETCH_FAILED = /failed to fetch|networkerror when attempting|load failed|fetch failed/i;
+
+/** The name of an error this package throws about an upload. See uploadError. */
+const UPLOAD_ERROR = 'UploadError';
+
+/**
+ * An error this package throws about an upload: a file too large to send, a
+ * session that ended. Never taken for a lost connection, whatever its message
+ * says. It names the file, and a file called network-capture.pcap read as
+ * "network" was retried, or waited on while offline, for a refusal that comes
+ * back the same every time.
+ */
+export function uploadError(message: string): Error {
+  return Object.assign(new Error(message), { name: UPLOAD_ERROR });
+}
 
 /** Error names S3 uses for a problem on its side that clears by itself. */
 const SERVER_HICCUPS = new Set([
@@ -89,8 +110,12 @@ export function readError(error: unknown) {
  */
 function gotNoAnswer(facts: NonNullable<ReturnType<typeof readError>>): boolean {
   if (typeof facts.status === 'number') return false;
+  if (facts.name === UPLOAD_ERROR) return false;
+
+  const message = typeof facts.message === 'string' ? facts.message : '';
+  if (facts.name === 'TypeError') return FETCH_FAILED.test(message);
   if (typeof facts.name === 'string' && NO_ANSWER.has(facts.name)) return true;
-  return typeof facts.message === 'string' && NETWORK_MESSAGE.test(facts.message);
+  return NETWORK_MESSAGE.test(message);
 }
 
 /**

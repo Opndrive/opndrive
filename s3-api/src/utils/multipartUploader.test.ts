@@ -33,6 +33,7 @@ import {
   multipartETag,
   partSizeFor,
 } from './multipartUploader.js';
+import { isTransientUploadError } from './retry.js';
 
 const s3Mock = mockClient(S3Client);
 const MB = 1024 * 1024;
@@ -541,6 +542,24 @@ describe('very large files', () => {
     // Refused up front. Failing at part 10,001 instead would leave every part
     // before it stored, billed and invisible.
     expect(s3Mock).not.toHaveReceivedAnyCommand();
+  });
+
+  it('refuses in a way that is never retried, whatever the file is called', async () => {
+    // Named network-dump.bin, the refusal read as a dropped connection.
+    const file = { ...hugeFile(49 * TiB).asFile, name: 'network-dump.bin' } as File;
+    const uploader = new MultipartUploader({
+      s3: new S3Client({ region: 'us-east-1' }),
+      bucket: 'test-bucket',
+      key: 'network-dump.bin',
+      fileName: 'network-dump.bin',
+      partSizeBytes: 5 * MB,
+      concurrency: 1,
+    });
+
+    const refusal = await uploader.start(file).catch((error: unknown) => error);
+
+    expect(refusal).toBeInstanceOf(Error);
+    expect(isTransientUploadError(refusal)).toBe(false);
   });
 
   it('names the file and the limit when it refuses', async () => {

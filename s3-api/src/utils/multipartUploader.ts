@@ -11,7 +11,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { md5, toHex } from './md5.js';
-import { readError } from './retry.js';
+import { readError, uploadError } from './retry.js';
 
 const MiB = 1024 * 1024;
 
@@ -295,7 +295,7 @@ export class MultipartUploader {
       // UploadId: undefined and completeUpload() then returns early, so the
       // upload finishes "successfully" having stored nothing.
       if (!UploadId) {
-        throw new Error(
+        throw uploadError(
           `S3 did not return an UploadId when starting the multipart upload for ${this.key}`
         );
       }
@@ -330,7 +330,7 @@ export class MultipartUploader {
     const partSize = partSizeFor(file.size, this.partSize);
 
     if (partSize === null) {
-      throw new Error(
+      throw uploadError(
         `${this.fileName} is too large to upload. A multipart upload can have at most ` +
           `${MAX_PARTS.toLocaleString('en-US')} parts of up to 5 GiB each, about 48.8 TiB in all.`
       );
@@ -440,7 +440,7 @@ export class MultipartUploader {
 
         // safety: only allow <5MB if it's the LAST part
         if (end - start < MIN_PART_SIZE && partNumber !== totalParts) {
-          throw new Error(`Part ${partNumber} too small (<5MB). Only the last part can be <5MB.`);
+          throw uploadError(`Part ${partNumber} too small (<5MB). Only the last part can be <5MB.`);
         }
 
         try {
@@ -602,7 +602,7 @@ export class MultipartUploader {
       if (!isNotFound(err)) throw err;
 
       this.forgetSession();
-      throw new Error(
+      throw uploadError(
         `"${this.fileName}" was not stored: its upload was ended on the server before it ` +
           'was finished. Upload it again.'
       );
@@ -612,7 +612,7 @@ export class MultipartUploader {
     if (expected !== null && bareETag(stored) === expected) return;
 
     this.forgetSession();
-    throw new Error(
+    throw uploadError(
       `Could not confirm that "${this.fileName}" was stored: its upload was ended on the ` +
         'server, and the file there now cannot be matched to it. Upload it again to be sure.'
     );
@@ -637,7 +637,7 @@ export class MultipartUploader {
       // is what resuming means for it.
       if (this.fitsInOneRequest(file)) return this.uploadInOneRequest(file, onProgress, isLive);
 
-      throw new Error('No uploadId found. Start a new upload.');
+      throw uploadError('No uploadId found. Start a new upload.');
     }
 
     // The same size the upload started with: partSizeFor depends only on the
@@ -714,7 +714,7 @@ export class MultipartUploader {
       // clean would leave it in the bucket under an upload said to be
       // cancelled.
       if (this.completing || this.completionInDoubt) {
-        throw new Error(
+        throw uploadError(
           `"${this.fileName}" may already be stored: it was being finished when it was cancelled.`
         );
       }

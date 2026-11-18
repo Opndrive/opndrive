@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { failedOffline, isTransientUploadError, waitBeforeRetry } from './retry.js';
+import { failedOffline, isTransientUploadError, uploadError, waitBeforeRetry } from './retry.js';
 
 const withStatus = (status: number, name = 'S3Error') =>
   Object.assign(new Error(name), { name, $metadata: { httpStatusCode: status } });
@@ -25,6 +25,42 @@ describe('isTransientUploadError', () => {
     expect(
       isTransientUploadError(Object.assign(new Error('x'), { name: 'UploadStalledError' }))
     ).toBe(true);
+  });
+
+  it("does not take the upload's own error for a lost connection, whatever file it names", () => {
+    // The message names the file, and a file called network-capture.pcap
+    // read as "network" was retried, or waited on while offline, for a
+    // refusal that comes back the same every time.
+    vi.stubGlobal('navigator', { onLine: false });
+    const own = uploadError('network-capture.pcap is too large to upload.');
+
+    expect(isTransientUploadError(own)).toBe(false);
+    expect(failedOffline(own)).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('retries what each browser says when a fetch gets no answer', () => {
+    for (const message of [
+      'Failed to fetch',
+      'NetworkError when attempting to fetch resource.',
+      'Load failed',
+      'fetch failed',
+    ]) {
+      expect(isTransientUploadError(new TypeError(message))).toBe(true);
+    }
+  });
+
+  it('does not retry a TypeError that is a bug in the code', () => {
+    // A TypeError is also what reading a property of undefined throws, and
+    // it fails the same way on every attempt.
+    expect(
+      isTransientUploadError(new TypeError("Cannot read properties of undefined (reading 'size')"))
+    ).toBe(false);
+    expect(
+      isTransientUploadError(
+        new TypeError("Cannot read properties of undefined (reading 'connection')")
+      )
+    ).toBe(false);
   });
 
   it('retries the throttling names S3 uses, even without a status', () => {
