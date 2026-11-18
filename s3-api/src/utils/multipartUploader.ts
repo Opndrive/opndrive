@@ -98,6 +98,13 @@ export class MultipartUploader {
   }
 
   async start(file: File, onProgress?: (p: number) => void) {
+    // A start is a fresh attempt, so any pause belongs to one that has ended.
+    // An upload paused and resumed while waiting to retry, before its session
+    // had opened, carried that pause in here: every part was skipped, and so
+    // was the completion, and the upload was reported done with nothing
+    // stored. resume() clears it the same way.
+    this.isPaused = false;
+
     if (!this.uploadId && this.fitsInOneRequest(file)) {
       await this.uploadInOneRequest(file, onProgress);
       return;

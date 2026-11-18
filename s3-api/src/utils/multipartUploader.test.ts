@@ -619,6 +619,23 @@ describe('start', () => {
     });
   });
 
+  it('is not held back by a pause from an attempt that has already ended', async () => {
+    // A first attempt fails before its session opens, offline say, and the
+    // upload is paused and resumed while it waits to retry. The pause belongs
+    // to that attempt. Carried into this one, it skipped every part and the
+    // completion, and start() resolved as if the file had been stored.
+    stubHappyPath();
+    const uploader = makeUploader();
+    uploader.pause();
+
+    await uploader.start(makeFile(12 * MB));
+
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(3);
+    expect(s3Mock).toHaveReceivedCommandWith(CompleteMultipartUploadCommand, {
+      UploadId: 'upload-1',
+    });
+  });
+
   it('reuses an existing session instead of creating a second one', async () => {
     stubHappyPath();
     const uploader = makeUploader();

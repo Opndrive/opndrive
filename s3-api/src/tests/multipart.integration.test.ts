@@ -418,6 +418,48 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
       expect(await openUploadsFor(key)).toEqual([]);
     });
 
+    it('stores the file when paused and resumed before its session had opened', async () => {
+      // The very first request fails, so there is no session yet when the
+      // pause and resume come. The resumed attempt starts from scratch.
+      const key = keyFor('paused-before-session.bin');
+      const bytes = randomBytes(12 * MiB);
+      let failedOnce = false;
+      const { s3 } = interceptedClient((command) => {
+        if (!(command instanceof CreateMultipartUploadCommand) || failedOnce) return undefined;
+        failedOnce = true;
+        return Promise.reject(
+          Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' })
+        );
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        partSizeMB: 5,
+        retryDelaysMs: [300],
+      });
+      let retrying = false;
+      const { warn } = console;
+      console.warn = () => (retrying = true);
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'paused-before-session.bin'), { key });
+        while (!retrying) await new Promise((resolve) => setTimeout(resolve, 10));
+
+        manager.pauseUpload(id);
+        await manager.resumeUpload(id);
+        await waitForStatus(manager, id, 'completed');
+      } finally {
+        console.warn = warn;
+      }
+
+      // Reported done, and done: the object is there, whole. The pause used to
+      // carry into the fresh start, which skipped every part and completed
+      // nothing, so "completed" sat over an object that did not exist.
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
     it('survives a pause and resume during the wait, and finishes once', async () => {
       const key = keyFor('paused-while-waiting.bin');
       const bytes = randomBytes(16 * MiB);
