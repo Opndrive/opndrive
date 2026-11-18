@@ -80,6 +80,20 @@ const BUCKET_ERRORS = new Set([
   'AuthorizationQueryParameters',
 ]);
 
+/**
+ * The error names, and the HTTP status used when a response has no name we
+ * know, that decide each kind. Exported because the "If it fails" section on
+ * every /connect page lists them, and reading them from here is what keeps the
+ * page and the classifier from drifting apart.
+ */
+export const CONNECTION_FAILURE_CODES = {
+  credentials: { names: [...CREDENTIAL_ERRORS], status: 401 },
+  bucket: { names: [...BUCKET_ERRORS], status: 404 },
+  permissions: { names: [...PERMISSION_ERRORS], status: 403 },
+} as const satisfies Partial<
+  Record<ConnectionFailureKind, { names: readonly string[]; status: number }>
+>;
+
 interface SdkErrorShape {
   name?: unknown;
   message?: unknown;
@@ -126,7 +140,7 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
     };
   }
 
-  if (CREDENTIAL_ERRORS.has(name) || status === 401) {
+  if (CREDENTIAL_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.credentials.status) {
     return {
       kind: 'credentials',
       title: CONNECTION_FAILURE_TITLES.credentials,
@@ -137,7 +151,7 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
     };
   }
 
-  if (BUCKET_ERRORS.has(name) || status === 404) {
+  if (BUCKET_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.bucket.status) {
     return {
       kind: 'bucket',
       title: CONNECTION_FAILURE_TITLES.bucket,
@@ -151,7 +165,7 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailure {
   // Checked after the bucket case on purpose. A bucket in another account
   // answers with AccessDenied rather than NoSuchBucket, so a 403 here means
   // "not yours or not allowed", which is the same fix either way.
-  if (PERMISSION_ERRORS.has(name) || status === 403) {
+  if (PERMISSION_ERRORS.has(name) || status === CONNECTION_FAILURE_CODES.permissions.status) {
     return {
       kind: 'permissions',
       title: CONNECTION_FAILURE_TITLES.permissions,

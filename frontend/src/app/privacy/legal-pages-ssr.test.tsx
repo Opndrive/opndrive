@@ -47,7 +47,10 @@ import TermsOfServicePage from '../terms/page';
 // through renderToStaticMarkup - while everything this file is checking for,
 // and the AuthProvider gate it checks against, lives in here.
 import LandingPage from '@/features/landing-page/components/landing-page';
+import { landingFeatures } from '@/features/landing-page/components/feature-section';
+import { WORK_SMARTER_FEATURES } from '@/features/landing-page/components/work-smarter-section';
 import { faqData } from '@/features/landing-page/config/faq-section';
+import { NAMED_PROVIDERS_PHRASE } from '@/config/providers';
 
 /**
  * React escapes apostrophes and ampersands on the way into the markup, and the
@@ -123,7 +126,7 @@ describe('connect pages render for crawlers', () => {
 // page still gated. It sat in the list below, grouped with the dashboard as if
 // it were something to protect.
 describe('the landing page renders for crawlers', () => {
-  const html = renderThroughProviders('/', <LandingPage />);
+  const html = renderThroughProviders('/', <LandingPage namedProviders={NAMED_PROVIDERS_PHRASE} />);
 
   it('is not replaced by the auth loading placeholder', () => {
     expect(html).not.toContain('Loading...');
@@ -135,13 +138,19 @@ describe('the landing page renders for crawlers', () => {
     expect(html).toContain('Buckets made beautiful, across every provider');
   });
 
-  // The call to action is the point of the page, and it is rendered before any
-  // session has been looked for. If it ever goes back to reporting that, this
-  // is what a crawler would index in its place.
   // Each of these promised something the app does not do: it keeps no file
   // versions or backups, sharing has a link expiry and nothing else, nothing
   // can be edited in a preview, and "completely secure" is not a claim any
   // software should make. The brand was misspelt too.
+  //
+  // The two feature carousels render only their active item on the server, so
+  // most of their copy never reaches this markup. Their data is checked
+  // directly as well, or a claim in the second or third item would pass.
+  const carouselCopy = [
+    ...landingFeatures(NAMED_PROVIDERS_PHRASE),
+    ...WORK_SMARTER_FEATURES,
+  ].flatMap((feature) => [feature.title, feature.description, feature.imageAlt]);
+
   it.each([
     'versioning',
     'backed up',
@@ -150,9 +159,25 @@ describe('the landing page renders for crawlers', () => {
     'OpenDrive',
     'View or edit',
   ])('makes no claim the app cannot back up: "%s"', (claim) => {
-    expect(decodeEntities(html).toLowerCase()).not.toContain(claim.toLowerCase());
+    const text = [decodeEntities(html), ...carouselCopy].join('\n').toLowerCase();
+    expect(text).not.toContain(claim.toLowerCase());
   });
 
+  it('checks every carousel item, not only the one on screen', () => {
+    // Three features and four tools; if this drops, an item was missed.
+    expect(carouselCopy).toHaveLength((3 + 4) * 3);
+  });
+
+  it('names every provider in the registry in the features copy', () => {
+    expect(carouselCopy.join(' ')).toContain(NAMED_PROVIDERS_PHRASE);
+    expect(NAMED_PROVIDERS_PHRASE).toBe(
+      'Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO'
+    );
+  });
+
+  // The call to action is the point of the page, and it is rendered before any
+  // session has been looked for. If it ever goes back to reporting that, this
+  // is what a crawler would index in its place.
   it('renders a real call to action rather than a loading state', () => {
     expect(html).toContain('Get Started');
   });

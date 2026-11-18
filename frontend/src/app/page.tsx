@@ -4,6 +4,7 @@ import { faqData } from '@/features/landing-page/config/faq-section';
 import { generateWebSiteSchema } from '@/lib/seo';
 import { serializeJsonLd } from '@/lib/seo/json-ld';
 import { HERO_IMAGE_PRIORITY_SCRIPT } from '@/features/landing-page/hero-image-priority';
+import { NAMED_PROVIDERS_PHRASE } from '@/config/providers';
 
 /**
  * A server shell around the landing page, which is a client component and so
@@ -48,6 +49,7 @@ export default async function Page() {
         }}
       />
       <LandingPage
+        namedProviders={NAMED_PROVIDERS_PHRASE}
         heroImagePriorityScript={
           // The browser hides a nonce from the DOM once it has used it, so the
           // attribute never matches on hydration; that is expected.

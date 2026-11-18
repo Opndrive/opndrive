@@ -66,6 +66,13 @@ export interface S3Provider {
      * would shut out every other site that was relying on the default.
      */
     corsRequired: boolean;
+    /**
+     * True where the provider's own CORS answers already expose ETag, so a
+     * hidden ETag is not something its CORS settings can fix. MinIO Community
+     * Edition lists ETag among the exposed headers of its CORS handler
+     * (`commonS3Headers` in cmd/api-router.go).
+     */
+    etagExposedByDefault?: boolean;
     corsInstructions: string;
     permissions: string[];
     docsUrl: string;
@@ -322,6 +329,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
     },
     setup: {
       corsRequired: false,
+      etagExposedByDefault: true,
       corsInstructions:
         'MinIO Community Edition sets CORS for the whole server rather than per bucket, and allows every origin until told otherwise, so a server whose CORS you have not changed needs nothing here. If you have restricted it with MINIO_API_CORS_ALLOW_ORIGIN or cors_allow_origin, run the command below with your mc alias in place of myminio; it applies without a restart. The value replaces the old list, so include every origin that should keep working, comma-separated.',
       permissions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
@@ -384,6 +392,16 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
 
 /** Every provider slug, for generateStaticParams and the sitemap. */
 export const PROVIDER_SLUGS: readonly string[] = S3_PROVIDERS.map((provider) => provider.slug);
+
+/**
+ * The named providers as a phrase for copy - "Amazon S3, Cloudflare R2, ...,
+ * MinIO" - in registry order, without the catch-all custom endpoint. Built
+ * here so the landing page and the /connect description name a new provider
+ * as soon as it is added.
+ */
+export const NAMED_PROVIDERS_PHRASE: string = S3_PROVIDERS.filter((p) => p.id !== 'custom')
+  .map((p) => p.name)
+  .join(', ');
 
 export function getProviderBySlug(slug: string): S3Provider | undefined {
   return S3_PROVIDERS.find((provider) => provider.slug === slug);
