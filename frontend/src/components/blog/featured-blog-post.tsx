@@ -44,7 +44,7 @@ export function FeaturedBlogPost({ post }: FeaturedBlogPostProps) {
               dateTime={post.publishedDate}
               className="text-sm font-medium text-muted-foreground"
             >
-              {formatDate(post.publishedDate)}
+              {formatDate(post.publishedDateLocal)}
             </time>
 
             {/* Title */}

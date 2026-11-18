@@ -50,6 +50,7 @@ export const POST_FIELDS = `
     date
     dateGmt
     modified
+    modifiedGmt
     author {
       ...AuthorFields
     }

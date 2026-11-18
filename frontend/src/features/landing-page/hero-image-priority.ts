@@ -22,6 +22,26 @@
 /** Read by the script below; set on each copy of the hero image. */
 export const HERO_THEME_ATTRIBUTE = 'data-hero-theme';
 
+export type HeroTheme = 'dark' | 'light';
+
+/**
+ * The theme whose hero copy is showing, decided the way the script below
+ * decides it: the stamped `data-theme`, else the system setting.
+ *
+ * For renders where the script does not run. React never executes a <script>
+ * it creates on the client, so when the landing page is reached by client-side
+ * navigation the hero promotes its visible copy itself, through this.
+ */
+export function activeHeroTheme(): HeroTheme {
+  try {
+    const theme = document.documentElement.getAttribute('data-theme');
+    if (theme === 'dark' || theme === 'light') return theme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
 export const HERO_IMAGE_PRIORITY_SCRIPT = `(function () {
   try {
     var theme = document.documentElement.getAttribute('data-theme');

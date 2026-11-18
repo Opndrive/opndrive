@@ -12,7 +12,8 @@
  * JavaScript and indexable by a crawler that does not run any.
  *
  * So these render through AuthProvider the way the app does, and assert the
- * content is really in the markup.
+ * content is really in the markup. The blog is checked here too: it was gated
+ * the same way, so the index and every post reached a crawler as "Loading...".
  */
 
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -149,6 +150,29 @@ describe('the landing page renders for crawlers', () => {
       expect(text).toContain(question);
       expect(text).toContain(answer);
     }
+  });
+});
+
+describe('blog pages through the provider tree', () => {
+  // The blog pages are async server components and cannot go through
+  // renderToStaticMarkup, so a stand-in child goes through the same gate they
+  // do. What is under test is the gate.
+  const ARTICLE = 'The body of a blog post, which a crawler has to see.';
+  const renderBlog = (pathname: string) =>
+    renderThroughProviders(pathname, <article>{ARTICLE}</article>);
+
+  it.each(['/blog', '/blog/configure-cors-for-r2'])(
+    '%s renders its content on the server',
+    (path) => {
+      const html = renderBlog(path);
+
+      expect(html).not.toContain('Loading...');
+      expect(html).toContain(ARTICLE);
+    }
+  );
+
+  it('does not make look-alike paths public', () => {
+    expect(renderBlog('/blogroll')).toContain('Loading...');
   });
 });
 

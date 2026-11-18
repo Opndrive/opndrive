@@ -7,6 +7,7 @@
  * until the first post exists.
  */
 
+import { escapeXml } from '@/lib/xml';
 import type { BlogPost } from './types';
 
 export interface RssChannel {
@@ -20,23 +21,7 @@ export interface RssChannel {
   postBaseUrl: string;
 }
 
-type FeedPost = Pick<BlogPost, 'slug' | 'title' | 'excerpt' | 'publishedDate' | 'publishedDateUtc'>;
-
-/** Characters XML 1.0 does not allow at all, which WordPress text can carry. */
-// eslint-disable-next-line no-control-regex
-const INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
-
-const ESCAPES: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
-};
-
-export function escapeXml(text: string): string {
-  return text.replace(INVALID_XML_CHARS, '').replace(/[&<>"']/g, (ch) => ESCAPES[ch]!);
-}
+type FeedPost = Pick<BlogPost, 'slug' | 'title' | 'excerpt' | 'publishedDate'>;
 
 /** RFC 822 date, as RSS 2.0 requires, or undefined for an unreadable date. */
 function rfc822(date: string | undefined): string | undefined {
@@ -47,8 +32,12 @@ function rfc822(date: string | undefined): string | undefined {
 
 export function buildRssFeed(channel: RssChannel, posts: readonly FeedPost[]): string {
   const items = posts.map((post) => {
-    const url = `${channel.postBaseUrl}/${encodeURIComponent(post.slug)}`;
-    const pubDate = rfc822(post.publishedDateUtc ?? post.publishedDate);
+    // The slug as WordPress gives it, the same string the page's canonical,
+    // the sitemap and every link on the site use. WordPress already stores
+    // non-ASCII slugs percent-encoded, so encoding again would point the feed
+    // at a different, missing URL.
+    const url = `${channel.postBaseUrl}/${post.slug}`;
+    const pubDate = rfc822(post.publishedDate);
 
     return [
       '    <item>',
@@ -62,7 +51,7 @@ export function buildRssFeed(channel: RssChannel, posts: readonly FeedPost[]): s
   });
 
   const newest = posts
-    .map((post) => rfc822(post.publishedDateUtc ?? post.publishedDate))
+    .map((post) => rfc822(post.publishedDate))
     .find((date): date is string => Boolean(date));
 
   return [

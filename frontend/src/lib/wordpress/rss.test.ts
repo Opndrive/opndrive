@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRssFeed, escapeXml } from './rss';
+import { buildRssFeed } from './rss';
 
 const channel = {
   title: 'Opndrive Blog',
@@ -35,8 +35,7 @@ describe('buildRssFeed', () => {
           slug: 'cors-for-r2',
           title: 'CORS for R2 & friends',
           excerpt: 'Why the "preflight" fails <and how to fix it>',
-          publishedDate: '2026-11-01T09:00:00',
-          publishedDateUtc: '2026-11-01T03:30:00Z',
+          publishedDate: '2026-11-01T03:30:00Z',
         },
       ])
     );
@@ -47,10 +46,35 @@ describe('buildRssFeed', () => {
     expect(text('link')).toBe('https://opndrive.app/blog/cors-for-r2');
     expect(text('guid')).toBe('https://opndrive.app/blog/cors-for-r2');
     expect(text('description')).toBe('Why the "preflight" fails <and how to fix it>');
-    // The UTC instant wins over the site's local, zone-less time.
     expect(text('pubDate')).toBe('Sun, 01 Nov 2026 03:30:00 GMT');
     expect(doc.getElementsByTagName('lastBuildDate')[0]!.textContent).toBe(
       'Sun, 01 Nov 2026 03:30:00 GMT'
+    );
+  });
+
+  it('links each post at the same URL as its canonical, without encoding the slug again', () => {
+    // WordPress stores a non-ASCII slug percent-encoded already; the page's
+    // canonical, the sitemap and the site's links all use it as given.
+    const doc = parse(
+      buildRssFeed(channel, [
+        { slug: 'caf%c3%a9-storage', title: 'x', excerpt: '', publishedDate: '' },
+      ])
+    );
+
+    const link = doc.getElementsByTagName('link')[1]!.textContent;
+    expect(link).toBe('https://opndrive.app/blog/caf%c3%a9-storage');
+    expect(link).not.toContain('%25');
+  });
+
+  it('escapes a decoded title exactly once', () => {
+    // transformPost has already turned WordPress's &#8217; into the character.
+    const xml = buildRssFeed(channel, [
+      { slug: 'x', title: 'Don’t use <public> buckets & keys', excerpt: '', publishedDate: '' },
+    ]);
+
+    expect(xml).toContain('<title>Don’t use &lt;public&gt; buckets &amp; keys</title>');
+    expect(parse(xml).getElementsByTagName('title')[1]!.textContent).toBe(
+      'Don’t use <public> buckets & keys'
     );
   });
 
@@ -61,14 +85,5 @@ describe('buildRssFeed', () => {
 
     expect(xml).not.toContain('Invalid Date');
     expect(parse(xml).getElementsByTagName('pubDate')).toHaveLength(0);
-  });
-});
-
-describe('escapeXml', () => {
-  it('escapes markup and drops characters XML 1.0 forbids', () => {
-    expect(escapeXml(`a & b < c > "d" 'e'`)).toBe(
-      'a &amp; b &lt; c &gt; &quot;d&quot; &apos;e&apos;'
-    );
-    expect(escapeXml('bell\u0007 and form\u000Cfeed')).toBe('bell and formfeed');
   });
 });

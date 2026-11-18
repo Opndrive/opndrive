@@ -3,13 +3,14 @@
 import { assets } from '@/assets';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
+import { useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import ThemeToggleCustom from '@/shared/components/layout/ThemeToggleCustom';
 import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
 import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import { DOCS_URL } from '@/config/links';
-import { HERO_THEME_ATTRIBUTE } from '@/features/landing-page/hero-image-priority';
+import { activeHeroTheme, type HeroTheme } from '@/features/landing-page/hero-image-priority';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -22,6 +23,22 @@ const navItems = [
 
 const HERO_ALT =
   'The Opndrive dashboard: suggested folders and files from a bucket, a share dialog setting how long a link lasts, and the privacy panel';
+
+const NEVER_CHANGES = () => () => {};
+
+/**
+ * True while the hero is server-rendered or being hydrated, false once React
+ * renders it on the client alone - straight after hydration, or when the page
+ * is reached by client-side navigation. useSyncExternalStore uses the server
+ * snapshot for exactly the first two.
+ */
+function useServerOrHydrating(): boolean {
+  return useSyncExternalStore(
+    NEVER_CHANGES,
+    () => false,
+    () => true
+  );
+}
 
 interface HeroSectionProps {
   handleGetStarted: () => void;
@@ -41,6 +58,15 @@ export default function HeroSection({
   imagePriorityScript,
 }: HeroSectionProps) {
   const router = useRouter();
+
+  // In server HTML both copies are lazy and the inline script promotes the one
+  // on screen while the page parses. A client-only render has no script - React
+  // never runs one it creates - so React promotes that copy itself, and leaves
+  // the script out rather than render one that would not run.
+  const serverOrHydrating = useServerOrHydrating();
+  const promoted: HeroTheme | null = serverOrHydrating ? null : activeHeroTheme();
+  const priority = (theme: HeroTheme) =>
+    promoted === theme ? ({ loading: 'eager', fetchPriority: 'high' } as const) : {};
 
   // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
@@ -111,15 +137,19 @@ export default function HeroSection({
             <div className="w-full h-48 xs:h-56 sm:h-72 md:h-80 lg:h-96 xl:h-[28rem] flex items-center justify-center relative overflow-hidden">
               {/* Both themes ship; CSS paints one. See .theme-light-only in
                   globals.css for why this cannot be a src chosen in JS. Both
-                  stay lazy here; the script after them makes the visible one
-                  eager and high priority. */}
+                  are lazy in the server HTML; the script after them makes the
+                  visible one eager and high priority before React hydrates,
+                  which is the attribute difference suppressHydrationWarning
+                  allows. data-hero-theme is HERO_THEME_ATTRIBUTE. */}
               <Image
                 src={assets.LightLandingPageHeroImg}
                 alt={HERO_ALT}
                 fill
                 className="object-contain theme-light-only"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
-                {...{ [HERO_THEME_ATTRIBUTE]: 'light' }}
+                data-hero-theme="light"
+                suppressHydrationWarning
+                {...priority('light')}
               />
               {/* The same alt on both: whichever is display:none is out of the
                   accessibility tree, so exactly one is ever announced. */}
@@ -129,9 +159,11 @@ export default function HeroSection({
                 fill
                 className="object-contain theme-dark-only"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
-                {...{ [HERO_THEME_ATTRIBUTE]: 'dark' }}
+                data-hero-theme="dark"
+                suppressHydrationWarning
+                {...priority('dark')}
               />
-              {imagePriorityScript}
+              {serverOrHydrating && imagePriorityScript}
             </div>
           </div>
         </div>
