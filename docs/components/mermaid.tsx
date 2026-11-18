@@ -46,6 +46,9 @@ export function Mermaid({ chart }: { chart: string }) {
       return;
     }
 
+    // At most one position check per frame, however fast scroll events come.
+    let frame = 0;
+
     // Called only from events and the observer, by when `stop` exists.
     function draw() {
       setNear(true);
@@ -56,7 +59,11 @@ export function Mermaid({ chart }: { chart: string }) {
     // as soon as it is above the viewport, before the reader scrolls back up
     // to it, so it does not grow under the text being read later.
     function drawIfPassed() {
-      if (el!.getBoundingClientRect().bottom < 0) draw();
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (el!.getBoundingClientRect().bottom < 0) draw();
+      });
     }
 
     const observer = new IntersectionObserver(
@@ -66,6 +73,7 @@ export function Mermaid({ chart }: { chart: string }) {
       { rootMargin: LOAD_MARGIN }
     );
     const stop = () => {
+      if (frame) window.cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener('beforeprint', draw);
       window.removeEventListener('scroll', drawIfPassed);
