@@ -432,6 +432,27 @@ describe('pause, resume, and cancel', () => {
     expect(uploaderInstances[1]!.cancel).not.toHaveBeenCalled();
   });
 
+  it('aborts the session of a resumed upload cancelled while it waits for a slot', async () => {
+    // Resumed, an upload goes back to 'queued' until a slot is free, with
+    // its multipart session still open. Cancelled there, the session was
+    // left open and its parts billed, since only an upload 'uploading' or
+    // 'paused' was aborted.
+    const manager = UploadManager.getInstance({ ...config, maxConcurrency: 1 });
+    const resumed = manager.addUpload(makeFile('a.txt'), { key: 'a' });
+    await settle();
+    uploaderInstances[0]!.uploadId = 'upload-1';
+    manager.pauseUpload(resumed);
+    manager.addUpload(makeFile('b.txt'), { key: 'b' });
+    await settle();
+    await manager.resumeUpload(resumed);
+    expect(manager.getStatus(resumed)!.status).toBe('queued');
+
+    await manager.cancelUpload(resumed);
+
+    expect(manager.getStatus(resumed)!.status).toBe('cancelled');
+    expect(uploaderInstances[0]!.cancel).toHaveBeenCalledOnce();
+  });
+
   it('does not emit a bogus completion for an upload cancelled mid-flight', async () => {
     const manager = UploadManager.getInstance(config);
     const id = manager.addUpload(makeFile(), { key: 'k' });
@@ -1151,18 +1172,30 @@ describe('addFolderUpload', () => {
     expect(uploaderInstances.map((u) => u.config.key)).toEqual(['pkg/__init__.py', 'pkg/LICENSE']);
   });
 
-  it('skips the entry a dropped folder adds, which has no path and no type', () => {
+  it('skips the entry a dropped folder adds: no path, no type, no bytes', () => {
     // A folder dropped onto a page shows up in `dataTransfer.files` as an
-    // entry of its own: no path, no type, and zero bytes or a few, by system.
+    // entry of its own.
+    const manager = UploadManager.getInstance(config);
+
+    const { fileIds } = manager.addFolderUpload(fileList([new File([], 'photos')]), {
+      basePrefix: 'docs/',
+    });
+
+    expect(fileIds).toEqual([]);
+  });
+
+  it('still sends a file with no path or type that has bytes in it', () => {
+    // A Makefile, or a .heic on Windows, has no type. Skipped for it, a real
+    // file would go missing without a word; a folder entry of a few bytes,
+    // let through, fails where it can be seen and stores nothing.
     const manager = UploadManager.getInstance(config);
 
     const { fileIds } = manager.addFolderUpload(
-      fileList([new File([], 'photos'), new File([new Uint8Array(96)], 'videos')]),
+      fileList([new File([new Uint8Array(12)], 'Makefile')]),
       { basePrefix: 'docs/' }
     );
 
-    // Uploaded, it would write over the folder's own key.
-    expect(fileIds).toEqual([]);
+    expect(fileIds).toHaveLength(1);
   });
 
   it('keys a file with no path by its name, not by the folder', () => {

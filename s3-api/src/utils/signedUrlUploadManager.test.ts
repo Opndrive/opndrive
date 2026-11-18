@@ -664,15 +664,30 @@ describe('addFolderUpload', () => {
     expect(uploaderInstances.map((u) => u.config.key)).toEqual(['pkg/__init__.py', 'pkg/LICENSE']);
   });
 
-  it('skips the entry a dropped folder adds, which has no path and no type', () => {
+  it('skips the entry a dropped folder adds: no path, no type, no bytes', () => {
+    // A folder dropped onto a page shows up in `dataTransfer.files` as an
+    // entry of its own.
+    const manager = SignedUrlUploadManager.getInstance(config);
+
+    const { fileIds } = manager.addFolderUpload(fileList([new File([], 'photos')]), {
+      basePrefix: 'docs/',
+    });
+
+    expect(fileIds).toEqual([]);
+  });
+
+  it('still sends a file with no path or type that has bytes in it', () => {
+    // A Makefile, or a .heic on Windows, has no type. Skipped for it, a real
+    // file would go missing without a word; a folder entry of a few bytes,
+    // let through, fails where it can be seen and stores nothing.
     const manager = SignedUrlUploadManager.getInstance(config);
 
     const { fileIds } = manager.addFolderUpload(
-      fileList([new File([], 'photos'), new File([new Uint8Array(96)], 'videos')]),
+      fileList([new File([new Uint8Array(12)], 'Makefile')]),
       { basePrefix: 'docs/' }
     );
 
-    expect(fileIds).toEqual([]);
+    expect(fileIds).toHaveLength(1);
   });
 
   it('keys a file with no path by its name, not by the folder', () => {

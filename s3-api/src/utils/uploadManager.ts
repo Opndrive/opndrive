@@ -339,8 +339,12 @@ export class UploadManager {
     this.takeFromWorker(id);
 
     try {
-      if (previousStatus === 'uploading' || previousStatus === 'paused') {
-        // Non-null: 'uploading' and 'paused' are both pre-terminal.
+      // A resumed upload waits for a slot as 'queued' with its multipart
+      // session still open: cancelled there, it has a session to abort too.
+      // Only one that never started has nothing on the server.
+      const hasSession = Boolean(item.uploader?.['uploadId']);
+      if (previousStatus === 'uploading' || previousStatus === 'paused' || hasSession) {
+        // Non-null: every pre-terminal item has an uploader.
         await item.uploader!.cancel();
       }
     } finally {

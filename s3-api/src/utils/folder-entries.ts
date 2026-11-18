@@ -8,16 +8,21 @@
  *
  * A folder picker lists files only, each with its path inside the folder: an
  * empty `__init__.py` or `LICENSE` among them. A folder dropped onto a page
- * shows up in `dataTransfer.files` as an entry of its own, with no path and
- * no type, and zero bytes or a few depending on the system. Only that has
- * nothing to upload, and uploaded it would write over the folder's own key.
+ * shows up in `dataTransfer.files` as an entry of its own, with no path, no
+ * type and, on most systems, no bytes.
  *
- * Every zero-byte file with no type used to be taken for one, which left a
- * folder's empty files behind and still let through a folder entry of a few
- * bytes.
+ * Every zero-byte file with no type used to be taken for one, path or not,
+ * which left a folder's empty files behind. A file with a path is now always
+ * a file.
+ *
+ * Without a path, only an entry with no type and no bytes is skipped, as
+ * before. One with bytes may be a real file, such as a `Makefile` among
+ * dropped files, and skipping it would lose it without a word. A folder entry
+ * of a few bytes, as macOS gives, is let through as it always was: it cannot
+ * be read, so its upload fails where it can be seen, and stores nothing.
  */
 export function isDroppedFolderEntry(file: File): boolean {
-  return !file.webkitRelativePath && file.type === '';
+  return !file.webkitRelativePath && file.type === '' && file.size === 0;
 }
 
 /**
