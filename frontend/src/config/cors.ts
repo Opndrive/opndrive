@@ -102,6 +102,27 @@ function s3Rule(
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
+const XML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+const xmlText = (value: string) => value.replace(/[&<>]/g, (ch) => XML_ESCAPES[ch]!);
+
+/**
+ * The S3 XML CORS configuration, elements in the order DigitalOcean's own
+ * example lists them.
+ */
+function s3Xml(origin: string, maxAgeSeconds: number): string {
+  return [
+    '<CORSConfiguration>',
+    '  <CORSRule>',
+    `    <AllowedOrigin>${xmlText(origin)}</AllowedOrigin>`,
+    ...CORS_ALLOWED_METHODS.map((method) => `    <AllowedMethod>${method}</AllowedMethod>`),
+    `    <MaxAgeSeconds>${maxAgeSeconds}</MaxAgeSeconds>`,
+    ...CORS_EXPOSE_HEADERS.map((header) => `    <ExposeHeader>${header}</ExposeHeader>`),
+    '    <AllowedHeader>*</AllowedHeader>',
+    '  </CORSRule>',
+    '</CORSConfiguration>',
+  ].join('\n');
+}
+
 /**
  * The S3 console, and every console that copied it, takes a JSON array of
  * rules. The S3 API and the AWS CLI take the same rules under "CORSRules".
@@ -143,6 +164,18 @@ const POLICIES: Record<string, (origin: string) => CorsPolicy> = {
   minio: (origin) => ({
     format: 'shell',
     text: `mc admin config set myminio api cors_allow_origin="${origin}"`,
+  }),
+
+  // The Spaces control panel can add CORS rules but has no field for exposed
+  // headers, and DigitalOcean says to use an XML file with s3cmd for options
+  // the panel lacks, ExposeHeader among them.
+  digitalocean: (origin) => ({
+    format: 'xml',
+    text: s3Xml(origin, 3000),
+    file: {
+      name: 'cors.xml',
+      command: 's3cmd setcors cors.xml s3://YOUR_SPACE',
+    },
   }),
 
   // The S3 console shape, which most compatible consoles accept.

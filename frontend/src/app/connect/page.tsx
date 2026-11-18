@@ -18,7 +18,7 @@ import { pageSocialMetadata } from '@/lib/seo/social';
 export const metadata: Metadata = {
   title: 'Connect Your S3 Bucket - Browser Client for S3 Storage',
   description:
-    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, MinIO or any S3-compatible endpoint. Your keys stay in your browser and your files never touch our servers.',
+    'Connect Opndrive to Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO or any S3-compatible endpoint. Your keys stay in your browser and your files never touch our servers.',
   alternates: { canonical: '/connect' },
   // Shares the site's preview image; setting openGraph here would otherwise
   // drop it, along with the Twitter card the layout sets.
@@ -44,8 +44,9 @@ export default function ConnectHubPage() {
 
           {/*
             This used to point at /connect/minio, which sent anyone on
-            DigitalOcean or Scaleway to a page about self-hosting MinIO. There
-            is a real catch-all provider now, and this links to it.
+            Scaleway or a similar service to a page about self-hosting MinIO.
+            There is a real catch-all provider now, and this links to it.
+            DigitalOcean Spaces has its own page and card above.
           */}
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             Using something else? Any S3-compatible service works.{' '}

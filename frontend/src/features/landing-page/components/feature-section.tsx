@@ -15,20 +15,22 @@ const features: {
   {
     id: 'oneplace',
     title: 'One place for all storage',
-    description: 'Connect your personal and cloud storage, and view everything in one place.',
+    description:
+      'Browse every bucket your keys can reach and switch between them without entering your keys again.',
     imageAlt: 'Dashboard showing unified storage view',
   },
   {
     id: 'integrations',
     title: 'Integrate with many providers',
     description:
-      'OpenDrive works with popular storage services so you can use what you already have.',
+      'Works with Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO and any other S3-compatible service.',
     imageAlt: 'Logos of supported storage providers',
   },
   {
     id: 'filetypes',
-    title: 'Store any file type securely',
-    description: 'From photos, documents, videos to code—upload, preview, and protect them all.',
+    title: 'Open any file type',
+    description:
+      'Upload anything, and preview images, video, audio, PDFs, spreadsheets and code without downloading them.',
     imageAlt: 'Illustration showing multiple file types',
   },
 ];
@@ -166,10 +168,10 @@ export default function FeaturesSection() {
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 md:mb-16">
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6">
-            Store & Secure Everything
+            Your storage, in one place
           </h2>
           <p className="text-sm sm:text-base md:text-lg lg:text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
-            Keep all your files safe, backed up, and easy to access from any device.
+            Your files stay in your own bucket, and you can reach them from any browser.
           </p>
         </div>
 

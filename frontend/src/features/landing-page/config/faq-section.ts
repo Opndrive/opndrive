@@ -17,7 +17,7 @@ export const faqData = [
   {
     question: 'Is my data secure with Opndrive?',
     answer:
-      "Yes, your data is completely secure. Your credentials are stored only in your browser's local storage and never sent to Opndrive servers. All file operations happen directly between your browser and your S3 bucket. Opndrive developers never have access to your files, credentials, or metadata.",
+      "Your access keys are kept in your browser's local storage and are never sent to Opndrive's servers, and every file request goes straight from your browser to your storage provider. Using opndrive.app does mean trusting the code it serves to your browser. If you would rather not, self-host Opndrive: it is open source, and your own copy gives you full control over the code that handles your keys.",
   },
   {
     question: 'Can I upload folders and maintain folder structure?',
@@ -27,7 +27,7 @@ export const faqData = [
   {
     question: 'How do I run Opndrive locally?',
     answer:
-      "Clone the repository from GitHub, install dependencies with 'pnpm install', then 'cd frontend && pnpm install'. Start the development server with 'pnpm dev' in the frontend folder. Opndrive will be available at http://localhost:3000. You can also run it using Docker with the provided Docker image.",
+      "Clone the repository from GitHub and run 'pnpm install' once from the repository root, which installs every workspace package. Then start the development server with 'pnpm dev:frontend'. Opndrive will be available at http://localhost:3000. You can also run it using Docker with the provided Docker image.",
   },
   {
     question: 'Does Opndrive work with S3-compatible services other than AWS?',

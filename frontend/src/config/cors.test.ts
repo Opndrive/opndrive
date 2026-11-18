@@ -96,6 +96,26 @@ describe('CORS policies', () => {
     expect(policy.file?.command).toContain('backblazeb2.com');
   });
 
+  it('gives DigitalOcean Spaces an XML file for s3cmd, with the same rule as Amazon S3', () => {
+    const policy = getCorsPolicy('digitalocean', ORIGIN)!;
+    expect(policy.format).toBe('xml');
+    expect(policy.file?.name).toBe('cors.xml');
+    expect(policy.file?.command).toBe('s3cmd setcors cors.xml s3://YOUR_SPACE');
+
+    // The control panel cannot expose headers, which is the whole reason for
+    // the file; the rule has to match what the S3 console version allows.
+    const [xmlRule] = rulesOf(policy);
+    const [awsRule] = rulesOf(getCorsPolicy('aws', ORIGIN)!);
+    expect({ ...xmlRule, MaxAgeSeconds: 0 }).toEqual({ ...awsRule, MaxAgeSeconds: 0 });
+  });
+
+  it('escapes an origin that would break the XML', () => {
+    const policy = getCorsPolicy('digitalocean', 'https://a.test/?x=1&y=<2>')!;
+    expect(policy.text).toContain(
+      '<AllowedOrigin>https://a.test/?x=1&amp;y=&lt;2&gt;</AllowedOrigin>'
+    );
+  });
+
   it('sets the MinIO origin list for the whole server', () => {
     const policy = getCorsPolicy('minio', ORIGIN)!;
     expect(policy.format).toBe('shell');
