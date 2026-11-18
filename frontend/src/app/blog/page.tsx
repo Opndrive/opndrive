@@ -87,7 +87,13 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   const currentPage = parseInt(params.page || '1', 10);
 
   // The same request generateMetadata made; cache() hands back its result.
-  const allPosts = (await loadBlogIndexPosts()) ?? [];
+  const loaded = await loadBlogIndexPosts();
+  // A configured WordPress that did not answer: fail the request (500, which a
+  // crawler retries) rather than serve an indexable page with no posts on it.
+  if (loaded === null) {
+    throw new Error('WordPress did not answer; the blog index cannot be shown');
+  }
+  const allPosts = loaded;
 
   // Separate featured post (latest)
   const featuredPost = allPosts[0];

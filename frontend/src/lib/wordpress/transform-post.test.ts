@@ -51,6 +51,16 @@ describe('transformPost', () => {
     expect(post.publishedDateLocal).toBe('2026-11-01T09:00:00');
   });
 
+  it('cuts a long excerpt at 160 characters without splitting an emoji', () => {
+    // 159 letters, then an emoji WordPress sent as a reference: a cut by
+    // UTF-16 unit would keep only half of it.
+    const excerpt = `<p>${'a'.repeat(159)}&#128512; and more</p>`;
+    const description = transformPost(wpPost({ excerpt })).seo!.description;
+
+    expect(Array.from(description)).toHaveLength(160);
+    expect(description.codePointAt(159)).toBe(0x1f600);
+  });
+
   it('falls back to the local time when WordPress gives no GMT twin', () => {
     const post = transformPost(wpPost({ dateGmt: undefined, modifiedGmt: undefined }));
 

@@ -34,6 +34,14 @@ export function gmtToIso(gmt: string | undefined | null): string | undefined {
   return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(gmt) ? gmt : `${gmt}Z`;
 }
 
+/**
+ * The first `count` characters, counted as code points: a decoded excerpt can
+ * hold emoji, and cutting by UTF-16 unit could leave half of one behind.
+ */
+function firstChars(text: string, count: number): string {
+  return Array.from(text).slice(0, count).join('');
+}
+
 /** A rendered WordPress text field (title, term name, SEO text) as plain text. */
 function plainText(rendered: string | undefined | null): string {
   return rendered ? decodeHtmlEntities(rendered) : '';
@@ -89,12 +97,12 @@ export function transformPost(post: WordPressPost): BlogPost {
       })) || [],
     seo: {
       title: plainText(post.seo?.title) || title,
-      description: plainText(post.seo?.metaDesc) || cleanExcerpt.substring(0, 160),
+      description: plainText(post.seo?.metaDesc) || firstChars(cleanExcerpt, 160),
       ogTitle: plainText(post.seo?.opengraphTitle) || plainText(post.seo?.title) || title,
       ogDescription:
         plainText(post.seo?.opengraphDescription) ||
         plainText(post.seo?.metaDesc) ||
-        cleanExcerpt.substring(0, 160),
+        firstChars(cleanExcerpt, 160),
       ogImage: post.seo?.opengraphImage?.sourceUrl || post.featuredImage?.node?.sourceUrl,
       canonical: post.seo?.canonical,
       noindex: post.seo?.metaRobotsNoindex === 'noindex',

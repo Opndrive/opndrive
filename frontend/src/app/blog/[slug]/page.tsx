@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
+import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
@@ -50,15 +51,14 @@ export async function generateMetadata({
 
   const { slug } = await params;
 
-  let post;
-  try {
-    post = await getPostBySlug(slug);
-  } catch (error) {
-    console.error('Error fetching blog post metadata:', error);
-    return {
-      title: 'Post Not Found',
-    };
+  // No WordPress behind the blog: no post can exist, which is known.
+  if (!isWordPressConfigured()) {
+    return { title: 'Post Not Found' };
   }
+
+  // A WordPress error is thrown on, not turned into "not found": the page then
+  // answers 500, which a crawler retries, instead of a 404 for a live post.
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     return {
@@ -169,13 +169,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const { slug } = await params;
 
-  let post;
-  try {
-    post = await getPostBySlug(slug);
-  } catch (error) {
-    console.error('Error fetching blog post:', error);
+  // No WordPress behind the blog: no post can exist, so a 404 is the truth.
+  if (!isWordPressConfigured()) {
     notFound();
   }
+
+  // Only a post WordPress says does not exist is a 404. A failed request is
+  // thrown on and answers 500: a 404 would tell Google a live post was gone.
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     notFound();

@@ -187,5 +187,6 @@ const POLICIES: Record<string, (origin: string) => CorsPolicy> = {
  */
 export function getCorsPolicy(providerId: string, origin: string): CorsPolicy | null {
   // Own keys only: 'toString' or 'constructor' must not find Object.prototype.
-  return Object.hasOwn(POLICIES, providerId) ? POLICIES[providerId]!(origin) : null;
+  const policyFor = Object.hasOwn(POLICIES, providerId) ? POLICIES[providerId] : undefined;
+  return policyFor?.(origin) ?? null;
 }

@@ -60,9 +60,6 @@ const featureImages: Record<FeatureId, { light: string; dark: string }> = {
   },
 };
 
-/** The same for any provider phrase; read once so the rotation needs no dependency on it. */
-const FEATURE_COUNT = landingFeatures('').length;
-
 /** How long each feature holds before the next one takes over. */
 const ROTATE_INTERVAL_MS = 6000;
 
@@ -105,9 +102,9 @@ export default function FeaturesSection({ namedProviders }: { namedProviders: st
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (!window.matchMedia('(min-width: 1024px)').matches) return;
     intervalRef.current = setInterval(() => {
-      if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % FEATURE_COUNT);
+      if (!pausedRef.current) setActiveFeature((prev) => (prev + 1) % features.length);
     }, ROTATE_INTERVAL_MS);
-  }, []);
+  }, [features.length]);
 
   /**
    * Run only while the section is actually on screen. It used to tick for as
@@ -156,14 +153,14 @@ export default function FeaturesSection({ namedProviders }: { namedProviders: st
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const next = (activeFeature + 1) % FEATURE_COUNT;
+      const next = (activeFeature + 1) % features.length;
       setActiveFeature(next);
       stopRotation();
       startRotation();
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const prev = (activeFeature - 1 + FEATURE_COUNT) % FEATURE_COUNT;
+      const prev = (activeFeature - 1 + features.length) % features.length;
       setActiveFeature(prev);
       stopRotation();
       startRotation();

@@ -1,6 +1,6 @@
 import { SITE_URL } from '@/config/links';
 import { isBlogEnabled } from '@/config/features';
-import { loadFeedPosts } from '@/lib/wordpress/blog-index';
+import { isBuilding, loadFeedPosts } from '@/lib/wordpress/blog-index';
 import { buildRssFeed } from '@/lib/wordpress/rss';
 
 /**
@@ -20,9 +20,13 @@ export async function GET(): Promise<Response> {
     return new Response('Not Found', { status: 404 });
   }
 
-  // Unreachable WordPress gives an empty channel rather than an error, the
-  // same as a blog with no posts; the next regeneration fills it in.
-  const posts = (await loadFeedPosts()) ?? [];
+  const posts = await loadFeedPosts();
+  if (posts === null && !isBuilding()) {
+    // Thrown so Next.js keeps serving the last feed it built rather than
+    // caching an empty one for an hour. A build has no last feed and goes on
+    // with an empty channel.
+    throw new Error('WordPress did not answer; keeping the last feed');
+  }
   const feed = buildRssFeed(
     {
       title: 'Opndrive Blog',
@@ -32,7 +36,7 @@ export async function GET(): Promise<Response> {
       selfUrl: `${SITE_URL}/blog/rss.xml`,
       postBaseUrl: `${SITE_URL}/blog`,
     },
-    posts
+    posts ?? []
   );
 
   return new Response(feed, {

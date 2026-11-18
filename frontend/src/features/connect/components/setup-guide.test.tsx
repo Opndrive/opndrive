@@ -1,8 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { SetupGuide } from './setup-guide';
 import { S3_PROVIDERS, getProviderBySlug } from '@/config/providers';
 import { DOCS_URL } from '@/config/links';
+
+/** Puts a fake clipboard on navigator for one test; afterEach takes it away. */
+function fakeClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  return writeText;
+}
+
+afterEach(() => {
+  // jsdom has no clipboard of its own; leave none behind for the next test.
+  delete (navigator as { clipboard?: unknown }).clipboard;
+  vi.useRealTimers();
+});
 
 describe('SetupGuide', () => {
   it.each(S3_PROVIDERS.map((provider) => [provider.name, provider] as const))(
@@ -31,10 +44,9 @@ describe('SetupGuide', () => {
     }
   );
 
-  it.each(['minio', 'wasabi'])(
+  it.each(S3_PROVIDERS.filter((p) => !p.setup.corsRequired).map((p) => [p.name, p] as const))(
     'does not call CORS required where the default already allows every origin (%s)',
-    (slug) => {
-      const provider = S3_PROVIDERS.find((p) => p.id === slug)!;
+    (_name, provider) => {
       const { container } = render(<SetupGuide provider={provider} />);
 
       // Applying a policy there replaces an open default, shutting out every
@@ -45,19 +57,73 @@ describe('SetupGuide', () => {
     }
   );
 
-  it('names its copy buttons by their visible text and says when something is copied', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  it('keeps its copy button named by its visible text and says the copy worked', async () => {
+    vi.useFakeTimers();
+    const writeText = fakeClipboard();
     render(<SetupGuide provider={getProviderBySlug('aws-s3')!} />);
+    const status = () => screen.getAllByRole('status')[0]!.textContent;
 
-    const button = screen.getByRole('button', { name: 'Copy policy' });
-    expect(screen.getByRole('status').textContent).toBe('');
+    expect(status()).toBe('');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy policy' }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+    });
 
-    fireEvent.click(button);
-
-    expect(await screen.findByRole('button', { name: 'Copied policy' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe('The policy is on your clipboard');
+    expect(status()).toBe('Copied the policy');
+    // The name does not change under focus; the status region says the result.
+    expect(screen.getByRole('button', { name: 'Copy policy' })).toBeTruthy();
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"ExposeHeaders"'));
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(status()).toBe('');
+  });
+
+  it('announces a second copy too, and keeps "Copied" up for the full time after it', async () => {
+    vi.useFakeTimers();
+    fakeClipboard();
+    render(<SetupGuide provider={getProviderBySlug('aws-s3')!} />);
+    const status = () => screen.getAllByRole('status')[0]!.textContent;
+    const click = () =>
+      act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Copy policy' }));
+      });
+
+    await click();
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    await click();
+    // Emptied straight away, so a screen reader hears the copy again...
+    expect(status()).toBe('');
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+    });
+    expect(status()).toBe('Copied the policy');
+    // ...and the first copy's timer no longer clears it early.
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(status()).toBe('Copied the policy');
+  });
+
+  it('leaves no timer running once the guide is gone', async () => {
+    vi.useFakeTimers();
+    fakeClipboard();
+    const { unmount } = render(<SetupGuide provider={getProviderBySlug('aws-s3')!} />);
+    // Something outside the guide keeps a timer of its own; count from there.
+    const before = vi.getTimerCount();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy policy' }));
+    });
+    expect(vi.getTimerCount()).toBe(before + 2);
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(before);
   });
 
   it.each(S3_PROVIDERS.map((provider) => [provider.name, provider] as const))(
@@ -66,7 +132,8 @@ describe('SetupGuide', () => {
       const { container } = render(<SetupGuide provider={provider} />);
       const origin = window.location.origin;
 
-      // The effect that reads window.location runs after the first render.
+      // A client-only render reads window.location at once; hydration swaps it
+      // in after the server's SITE_URL (connect-hydration.test.tsx).
       expect(await screen.findByText(origin, { selector: 'code' })).toBeTruthy();
       const policy = container.querySelector('pre code')?.textContent ?? '';
       expect(policy).toContain(origin);

@@ -9,6 +9,10 @@ describe('serializeJsonLd', () => {
     expect(text).toContain('\\u003c/script>');
   });
 
+  it('gives an empty string for undefined instead of throwing', () => {
+    expect(serializeJsonLd(undefined)).toBe('');
+  });
+
   it('reads back as the same data', () => {
     const data = { '@type': 'BlogPosting', headline: 'a < b && c > d', tags: ['<x>'] };
     expect(JSON.parse(serializeJsonLd(data))).toEqual(data);

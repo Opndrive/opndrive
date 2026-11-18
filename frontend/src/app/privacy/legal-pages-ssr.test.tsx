@@ -50,7 +50,7 @@ import LandingPage from '@/features/landing-page/components/landing-page';
 import { landingFeatures } from '@/features/landing-page/components/feature-section';
 import { WORK_SMARTER_FEATURES } from '@/features/landing-page/components/work-smarter-section';
 import { faqData } from '@/features/landing-page/config/faq-section';
-import { NAMED_PROVIDERS_PHRASE } from '@/config/providers';
+import { NAMED_PROVIDERS_PHRASE, S3_PROVIDERS } from '@/config/providers';
 
 /**
  * React escapes apostrophes and ampersands on the way into the markup, and the
@@ -169,10 +169,13 @@ describe('the landing page renders for crawlers', () => {
   });
 
   it('names every provider in the registry in the features copy', () => {
-    expect(carouselCopy.join(' ')).toContain(NAMED_PROVIDERS_PHRASE);
-    expect(NAMED_PROVIDERS_PHRASE).toBe(
-      'Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO'
-    );
+    const copy = carouselCopy.join(' ');
+    expect(copy).toContain(NAMED_PROVIDERS_PHRASE);
+    // Every named provider, read from the registry, so adding one needs no
+    // edit here; the catch-all custom endpoint is not a name.
+    for (const provider of S3_PROVIDERS.filter((p) => p.id !== 'custom')) {
+      expect(copy).toContain(provider.name);
+    }
   });
 
   // The call to action is the point of the page, and it is rendered before any
