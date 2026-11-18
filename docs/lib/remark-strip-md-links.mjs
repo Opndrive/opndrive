@@ -27,7 +27,10 @@ export function remarkStripMdLinks() {
     visit(tree, 'link', (node) => {
       if (typeof node.url !== 'string') return;
       // Anything with a scheme is not a content file: https:, but also
-      // mailto: and tel:, which have no "//".
+      // mailto: and tel:, which have no "//". A relative link with a colon
+      // before its first slash ("release:v2.md") is a scheme to browsers and
+      // to GitHub too, where this content also renders, so it is left alone
+      // for the same reason; write it "./release:v2.md" to make it a file.
       if (
         /^[a-z][a-z0-9+.-]*:/i.test(node.url) ||
         node.url.startsWith('#') ||
@@ -41,11 +44,14 @@ export function remarkStripMdLinks() {
 
       // A folder's index file is served at the folder's path with no trailing
       // slash (`guides/index.md` is `/guides`), matching the canonical URLs;
-      // `/guides/` would only answer with a redirect.
-      const resolved = path.posix
+      // `/guides/` would only answer with a redirect. The same goes for a link
+      // to the folder itself (`./`, `../`), and for INDEX.MD as for index.md.
+      const joined = path.posix
         .join(currentDir, target)
         .replace(/\.mdx?$/i, '')
-        .replace(/(^|\/)index$/, '');
+        .replace(/(^|\/)index$/i, '')
+        .replace(/\/+$/, '');
+      const resolved = joined === '.' ? '' : joined;
 
       node.url = '/' + resolved.replace(/^\/+/, '') + (hash ? `#${hash}` : '');
     });

@@ -6,7 +6,7 @@ import { Head } from 'nextra/components';
 import { DiscordIcon } from 'nextra/icons';
 import { getPageMap } from 'nextra/page-map';
 import { APP_URL, DISCORD_URL, DOCS_URL } from '@/lib/links';
-import { BASE_OPEN_GRAPH } from '@/lib/site';
+import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/site';
 import { AnalyticsGate } from '@/components/analytics-gate';
 import 'nextra-theme-docs/style.css';
 
@@ -21,13 +21,8 @@ export const metadata: Metadata = {
   description:
     'Documentation for Opndrive, an open-source web UI for Amazon S3 and S3-compatible storage.',
   openGraph: BASE_OPEN_GRAPH,
-  twitter: {
-    card: 'summary_large_image',
-    // The same handle the main site uses, from frontend/src/lib/seo/config.ts.
-    // No images here: Next.js fills twitter:image from openGraph's when it is
-    // unset, so the share image is named once, in BASE_OPEN_GRAPH.
-    site: '@opndrive',
-  },
+  // Card and handle only: Next.js fills twitter:image from openGraph's.
+  twitter: BASE_TWITTER,
 };
 
 /**
