@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { SetupGuide } from './setup-guide';
 import { S3_PROVIDERS, getProviderBySlug } from '@/config/providers';
 import { DOCS_URL } from '@/config/links';
@@ -19,7 +19,7 @@ describe('SetupGuide', () => {
     }
   );
 
-  it.each(S3_PROVIDERS.map((provider) => [provider.name, provider] as const))(
+  it.each(S3_PROVIDERS.filter((p) => p.setup.corsRequired).map((p) => [p.name, p] as const))(
     'shows the %s steps open and marked required',
     (_name, provider) => {
       const { container } = render(<SetupGuide provider={provider} />);
@@ -30,6 +30,35 @@ describe('SetupGuide', () => {
       expect(screen.queryByText('Optional')).toBeNull();
     }
   );
+
+  it.each(['minio', 'wasabi'])(
+    'does not call CORS required where the default already allows every origin (%s)',
+    (slug) => {
+      const provider = S3_PROVIDERS.find((p) => p.id === slug)!;
+      const { container } = render(<SetupGuide provider={provider} />);
+
+      // Applying a policy there replaces an open default, shutting out every
+      // other site that relied on it; the steps say when it is needed.
+      expect(container.querySelector('details')?.hasAttribute('open')).toBe(true);
+      expect(screen.getByText('Only if CORS is restricted')).toBeTruthy();
+      expect(screen.queryByText('Required')).toBeNull();
+    }
+  );
+
+  it('names its copy buttons by their visible text and says when something is copied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<SetupGuide provider={getProviderBySlug('aws-s3')!} />);
+
+    const button = screen.getByRole('button', { name: 'Copy policy' });
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    fireEvent.click(button);
+
+    expect(await screen.findByRole('button', { name: 'Copied policy' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('The policy is on your clipboard');
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"ExposeHeaders"'));
+  });
 
   it.each(S3_PROVIDERS.map((provider) => [provider.name, provider] as const))(
     'fills the %s policy in with the address the page is open at',

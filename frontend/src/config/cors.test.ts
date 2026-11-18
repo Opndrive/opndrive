@@ -132,4 +132,15 @@ describe('CORS policies', () => {
   it('has nothing for an unknown provider', () => {
     expect(getCorsPolicy('nope', ORIGIN)).toBeNull();
   });
+
+  it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
+    'does not mistake an Object.prototype key for a provider (%s)',
+    (id) => {
+      expect(getCorsPolicy(id, ORIGIN)).toBeNull();
+    }
+  );
+
+  it('still has a policy for every real provider id', () => {
+    expect(getCorsPolicy('aws', ORIGIN)?.text).toContain(ORIGIN);
+  });
 });

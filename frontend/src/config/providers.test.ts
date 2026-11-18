@@ -34,6 +34,24 @@ describe('every provider', () => {
     }
   );
 
+  it('calls CORS optional only where the instructions say the default allows every origin', () => {
+    const optional = S3_PROVIDERS.filter((p) => !p.setup.corsRequired);
+
+    expect(optional.map((p) => p.id).sort()).toEqual(['minio', 'wasabi']);
+    for (const provider of optional) {
+      expect(provider.setup.corsInstructions).toMatch(/every origin/);
+    }
+  });
+
+  it('tells Backblaze users with native CORS rules to remove them before the S3 command', () => {
+    const backblaze = S3_PROVIDERS.find((p) => p.id === 'backblaze')!;
+
+    // Opndrive's old steps set rules with the b2 tool; the S3 API cannot
+    // change those, so the new command would fail without this.
+    expect(backblaze.setup.gotcha).toContain('b2 bucket update --cors-rules');
+    expect(backblaze.setup.gotcha).toMatch(/Remove them there first/);
+  });
+
   it('has a slug nothing else uses', () => {
     expect(new Set(PROVIDER_SLUGS).size).toBe(PROVIDER_SLUGS.length);
   });
