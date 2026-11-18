@@ -181,7 +181,11 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
         })
       );
     }
-    for (const upload of await openUploadsFor(RUN_PREFIX)) {
+    // Listed whole and filtered here: MinIO matches the Prefix of this
+    // listing against whole keys only, so a folder prefix found nothing and
+    // a failed run's open uploads were left behind.
+    const { Uploads } = await client.send(new ListMultipartUploadsCommand({ Bucket: BUCKET }));
+    for (const upload of (Uploads ?? []).filter((u) => u.Key?.startsWith(RUN_PREFIX))) {
       await client.send(
         new AbortMultipartUploadCommand({
           Bucket: BUCKET,
