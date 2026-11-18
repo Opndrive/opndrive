@@ -20,6 +20,7 @@ import type {
   CategoryNode,
   TagNode,
 } from './types';
+import { decodeHtmlEntities } from './entities';
 
 /**
  * A WPGraphQL "...Gmt" field as an ISO string Date can read.
@@ -33,22 +34,34 @@ export function gmtToIso(gmt: string | undefined | null): string | undefined {
   return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(gmt) ? gmt : `${gmt}Z`;
 }
 
+/** A rendered WordPress text field (title, term name, SEO text) as plain text. */
+function plainText(rendered: string | undefined | null): string {
+  return rendered ? decodeHtmlEntities(rendered) : '';
+}
+
 /**
- * Transform WordPress post to simplified BlogPost format
+ * Transform WordPress post to simplified BlogPost format.
+ *
+ * Text fields come back from WPGraphQL rendered, entities and all, and are
+ * decoded here once, so everything downstream handles plain text. Dates come
+ * back as the site's local time with no offset; the `...Gmt` twins are used
+ * for the exact instant, and the local one is kept only for showing the date.
+ * `content` is HTML and stays as it is.
  */
-function transformPost(post: WordPressPost): BlogPost {
-  // Clean excerpt (remove HTML tags)
-  const cleanExcerpt = post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '').trim() : '';
+export function transformPost(post: WordPressPost): BlogPost {
+  // Tags stripped first, then entities decoded, so a decoded "<" is text.
+  const cleanExcerpt = post.excerpt ? plainText(post.excerpt.replace(/<[^>]*>/g, '')).trim() : '';
+  const title = plainText(post.title);
 
   return {
     id: post.id,
     slug: post.slug,
-    title: post.title,
+    title,
     excerpt: cleanExcerpt,
     content: post.content,
-    publishedDate: post.date,
-    publishedDateUtc: gmtToIso(post.dateGmt),
-    modifiedDate: post.modified,
+    publishedDate: gmtToIso(post.dateGmt) ?? post.date,
+    publishedDateLocal: post.date,
+    modifiedDate: gmtToIso(post.modifiedGmt) ?? post.modified,
     author: {
       name: post.author?.node?.name || 'Anonymous',
       avatar: post.author?.node?.avatar?.url,
@@ -57,7 +70,7 @@ function transformPost(post: WordPressPost): BlogPost {
     featuredImage: post.featuredImage?.node
       ? {
           url: post.featuredImage.node.sourceUrl,
-          alt: post.featuredImage.node.altText || post.title,
+          alt: post.featuredImage.node.altText || title,
           width: post.featuredImage.node.mediaDetails?.width || 1200,
           height: post.featuredImage.node.mediaDetails?.height || 630,
         }
@@ -65,21 +78,23 @@ function transformPost(post: WordPressPost): BlogPost {
     categories:
       post.categories?.nodes?.map((cat: CategoryNode) => ({
         id: cat.id,
-        name: cat.name,
+        name: plainText(cat.name),
         slug: cat.slug,
       })) || [],
     tags:
       post.tags?.nodes?.map((tag: TagNode) => ({
         id: tag.id,
-        name: tag.name,
+        name: plainText(tag.name),
         slug: tag.slug,
       })) || [],
     seo: {
-      title: post.seo?.title || post.title,
-      description: post.seo?.metaDesc || cleanExcerpt.substring(0, 160),
-      ogTitle: post.seo?.opengraphTitle || post.seo?.title || post.title,
+      title: plainText(post.seo?.title) || title,
+      description: plainText(post.seo?.metaDesc) || cleanExcerpt.substring(0, 160),
+      ogTitle: plainText(post.seo?.opengraphTitle) || plainText(post.seo?.title) || title,
       ogDescription:
-        post.seo?.opengraphDescription || post.seo?.metaDesc || cleanExcerpt.substring(0, 160),
+        plainText(post.seo?.opengraphDescription) ||
+        plainText(post.seo?.metaDesc) ||
+        cleanExcerpt.substring(0, 160),
       ogImage: post.seo?.opengraphImage?.sourceUrl || post.featuredImage?.node?.sourceUrl,
       canonical: post.seo?.canonical,
       noindex: post.seo?.metaRobotsNoindex === 'noindex',
@@ -102,11 +117,15 @@ export async function getAllPosts(limit = 100): Promise<BlogPost[]> {
 /**
  * Get recent posts for blog index
  */
-export async function getRecentPosts(limit = 10): Promise<BlogPost[]> {
+export async function getRecentPosts(
+  limit = 10,
+  { revalidate }: { revalidate?: number } = {}
+): Promise<BlogPost[]> {
   const data = await fetchGraphQLWithTags<WordPressPostsResponse>(
     GET_RECENT_POSTS,
     { first: limit },
-    ['posts']
+    ['posts'],
+    revalidate
   );
 
   return data.posts.nodes.map(transformPost);
@@ -131,10 +150,14 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
 /**
  * Every published post's slug and the date WordPress last saw it change, for
  * the sitemap. Pages through the whole list, 100 at a time.
+ *
+ * `revalidate` is how long each page of the list may be cached. A route is
+ * regenerated as often as its shortest-lived fetch, so a route that is meant
+ * to be rebuilt hourly has to ask for an hour here too, not the default minute.
  */
-export async function getAllPostSitemapData(): Promise<
-  Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>
-> {
+export async function getAllPostSitemapData({
+  revalidate = 60,
+}: { revalidate?: number } = {}): Promise<Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>> {
   const posts: Array<Pick<BlogPost, 'slug' | 'modifiedDate'>> = [];
   let hasNextPage = true;
   let after: string | null = null;
@@ -142,7 +165,8 @@ export async function getAllPostSitemapData(): Promise<
   while (hasNextPage) {
     const data: WordPressPostsResponse = await fetchGraphQL<WordPressPostsResponse>(
       GET_ALL_POST_SLUGS,
-      { first: 100, after }
+      { first: 100, after },
+      { next: { revalidate } }
     );
 
     posts.push(

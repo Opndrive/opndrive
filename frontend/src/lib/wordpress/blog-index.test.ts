@@ -10,6 +10,12 @@ describe('blogIndexRobots', () => {
     const robots = blogIndexRobots(1);
     expect(robots).toMatchObject({ index: true, follow: true });
   });
+
+  it('keeps the blog indexable when WordPress could not be asked', () => {
+    // One failed request while Googlebot crawls must not deindex a blog that
+    // has posts; unknown is not empty.
+    expect(blogIndexRobots(null)).toMatchObject({ index: true, follow: true });
+  });
 });
 
 describe('blogSitemapEntries', () => {
@@ -17,6 +23,10 @@ describe('blogSitemapEntries', () => {
 
   it('lists nothing while there are no posts, not even the index', () => {
     expect(blogSitemapEntries([], site)).toEqual([]);
+  });
+
+  it('keeps the index listed when WordPress could not be asked', () => {
+    expect(blogSitemapEntries(null, site)).toEqual([{ url: 'https://opndrive.app/blog' }]);
   });
 
   it('lists the index and every post, each post with its real modified date', () => {

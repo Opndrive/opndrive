@@ -9,6 +9,7 @@ import { AnalyticsGate } from '@/components/analytics/analytics-gate';
 import { SITE_URL } from '@/config/links';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/seo/social';
+import { serializeJsonLd } from '@/lib/seo/json-ld';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -92,12 +93,15 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* JSON-LD Structured Data for Google */}
+        {/* JSON-LD Structured Data for Google. Every nonce'd script here allows a
+            hydration difference on that one attribute: the browser hides a nonce
+            from the DOM once it has used it, so it never matches. */}
         <script
           nonce={nonce}
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'Organization',
               name: 'Opndrive',
@@ -116,9 +120,10 @@ export default async function RootLayout({
         />
         <script
           nonce={nonce}
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'WebApplication',
               name: 'Opndrive',
@@ -137,6 +142,7 @@ export default async function RootLayout({
         />
         <script
           nonce={nonce}
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {

@@ -224,7 +224,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-8">
           <span>by {post.author.name}</span>
           <span>|</span>
-          <time dateTime={post.publishedDate}>{formatDate(post.publishedDate)}</time>
+          <time dateTime={post.publishedDate}>{formatDate(post.publishedDateLocal)}</time>
           <span>|</span>
           <span>{readingTime} min read</span>
         </div>

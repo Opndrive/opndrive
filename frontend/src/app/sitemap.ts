@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
 import { SITE_URL } from '@/config/links';
 import { getAllPostSitemapData } from '@/lib/wordpress/service';
+import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { blogSitemapEntries } from '@/lib/wordpress/blog-index';
 import { isBlogEnabled } from '@/config/features';
 import { PROVIDER_SLUGS } from '@/config/providers';
@@ -8,7 +9,8 @@ import { PROVIDER_SLUGS } from '@/config/providers';
 /**
  * Rebuilt at most hourly, so the blog appears here with its first post rather
  * than with the next deploy. Middleware skips this route, so it is free to be
- * cached; nothing in it reads the request.
+ * cached; nothing in it reads the request. The WordPress fetches ask for the
+ * same hour: a route is regenerated as often as its shortest-lived fetch.
  */
 export const revalidate = 3600;
 
@@ -23,12 +25,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let blogPages: MetadataRoute.Sitemap = [];
 
-  if (isBlogEnabled()) {
+  // With no WordPress configured there is no blog to list; a configured one
+  // that fails to answer keeps the index listed (see blogSitemapEntries).
+  if (isBlogEnabled() && isWordPressConfigured()) {
     try {
-      blogPages = blogSitemapEntries(await getAllPostSitemapData(), baseUrl);
+      blogPages = blogSitemapEntries(await getAllPostSitemapData({ revalidate }), baseUrl);
     } catch (error) {
       console.error('Error fetching blog posts for sitemap:', error);
-      // Continue without the blog if WordPress cannot be reached
+      // Unknown, not empty: keep the blog index listed until the next rebuild.
+      blogPages = blogSitemapEntries(null, baseUrl);
     }
   }
 
