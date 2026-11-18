@@ -2,8 +2,8 @@
  * The registry's contract with everything that reads it.
  *
  * Adding a provider touches several files, and the ones that go wrong fail
- * silently: getCorsConfig returns an empty string that the setup guide then
- * hides, and a duplicate slug quietly shadows an existing page. Neither throws,
+ * silently: getCorsPolicy returns null for an id it does not know, which the
+ * setup guide then hides, and a duplicate slug quietly shadows an existing page. Neither throws,
  * so without these the first sign of a half-added provider is a page missing
  * the content that justifies its existence.
  *
@@ -13,13 +13,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { S3_PROVIDERS, PROVIDER_SLUGS, getProviderBySlug } from './providers';
-import { getCorsConfig } from './cors';
+import { getCorsPolicy } from './cors';
 
 describe('every provider', () => {
   it.each(S3_PROVIDERS.map((provider) => [provider.slug, provider] as const))(
     '%s ships a CORS policy for the setup guide',
     (_slug, provider) => {
-      expect(getCorsConfig(provider.id).trim()).not.toBe('');
+      expect(getCorsPolicy(provider.id, 'https://drive.example.test')?.text.trim()).toBeTruthy();
     }
   );
 
