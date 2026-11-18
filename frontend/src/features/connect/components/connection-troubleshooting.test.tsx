@@ -46,7 +46,7 @@ describe('ConnectionTroubleshooting', () => {
         // And the classifier really does put that code under this heading.
         expect(classifyConnectionFailure({ name, $metadata: {} }).kind).toBe(kind);
       }
-      expect(html).toContain(`any other ${status} answer`);
+      expect(html).toContain(`any other error answered with HTTP status ${status}`);
       expect(
         classifyConnectionFailure({ name: 'Unlisted', $metadata: { httpStatusCode: status } }).kind
       ).toBe(kind);
@@ -56,7 +56,9 @@ describe('ConnectionTroubleshooting', () => {
   it('sends a blocked request to step 1 where CORS has to be set', () => {
     render(<ConnectionTroubleshooting provider={getProviderBySlug('aws-s3')!} />);
     expect(
-      within(section()).getByText(/does not allow this site yet: follow step 1 above/)
+      within(section()).getByText(
+        /does not allow this site yet: apply the CORS policy from the setup steps above/
+      )
     ).toBeTruthy();
   });
 
@@ -74,9 +76,43 @@ describe('ConnectionTroubleshooting', () => {
     render(<ConnectionTroubleshooting provider={getProviderBySlug('minio')!} />);
     const text = section().textContent ?? '';
 
-    expect(text).toContain('MinIO exposes ETag in its own CORS answers');
+    expect(text).toContain('MinIO Community Edition exposes ETag in its own CORS answers');
+    // AIStor's per-bucket rules, or a proxy, are where it can go missing.
+    expect(text).toContain('per-bucket rules on MinIO AIStor');
     expect(text).not.toContain('as it is in the policy above');
   });
+
+  it('tells Wasabi users the default exposes ETag and a saved policy is what can hide it', () => {
+    render(<ConnectionTroubleshooting provider={getProviderBySlug('wasabi')!} />);
+    expect(section().textContent).toContain(
+      "Wasabi's default CORS exposes every header, so this happens once a CORS policy without ETag has been saved"
+    );
+  });
+
+  it('warns on every page that AuthorizationHeaderMalformed can mean a wrong region', () => {
+    render(<ConnectionTroubleshooting provider={getProviderBySlug('digitalocean-spaces')!} />);
+    expect(section().textContent).toContain(
+      'AuthorizationHeaderMalformed is filed here too, but on Amazon S3 it means the region does not match'
+    );
+  });
+
+  it.each(['credentials', 'bucket', 'permissions'] as const)(
+    'names in its own words only codes the classifier really files under %s',
+    (kind) => {
+      render(<ConnectionTroubleshooting provider={getProviderBySlug('aws-s3')!} />);
+      const heading = within(section()).getByRole('heading', {
+        name: `“${CONNECTION_FAILURE_TITLES[kind]}”`,
+      });
+      const named = [...heading.parentElement!.querySelectorAll('code')]
+        .map((code) => code.textContent ?? '')
+        .filter((text) => /^[A-Z][A-Za-z]+$/.test(text));
+
+      expect(named.length).toBeGreaterThan(0);
+      for (const name of named) {
+        expect(classifyConnectionFailure({ name, $metadata: {} }).kind).toBe(kind);
+      }
+    }
+  );
 
   it('tells everyone else to expose ETag, as the policy above does', () => {
     render(<ConnectionTroubleshooting provider={getProviderBySlug('cloudflare-r2')!} />);

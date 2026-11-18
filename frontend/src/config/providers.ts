@@ -265,7 +265,7 @@ export const S3_PROVIDERS: readonly S3Provider[] = [
       gotcha:
         "Backblaze's own CORS rule format covers S3 GET, HEAD, PUT and DELETE but has no operation for POST, which multipart uploads and deleting several files at once need. That is why the rules go in through the S3 API here. If the bucket already has rules from the native API - set with the b2 command-line tool, as Opndrive's setup steps used to say - the S3 API cannot change them: Backblaze says they can only be changed through the native API (b2 bucket update --cors-rules). Remove them there first, then run the command above.",
       troubleshooting: [
-        'Small files upload but large ones, or deleting several files at once, fail with "Could not reach your storage": the rules are probably in Backblaze\'s own format, which cannot allow the POST requests those use. Remove those through the native API, as below, and apply the policy above through the S3 API instead.',
+        'Small files upload but large ones, or deleting several files at once, fail with "Could not reach your storage": the rules are probably in Backblaze\'s own format, which cannot allow the POST requests those use. Remove those through the native API, as the setup steps above say, and apply the policy above through the S3 API instead.',
       ],
     },
   },

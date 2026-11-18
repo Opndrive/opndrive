@@ -19,18 +19,22 @@ interface Failure {
   codes?: { names: readonly string[]; status: number };
 }
 
-/** "InvalidAccessKeyId, SignatureDoesNotMatch and any 401 answer", from the classifier. */
+/**
+ * The codes the classifier files under a heading, and the status it falls back
+ * on. Worded so the codes do not read as having that status: S3 sends
+ * InvalidAccessKeyId with 403, PermanentRedirect with 301.
+ */
 function CodeList({ codes }: { codes: NonNullable<Failure['codes']> }) {
   return (
     <span className="mt-1 block text-xs">
-      Shown for{' '}
+      Shown for the error codes{' '}
       {codes.names.map((name, index) => (
         <span key={name}>
           <code>{name}</code>
           {index < codes.names.length - 1 ? ', ' : ''}
         </span>
-      ))}{' '}
-      and any other {codes.status} answer.
+      ))}
+      , and for any other error answered with HTTP status {codes.status}.
     </span>
   );
 }
@@ -47,8 +51,8 @@ function CodeList({ codes }: { codes: NonNullable<Failure['codes']> }) {
  */
 function sharedFailures(provider: S3Provider): Failure[] {
   const corsFix = provider.setup.corsRequired
-    ? 'means the bucket does not allow this site yet: follow step 1 above.'
-    : `means CORS on your ${provider.name} storage has been restricted and does not include this site: follow step 1 above.`;
+    ? 'means the bucket does not allow this site yet: apply the CORS policy from the setup steps above.'
+    : `means CORS on your ${provider.name} storage has been restricted and does not include this site: add it as the setup steps above describe.`;
 
   return [
     {
@@ -70,7 +74,9 @@ function sharedFailures(provider: S3Provider): Failure[] {
         <>
           Your provider did not accept the key. <code>InvalidAccessKeyId</code> means the access key
           ID does not exist; <code>SignatureDoesNotMatch</code> means the secret does not belong to
-          it. Check both for typos and stray spaces, and that the key has not been deleted.
+          it. Check both for typos and stray spaces, and that the key has not been deleted.{' '}
+          <code>AuthorizationHeaderMalformed</code> is filed here too, but on Amazon S3 it means the
+          region does not match the bucket&apos;s, so check the region before the keys.
         </>
       ),
       codes: CONNECTION_FAILURE_CODES.credentials,
@@ -115,10 +121,17 @@ function sharedFailures(provider: S3Provider): Failure[] {
       explanation: provider.setup.etagExposedByDefault ? (
         <>
           Bigger files go up in parts, and finishing the upload needs each part&apos;s{' '}
-          <code>ETag</code>, which the browser hides unless CORS exposes it. {provider.name} exposes{' '}
-          <code>ETag</code> in its own CORS answers, so this should not happen while {provider.name}{' '}
-          answers CORS itself. If something in front of it answers instead, such as a reverse proxy,
-          that is where <code>ETag</code> has to be exposed.
+          <code>ETag</code>, which the browser hides unless CORS exposes it. {provider.name}{' '}
+          Community Edition exposes <code>ETag</code> in its own CORS answers, so with it this means
+          something else answers CORS: per-bucket rules on MinIO AIStor, or a reverse proxy in front
+          of the server. Expose <code>ETag</code> there.
+        </>
+      ) : !provider.setup.corsRequired ? (
+        <>
+          Bigger files go up in parts, and finishing the upload needs each part&apos;s{' '}
+          <code>ETag</code>, which the browser hides unless CORS exposes it. {provider.name}&apos;s
+          default CORS exposes every header, so this happens once a CORS policy without{' '}
+          <code>ETag</code> has been saved. Apply the policy above, which exposes it.
         </>
       ) : (
         <>
