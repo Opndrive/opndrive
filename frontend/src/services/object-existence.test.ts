@@ -217,6 +217,41 @@ describe('findExistingNames', () => {
     expect(fetchDirectoryStructure.mock.calls[0]![0]).toBe('');
   });
 
+  it('leaves unknown what it did not find when a page says there is more but not how to get it', async () => {
+    // S3 always sends the token with a truncated page; a service that does
+    // not has said the listing is incomplete all the same. Read as finished,
+    // every name past that page looked free, and was overwritten.
+    const fetchDirectoryStructure = vi.fn(async () => ({
+      files: [{ Key: 'a.txt' }],
+      folders: [],
+      nextToken: undefined,
+      isTruncated: true,
+    }));
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt']), unknown: ['b.txt'] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows a token even from a page that does not say it is truncated', async () => {
+    // Either sign of more to come counts. Following it costs one page at
+    // most; ignoring it could call a name free that is on the next one.
+    const pages = [
+      { files: [{ Key: 'a.txt' }], folders: [], nextToken: '1', isTruncated: undefined },
+      { files: [{ Key: 'b.txt' }], folders: [], nextToken: undefined, isTruncated: false },
+    ];
+    const fetchDirectoryStructure = vi.fn(async (_p: string, _m: number, token?: string) =>
+      token ? pages[1]! : pages[0]!
+    );
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt', 'c.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt', 'b.txt']), unknown: [] });
+  });
+
   it('propagates a failed listing instead of calling the names free', async () => {
     const api = {
       fetchDirectoryStructure: vi.fn(async () => {
