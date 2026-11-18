@@ -19,7 +19,7 @@ stay in context or open it somewhere shareable.
 Supported file types include images, PDFs, video, audio, text/code, and
 spreadsheets.
 
-<!-- SCREENSHOT: Modal preview open over the file browser, with prev/next arrows visible -->
+![An image open in the preview, showing image 2 of 4, with previous and next arrows, download and close at the top and zoom controls below](../../public/screenshots/opndrive-file-preview-modal.webp)
 
 ## Route Preview and File Versions
 

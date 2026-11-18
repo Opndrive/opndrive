@@ -71,7 +71,7 @@ sequenceDiagram
     Store-->>U: progress bar updates
 ```
 
-<!-- SCREENSHOT: Upload panel showing multiple files with progress bars, one paused -->
+![The upload panel with three files: two still uploading, each with a progress ring, and one marked Paused with a resume button](../../public/screenshots/opndrive-upload-panel-one-paused.webp)
 
 1. Click the upload button, or drag files onto the file list. Dragging a folder
    also brings its empty folders along, and an empty folder on its own is
