@@ -94,11 +94,7 @@ const NoticeRow: React.FC<NoticeRowProps> = React.memo(({ notice, onDismiss }) =
       className="flex gap-2.5 rounded-lg border py-2.5 pl-3 pr-1.5"
       style={{ background: tone.surface, borderColor: tone.border }}
     >
-      <Icon
-        aria-hidden="true"
-        className="mt-0.5 h-4 w-4 flex-shrink-0"
-        style={{ color: tone.accent }}
-      />
+      <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" style={{ color: tone.accent }} />
 
       <div className="min-w-0 flex-1">
         <div data-testid="queue-notice-header" className="flex items-start justify-between gap-2">
@@ -117,7 +113,7 @@ const NoticeRow: React.FC<NoticeRowProps> = React.memo(({ notice, onDismiss }) =
             onClick={() => onDismiss(notice.id)}
             aria-label={`Dismiss notice: ${notice.detail}`}
             title="Dismiss"
-            className="-mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--primary)]"
+            className="-mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
             style={{ color: 'var(--muted-foreground)' }}
           >
             <X aria-hidden="true" className="h-4 w-4" />
@@ -125,7 +121,7 @@ const NoticeRow: React.FC<NoticeRowProps> = React.memo(({ notice, onDismiss }) =
         </div>
 
         <p
-          className="mt-0.5 pr-1.5 text-xs leading-[18px] [overflow-wrap:anywhere]"
+          className="mt-0.5 pr-1.5 text-xs leading-4.5 wrap-anywhere"
           style={{ color: 'var(--foreground)' }}
         >
           {notice.detail}
@@ -166,7 +162,7 @@ export const QueueNotices: React.FC = React.memo(() => {
           <button
             type="button"
             onClick={clearNotices}
-            className="-mr-1.5 rounded px-1.5 py-0.5 text-xs font-medium transition-colors duration-150 hover:bg-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+            className="-mr-1.5 rounded px-1.5 py-0.5 text-xs font-medium transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
             style={{ color: 'var(--primary)' }}
           >
             Clear all
@@ -174,7 +170,9 @@ export const QueueNotices: React.FC = React.memo(() => {
         </div>
       )}
 
-      <ul className="max-h-56 space-y-2 overflow-y-auto custom-scrollbar px-3 py-2.5">
+      {/* Tall enough on a wide screen for two notices of four lines each, so
+          a warning and a rename are both seen without scrolling. */}
+      <ul className="max-h-56 sm:max-h-72 space-y-2 overflow-y-auto custom-scrollbar px-3 py-2.5">
         {notices.map((notice) => (
           <NoticeRow key={notice.id} notice={notice} onDismiss={handleDismiss} />
         ))}
