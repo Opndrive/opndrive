@@ -37,6 +37,13 @@ describe('remarkStripMdLinks', () => {
     expect(rewrite('../guides/index.md')).toBe('/guides');
     expect(rewrite('./index.md')).toBe('/guides');
     expect(rewrite('../index.mdx')).toBe('/');
+    expect(rewrite('../guides/INDEX.MD')).toBe('/guides');
+  });
+
+  it('links a folder itself with no trailing slash, and the parent of the top folder as the home', () => {
+    expect(rewrite('./')).toBe('/guides');
+    expect(rewrite('../guides/')).toBe('/guides');
+    expect(rewrite('../')).toBe('/');
   });
 
   it('leaves links with a scheme alone, including mailto: and tel:', () => {

@@ -5,7 +5,7 @@
  * suite CI runs. The module has no Nextra imports, so it runs outside Next.
  */
 import { describe, expect, it } from 'vitest';
-import { pageMetadata, pageUrl } from '../../../docs/lib/site';
+import { pageMetadata, pageRoute, pageUrl } from '../../../docs/lib/site';
 
 const DOCS = 'https://docs.opndrive.app';
 
@@ -24,6 +24,17 @@ describe('pageUrl', () => {
     // importPage decodes before it looks the page up, so this reaches
     // /guides/uploading-files and must not call itself canonical.
     expect(pageUrl(['guides', 'uploading%2Dfiles'])).toBe(`${DOCS}/guides/uploading-files`);
+  });
+
+  it('decodes the whole path first, as Nextra does, so an encoded slash is a slash', () => {
+    expect(pageUrl(['guides%2Fuploading-files'])).toBe(`${DOCS}/guides/uploading-files`);
+    expect(pageRoute(['guides%2Fuploading-files'])).toBe('/guides/uploading-files');
+    expect(pageRoute([''])).toBe('/');
+  });
+
+  it("leaves characters a path may carry as Nextra's links write them", () => {
+    expect(pageUrl(['guides', 'c++'])).toBe(`${DOCS}/guides/c++`);
+    expect(pageUrl(['@opndrive', 'a:b'])).toBe(`${DOCS}/@opndrive/a:b`);
   });
 
   it('percent-encodes what a URL cannot carry raw', () => {
@@ -80,6 +91,19 @@ describe('pageMetadata', () => {
     expect(metadata.alternates).toEqual({
       canonical: `${DOCS}/guides`,
       languages: { de: '/de/guides' },
+    });
+  });
+
+  it("keeps the shared card and handle under a page's own Twitter fields", () => {
+    const metadata = pageMetadata({ title: 'FAQ', twitter: { title: 'Opndrive FAQ' } }, [
+      'reference',
+      'faq',
+    ]);
+
+    expect(metadata.twitter).toEqual({
+      card: 'summary_large_image',
+      site: '@opndrive',
+      title: 'Opndrive FAQ',
     });
   });
 
