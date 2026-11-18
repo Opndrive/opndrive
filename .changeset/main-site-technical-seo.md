@@ -2,8 +2,8 @@
 'frontend': patch
 ---
 
-Put every page's title, description and canonical in the head for Googlebot,
-and stop the blog answering 500
+Put every page's title, description and canonical in the head for Googlebot, and
+stop the blog answering 500
 
 Every page here renders per request, and Next.js was streaming each page's
 metadata into the body for any visitor not on its short list of bots - Googlebot
