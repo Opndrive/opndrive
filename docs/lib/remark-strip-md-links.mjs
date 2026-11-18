@@ -8,18 +8,17 @@ const CONTENT_DIR = path.resolve(import.meta.dirname, '../content');
  *  real file extension. Two problems for Nextra:
  *
  *  1. Nextra's routes have no `.md`/`.mdx` extension.
- *  2. Relative links break under this app's basePath. A page's own route
- *     (e.g. `/docs/guides/uploading-files`, no trailing slash) makes the
- *     browser resolve `./foo` as a sibling of the LAST segment, i.e.
- *     `/docs/guides/foo` - that part's fine - but resolve it from the
- *     content ROOT (e.g. a link on the homepage, served at exactly
- *     `/docs`) and `./guides/foo` resolves to `/guides/foo`, silently
- *     dropping the basePath entirely.
+ *  2. The browser resolves a relative link against the page's URL, not
+ *     against the file it was written in. Routes have no trailing slash, so
+ *     `./foo` on `/guides/uploading-files` means `/guides/foo` - right only
+ *     while the URL sits at the same depth as the file. A folder's
+ *     `index.md`, served at `/guides` rather than `/guides/`, breaks that:
+ *     its `./foo` would resolve to `/foo`.
  *
  *  So links are rewritten to root-relative paths (`/guides/uploading-files`)
- *  computed from the current file's real position in content/, rather than
- *  left as browser-resolved relative paths. A root-relative path is what
- *  Next.js's basePath auto-prefixing actually requires to kick in. */
+ *  computed from the current file's real position in content/, which are
+ *  right from any URL. The site is served from the root of its own
+ *  subdomain (docs.opndrive.app), so no basePath is involved. */
 export function remarkStripMdLinks() {
   return (tree, file) => {
     const relPath = path.relative(CONTENT_DIR, file.path).split(path.sep).join('/');
