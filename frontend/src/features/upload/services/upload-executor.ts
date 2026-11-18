@@ -40,6 +40,8 @@ export interface UploadManagerLike {
   addUpload(file: File, config: { key: string; contentType?: string }): string;
   /** Sends a failed upload again. False when it is not failed, or cannot be. */
   retryUpload(id: string): boolean;
+  /** Lets go of a finished upload's file. Leaves one still going alone. */
+  discardUpload(id: string): boolean;
   cancelUpload(id: string): Promise<void> | void;
   getStatus(id: string): { status: UploadStatus; progress: number } | undefined;
   on(event: 'statusChange' | 'progress', listener: (payload: ManagerEvent) => void): void;
@@ -184,6 +186,14 @@ export interface UploadExecutor {
    * its folder was not cancelled. For deciding whether to offer Retry at all.
    */
   canRetry(uploadId: string): boolean;
+  /**
+   * Done with these uploads: their cards have been removed. A failed one's
+   * file was kept for a retry nobody can ask for any more, so the manager
+   * lets go of it, and the upload is no longer offered as retriable. Ids the
+   * manager does not know, such as a folder card's, and uploads still going
+   * are passed over.
+   */
+  discard(uploadIds: readonly string[]): void;
   /**
    * Where an upload stands right now, by the manager's own account.
    *
@@ -475,6 +485,24 @@ export function createUploadExecutor(manager: UploadManagerLike): UploadExecutor
       record.failed.delete(uploadId);
       retriable.delete(uploadId);
       return { ok: true };
+    },
+
+    discard(uploadIds) {
+      for (const uploadId of uploadIds) {
+        // Only a finished upload is let go of. One still going stays
+        // tracked, and so does its task.
+        if (!manager.discardUpload(uploadId)) continue;
+
+        retriable.delete(uploadId);
+        const taskId = taskByUpload.get(uploadId);
+        const record = taskId ? tasks.get(taskId) : undefined;
+        if (record) {
+          // Already counted as finished, so `pending` does not change.
+          record.failed.delete(uploadId);
+          record.uploadIds.delete(uploadId);
+          taskByUpload.delete(uploadId);
+        }
+      }
     },
 
     canRetry(uploadId) {

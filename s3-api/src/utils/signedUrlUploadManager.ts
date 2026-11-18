@@ -232,6 +232,15 @@ export class SignedUrlUploadManager {
     this.processQueue();
   }
 
+  /** See UploadManager.discardUpload. */
+  public discardUpload(id: string): boolean {
+    const item = this.uploads.get(id);
+    if (!item || !['completed', 'failed', 'cancelled'].includes(item.status)) return false;
+
+    this.releaseResources(id);
+    return true;
+  }
+
   /** See UploadManager.releaseResources - same leak, same reasoning. */
   private releaseResources(id: string): void {
     const item = this.uploads.get(id);

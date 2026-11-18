@@ -1019,6 +1019,47 @@ describe('resource release', () => {
     expect(itemOf(manager, id)!.file).toBeUndefined();
   });
 
+  /**
+   * A failed upload keeps its file for Retry, and nothing else ever let go of
+   * it: removing its card from the panel left the File held until logout. A
+   * drop of thousands that all failed held thousands of handles nobody could
+   * reach any more.
+   */
+  describe('discardUpload', () => {
+    it("drops a failed upload's file, so nothing holds it once its card is gone", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+      await settle();
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      expect(manager.discardUpload(id)).toBe(true);
+
+      expect(itemOf(manager, id)!.file).toBeUndefined();
+      // Nothing left to send, so nothing to retry. Its status still answers.
+      expect(manager.retryUpload(id)).toBe(false);
+      expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    });
+
+    it('leaves an upload that is still going alone', async () => {
+      const manager = UploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+      await settle();
+
+      expect(manager.discardUpload(id)).toBe(false);
+
+      expect(itemOf(manager, id)!.file).toBeInstanceOf(File);
+      uploaderInstances[0]!.gate.resolve();
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+    });
+
+    it('refuses an id it does not know', () => {
+      expect(UploadManager.getInstance(config).discardUpload('nope')).toBe(false);
+    });
+  });
+
   it('drops them even when the abort round-trip fails', async () => {
     // A failed AbortMultipartUpload still has to free the handle - the
     // orphaned parts are the bucket's problem, not the browser's.

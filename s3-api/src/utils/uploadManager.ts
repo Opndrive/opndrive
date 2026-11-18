@@ -259,6 +259,25 @@ export class UploadManager {
     item.uploader = undefined;
   }
 
+  /**
+   * Lets go of a finished upload's file and uploader, for a caller that is
+   * done with it: its card has been removed, say.
+   *
+   * A failed upload keeps its file so it can be retried, and before this
+   * nothing else ever released it: removing the card left the File held
+   * until logout. Its status still answers afterwards, but it can no longer
+   * be retried. An upload still queued, running or paused is left alone.
+   *
+   * @returns whether the upload was finished, and so released.
+   */
+  public discardUpload(id: string): boolean {
+    const item = this.uploads.get(id);
+    if (!item || !['completed', 'failed', 'cancelled'].includes(item.status)) return false;
+
+    this.releaseResources(id);
+    return true;
+  }
+
   public pauseUpload(id: string): void {
     const item = this.uploads.get(id);
     if (!item || item.status !== 'uploading') return;

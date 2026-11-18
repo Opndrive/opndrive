@@ -72,6 +72,7 @@ function fakeManager() {
       return id;
     },
     retryUpload: vi.fn((_id: string) => false),
+    discardUpload: vi.fn((_id: string) => false),
     cancelUpload: vi.fn(),
     getStatus: (id: string) => statuses.get(id),
     on: vi.fn(),

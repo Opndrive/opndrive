@@ -19,6 +19,7 @@ const { manager, executor } = vi.hoisted(() => ({
   executor: {
     retry: vi.fn((_id: string): RetryOutcome => ({ ok: true })),
     canRetry: vi.fn((_id: string) => true),
+    discard: vi.fn((_ids: readonly string[]) => {}),
     uploadsFor: vi.fn((_taskId: string): string[] => []),
     cancelTask: vi.fn(),
   },
@@ -200,6 +201,59 @@ describe('Retry', () => {
     executor.retry.mockReturnValue({ ok: true });
     fireEvent.click(screen.getByRole('button', { name: 'Retry photos' }));
     expect(useUploadStore.getState().uploads.folder!.error).toBeUndefined();
+  });
+});
+
+describe('removing upload cards', () => {
+  const failedFolder: Uploads = {
+    folder: {
+      id: 'folder',
+      name: 'photos',
+      type: 'folder',
+      status: 'queued',
+      progress: 0,
+      fileIds: ['a', 'b'],
+    },
+    a: {
+      id: 'a',
+      name: 'photos/a.jpg',
+      type: 'file',
+      status: 'failed',
+      progress: 0,
+      parentFolderId: 'folder',
+    },
+    b: {
+      id: 'b',
+      name: 'photos/b.jpg',
+      type: 'file',
+      status: 'completed',
+      progress: 100,
+      parentFolderId: 'folder',
+    },
+  };
+
+  it('lets go of what a removed card stood for, its files included', () => {
+    // A failed upload keeps its file for Retry, and with the card gone that
+    // file was held until logout all the same.
+    seed(failedFolder);
+    renderPanel();
+
+    fireEvent.click(screen.getByTitle('Remove from list'));
+
+    expect(executor.discard).toHaveBeenCalledExactlyOnceWith(['folder', 'a', 'b']);
+    expect(useUploadStore.getState().uploads).toEqual({});
+  });
+
+  it('lets go of everything when the panel is cleared', () => {
+    seed({
+      ...failedFolder,
+      u1: { id: 'u1', name: 'report.pdf', type: 'file', status: 'failed', progress: 0 },
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close the operations panel' }));
+
+    expect([...executor.discard.mock.calls.flat(2)].sort()).toEqual(['a', 'b', 'folder', 'u1']);
   });
 });
 

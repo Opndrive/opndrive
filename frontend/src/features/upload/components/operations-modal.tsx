@@ -184,7 +184,6 @@ export const OperationsModal: React.FC = () => {
   // prompt re-rendered this panel along with each of its rows.
   const uploads = useUploadStore((state) => state.uploads);
   const deletes = useUploadStore((state) => state.deletes);
-  const removeUpload = useUploadStore((state) => state.removeUpload);
   const removeUploads = useUploadStore((state) => state.removeUploads);
   const removeDeleteOperation = useUploadStore((state) => state.removeDeleteOperation);
   const updateUpload = useUploadStore((state) => state.updateUpload);
@@ -279,10 +278,33 @@ export const OperationsModal: React.FC = () => {
     [executor, uploadManager, updateUpload, removeDeleteOperation, cancelDownload]
   );
 
+  /**
+   * Removes upload cards, and has the executor let go of what they stood for.
+   *
+   * A failed upload keeps its file so it can be retried, and once its card
+   * is gone nothing can ask for that any more, but the file was held until
+   * logout all the same. A folder card stands for its files, so they go with
+   * it. One store update for all of them.
+   */
+  const removeUploadCards = useCallback(
+    (ids: readonly string[]) => {
+      const all = useUploadStore.getState().uploads;
+      const uploadIds: string[] = [];
+      for (const id of ids) {
+        uploadIds.push(id);
+        for (const fileId of all[id]?.fileIds ?? []) uploadIds.push(fileId);
+      }
+
+      executor?.discard(uploadIds);
+      removeUploads(ids);
+    },
+    [executor, removeUploads]
+  );
+
   const removeOperation = useCallback(
     (itemId: string, operationType: OperationType) => {
       if (operationType === 'upload') {
-        removeUpload(itemId);
+        removeUploadCards([itemId]);
       } else if (operationType === 'delete') {
         removeDeleteOperation(itemId);
       } else if (operationType === 'download') {
@@ -293,7 +315,7 @@ export const OperationsModal: React.FC = () => {
         removeDownload(itemId);
       }
     },
-    [removeUpload, removeDeleteOperation, removeDownload]
+    [removeUploadCards, removeDeleteOperation, removeDownload]
   );
 
   const pauseOperation = useCallback(
@@ -766,7 +788,7 @@ export const OperationsModal: React.FC = () => {
                     // Uploads are the exception, taken in one update: removed
                     // one by one, a drop of 4,000 loose files copied the rest
                     // of the map 4,000 times.
-                    removeUploads(
+                    removeUploadCards(
                       sortedOperations
                         .filter((op) => op.operationType === 'upload')
                         .map((op) => op.id)
@@ -776,6 +798,7 @@ export const OperationsModal: React.FC = () => {
                       .forEach((op) => removeOperation(op.id, op.operationType));
                   }
                 }}
+                aria-label="Close the operations panel"
                 className="p-2 sm:p-1 rounded transition-colors duration-200"
                 style={{
                   color: 'var(--muted-foreground)',

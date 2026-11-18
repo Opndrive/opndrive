@@ -673,6 +673,33 @@ describe('resource release', () => {
     expect(itemOf(manager, id)!.file).toBeUndefined();
   });
 
+  // See UploadManager's discardUpload suite.
+  describe('discardUpload', () => {
+    it("drops a failed upload's file, so nothing holds it once its card is gone", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const manager = SignedUrlUploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+      await settle();
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      expect(manager.discardUpload(id)).toBe(true);
+
+      expect(itemOf(manager, id)!.file).toBeUndefined();
+      expect(manager.retryUpload(id)).toBe(false);
+      expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+    });
+
+    it('leaves an upload that is still going alone', async () => {
+      const manager = SignedUrlUploadManager.getInstance(config);
+      const id = manager.addUpload(makeFile(), { key: 'a.txt' });
+      await settle();
+
+      expect(manager.discardUpload(id)).toBe(false);
+      expect(itemOf(manager, id)!.file).toBeInstanceOf(File);
+    });
+  });
+
   it('keeps the queue moving after many completions', async () => {
     const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 2 });
     const ids = Array.from({ length: 6 }, (_, i) => manager.addUpload(makeFile(), { key: `${i}` }));

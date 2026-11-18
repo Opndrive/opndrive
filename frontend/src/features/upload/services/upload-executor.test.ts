@@ -52,6 +52,7 @@ function fakeManager() {
     added: typeof added;
     cancelled: typeof cancelled;
     retried: string[];
+    discarded: string[];
     emit(event: 'progress' | 'statusChange', payload: ManagerEvent): void;
     listenerCount(): number;
     failCancel: Set<string>;
@@ -60,8 +61,13 @@ function fakeManager() {
     added,
     cancelled,
     retried: [],
+    discarded: [],
     failCancel: new Set<string>(),
     refuseRetry: false,
+    discardUpload(id) {
+      manager.discarded.push(id);
+      return true;
+    },
     // As the real one does: only a failed upload, announced as queued again.
     retryUpload(id) {
       if (manager.refuseRetry || statuses.get(id)?.status !== 'failed') return false;
@@ -864,6 +870,34 @@ describe('retry', () => {
    * refused its whole plan, after a logout mid-drop, has no upload behind it,
    * and a Retry there did nothing at all.
    */
+  /**
+   * Done with: the cards are gone. A failed upload's file was kept for a
+   * retry that can no longer be asked for, so the manager is told to let go
+   * of it, and the executor forgets it could be retried.
+   */
+  describe('discard', () => {
+    it('has the manager let go, and stops offering the retry', () => {
+      startFolder('a.jpg');
+      failed('upload-0');
+
+      executor.discard(['task-folder', 'upload-0']);
+
+      expect(manager.discarded).toEqual(['task-folder', 'upload-0']);
+      expect(executor.canRetry('upload-0')).toBe(false);
+      expect(executor.retry('upload-0')).toMatchObject({ ok: false });
+    });
+
+    it('stops a live folder offering a discarded failure once it settles', () => {
+      startFolder('a.jpg', 'b.jpg');
+      failed('upload-0');
+
+      executor.discard(['upload-0']);
+      completed('upload-1');
+
+      expect(executor.canRetry('upload-0')).toBe(false);
+    });
+  });
+
   describe('canRetry', () => {
     it('is true for a failed upload, before and after its task settles', () => {
       startFolder('a.jpg', 'b.jpg');
