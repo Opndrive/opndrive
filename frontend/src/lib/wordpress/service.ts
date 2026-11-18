@@ -20,7 +20,7 @@ import type {
   CategoryNode,
   TagNode,
 } from './types';
-import { decodeHtmlEntities } from './entities';
+import { decodeHtmlEntities, htmlToText } from './entities';
 
 /**
  * A WPGraphQL "...Gmt" field as an ISO string Date can read.
@@ -57,8 +57,9 @@ function plainText(rendered: string | undefined | null): string {
  * `content` is HTML and stays as it is.
  */
 export function transformPost(post: WordPressPost): BlogPost {
-  // Tags stripped first, then entities decoded, so a decoded "<" is text.
-  const cleanExcerpt = post.excerpt ? plainText(post.excerpt.replace(/<[^>]*>/g, '')).trim() : '';
+  // Plain text from here on: components show it as it is, without stripping
+  // tags again, which would eat a "<b>" the author wrote as text.
+  const cleanExcerpt = post.excerpt ? htmlToText(post.excerpt).trim() : '';
   const title = plainText(post.title);
 
   return {
