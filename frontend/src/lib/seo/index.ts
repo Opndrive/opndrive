@@ -5,3 +5,4 @@
 
 export * from './config';
 export * from './structured-data';
+export * from './social';

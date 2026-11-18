@@ -9,6 +9,7 @@ import { FaGithub } from 'react-icons/fa';
 import { useOpndriveStars } from '@/hooks/use-github-stars';
 import { DiscordCommunityLink } from '@/shared/components/discord/discord-community-link';
 import { DOCS_URL } from '@/config/links';
+import { HERO_THEME_ATTRIBUTE } from '@/features/landing-page/hero-image-priority';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -19,13 +20,26 @@ const navItems = [
   { label: 'Get Started', href: '#get-started' },
 ];
 
+const HERO_ALT =
+  'The Opndrive dashboard: suggested folders and files from a bucket, a share dialog setting how long a link lasts, and the privacy panel';
+
 interface HeroSectionProps {
   handleGetStarted: () => void;
   /** Named by the page, which is the only thing that knows the destination. */
   ctaLabel: string;
+  /**
+   * The server-rendered script that promotes whichever hero image matches the
+   * theme to an eager, high-priority load. It needs the CSP nonce, which only
+   * the server has, so the page passes it in. See hero-image-priority.ts.
+   */
+  imagePriorityScript?: React.ReactNode;
 }
 
-export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionProps) {
+export default function HeroSection({
+  handleGetStarted,
+  ctaLabel,
+  imagePriorityScript,
+}: HeroSectionProps) {
   const router = useRouter();
 
   // Use custom hook for GitHub stars
@@ -41,13 +55,15 @@ export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionP
           <div className="space-y-4 sm:space-y-6 lg:space-y-8 text-center lg:text-left">
             <div className="flex items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6 lg:mb-8">
               <div className="flex items-center justify-center">
+                {/* Eager, not priority: a 32px mark is not the largest paint,
+                    and priority preloaded the full-size PNG on every page. */}
                 <Image
                   src="/logo.png"
                   alt="Opndrive Logo"
-                  width={28}
-                  height={28}
-                  className="object-contain sm:w-8 sm:h-8"
-                  priority
+                  width={32}
+                  height={32}
+                  className="object-contain w-7 h-7 sm:w-8 sm:h-8"
+                  loading="eager"
                 />
               </div>
               <span className="text-lg sm:text-xl font-bold text-foreground">Opndrive</span>
@@ -94,23 +110,28 @@ export default function HeroSection({ handleGetStarted, ctaLabel }: HeroSectionP
           <div className="relative mt-8 sm:mt-12 lg:mt-0">
             <div className="w-full h-48 xs:h-56 sm:h-72 md:h-80 lg:h-96 xl:h-[28rem] flex items-center justify-center relative overflow-hidden">
               {/* Both themes ship; CSS paints one. See .theme-light-only in
-                  globals.css for why this cannot be a src chosen in JS. */}
+                  globals.css for why this cannot be a src chosen in JS. Both
+                  stay lazy here; the script after them makes the visible one
+                  eager and high priority. */}
               <Image
                 src={assets.LightLandingPageHeroImg}
-                alt="opndrive-hero-image"
+                alt={HERO_ALT}
                 fill
                 className="object-contain theme-light-only"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
+                {...{ [HERO_THEME_ATTRIBUTE]: 'light' }}
               />
               {/* The same alt on both: whichever is display:none is out of the
                   accessibility tree, so exactly one is ever announced. */}
               <Image
                 src={assets.DarkLandingPageHeroImg}
-                alt="opndrive-hero-image"
+                alt={HERO_ALT}
                 fill
                 className="object-contain theme-dark-only"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 45vw"
+                {...{ [HERO_THEME_ATTRIBUTE]: 'dark' }}
               />
+              {imagePriorityScript}
             </div>
           </div>
         </div>

@@ -45,7 +45,16 @@ export function ConnectShell({
       <header className="bg-background">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
-            <Image src="/logo.png" alt="" width={28} height={28} className="h-7 w-7" priority />
+            {/* Eager, not priority: priority also preloaded the full-size PNG
+                through a Link header that the image never used. */}
+            <Image
+              src="/logo.png"
+              alt=""
+              width={28}
+              height={28}
+              className="h-7 w-7"
+              loading="eager"
+            />
             <span className="text-base font-semibold tracking-tight text-foreground">Opndrive</span>
           </Link>
 
