@@ -466,6 +466,70 @@ describe('retryUpload', () => {
 
     expect(manager.retryUpload(id)).toBe(false);
   });
+
+  /**
+   * Retried from inside the 'failed' event, which is emitted before the
+   * failed worker has finished. That worker gave its slot back only if the
+   * upload was still 'failed', and by then the retry had moved it on, so the
+   * slot was lost: with one slot the retry never ran, and with more every
+   * such retry ran one fewer upload at a time.
+   */
+  describe('from inside its failed event', () => {
+    function retryOnFailure(manager: SignedUrlUploadManager) {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      manager.on('statusChange', (payload) => {
+        if (payload.status === 'failed') manager.retryUpload(payload.id);
+      });
+    }
+
+    it('still runs the retry with the only slot', async () => {
+      const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 1 });
+      retryOnFailure(manager);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+      uploaderInstances[1]!.gate.resolve();
+      await settle();
+      expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+    });
+
+    it('keeps the concurrency limit afterwards', async () => {
+      const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 2 });
+      retryOnFailure(manager);
+      manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+      uploaderInstances[1]!.gate.resolve();
+      await settle();
+
+      const more = ['b', 'c', 'd'].map((key) => manager.addUpload(makeFile(), { key }));
+      await settle();
+      expect(more.map((other) => manager.getStatus(other)!.status)).toEqual([
+        'uploading',
+        'uploading',
+        'queued',
+      ]);
+    });
+
+    it("leaves the retry's uploader alone", async () => {
+      const manager = SignedUrlUploadManager.getInstance({ ...config, maxConcurrency: 2 });
+      retryOnFailure(manager);
+      const id = manager.addUpload(makeFile(), { key: 'k' });
+      await settle();
+
+      uploaderInstances[0]!.gate.reject(refused());
+      await settle();
+
+      // Cancelling needs it: the failed worker used to clear it on its way out.
+      await manager.cancelUpload(id);
+      expect(uploaderInstances[1]!.cancel).toHaveBeenCalledOnce();
+    });
+  });
 });
 
 describe('content type', () => {

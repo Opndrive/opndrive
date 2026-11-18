@@ -34,6 +34,14 @@ export interface SignedUrlUploadManagerConfig {
   retryDelaysMs?: readonly number[];
 }
 
+/**
+ * One worker's run of an upload. See UploadManager's Worker: owning the
+ * upload and holding a concurrency slot are kept apart for the same reason.
+ */
+interface Worker {
+  holdsSlot: boolean;
+}
+
 export class SignedUrlUploadManager {
   private static instance: SignedUrlUploadManager | undefined;
   private apiProvider: BYOS3ApiProvider;
@@ -46,6 +54,15 @@ export class SignedUrlUploadManager {
   private listeners = new Map<UploadEvent, Set<EventListener>>();
   // See UploadManager.isDisposed for why this exists.
   private isDisposed = false;
+  /**
+   * The worker each upload belongs to. See UploadManager.workers.
+   *
+   * There is no pause here, but the same split matters: 'failed' is emitted
+   * while the failed worker is still running, and a listener that retries
+   * right then starts a new worker beside it. The failed worker gave its slot
+   * back only if the upload was still 'failed', so that slot was lost.
+   */
+  private workers = new Map<string, Worker>();
 
   private constructor(config: SignedUrlUploadManagerConfig) {
     this.apiProvider = config.apiProvider;
@@ -204,8 +221,11 @@ export class SignedUrlUploadManager {
       // Non-null: resources are released only on terminal states, and the
       // terminal check above has already returned.
       item.uploader!.cancel();
-      this.activeUploads--;
     }
+    // The worker stops on seeing the upload is no longer its own, so its slot
+    // is freed here. A queued retry has no worker yet: a failed one still
+    // finishing keeps its slot until it is done.
+    this.takeFromWorker(id);
 
     this.updateItemStatus(id, 'cancelled');
     this.releaseResources(id);
@@ -281,8 +301,13 @@ export class SignedUrlUploadManager {
       return;
     }
 
+    const worker: Worker = { holdsSlot: true };
+    this.workers.set(id, worker);
     this.activeUploads++;
     this.updateItemStatus(id, 'uploading');
+
+    // Whether this worker still has the upload. See `workers`.
+    const ownsUpload = () => this.workers.get(id) === worker;
 
     (async () => {
       try {
@@ -299,6 +324,8 @@ export class SignedUrlUploadManager {
             await item.uploader!.upload(item.file!, onProgress);
             break;
           } catch (err) {
+            // Cancelled underneath this attempt, which is what ended it.
+            if (!ownsUpload()) return;
             if (!this.shouldRetry(id, err, attempt)) throw err;
 
             console.warn(
@@ -307,37 +334,60 @@ export class SignedUrlUploadManager {
             );
             await waitBeforeRetry(this.retryDelaysMs[attempt]!);
 
-            if (this.isDisposed || this.uploads.get(id)?.status !== 'uploading') return;
+            if (this.isDisposed || !ownsUpload()) return;
           }
         }
 
-        if (this.uploads.get(id)?.status === 'uploading') {
+        if (ownsUpload() && this.uploads.get(id)?.status === 'uploading') {
           this.updateItemStatus(id, 'completed', 100);
         }
       } catch (err) {
-        const currentStatus = this.uploads.get(id)?.status;
-        if (currentStatus !== 'cancelled') {
+        // Not owned any more means cancelled, which is no failure.
+        if (ownsUpload()) {
           console.error(`Upload failed for ${id}:`, err);
+
+          // Let go of the upload before saying it failed, so a retry made in
+          // answer gets a worker of its own. See UploadManager.processQueue.
+          this.workers.delete(id);
+          const uploader = item.uploader;
           this.updateItemStatus(
             id,
             'failed',
             item.progress,
             err instanceof Error ? err.message : String(err)
           );
+
+          // Done with. The file stays, so it can be retried - unless a retry
+          // has already given the item an uploader of its own.
+          if (item.uploader === uploader) item.uploader = undefined;
         }
       } finally {
-        const finalStatus = this.uploads.get(id)?.status;
-        if (finalStatus === 'completed' || finalStatus === 'failed') {
-          // 'cancelled' is already released by cancelUpload(). 'failed'
-          // keeps its file so it can be retried.
-          if (finalStatus === 'completed') this.releaseResources(id);
-          else item.uploader = undefined;
+        // 'cancelled' is already released by cancelUpload().
+        if (ownsUpload() && this.uploads.get(id)?.status === 'completed') {
+          this.workers.delete(id);
+          this.releaseResources(id);
+        }
 
-          this.activeUploads--;
+        if (worker.holdsSlot) {
+          this.freeSlot(worker);
           this.processQueue();
         }
       }
     })();
+  }
+
+  /** See UploadManager.takeFromWorker. */
+  private takeFromWorker(id: string): void {
+    const worker = this.workers.get(id);
+    this.workers.delete(id);
+    if (worker) this.freeSlot(worker);
+  }
+
+  /** Gives back a worker's concurrency slot, once. */
+  private freeSlot(worker: Worker): void {
+    if (!worker.holdsSlot) return;
+    worker.holdsSlot = false;
+    this.activeUploads--;
   }
 
   /** See UploadManager.shouldRetry. */
