@@ -120,6 +120,14 @@
      rule for which belongs where. */
   --destructive-surface: #fce8e6;
   --destructive-border: #f6aea9;
+
+  /* Amber, for a notice about something done that may cost the user data,
+     such as uploading under a name that could not be checked. --warning is
+     for text and icons, so it is dark enough to read on its own surface
+     (4.7:1 here); the old #f59e0b managed 2.1:1 on white. */
+  --warning: #b45309;
+  --warning-surface: #fef7e0;
+  --warning-border: #fde293;
 }
 
 @theme inline {
@@ -172,6 +180,9 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-surface: var(--destructive-surface);
   --color-destructive-border: var(--destructive-border);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-border: var(--warning-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -248,6 +259,9 @@
   --destructive-foreground: #202124;
   --destructive-surface: rgba(242, 139, 130, 0.14);
   --destructive-border: rgba(242, 139, 130, 0.32);
+  --warning: #fdd663;
+  --warning-surface: rgba(253, 214, 99, 0.1);
+  --warning-border: rgba(253, 214, 99, 0.26);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -320,6 +334,9 @@
     --destructive-foreground: #202124;
     --destructive-surface: rgba(242, 139, 130, 0.14);
     --destructive-border: rgba(242, 139, 130, 0.32);
+    --warning: #fdd663;
+    --warning-surface: rgba(253, 214, 99, 0.1);
+    --warning-border: rgba(253, 214, 99, 0.26);
   }
 }
 

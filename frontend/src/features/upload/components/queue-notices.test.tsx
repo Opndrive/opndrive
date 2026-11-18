@@ -113,6 +113,32 @@ describe('the three kinds', () => {
     expect(within(header).getByText('Not verified')).toBeTruthy();
     expect(within(header).getByRole('button', { name: /^Dismiss notice/ })).toBeTruthy();
     expect(header.contains(screen.getByText(/will be overwritten/))).toBe(false);
+
+    // On the warning tint, not the neutral one a skip gets.
+    expect(row.style.background).toBe('var(--warning-surface)');
+  });
+
+  it('gives each kind its own tint', () => {
+    seed([
+      notice({ id: 'a', kind: 'renamed', detail: 'renamed one' }),
+      notice({ id: 'b', kind: 'skipped', detail: 'skipped one' }),
+      notice({ id: 'c', kind: 'replaced', detail: 'replaced one' }),
+      notice({ id: 'd', kind: 'unverified', detail: 'unverified one' }),
+    ]);
+
+    render(<QueueNotices />);
+
+    const surfaces = Object.fromEntries(
+      screen
+        .getAllByTestId('queue-notice')
+        .map((row) => [row.getAttribute('data-kind'), row.style.background])
+    );
+    expect(surfaces).toEqual({
+      renamed: 'var(--info-surface)',
+      skipped: 'var(--surface-sunken)',
+      replaced: 'var(--warning-surface)',
+      unverified: 'var(--warning-surface)',
+    });
   });
 
   it('omits the item count for a notice standing for one thing', () => {
@@ -136,12 +162,15 @@ describe('the three kinds', () => {
     expect(screen.getByText('3 notices')).toBeTruthy();
   });
 
-  it('counts a single notice in the singular', () => {
+  it('leaves out the count and Clear all over a single notice', () => {
+    // Over one notice they are a whole row repeating its own dismiss button.
     seed([notice()]);
 
     render(<QueueNotices />);
 
-    expect(screen.getByText('1 notice')).toBeTruthy();
+    expect(screen.getByTestId('queue-notice')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ notices?$/)).toBeNull();
+    expect(screen.queryByText('Clear all')).toBeNull();
   });
 });
 
