@@ -65,6 +65,11 @@ class FakeXhr {
   fireProgress(event: { lengthComputable: boolean; loaded: number; total: number }) {
     (this.uploadListeners.get('progress') ?? []).forEach((cb) => cb(event));
   }
+
+  /** The request body has been sent in full; the answer is still to come. */
+  fireBodySent() {
+    (this.uploadListeners.get('load') ?? []).forEach((cb) => cb());
+  }
 }
 
 const uploadWithPreSignedUrl = vi.fn(async () => 'https://signed.example.com/put');
@@ -273,6 +278,7 @@ describe('stall watchdog', () => {
       key: 'users/alice/a.txt',
       fileName: 'a.txt',
       stallTimeoutMs: 1_000,
+      responseTimeoutMs: 10_000,
     });
   }
 
@@ -305,6 +311,35 @@ describe('stall watchdog', () => {
     expect(xhr.aborted).toBe(false);
     xhr.fire('load');
     await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('waits longer for the answer once every byte has been sent', async () => {
+    // Nothing is sent while the server stores the file, so there is no
+    // progress to restart the silence timer. Given up on then, a file that
+    // may well be stored already was sent again from the start.
+    const { promise, xhr } = await started();
+    xhr.fireProgress({ lengthComputable: true, loaded: 1, total: 1 });
+    xhr.fireBodySent();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(xhr.aborted).toBe(false);
+    xhr.fire('load');
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('still gives up on an answer that never comes', async () => {
+    const { promise, xhr } = await started();
+    const settled = expect(promise).rejects.toMatchObject({
+      name: 'UploadStalledError',
+      message: expect.stringContaining('no answer'),
+    });
+    xhr.fireBodySent();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(xhr.aborted).toBe(true);
+    await settled;
   });
 
   it('stops watching once the request is over', async () => {

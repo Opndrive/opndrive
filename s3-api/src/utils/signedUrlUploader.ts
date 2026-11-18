@@ -13,10 +13,24 @@ export interface SignedUrlUploadConfig {
    * up on. Defaults to a minute.
    */
   stallTimeoutMs?: number;
+  /**
+   * How long to wait for the answer once the whole file has been sent.
+   * Defaults to five minutes.
+   *
+   * Separate from the stall limit because nothing is sent while the server
+   * stores the file, so there is no progress to measure silence by. A large
+   * file can take a server, or a proxy in front of it, longer than a minute
+   * to acknowledge, and giving up then sent a file that may already be
+   * stored all over again.
+   */
+  responseTimeoutMs?: number;
 }
 
 /** See SignedUrlUploadConfig.stallTimeoutMs. */
 const DEFAULT_STALL_TIMEOUT_MS = 60_000;
+
+/** See SignedUrlUploadConfig.responseTimeoutMs. */
+const DEFAULT_RESPONSE_TIMEOUT_MS = 5 * 60_000;
 
 /** Errors shaped so isTransientUploadError can tell a dropped connection from a refusal. */
 function networkError() {
@@ -37,6 +51,16 @@ function stalledError(timeoutMs: number) {
   );
 }
 
+/** Same name as a stall, so it is retried the same way. */
+function noAnswerError(timeoutMs: number) {
+  return Object.assign(
+    new Error(
+      `Upload stalled: the file was sent, but no answer came back for ${Math.round(timeoutMs / 1000)} seconds`
+    ),
+    { name: 'UploadStalledError' }
+  );
+}
+
 export class SignedUrlUploader {
   private apiProvider: BYOS3ApiProvider;
   private key: string;
@@ -44,6 +68,7 @@ export class SignedUrlUploader {
   private expiresInSeconds: number;
   private contentType?: string;
   private stallTimeoutMs: number;
+  private responseTimeoutMs: number;
   private abortController: AbortController | null = null;
   private isPaused = false;
 
@@ -54,6 +79,7 @@ export class SignedUrlUploader {
     this.expiresInSeconds = config.expiresInSeconds ?? 3600; // 1 hour default
     this.contentType = config.contentType || undefined;
     this.stallTimeoutMs = config.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
+    this.responseTimeoutMs = config.responseTimeoutMs ?? DEFAULT_RESPONSE_TIMEOUT_MS;
   }
 
   /**
@@ -81,24 +107,36 @@ export class SignedUrlUploader {
        * this watches for silence instead and restarts on every progress
        * event. A stalled upload is then an error the manager retries.
        */
-      let stalled = false;
+      let stalled: Error | null = null;
       let watchdog: ReturnType<typeof setTimeout> | undefined;
+      // Once the whole file has been sent, the request is waiting for its
+      // answer, and silence is no longer a sign of anything: see
+      // responseTimeoutMs.
+      let bodySent = false;
       const watch = () => {
         clearTimeout(watchdog);
+        const timeoutMs = bodySent ? this.responseTimeoutMs : this.stallTimeoutMs;
         watchdog = setTimeout(() => {
-          stalled = true;
+          stalled = bodySent ? noAnswerError(timeoutMs) : stalledError(timeoutMs);
           xhr.abort();
-        }, this.stallTimeoutMs);
+        }, timeoutMs);
       };
       const settle = () => clearTimeout(watchdog);
 
       // Handle progress
       xhr.upload.addEventListener('progress', (event) => {
+        if (bodySent) return;
         watch();
         if (event.lengthComputable && onProgress) {
           const progress = Math.round((event.loaded / event.total) * 100);
           onProgress(progress);
         }
+      });
+
+      // The last byte has gone. From here the server is storing the file.
+      xhr.upload.addEventListener('load', () => {
+        bodySent = true;
+        watch();
       });
 
       // Handle completion
@@ -120,7 +158,7 @@ export class SignedUrlUploader {
       // Handle abort
       xhr.addEventListener('abort', () => {
         settle();
-        reject(stalled ? stalledError(this.stallTimeoutMs) : new Error('Upload cancelled'));
+        reject(stalled ?? new Error('Upload cancelled'));
       });
 
       // Listen to abort signal
