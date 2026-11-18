@@ -40,7 +40,9 @@ describe('breadcrumbTrail', () => {
   it('gives every crumb an absolute URL with no trailing slash', () => {
     const trail = breadcrumbTrail([guides, page('/guides/uploading-files', 'Uploading Files')]);
     for (const crumb of trail) {
-      expect(crumb.url.startsWith(DOCS)).toBe(true);
+      // The parsed origin, not a prefix: a prefix would also pass
+      // https://docs.opndrive.app.example.com.
+      expect(new URL(crumb.url).origin).toBe(DOCS);
       expect(crumb.url.endsWith('/')).toBe(false);
     }
   });
