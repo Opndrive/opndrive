@@ -8,28 +8,37 @@ description:
 # Connecting Your Storage
 
 The `/connect` page is how every user configures Opndrive - there's no config
-file or environment variable involved. It supports AWS and four S3-compatible
-providers out of the box, plus any other S3-compatible endpoint via a manual
-field.
+file or environment variable involved. It supports Amazon S3 and five
+S3-compatible providers out of the box, plus any other S3-compatible service as
+a custom endpoint.
+
+Before connecting, the bucket needs a CORS policy that allows the address you
+open Opndrive at: see [Configure CORS](./configure-cors.md). If connecting
+fails, [Fixing Connection Errors](./fixing-connection-errors.md) explains each
+message.
 
 ## Built-in Providers
 
-| Provider      | Endpoint                               |
-| ------------- | -------------------------------------- |
-| Amazon S3     | Default AWS endpoints, region-based    |
-| Wasabi        | `s3.{region}.wasabisys.com`            |
-| Backblaze B2  | `s3.{region}.backblazeb2.com`          |
-| Cloudflare R2 | `{accountId}.r2.cloudflarestorage.com` |
-| MinIO         | Your own server URL                    |
+| Provider                                                                | Endpoint                               |
+| ----------------------------------------------------------------------- | -------------------------------------- |
+| [Amazon S3](https://opndrive.app/connect/aws-s3)                        | Default AWS endpoints, region-based    |
+| [Cloudflare R2](https://opndrive.app/connect/cloudflare-r2)             | `{accountId}.r2.cloudflarestorage.com` |
+| [Wasabi](https://opndrive.app/connect/wasabi)                           | `s3.{region}.wasabisys.com`            |
+| [Backblaze B2](https://opndrive.app/connect/backblaze-b2)               | `s3.{region}.backblazeb2.com`          |
+| [DigitalOcean Spaces](https://opndrive.app/connect/digitalocean-spaces) | `{region}.digitaloceanspaces.com`      |
+| [MinIO](https://opndrive.app/connect/minio)                             | Your own server URL                    |
 
-Picking one of these pre-fills the endpoint and region field - you only need to
-supply the access key, secret, and bucket name.
+Each has its own page, with the CORS policy, the permissions the key needs and
+what to do if connecting fails. Where the endpoint follows from the region,
+picking the region fills it in - you only need to supply the access key, secret,
+and bucket name.
 
 ## Anything Else S3-Compatible
 
-Select **Amazon S3** as the base provider and fill in the **Endpoint** field
-manually. Any service that speaks the S3 API (DigitalOcean Spaces, for example)
-works this way, even without a dedicated preset.
+Choose **Custom endpoint**
+([/connect/custom-endpoint](https://opndrive.app/connect/custom-endpoint)) and
+enter the service's S3 API endpoint and the region string it documents. Any
+service that speaks the S3 API works this way.
 
 ## The Form
 

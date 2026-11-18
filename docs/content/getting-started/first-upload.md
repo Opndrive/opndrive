@@ -9,7 +9,7 @@ description:
 With Opndrive running locally ([Installation](./installation.md)), connect your
 S3 bucket and upload your first file.
 
-<!-- SCREENSHOT: Opndrive landing page with the "Get Started" button -->
+![The Opndrive home page: the heading "Open-source web UI for S3, R2, MinIO and more" with the Get Started and Learn More buttons](../../public/screenshots/opndrive-landing-page-get-started.webp)
 
 ## 1. Connect Your Bucket
 
@@ -22,7 +22,7 @@ S3 bucket and upload your first file.
 3. Click **Connect**. Opndrive verifies the credentials against the bucket, then
    redirects you to the dashboard.
 
-<!-- SCREENSHOT: The /connect form -->
+![The connect form for Amazon S3, filled in with AWS's documented example access key, a masked secret, a bucket name and the us-east-1 region](../../public/screenshots/opndrive-connect-form-amazon-s3.webp)
 
 Don't have an AWS account or bucket yet?
 
@@ -44,7 +44,7 @@ Session** at any time to remove them.
 
 ## 3. Upload a File
 
-<!-- SCREENSHOT: Dashboard with an empty bucket and the upload button visible -->
+![The Opndrive dashboard on an empty bucket, with the New button for uploads at the top of the sidebar](../../public/screenshots/opndrive-dashboard-empty-bucket.webp)
 
 From the dashboard, use the upload button (or drag a file onto the file list).
 See [Uploading Files](../guides/uploading-files.md) for the different upload
@@ -68,10 +68,12 @@ pnpm dev:frontend
 
 ## Troubleshooting
 
-**AWS/S3 connection errors** - double-check the access key, secret, region, and
-that the bucket name is exact. Opndrive surfaces the S3 error message directly
-in the UI, which is usually specific enough to point at the problem (wrong
-region, insufficient IAM permissions, bucket doesn't exist).
+**Connecting fails** - Opndrive shows one of a few messages, such as "Could not
+reach your storage" or "Those keys were rejected", and the browser console (F12)
+names the cause.
+[Fixing Connection Errors](../guides/fixing-connection-errors.md) goes through
+each one. The most common is a missing CORS policy on the bucket, which
+[Configure CORS](../guides/configure-cors.md) covers for every provider.
 
 ---
 

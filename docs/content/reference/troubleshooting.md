@@ -5,13 +5,16 @@ description:
   Errors.'
 ---
 
-# Troubleshooting
+# Development Troubleshooting
 
-For setup-specific issues (won't install, won't start, can't connect a bucket),
-see the troubleshooting sections in
-[Installation](../getting-started/installation.md) and
-[First Upload](../getting-started/first-upload.md) first. This page covers
-everything else.
+This page is for problems while developing Opndrive. If the app cannot connect
+to your storage, or a CORS error or a message such as "Could not reach your
+storage" stops you, see
+[Fixing Connection Errors](../guides/fixing-connection-errors.md) instead.
+
+For setup-specific issues (won't install, won't start), see the troubleshooting
+section in [Installation](../getting-started/installation.md) first. This page
+covers everything else.
 
 ## Development
 
