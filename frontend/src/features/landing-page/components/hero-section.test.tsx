@@ -20,6 +20,7 @@ vi.mock('@/hooks/use-github-stars', () => ({
 }));
 
 import HeroSection from './hero-section';
+import { HERO_THEME_ATTRIBUTE } from '@/features/landing-page/hero-image-priority';
 
 const SCRIPT = <script data-testid="priority-script" />;
 
@@ -46,6 +47,13 @@ afterEach(() => {
 });
 
 describe('hero image priority', () => {
+  it('marks its images with the attribute the priority script looks for', () => {
+    // The markup writes the attribute out; the script builds its selector from
+    // the constant. Renaming one without the other would promote nothing.
+    const { container } = render(hero());
+    expect(container.querySelectorAll(`img[${HERO_THEME_ATTRIBUTE}]`)).toHaveLength(2);
+  });
+
   it('leaves both copies lazy in the server HTML and sends the script with them', () => {
     const html = renderToString(hero());
     const images = html.match(/<img[^>]*data-hero-theme="(?:light|dark)"[^>]*>/g) ?? [];
@@ -66,8 +74,8 @@ describe('hero image priority', () => {
       const { container } = render(hero());
 
       const other = theme === 'light' ? 'dark' : 'light';
-      const shown = container.querySelector(`img[data-hero-theme="${theme}"]`)!;
-      const hidden = container.querySelector(`img[data-hero-theme="${other}"]`)!;
+      const shown = container.querySelector(`img[${HERO_THEME_ATTRIBUTE}="${theme}"]`)!;
+      const hidden = container.querySelector(`img[${HERO_THEME_ATTRIBUTE}="${other}"]`)!;
 
       expect(shown.getAttribute('loading')).toBe('eager');
       expect(shown.getAttribute('fetchpriority')).toBe('high');
@@ -77,4 +85,18 @@ describe('hero image priority', () => {
       expect(container.querySelector('[data-testid="priority-script"]')).toBeNull();
     }
   );
+
+  it('keeps the copy it promoted when the theme changes later', () => {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const { container, rerender } = render(hero());
+
+    document.documentElement.setAttribute('data-theme', 'dark');
+    rerender(hero());
+
+    // Decided once: a re-render does not move the attributes between copies.
+    const light = container.querySelector(`img[${HERO_THEME_ATTRIBUTE}="light"]`)!;
+    const dark = container.querySelector(`img[${HERO_THEME_ATTRIBUTE}="dark"]`)!;
+    expect(light.getAttribute('fetchpriority')).toBe('high');
+    expect(dark.hasAttribute('fetchpriority')).toBe(false);
+  });
 });

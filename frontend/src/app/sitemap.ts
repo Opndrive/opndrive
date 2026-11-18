@@ -2,8 +2,7 @@ import { MetadataRoute } from 'next';
 import { SITE_URL } from '@/config/links';
 import { getAllPostSitemapData } from '@/lib/wordpress/service';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
-import { blogSitemapEntries } from '@/lib/wordpress/blog-index';
-import { isBlogEnabled } from '@/config/features';
+import { blogSitemapEntries, isBuilding } from '@/lib/wordpress/blog-index';
 import { PROVIDER_SLUGS } from '@/config/providers';
 
 /**
@@ -25,14 +24,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let blogPages: MetadataRoute.Sitemap = [];
 
-  // With no WordPress configured there is no blog to list; a configured one
-  // that fails to answer keeps the index listed (see blogSitemapEntries).
-  if (isBlogEnabled() && isWordPressConfigured()) {
+  // With no WordPress configured there is no blog to list.
+  if (isWordPressConfigured()) {
     try {
       blogPages = blogSitemapEntries(await getAllPostSitemapData({ revalidate }), baseUrl);
     } catch (error) {
+      // Rebuilding in the background: throw, and Next.js keeps serving the
+      // last sitemap instead of caching one without the posts for an hour.
+      if (!isBuilding()) throw error;
       console.error('Error fetching blog posts for sitemap:', error);
-      // Unknown, not empty: keep the blog index listed until the next rebuild.
+      // During the build: unknown, not empty, so the blog index stays listed.
       blogPages = blogSitemapEntries(null, baseUrl);
     }
   }

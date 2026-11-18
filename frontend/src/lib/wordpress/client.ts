@@ -13,32 +13,36 @@ import { isBlogEnabled, requiresWordPressCredentials } from '@/config/features';
  * to show, ever) from one whose source did not answer this time.
  */
 export function isWordPressConfigured(): boolean {
-  return isBlogEnabled() && Boolean(process.env.WORDPRESS_GRAPHQL_URL);
+  return missingWordPressConfig() === null;
+}
+
+/** What stops WordPress being used, or null when nothing does. One rule for both callers. */
+function missingWordPressConfig(): string | null {
+  if (!isBlogEnabled()) {
+    return 'Blog feature is disabled. Set NEXT_PUBLIC_ENABLE_BLOG=true to enable it.';
+  }
+  // Only require credentials if using self-hosted WordPress
+  if (!requiresWordPressCredentials()) {
+    return 'WordPress is not configured for this deployment.';
+  }
+  if (!process.env.WORDPRESS_GRAPHQL_URL) {
+    return (
+      'WORDPRESS_GRAPHQL_URL environment variable is not defined. ' +
+      'Either set it or disable the blog feature with NEXT_PUBLIC_ENABLE_BLOG=false'
+    );
+  }
+  return null;
 }
 
 // Lazy evaluation - only check when actually used
 const getWordPressConfig = () => {
-  // Check if blog feature is enabled
-  if (!isBlogEnabled()) {
-    throw new Error('Blog feature is disabled. Set NEXT_PUBLIC_ENABLE_BLOG=true to enable it.');
-  }
+  const missing = missingWordPressConfig();
+  if (missing) throw new Error(missing);
 
-  // Only require credentials if using self-hosted WordPress
-  if (!requiresWordPressCredentials()) {
-    throw new Error('WordPress is not configured for this deployment.');
-  }
-
-  const WORDPRESS_API_URL = process.env.WORDPRESS_GRAPHQL_URL || '';
-  const WP_AUTH_TOKEN = process.env.WORDPRESS_AUTH_TOKEN;
-
-  if (!WORDPRESS_API_URL) {
-    throw new Error(
-      'WORDPRESS_GRAPHQL_URL environment variable is not defined. ' +
-        'Either set it or disable the blog feature with NEXT_PUBLIC_ENABLE_BLOG=false'
-    );
-  }
-
-  return { WORDPRESS_API_URL, WP_AUTH_TOKEN };
+  return {
+    WORDPRESS_API_URL: process.env.WORDPRESS_GRAPHQL_URL!,
+    WP_AUTH_TOKEN: process.env.WORDPRESS_AUTH_TOKEN,
+  };
 };
 
 interface GraphQLResponse<T> {
