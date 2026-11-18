@@ -12,6 +12,7 @@
  * group of them checks the record stays empty.
  */
 
+import { createHash } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
 import {
@@ -20,6 +21,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  HeadObjectCommand,
   ListPartsCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -28,6 +30,7 @@ import {
   MAX_PARTS,
   MIN_PART_SIZE,
   MultipartUploader,
+  multipartETag,
   partSizeFor,
 } from './multipartUploader.js';
 
@@ -1252,7 +1255,224 @@ describe('one run at a time', () => {
   });
 });
 
+/** A part's ETag as S3 gives it: the part's MD5, in quotes. */
+const partETag = (seed: string) => `"${createHash('md5').update(seed).digest('hex')}"`;
+
+/**
+ * What S3 stores a multipart object under, worked out with Node's own MD5 so
+ * the test does not lean on the code under test.
+ */
+function storedETag(etags: string[]) {
+  const digests = Buffer.concat(etags.map((etag) => Buffer.from(etag.slice(1, -1), 'hex')));
+  return `"${createHash('md5').update(digests).digest('hex')}-${etags.length}"`;
+}
+
+/** An error with no HTTP status, as a dropped connection produces. */
+const dropped = () => Object.assign(new Error('Failed to fetch'), { name: 'TypeError' });
+
+describe('multipartETag', () => {
+  it("is S3's ETag for an object made of these parts", () => {
+    const etags = [partETag('one'), partETag('two'), partETag('three')];
+    const parts = etags.map((ETag, index) => ({ ETag, PartNumber: index + 1 }));
+
+    expect(`"${multipartETag(parts)}"`).toBe(storedETag(etags));
+  });
+
+  it('reads ETags with or without quotes, in either case', () => {
+    const etag = partETag('one');
+    const bare = etag.slice(1, -1).toUpperCase();
+
+    expect(multipartETag([{ ETag: bare, PartNumber: 1 }])).toBe(
+      multipartETag([{ ETag: etag, PartNumber: 1 }])
+    );
+  });
+
+  it('gives up on a part ETag that is not an MD5, as with SSE-KMS', () => {
+    expect(multipartETag([{ ETag: '"not-an-md5"', PartNumber: 1 }])).toBeNull();
+    expect(multipartETag([{ PartNumber: 1 }])).toBeNull();
+  });
+});
+
+describe('a completion whose answer was lost', () => {
+  // S3 can store the object and the reply never arrive. Asked again, it says
+  // the session does not exist (NoSuchUpload), which is also what it says
+  // when a session was aborted. The upload used to resume, list the parts of
+  // that session, get NoSuchUpload, and fail, over a file that was stored.
+  const etags = [partETag('one'), partETag('two'), partETag('three')];
+
+  function stubParts() {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    for (const [index, ETag] of etags.entries()) {
+      s3Mock.on(UploadPartCommand, { PartNumber: index + 1 }).resolves({ ETag });
+    }
+    s3Mock.on(ListPartsCommand).rejects(noSuchUpload());
+    s3Mock.on(AbortMultipartUploadCommand).resolves({});
+  }
+
+  /** Started, with its completion stored by S3 but the reply lost. */
+  async function completedWithoutAnswer() {
+    stubParts();
+    s3Mock.on(CompleteMultipartUploadCommand).rejectsOnce(dropped()).rejects(noSuchUpload());
+    const uploader = makeUploader();
+    await expect(uploader.start(makeFile(15 * MB))).rejects.toThrow('Failed to fetch');
+    return uploader;
+  }
+
+  it('is finished when the stored object is the one its parts make', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag(etags) });
+
+    // What UploadManager does next: the session is open, so it resumes.
+    await expect(uploader.resume(makeFile(15 * MB))).resolves.toBeUndefined();
+
+    // Asked again, not resumed: listing the parts is what failed it.
+    expect(s3Mock).not.toHaveReceivedCommand(ListPartsCommand);
+    expect(s3Mock.commandCalls(CompleteMultipartUploadCommand)).toHaveLength(2);
+    expect(s3Mock).toHaveReceivedCommandWith(HeadObjectCommand, {
+      Bucket: 'test-bucket',
+      Key: 'users/alice/big.bin',
+    });
+  });
+
+  it('is finished the same way after a start, which does not list parts', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag(etags) });
+
+    await expect(uploader.start(makeFile(15 * MB))).resolves.toBeUndefined();
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(3);
+  });
+
+  it('is finished when NoSuchUpload comes back from the first completion', async () => {
+    // The AWS SDK retries a dropped request by itself, so the first answer
+    // this code sees can already be the NoSuchUpload of the second try.
+    stubParts();
+    s3Mock.on(CompleteMultipartUploadCommand).rejects(noSuchUpload());
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag(etags) });
+
+    await expect(makeUploader().start(makeFile(15 * MB))).resolves.toBeUndefined();
+  });
+
+  it('does nothing more once finished, and is not aborted by a late cancel', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag(etags) });
+    await uploader.resume(makeFile(15 * MB));
+    s3Mock.resetHistory();
+
+    await uploader.resume(makeFile(15 * MB));
+    await uploader.cancel();
+
+    expect(s3Mock.calls()).toHaveLength(0);
+  });
+
+  it('fails, saying so, when nothing was stored', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).rejects(
+      Object.assign(new Error('NotFound'), {
+        name: 'NotFound',
+        $metadata: { httpStatusCode: 404 },
+      })
+    );
+
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow(
+      '"big.bin" was not stored: its upload was ended on the server before it was finished. Upload it again.'
+    );
+  });
+
+  it('fails when the object there now is a different one', async () => {
+    // Written by someone else since, or an older copy under the same name:
+    // either way not this upload, and "done" would be a lie.
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag([partETag('other')]) });
+
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow(
+      /^Could not confirm that "big\.bin" was stored/
+    );
+  });
+
+  it('fails when its parts cannot say what the object should be', async () => {
+    // Under SSE-KMS a part's ETag is not its MD5, so there is nothing to
+    // match the stored object against.
+    stubParts();
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"kms-opaque-etag"' });
+    s3Mock.on(CompleteMultipartUploadCommand).rejects(noSuchUpload());
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: '"kms-opaque-object-etag"' });
+
+    await expect(makeUploader().start(makeFile(15 * MB))).rejects.toThrow(
+      /^Could not confirm that "big\.bin" was stored/
+    );
+  });
+
+  it('stays in doubt while the check itself gets no answer', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock
+      .on(HeadObjectCommand)
+      .rejectsOnce(dropped())
+      .resolves({ ETag: storedETag(etags) });
+
+    // The network is still down: that error, which is worth retrying.
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow('Failed to fetch');
+    // And the next try settles it.
+    await expect(uploader.resume(makeFile(15 * MB))).resolves.toBeUndefined();
+    expect(s3Mock).not.toHaveReceivedCommand(ListPartsCommand);
+  });
+
+  it('counts a 5xx as no answer too', async () => {
+    stubParts();
+    s3Mock
+      .on(CompleteMultipartUploadCommand)
+      .rejectsOnce(
+        Object.assign(new Error('We encountered an internal error.'), {
+          name: 'InternalError',
+          $metadata: { httpStatusCode: 500 },
+        })
+      )
+      .rejects(noSuchUpload());
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag(etags) });
+    const uploader = makeUploader();
+    await expect(uploader.start(makeFile(15 * MB))).rejects.toThrow('internal error');
+
+    await expect(uploader.resume(makeFile(15 * MB))).resolves.toBeUndefined();
+    expect(s3Mock).not.toHaveReceivedCommand(ListPartsCommand);
+  });
+
+  it('resumes as usual after a completion S3 refused outright', async () => {
+    // A 4xx is an answer: the session is still there, and listing its parts
+    // is how a resume puts the refusal right.
+    stubParts();
+    s3Mock
+      .on(CompleteMultipartUploadCommand)
+      .rejectsOnce(
+        Object.assign(new Error('One or more of the specified parts could not be found.'), {
+          name: 'InvalidPart',
+          $metadata: { httpStatusCode: 400 },
+        })
+      )
+      .resolves({});
+    s3Mock.on(ListPartsCommand).resolves({
+      Parts: etags.map((ETag, index) => ({ ETag, PartNumber: index + 1 })),
+    });
+    const uploader = makeUploader();
+    await expect(uploader.start(makeFile(15 * MB))).rejects.toThrow('could not be found');
+
+    await uploader.resume(makeFile(15 * MB));
+
+    expect(s3Mock).toHaveReceivedCommand(ListPartsCommand);
+    expect(s3Mock).not.toHaveReceivedCommand(HeadObjectCommand);
+  });
+});
+
 describe('cancel', () => {
+  it('treats a session that is already gone as aborted', async () => {
+    // What abort is for has happened already. UploadManager aborts every
+    // failed upload, and logged this as parts possibly left in the bucket.
+    stubHappyPath();
+    s3Mock.on(AbortMultipartUploadCommand).rejects(noSuchUpload());
+    const uploader = makeUploader();
+    uploader['uploadId'] = 'upload-1';
+
+    await expect(uploader.cancel()).resolves.toBeUndefined();
+  });
+
   it('aborts the multipart session so no orphaned parts are billed', async () => {
     stubHappyPath();
     const uploader = makeUploader();

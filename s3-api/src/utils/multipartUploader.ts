@@ -7,8 +7,10 @@ import {
   AbortMultipartUploadCommand,
   ListPartsCommand,
   CompletedPart,
+  HeadObjectCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
+import { md5, toHex } from './md5.js';
 
 const MiB = 1024 * 1024;
 
@@ -41,6 +43,65 @@ export function partSizeFor(fileSize: number, preferred: number): number | null 
   const partSize = Math.max(preferred, smallestThatFits);
 
   return partSize <= MAX_PART_SIZE ? partSize : null;
+}
+
+/**
+ * The ETag S3 gives an object put together from these parts: the MD5 of
+ * their MD5s, one after another, then "-" and how many parts there were.
+ *
+ * @returns null when a part's ETag is not an MD5, as under SSE-KMS or SSE-C
+ *   encryption, so nothing can be worked out from it.
+ */
+export function multipartETag(parts: readonly CompletedPart[]): string | null {
+  const digests = new Uint8Array(parts.length * 16);
+
+  for (let index = 0; index < parts.length; index++) {
+    const hex = bareETag(parts[index]!.ETag);
+    if (!/^[0-9a-f]{32}$/.test(hex)) return null;
+
+    for (let byte = 0; byte < 16; byte++) {
+      digests[index * 16 + byte] = parseInt(hex.slice(byte * 2, byte * 2 + 2), 16);
+    }
+  }
+
+  return `${toHex(md5(digests))}-${parts.length}`;
+}
+
+/** An ETag without its quotes, in lower case. */
+function bareETag(etag: string | undefined): string {
+  return (etag ?? '').replace(/"/g, '').toLowerCase();
+}
+
+/** What an S3 error says about itself. */
+function errorFacts(error: unknown): { name?: unknown; status?: unknown } {
+  const { name, $metadata } = (error ?? {}) as {
+    name?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
+  return { name, status: $metadata?.httpStatusCode };
+}
+
+/**
+ * S3's answer for a session that has been completed or aborted. It says the
+ * same for both.
+ */
+function isNoSuchUpload(error: unknown): boolean {
+  return errorFacts(error).name === 'NoSuchUpload';
+}
+
+/** S3's answer for an object that is not there. */
+function isNotFound(error: unknown): boolean {
+  const { name, status } = errorFacts(error);
+  return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
+}
+
+/**
+ * Whether S3 answered with a 4xx: it got the request, and turned it down.
+ * Anything else - no answer at all, or a 5xx - leaves open whether it acted.
+ */
+function wasRefused(error: unknown): boolean {
+  const { status } = errorFacts(error);
+  return typeof status === 'number' && status >= 400 && status < 500;
 }
 
 /** Told the percentage done as parts finish. */
@@ -83,6 +144,11 @@ export class MultipartUploader {
   private isCancelled = false;
   /** Set once S3 has stored the object. Nothing is sent after that. */
   private completed = false;
+  /**
+   * Set when a completion was sent and it is not known whether S3 acted on
+   * it. The next run asks again before anything else. See completeUpload().
+   */
+  private completionInDoubt = false;
   private concurrency = 3;
   /** See MultipartUploadParams.contentType. */
   private contentType?: string;
@@ -171,6 +237,7 @@ export class MultipartUploader {
 
   private async startRun(file: File, onProgress: OnProgress, isLive: () => boolean) {
     if (this.completed) return;
+    if (this.completionInDoubt && (await this.settleCompletionInDoubt())) return;
 
     if (!this.uploadId && this.fitsInOneRequest(file)) {
       await this.uploadInOneRequest(file, onProgress, isLive);
@@ -371,6 +438,21 @@ export class MultipartUploader {
     this.controllers = [];
   }
 
+  /**
+   * Asks S3 to put the parts together, and makes sure of the answer.
+   *
+   * The completion is the one request whose answer matters even when it is
+   * lost: S3 can store the object and the reply never arrive. Asked again, S3
+   * says the session does not exist (NoSuchUpload), which is also what it
+   * says when a session was aborted, and the AWS SDK retries a dropped
+   * request by itself, so that can come back from this very call. The upload
+   * used to resume, list the parts of the closed session, get NoSuchUpload
+   * too, and be marked failed over a file that was stored.
+   *
+   * So a completion that got no answer, or a 5xx, is in doubt, and asked
+   * again first thing on the next run. And NoSuchUpload is settled by looking
+   * at the object: see confirmStored().
+   */
   private async completeUpload() {
     if (!this.uploadId) return;
 
@@ -381,20 +463,91 @@ export class MultipartUploader {
     }
     const sortedParts = Array.from(deduped.values()).sort((a, b) => a.PartNumber! - b.PartNumber!);
 
-    await this.s3.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: this.bucket,
-        Key: this.key,
-        UploadId: this.uploadId,
-        MultipartUpload: { Parts: sortedParts },
-      })
-    );
+    try {
+      await this.s3.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+          UploadId: this.uploadId,
+          MultipartUpload: { Parts: sortedParts },
+        })
+      );
+    } catch (err) {
+      if (!isNoSuchUpload(err)) {
+        // A 4xx is an answer: the session is still there, and a resume can
+        // put it right. Anything else may have stored the object.
+        this.completionInDoubt = !wasRefused(err);
+        throw err;
+      }
 
+      // Until the object has been looked at, so a check that gets no answer
+      // is made again rather than forgotten.
+      this.completionInDoubt = true;
+      await this.confirmStored(sortedParts);
+    }
+
+    this.completionInDoubt = false;
     this.completed = true;
+  }
+
+  /**
+   * Asks again about a completion whose answer never came, before a run does
+   * anything else.
+   *
+   * @returns false when S3 refused it outright: the session is still open,
+   *   and the run carries on and resumes it as usual.
+   */
+  private async settleCompletionInDoubt(): Promise<boolean> {
+    try {
+      await this.completeUpload();
+      return true;
+    } catch (err) {
+      if (this.completionInDoubt) throw err;
+      return false;
+    }
+  }
+
+  /**
+   * Settles a completion S3 has no session for: done if the object under the
+   * key is the one these parts make, and an error saying why not otherwise.
+   *
+   * S3 gives a multipart object the ETag multipartETag() works out from its
+   * parts, so a match means the object is this upload. Where it cannot be
+   * worked out (part ETags that are not MD5s, as under SSE-KMS), or does not
+   * match, the upload is not taken as stored: a file reported done has to be
+   * there.
+   *
+   * @throws whatever the check threw when it got no answer, which leaves the
+   *   completion in doubt, to be settled by the next run.
+   */
+  private async confirmStored(parts: CompletedPart[]): Promise<void> {
+    let stored: string | undefined;
+    try {
+      const head = await this.s3.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: this.key })
+      );
+      stored = head.ETag;
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+
+      throw new Error(
+        `"${this.fileName}" was not stored: its upload was ended on the server before it ` +
+          'was finished. Upload it again.'
+      );
+    }
+
+    const expected = multipartETag(parts);
+    if (expected !== null && bareETag(stored) === expected) return;
+
+    throw new Error(
+      `Could not confirm that "${this.fileName}" was stored: its upload was ended on the ` +
+        'server, and the file there now cannot be matched to it. Upload it again to be sure.'
+    );
   }
 
   private async resumeRun(file: File, onProgress: OnProgress, isLive: () => boolean) {
     if (this.completed) return;
+    if (this.completionInDoubt && (await this.settleCompletionInDoubt())) return;
 
     if (!this.uploadId) {
       // A single-request upload has no session to resume. Sending it again
@@ -458,12 +611,18 @@ export class MultipartUploader {
   }
 
   private async abortSession() {
-    await this.s3.send(
-      new AbortMultipartUploadCommand({
-        Bucket: this.bucket,
-        Key: this.key,
-        UploadId: this.uploadId,
-      })
-    );
+    try {
+      await this.s3.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+          UploadId: this.uploadId,
+        })
+      );
+    } catch (err) {
+      // Gone already, which is what aborting is for. UploadManager aborts
+      // every failed upload, and reported this as parts left in the bucket.
+      if (!isNoSuchUpload(err)) throw err;
+    }
   }
 }

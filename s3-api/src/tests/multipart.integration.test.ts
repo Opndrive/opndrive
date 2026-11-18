@@ -618,6 +618,106 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
     });
   });
 
+  describe('a completion whose answer is lost', () => {
+    /**
+     * S3 stores the object, and the reply never arrives: the hook really
+     * sends the first completion, then throws away its answer the way a
+     * dropped connection does.
+     */
+    function answerLost() {
+      let lost = false;
+      return interceptedClient((command) => {
+        if (!(command instanceof CompleteMultipartUploadCommand) || lost) return undefined;
+        lost = true;
+        return client.send(command).then(() => {
+          throw Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+        });
+      });
+    }
+
+    it('is finished on the retry, without being sent again', async () => {
+      // The retry used to resume: list the parts of a session S3 had already
+      // closed, get NoSuchUpload, and mark the stored file failed.
+      const key = keyFor('completion-lost.bin');
+      const bytes = randomBytes(12 * MiB);
+      const { s3, sent } = answerLost();
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        partSizeMB: 5,
+        retryDelaysMs: [0],
+      });
+      const statuses: string[] = [];
+      const { warn, error } = console;
+      console.warn = () => {};
+      console.error = () => {};
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'completion-lost.bin'), { key });
+        manager.on('statusChange', (payload) => {
+          if (payload.id === id) statuses.push(payload.status);
+        });
+        await Promise.race([
+          waitForStatus(manager, id, 'completed'),
+          waitForStatus(manager, id, 'failed').then(() => {
+            throw new Error('the upload was marked failed');
+          }),
+        ]);
+      } finally {
+        console.warn = warn;
+        console.error = error;
+      }
+
+      // Settled by looking at the object, whose ETag MinIO worked out the
+      // way multipartETag does. Nothing was uploaded twice.
+      expect(sent).toContain('HeadObjectCommand');
+      expect(sent).not.toContain('ListPartsCommand');
+      expect(sent.filter((name) => name === 'UploadPartCommand')).toHaveLength(3);
+      expect(statuses).not.toContain('failed');
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
+    it('fails, saying so, when the object was deleted before the retry', async () => {
+      // Nothing to confirm: "done" would point at a file that is not there.
+      const key = keyFor('completion-lost-then-deleted.bin');
+      const bytes = randomBytes(7 * MiB);
+      const { s3 } = interceptedClient((command) => {
+        if (!(command instanceof CompleteMultipartUploadCommand)) return undefined;
+        return client.send(command).then(async () => {
+          await client.send(
+            new DeleteObjectsCommand({ Bucket: BUCKET, Delete: { Objects: [{ Key: key }] } })
+          );
+          throw Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+        });
+      });
+      const manager = UploadManager.getInstance({
+        s3,
+        bucket: BUCKET,
+        prefix: '',
+        partSizeMB: 5,
+        retryDelaysMs: [0],
+      });
+      const { warn, error } = console;
+      console.warn = () => {};
+      console.error = () => {};
+      let failure: EventPayload;
+
+      try {
+        const id = manager.addUpload(new File([bytes], 'gone.bin'), { key });
+        failure = await waitForStatus(manager, id, 'failed');
+      } finally {
+        console.warn = warn;
+        console.error = error;
+      }
+
+      expect(failure.error).toBe(
+        '"gone.bin" was not stored: its upload was ended on the server before it was finished. Upload it again.'
+      );
+    });
+  });
+
   describe('a failed upload', () => {
     function managerFailingOnPart(partNumber: number) {
       const { s3, sent } = interceptedClient((command) =>
