@@ -66,8 +66,11 @@ export function isTransientUploadError(error: unknown): boolean {
   return gotNoAnswer(facts);
 }
 
-/** The parts of an error the decisions here are made on, or null for a non-object. */
-function readError(error: unknown) {
+/**
+ * What an S3 error says about itself: its name (S3's error code), message and
+ * HTTP status. Null for something thrown that is not an object.
+ */
+export function readError(error: unknown) {
   if (!error || typeof error !== 'object') return null;
 
   const { name, message, $metadata } = error as {

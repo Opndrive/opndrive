@@ -319,6 +319,12 @@ export class UploadManager {
     if (previousStatus === 'completed' || previousStatus === 'failed') return;
     if (previousStatus === 'cancelled') return;
 
+    // Too late: S3 has been asked to put the file together, and a cancel
+    // cannot stop that, only race it. When the completion won, the file was
+    // stored under an upload said to be cancelled. It is left to finish, and
+    // says so when it does.
+    if (previousStatus === 'uploading' && item.uploader?.isCompleting) return;
+
     const queueIndex = this.queue.indexOf(id);
     if (queueIndex > -1) {
       this.queue.splice(queueIndex, 1);
@@ -395,6 +401,7 @@ export class UploadManager {
         };
 
         let retriesUsed = 0;
+        let lastFailedPart: number | undefined;
         for (;;) {
           const progressBefore = item.progress;
           try {
@@ -410,7 +417,15 @@ export class UploadManager {
             // its retries back. Counted over the whole upload instead, four
             // short drops in the hours of a big one failed it outright, and
             // aborted every part it had sent.
-            if (item.progress > progressBefore) retriesUsed = 0;
+            //
+            // Unless the same part failed again. The others going up is
+            // progress, but a part that fails every time is stuck however
+            // often they do, and given the retries back after every few
+            // parts, a 10,000-part file came back to it thousands of times.
+            const failedPart = item.uploader?.failedPart;
+            const samePartAgain = failedPart !== undefined && failedPart === lastFailedPart;
+            if (item.progress > progressBefore && !samePartAgain) retriesUsed = 0;
+            lastFailedPart = failedPart;
 
             // Failing while the browser says it is offline is the network's
             // doing, not the upload's, so it spends no retry: the upload

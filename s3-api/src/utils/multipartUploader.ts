@@ -11,6 +11,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { md5, toHex } from './md5.js';
+import { readError } from './retry.js';
 
 const MiB = 1024 * 1024;
 
@@ -72,27 +73,18 @@ function bareETag(etag: string | undefined): string {
   return (etag ?? '').replace(/"/g, '').toLowerCase();
 }
 
-/** What an S3 error says about itself. */
-function errorFacts(error: unknown): { name?: unknown; status?: unknown } {
-  const { name, $metadata } = (error ?? {}) as {
-    name?: unknown;
-    $metadata?: { httpStatusCode?: unknown };
-  };
-  return { name, status: $metadata?.httpStatusCode };
-}
-
 /**
  * S3's answer for a session that has been completed or aborted. It says the
  * same for both.
  */
 function isNoSuchUpload(error: unknown): boolean {
-  return errorFacts(error).name === 'NoSuchUpload';
+  return readError(error)?.name === 'NoSuchUpload';
 }
 
 /** S3's answer for an object that is not there. */
 function isNotFound(error: unknown): boolean {
-  const { name, status } = errorFacts(error);
-  return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
+  const facts = readError(error);
+  return facts?.name === 'NotFound' || facts?.name === 'NoSuchKey' || facts?.status === 404;
 }
 
 /**
@@ -100,7 +92,7 @@ function isNotFound(error: unknown): boolean {
  * Anything else - no answer at all, or a 5xx - leaves open whether it acted.
  */
 function wasRefused(error: unknown): boolean {
-  const { status } = errorFacts(error);
+  const status = readError(error)?.status;
   return typeof status === 'number' && status >= 400 && status < 500;
 }
 
@@ -149,6 +141,10 @@ export class MultipartUploader {
    * it. The next run asks again before anything else. See completeUpload().
    */
   private completionInDoubt = false;
+  /** True while a completion is on its way to S3. See isCompleting. */
+  private completing = false;
+  /** See failedPart. */
+  private lastFailedPart?: number;
   private concurrency = 3;
   /** See MultipartUploadParams.contentType. */
   private contentType?: string;
@@ -177,6 +173,26 @@ export class MultipartUploader {
   }
 
   /**
+   * Whether S3 has been asked to put the parts together and has not answered
+   * yet. Once it has been asked, a cancel cannot stop it storing the file:
+   * aborting the session only races the completion, and when the completion
+   * wins the file is stored all the same.
+   */
+  get isCompleting(): boolean {
+    return this.completing;
+  }
+
+  /**
+   * The part whose failure ended the last attempt, if that is how it ended.
+   * One part failing every time is a part that will not go up, where failures
+   * of different parts are a connection that keeps dropping; UploadManager
+   * retries the second for longer than the first.
+   */
+  get failedPart(): number | undefined {
+    return this.lastFailedPart;
+  }
+
+  /**
    * Uploads the file: in one request if it fits in one part, otherwise by
    * opening a session (or carrying on with the one already open), sending the
    * parts and completing it.
@@ -202,22 +218,31 @@ export class MultipartUploader {
   /**
    * Runs one start or resume at a time, each once the one before has settled.
    *
-   * pause() aborts every part in flight, but three requests cannot be aborted
-   * part way: opening the session, listing its parts, and completing it. A
-   * pause and resume while one of those was out started a second run beside
-   * the first, and both drove this uploader at once. Parts went up twice, a
-   * second session was opened and left behind, or a completed upload was
-   * resumed, and failed on a session that no longer existed. Now the second
-   * run waits, and the first stops as soon as its request comes back.
+   * Opening the session, listing its parts and completing it were not aborted
+   * by a pause, and a pause and resume while one of them was out started a
+   * second run beside the first, both driving this uploader at once. Parts
+   * went up twice, a second session was opened and left behind, or a
+   * completed upload was resumed, and failed on a session that no longer
+   * existed. Every request is now aborted by a pause, and a run waits for the
+   * one before it to have stopped, which is at once.
    *
    * A run belongs to the generation it was asked for in. pause() and cancel()
    * move the generation on, which stops a run already going and makes one
-   * still waiting do nothing at all when its turn comes.
+   * still waiting do nothing at all when its turn comes. What a run throws
+   * once its generation has moved on is what the pause or cancel set off,
+   * such as an aborted request, and is not a failure: a paused upload resolves.
    */
   private exclusively(run: (isLive: () => boolean) => Promise<void>): Promise<void> {
     const generation = this.generation;
     const isLive = () => generation === this.generation && !this.isCancelled;
-    const go = () => (isLive() ? run(isLive) : Promise.resolve());
+    const go = () => {
+      if (!isLive()) return Promise.resolve();
+
+      this.lastFailedPart = undefined;
+      return run(isLive).catch((err: unknown) => {
+        if (isLive()) throw err;
+      });
+    };
 
     // Straight away when nothing is running, so a run's first request goes
     // out in the same tick as it always has.
@@ -249,14 +274,20 @@ export class MultipartUploader {
     const partSize = this.partSizeForFile(file);
 
     if (!this.uploadId) {
-      const { UploadId } = await this.s3.send(
-        new CreateMultipartUploadCommand({
-          Bucket: this.bucket,
-          Key: this.key,
-          // Set here or never: the parts and the completion carry no type, so
-          // this is what the finished object is stored as.
-          ContentType: this.contentTypeOf(file),
-        })
+      // Aborted by a pause after S3 has opened it, a session is left open
+      // with nothing in it. That stores nothing and costs nothing, and the
+      // lifecycle rule for incomplete uploads in the setup guide clears it.
+      const { UploadId } = await this.abortably((abortSignal) =>
+        this.s3.send(
+          new CreateMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: this.key,
+            // Set here or never: the parts and the completion carry no type,
+            // so this is what the finished object is stored as.
+            ContentType: this.contentTypeOf(file),
+          }),
+          { abortSignal }
+        )
       );
 
       // UploadId is optional on the response type, and some S3-compatible
@@ -271,10 +302,20 @@ export class MultipartUploader {
 
       this.uploadId = UploadId;
 
-      // Cancelled while the session was opening. cancel() found no session
-      // to abort then, so it is aborted here, or it stays open for good.
+      // Cancelled while the session was opening, and its answer came back
+      // anyway. cancel() found no session to abort then, so it is aborted
+      // here, or it stays open for good.
       if (this.isCancelled) {
-        await this.abortSession();
+        try {
+          await this.abortSession();
+        } catch (err) {
+          // Logged, because nobody is waiting on this run to hear it.
+          console.error(
+            `Could not abort the multipart upload for ${this.key}, which opened after it ` +
+              'was cancelled. It may be left open:',
+            err
+          );
+        }
         return;
       }
     }
@@ -320,18 +361,17 @@ export class MultipartUploader {
    * resume would have done anyway.
    */
   private async uploadInOneRequest(file: File, onProgress: OnProgress, isLive: () => boolean) {
-    const controller = new AbortController();
-    this.controllers.push(controller);
-
     try {
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key,
-          Body: file,
-          ContentType: this.contentTypeOf(file),
-        }),
-        { abortSignal: controller.signal }
+      await this.abortably((abortSignal) =>
+        this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: this.key,
+            Body: file,
+            ContentType: this.contentTypeOf(file),
+          }),
+          { abortSignal }
+        )
       );
     } catch (err) {
       // Our own abort, from pause() or cancel(). A pause from before this run
@@ -339,12 +379,25 @@ export class MultipartUploader {
       // as one would report a real failure as success.
       if (!isLive()) return;
       throw err;
-    } finally {
-      this.controllers = this.controllers.filter((c) => c !== controller);
     }
 
     this.completed = true;
     onProgress?.(100);
+  }
+
+  /**
+   * Sends one request that pause() and cancel() abort along with the parts.
+   * Every request of an upload goes through here, or a pause would leave a
+   * run waiting on it, and the resume waiting behind that run.
+   */
+  private async abortably<T>(send: (abortSignal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    this.controllers.push(controller);
+    try {
+      return await send(controller.signal);
+    } finally {
+      this.controllers = this.controllers.filter((c) => c !== controller);
+    }
   }
 
   private async uploadParts(
@@ -390,19 +443,18 @@ export class MultipartUploader {
           throw new Error(`Part ${partNumber} too small (<5MB). Only the last part can be <5MB.`);
         }
 
-        const controller = new AbortController();
-        this.controllers.push(controller);
-
         try {
-          const { ETag } = await this.s3.send(
-            new UploadPartCommand({
-              Bucket: this.bucket,
-              Key: this.key,
-              UploadId: this.uploadId,
-              PartNumber: partNumber,
-              Body: blobPart,
-            }),
-            { abortSignal: controller.signal }
+          const { ETag } = await this.abortably((abortSignal) =>
+            this.s3.send(
+              new UploadPartCommand({
+                Bucket: this.bucket,
+                Key: this.key,
+                UploadId: this.uploadId,
+                PartNumber: partNumber,
+                Body: blobPart,
+              }),
+              { abortSignal }
+            )
           );
 
           this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
@@ -415,10 +467,9 @@ export class MultipartUploader {
           if (!isLive() || failure) return;
 
           failure = { error: err };
+          this.lastFailedPart = partNumber;
           this.abortInFlight();
           return;
-        } finally {
-          this.controllers = this.controllers.filter((c) => c !== controller);
         }
       }
     };
@@ -463,23 +514,36 @@ export class MultipartUploader {
     }
     const sortedParts = Array.from(deduped.values()).sort((a, b) => a.PartNumber! - b.PartNumber!);
 
+    // Typed through `as`, as in uploadParts: assigned in the catch below.
+    let failure = null as { error: unknown } | null;
+    this.completing = true;
     try {
-      await this.s3.send(
-        new CompleteMultipartUploadCommand({
-          Bucket: this.bucket,
-          Key: this.key,
-          UploadId: this.uploadId,
-          MultipartUpload: { Parts: sortedParts },
-        })
+      await this.abortably((abortSignal) =>
+        this.s3.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: this.key,
+            UploadId: this.uploadId,
+            MultipartUpload: { Parts: sortedParts },
+          }),
+          { abortSignal }
+        )
       );
     } catch (err) {
-      if (!isNoSuchUpload(err)) {
-        // A 4xx is an answer: the session is still there, and a resume can
-        // put it right. Anything else may have stored the object.
-        this.completionInDoubt = !wasRefused(err);
-        throw err;
-      }
+      failure = { error: err };
+    } finally {
+      this.completing = false;
+    }
 
+    if (failure && !isNoSuchUpload(failure.error)) {
+      // A 4xx is an answer: the session is still there, and a resume can put
+      // it right. Anything else, an abort by a pause included, may have
+      // stored the object.
+      this.completionInDoubt = !wasRefused(failure.error);
+      throw failure.error;
+    }
+
+    if (failure) {
       // Until the object has been looked at, so a check that gets no answer
       // is made again rather than forgotten.
       this.completionInDoubt = true;
@@ -502,8 +566,10 @@ export class MultipartUploader {
       await this.completeUpload();
       return true;
     } catch (err) {
-      if (this.completionInDoubt) throw err;
-      return false;
+      // Only a refusal. Everything else - no answer again, or what looking
+      // at the object found - is the run's answer too.
+      if (wasRefused(err) && !isNoSuchUpload(err)) return false;
+      throw err;
     }
   }
 
@@ -517,19 +583,25 @@ export class MultipartUploader {
    * match, the upload is not taken as stored: a file reported done has to be
    * there.
    *
+   * Either way S3 has answered, and the session is let go of: asked again it
+   * would only give the same answer, and a later start() begins afresh.
+   *
    * @throws whatever the check threw when it got no answer, which leaves the
    *   completion in doubt, to be settled by the next run.
    */
   private async confirmStored(parts: CompletedPart[]): Promise<void> {
     let stored: string | undefined;
     try {
-      const head = await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: this.key })
+      const head = await this.abortably((abortSignal) =>
+        this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: this.key }), {
+          abortSignal,
+        })
       );
       stored = head.ETag;
     } catch (err) {
       if (!isNotFound(err)) throw err;
 
+      this.forgetSession();
       throw new Error(
         `"${this.fileName}" was not stored: its upload was ended on the server before it ` +
           'was finished. Upload it again.'
@@ -539,10 +611,21 @@ export class MultipartUploader {
     const expected = multipartETag(parts);
     if (expected !== null && bareETag(stored) === expected) return;
 
+    this.forgetSession();
     throw new Error(
       `Could not confirm that "${this.fileName}" was stored: its upload was ended on the ` +
         'server, and the file there now cannot be matched to it. Upload it again to be sure.'
     );
+  }
+
+  /**
+   * Lets go of a session S3 has said is gone. Kept, the next run would only
+   * ask about it again, and cancel() would try to abort it.
+   */
+  private forgetSession() {
+    this.uploadId = undefined;
+    this.completedParts = [];
+    this.completionInDoubt = false;
   }
 
   private async resumeRun(file: File, onProgress: OnProgress, isLive: () => boolean) {
@@ -561,12 +644,15 @@ export class MultipartUploader {
     // file and the configured size, so the parts S3 already holds line up.
     const partSize = this.partSizeForFile(file);
 
-    const listed = await this.s3.send(
-      new ListPartsCommand({
-        Bucket: this.bucket,
-        Key: this.key,
-        UploadId: this.uploadId,
-      })
+    const listed = await this.abortably((abortSignal) =>
+      this.s3.send(
+        new ListPartsCommand({
+          Bucket: this.bucket,
+          Key: this.key,
+          UploadId: this.uploadId,
+        }),
+        { abortSignal }
+      )
     );
     if (!isLive()) return;
 
@@ -589,8 +675,9 @@ export class MultipartUploader {
   }
 
   /**
-   * Stops the upload where it is, keeping what it needs to resume. A run
-   * waiting on a request that cannot be aborted stops when it comes back.
+   * Stops the upload where it is, aborting every request in flight, and keeps
+   * what it needs to resume. A completion it aborts may still have been acted
+   * on, so the next run asks about it again first.
    */
   pause() {
     this.generation++;
@@ -620,9 +707,17 @@ export class MultipartUploader {
         })
       );
     } catch (err) {
-      // Gone already, which is what aborting is for. UploadManager aborts
-      // every failed upload, and reported this as parts left in the bucket.
       if (!isNoSuchUpload(err)) throw err;
+
+      // Gone, which is what aborting is for, unless a completion had been
+      // sent: then the file is most likely stored, and calling the cancel
+      // clean would leave it in the bucket under an upload said to be
+      // cancelled.
+      if (this.completing || this.completionInDoubt) {
+        throw new Error(
+          `"${this.fileName}" may already be stored: it was being finished when it was cancelled.`
+        );
+      }
     }
   }
 }

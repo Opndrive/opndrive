@@ -1392,7 +1392,7 @@ describe('a completion whose answer was lost', () => {
   it('fails when its parts cannot say what the object should be', async () => {
     // Under SSE-KMS a part's ETag is not its MD5, so there is nothing to
     // match the stored object against.
-    stubParts();
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
     s3Mock.on(UploadPartCommand).resolves({ ETag: '"kms-opaque-etag"' });
     s3Mock.on(CompleteMultipartUploadCommand).rejects(noSuchUpload());
     s3Mock.on(HeadObjectCommand).resolves({ ETag: '"kms-opaque-object-etag"' });
@@ -1458,6 +1458,209 @@ describe('a completion whose answer was lost', () => {
 
     expect(s3Mock).toHaveReceivedCommand(ListPartsCommand);
     expect(s3Mock).not.toHaveReceivedCommand(HeadObjectCommand);
+  });
+
+  it('starts afresh once S3 has said the file is not there', async () => {
+    // A definite answer, not a doubt: asked again, it would only send the
+    // completion and look at the object again, for the same answer.
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).rejects(
+      Object.assign(new Error('NotFound'), {
+        name: 'NotFound',
+        $metadata: { httpStatusCode: 404 },
+      })
+    );
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow('was not stored');
+    s3Mock.resetHistory();
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-2' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    await uploader.start(makeFile(15 * MB));
+
+    expect(s3Mock).toHaveReceivedCommandTimes(CreateMultipartUploadCommand, 1);
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(3);
+    expect(s3Mock).toHaveReceivedCommandWith(CompleteMultipartUploadCommand, {
+      UploadId: 'upload-2',
+    });
+  });
+
+  it('has no session left to abort once S3 has said so', async () => {
+    const uploader = await completedWithoutAnswer();
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: storedETag([partETag('other')]) });
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow('Could not confirm');
+    s3Mock.resetHistory();
+
+    await uploader.cancel();
+
+    expect(s3Mock).not.toHaveReceivedCommand(AbortMultipartUploadCommand);
+  });
+});
+
+/**
+ * A request that answers only when aborted, the way one on a half-open
+ * connection never answers at all. Its abort signal is the uploader's newest
+ * controller, made just before the request is sent.
+ */
+function hangsUntilAborted(uploader: MultipartUploader) {
+  return () => {
+    const controllers = controllersOf(uploader);
+    const signal = controllers[controllers.length - 1]!.signal;
+    return new Promise<never>((_, reject) =>
+      signal.addEventListener('abort', () =>
+        reject(Object.assign(new Error('Request aborted'), { name: 'AbortError' }))
+      )
+    );
+  };
+}
+
+describe('a request that hangs', () => {
+  // Opening the session, listing its parts and completing it could not be
+  // aborted, so a pause left the run waiting on them, and with one run at a
+  // time, the resume waited behind it: on a connection that never answered,
+  // for good.
+
+  it('is aborted by a pause while the session opens, and the resume goes ahead', async () => {
+    const uploader = makeUploader();
+    // Chained: a second on() for the same command would replace the first.
+    s3Mock
+      .on(CreateMultipartUploadCommand)
+      .callsFakeOnce(hangsUntilAborted(uploader))
+      .resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    const first = uploader.start(makeFile(15 * MB));
+    await settle();
+    uploader.pause();
+    const second = uploader.start(makeFile(15 * MB));
+
+    // Paused, which is no failure; and then finished.
+    await expect(first).resolves.toBeUndefined();
+    await expect(second).resolves.toBeUndefined();
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(3);
+    expect(s3Mock).toHaveReceivedCommandExactlyOnceWith(CompleteMultipartUploadCommand, {
+      UploadId: 'upload-1',
+    });
+  });
+
+  it('is aborted by a pause while listing parts', async () => {
+    const uploader = makeUploader();
+    uploader['uploadId'] = 'upload-1';
+    s3Mock.on(ListPartsCommand).callsFakeOnce(hangsUntilAborted(uploader)).resolves({ Parts: [] });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    const first = uploader.resume(makeFile(15 * MB));
+    await settle();
+    uploader.pause();
+
+    await expect(first).resolves.toBeUndefined();
+    await expect(uploader.resume(makeFile(15 * MB))).resolves.toBeUndefined();
+    expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 1);
+  });
+
+  it('is aborted by a pause while completing, and the resume settles the completion', async () => {
+    // Aborted, the completion may or may not have been acted on, which is a
+    // completion in doubt: asked again, not resumed.
+    const uploader = makeUploader();
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock
+      .on(CompleteMultipartUploadCommand)
+      .callsFakeOnce(hangsUntilAborted(uploader))
+      .resolves({});
+
+    const first = uploader.start(makeFile(15 * MB));
+    while (s3Mock.commandCalls(CompleteMultipartUploadCommand).length === 0) await settle();
+    uploader.pause();
+
+    await expect(first).resolves.toBeUndefined();
+    await expect(uploader.resume(makeFile(15 * MB))).resolves.toBeUndefined();
+    expect(s3Mock).not.toHaveReceivedCommand(ListPartsCommand);
+    expect(s3Mock).toHaveReceivedCommandTimes(CompleteMultipartUploadCommand, 2);
+  });
+
+  it('gives opening, listing and completing an abort signal, like a part', async () => {
+    stubHappyPath();
+    s3Mock.on(ListPartsCommand).resolves({ Parts: [] });
+    const uploader = makeUploader();
+    await uploader.start(makeFile(15 * MB));
+    const resumed = makeUploader();
+    resumed['uploadId'] = 'upload-1';
+    await resumed.resume(makeFile(5 * MB));
+
+    const sent = [
+      s3Mock.commandCalls(CreateMultipartUploadCommand)[0]!.args,
+      s3Mock.commandCalls(ListPartsCommand)[0]!.args,
+      s3Mock.commandCalls(CompleteMultipartUploadCommand)[0]!.args,
+    ] as unknown as [unknown, { abortSignal?: AbortSignal }?][];
+    for (const args of sent) expect(args[1]?.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe('while completing', () => {
+  it('says so, for as long as the completion is on the wire', async () => {
+    // Once S3 has been asked to finish, a cancel cannot stop it storing the
+    // file. UploadManager reads this to let the upload finish instead.
+    const complete = heldRequests<object>();
+    stubHappyPath();
+    s3Mock.on(CompleteMultipartUploadCommand).callsFake(complete.fake);
+    const uploader = makeUploader();
+
+    expect(uploader.isCompleting).toBe(false);
+    const run = uploader.start(makeFile(15 * MB));
+    while (complete.count === 0) await settle();
+    expect(uploader.isCompleting).toBe(true);
+
+    complete.answer({});
+    await run;
+    expect(uploader.isCompleting).toBe(false);
+  });
+
+  it('reports a cancel that came too late, rather than calling it clean', async () => {
+    // Cancelled with the completion in doubt, the abort finds no session:
+    // the completion most likely stored the file. Swallowed, the upload
+    // looked cancelled with the file in the bucket.
+    const uploader = await (async () => {
+      s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+      s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+      s3Mock.on(CompleteMultipartUploadCommand).rejects(dropped());
+      const u = makeUploader();
+      await expect(u.start(makeFile(15 * MB))).rejects.toThrow('Failed to fetch');
+      return u;
+    })();
+    s3Mock.on(AbortMultipartUploadCommand).rejects(noSuchUpload());
+
+    await expect(uploader.cancel()).rejects.toThrow(
+      '"big.bin" may already be stored: it was being finished when it was cancelled.'
+    );
+  });
+});
+
+describe('the part that failed', () => {
+  it('is named after a failed attempt, for UploadManager to tell a stuck part from a blip', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(UploadPartCommand, { PartNumber: 2 }).rejects(dropped());
+    const uploader = makeUploader();
+
+    expect(uploader.failedPart).toBeUndefined();
+    await expect(uploader.start(makeFile(15 * MB))).rejects.toThrow('Failed to fetch');
+
+    expect(uploader.failedPart).toBe(2);
+  });
+
+  it('is forgotten when the next attempt fails some other way', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({ ETag: '"e"' });
+    s3Mock.on(UploadPartCommand, { PartNumber: 2 }).rejectsOnce(dropped());
+    s3Mock.on(ListPartsCommand).rejects(dropped());
+    const uploader = makeUploader();
+    await expect(uploader.start(makeFile(15 * MB))).rejects.toThrow();
+
+    await expect(uploader.resume(makeFile(15 * MB))).rejects.toThrow();
+
+    expect(uploader.failedPart).toBeUndefined();
   });
 });
 

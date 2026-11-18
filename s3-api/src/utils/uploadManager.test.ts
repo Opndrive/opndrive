@@ -62,6 +62,8 @@ const { MockUploader, uploaderInstances } = vi.hoisted(() => {
     gate = deferred();
     onProgress?: (p: number) => void;
     uploadId?: string;
+    failedPart?: number;
+    isCompleting = false;
 
     /** Captured so tests can assert what the manager handed over. */
     config: { key?: string; contentType?: string };
@@ -446,6 +448,23 @@ describe('pause, resume, and cancel', () => {
     expect(manager.getStatus(id)!.status).toBe('cancelled');
   });
 
+  it('lets an upload S3 is completing finish, rather than race it with a cancel', async () => {
+    // Once S3 has been asked to finish, aborting only races it. When the
+    // finish won, the file was stored under a card saying "cancelled".
+    const manager = UploadManager.getInstance(config);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+    uploaderInstances[0]!.isCompleting = true;
+
+    await manager.cancelUpload(id);
+
+    expect(uploaderInstances[0]!.cancel).not.toHaveBeenCalled();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
+    uploaderInstances[0]!.gate.resolve();
+    await settle();
+    expect(manager.getStatus(id)).toMatchObject({ status: 'completed' });
+  });
+
   it('ignores a repeated cancel', async () => {
     const manager = UploadManager.getInstance(config);
     const id = manager.addUpload(makeFile(), { key: 'k' });
@@ -659,6 +678,43 @@ describe('automatic retry', () => {
     // Three retries counted from the last progress, and then no more.
     expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(5);
     expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+  });
+
+  it('does not give the retries back while the same part keeps failing', async () => {
+    // Other parts going up is progress, but a part that fails every time
+    // will not go up however often the rest do: retried after every few
+    // parts, a 10,000-part file came back to it thousands of times.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    for (let drop = 1; drop <= 4; drop++) {
+      uploaderInstances[0]!.onProgress!(drop * 10);
+      uploaderInstances[0]!.failedPart = 7;
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+    }
+
+    expect(uploaderInstances[0]!.start).toHaveBeenCalledTimes(4);
+    expect(manager.getStatus(id)).toMatchObject({ status: 'failed' });
+  });
+
+  it('gives them back when it is a different part each time', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = UploadManager.getInstance(retrying);
+    const id = manager.addUpload(makeFile(), { key: 'k' });
+    await settle();
+
+    for (let drop = 1; drop <= 6; drop++) {
+      uploaderInstances[0]!.onProgress!(drop * 10);
+      uploaderInstances[0]!.failedPart = drop * 3;
+      uploaderInstances[0]!.gate.reject(dropped());
+      await settle();
+    }
+
+    expect(manager.getStatus(id)).toMatchObject({ status: 'uploading' });
   });
 
   it('stops retrying once the upload is paused', async () => {

@@ -29,6 +29,7 @@ import {
   GetObjectTaggingCommand,
   HeadObjectCommand,
   ListMultipartUploadsCommand,
+  ListPartsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -528,7 +529,48 @@ describeIfConfigured('multipart uploads against a real S3 server', { timeout: 60
     });
   });
 
-  describe('a pause and resume while a request cannot be aborted', () => {
+  describe('a pause and resume while opening, listing or completing', () => {
+    it('is not held up by a listing that never answers', async () => {
+      // On a half-open connection a request never answers. Listing the parts
+      // was not aborted by a pause, so the paused run waited on it for good,
+      // and with one run at a time, so did every resume after it.
+      const key = keyFor('listing-hangs.bin');
+      const bytes = randomBytes(12 * MiB);
+      let partHeld = false;
+      let listingHeld = false;
+      const { s3 } = interceptedClient((command, options) => {
+        if (command instanceof UploadPartCommand && command.input.PartNumber === 3 && !partHeld) {
+          partHeld = true;
+          return heldUntilAborted(options?.abortSignal);
+        }
+        if (command instanceof ListPartsCommand && !listingHeld) {
+          listingHeld = true;
+          return heldUntilAborted(options?.abortSignal);
+        }
+        return undefined;
+      });
+      const up = uploader(key, s3);
+      const file = new File([bytes], 'listing-hangs.bin');
+      const until = async (done: () => boolean) => {
+        while (!done()) await new Promise((resolve) => setTimeout(resolve, 10));
+      };
+
+      const first = up.start(file);
+      await until(() => partHeld);
+      up.pause();
+      await first;
+
+      const second = up.resume(file);
+      await until(() => listingHeld);
+      up.pause();
+      await second;
+
+      await up.resume(file);
+
+      expect(sha256(await readBack(key))).toBe(sha256(bytes));
+      expect(await openUploadsFor(key)).toEqual([]);
+    });
+
     it('opens one session, and sends each part once, while the session is opening', async () => {
       // Opening the session cannot be aborted, so the paused run is still
       // waiting on it when the resumed one starts. The two used to run side
