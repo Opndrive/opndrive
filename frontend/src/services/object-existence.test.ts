@@ -235,9 +235,26 @@ describe('findExistingNames', () => {
     expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
   });
 
-  it('follows a token even from a page that does not say it is truncated', async () => {
-    // Either sign of more to come counts. Following it costs one page at
-    // most; ignoring it could call a name free that is on the next one.
+  it('trusts a page that says it is the last, whatever token it carries', async () => {
+    // S3 sends a token only with a truncated page. Asked with one it should
+    // not have sent, a service could only refuse, or list the same again.
+    const fetchDirectoryStructure = vi.fn(async () => ({
+      files: [{ Key: 'a.txt' }],
+      folders: [],
+      nextToken: 'stray',
+      isTruncated: false,
+    }));
+    const api = { fetchDirectoryStructure } as unknown as BYOS3ApiProvider;
+
+    const result = await findExistingNames(api, '', ['a.txt', 'b.txt'], 5);
+
+    expect(result).toEqual({ existing: new Set(['a.txt']), unknown: [] });
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows a token from a page that does not say either way', async () => {
+    // With no flag, the token is the only word on whether there is more,
+    // and ignoring it could call a name free that is on the next page.
     const pages = [
       { files: [{ Key: 'a.txt' }], folders: [], nextToken: '1', isTruncated: undefined },
       { files: [{ Key: 'b.txt' }], folders: [], nextToken: undefined, isTruncated: false },

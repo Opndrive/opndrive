@@ -11,4 +11,4 @@ page looked free and its file was uploaded over the one already there. S3 always
 sends the token; other S3-compatible services may not.
 
 That page now ends the listing early, and names it did not find are checked one
-by one. A token is also followed when the page does not say it is truncated.
+by one. A page that says it is the last is still taken as the last.

@@ -63,17 +63,23 @@ export async function findExistingNames(
       if (name !== undefined && wanted.has(name)) existing.add(name);
     }
 
-    // Finished only when the page says so both ways: not truncated, and no
-    // token. A token is followed whatever the flag says; a truncated page
-    // with no token to follow cannot be read past, so the listing is cut
-    // short there. S3 always sends the token, but a service that does not
-    // has still said there is more, and read as finished, every name past
-    // that page looked free.
+    // A page that says it is the last is the last, token or not: S3 sends a
+    // token only with a truncated page, and asking with one it should not
+    // have sent could only fail or go round again.
+    if (listing.isTruncated === false) return { existing, unknown: [] };
+
     if (listing.nextToken) {
       token = listing.nextToken;
       continue;
     }
+
+    // Truncated with no token to follow: there is more, and no way to read
+    // it, so the listing is cut short here. S3 always sends the token, but a
+    // service that does not has still said there is more, and read as
+    // finished, every name past this page looked free.
     if (listing.isTruncated) break;
+
+    // Neither flag nor token: nothing says there is more.
     return { existing, unknown: [] };
   }
 
