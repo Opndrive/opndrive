@@ -64,7 +64,7 @@ import { cn } from '@/shared/utils/utils';
 type Panel = 'list' | 'create';
 
 /** "2 uploads and 1 delete are still in progress." */
-function describeActiveWork(work: ActiveWork): string {
+export function describeActiveWork(work: ActiveWork): string {
   const parts: string[] = [];
 
   if (work.uploads > 0) parts.push(`${work.uploads} upload${work.uploads === 1 ? '' : 's'}`);

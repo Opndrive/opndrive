@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import NavbarUserProfile from './navbar-user-profile';
 import { BucketSwitcher } from './bucket-switcher';
+import { ConnectionSwitcher } from './connection-switcher';
 import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
 import { useEffect, useState } from 'react';
@@ -88,6 +89,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               <Menu size={20} />
             </Button>
           </AriaLabel>
+          <ConnectionSwitcher />
           <BucketSwitcher />
         </div>
 
@@ -133,6 +135,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
                 <Menu size={18} />
               </Button>
             </AriaLabel>
+            <ConnectionSwitcher />
             <BucketSwitcher />
             <Link
               href="/dashboard"

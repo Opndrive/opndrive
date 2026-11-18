@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button, Combobox, SecretInput } from '@/shared/components/ui';
 import { type S3Provider, resolveEndpoint } from '@/config/providers';
 import { failureFrom, type ConnectionFailure } from '@/lib/s3/connection-failure';
+import { MAX_CONNECTION_NAME_LENGTH } from '@/lib/connections/connections';
 
 interface ConnectWizardProps {
   provider: S3Provider;
@@ -73,6 +74,8 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     prefix: '',
     endpoint: '',
   });
+  /** The alias shown in the connection switcher. Required. */
+  const [connectionName, setConnectionName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [failure, setFailure] = useState<ConnectionFailure | null>(null);
 
@@ -85,11 +88,15 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
   // Not `${provider.name} needs an endpoint`, which the catch-all turned into
   // "Custom endpoint needs an endpoint". Naming the provider was redundant
   // anyway on a page that is already about one provider.
+  const missingName = !connectionName.trim();
+
   const blockedReason = missingEndpoint
     ? 'Add the endpoint URL above'
     : incomplete
       ? 'Fill in the key, secret and bucket'
-      : null;
+      : missingName
+        ? 'Give this connection a name'
+        : null;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -99,7 +106,10 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
     setFailure(null);
 
     try {
-      await createSession(buildCredentials(provider, form));
+      await createSession(buildCredentials(provider, form), {
+        name: connectionName,
+        provider: provider.slug,
+      });
       router.push('/dashboard');
     } catch (caught) {
       console.error('Failed to create session:', caught);
@@ -227,6 +237,24 @@ export function ConnectWizard({ provider }: ConnectWizardProps) {
               Opens at <code className="text-foreground">{formatPrefix(form.prefix)}</code>
             </p>
           )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="connection-name" className={LABEL}>
+            Connection name
+          </label>
+          <input
+            id="connection-name"
+            type="text"
+            required
+            maxLength={MAX_CONNECTION_NAME_LENGTH}
+            autoComplete="off"
+            className={FIELD}
+            placeholder={`My ${provider.name} account`}
+            value={connectionName}
+            onChange={(event) => setConnectionName(event.target.value)}
+          />
+          <p className={HINT}>How this connection is listed when you switch between them.</p>
         </div>
 
         {failure && (

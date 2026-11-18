@@ -16,6 +16,15 @@ import { countActiveWork, useUploadStore } from '@/features/upload/stores/use-up
 import type { ActiveWork } from '@/features/upload/stores/use-upload-store';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
+import {
+  type Connection,
+  type ConnectionDetails,
+  findConnection,
+  readConnections,
+  refreshConnection,
+  addConnection,
+  writeConnections,
+} from '@/lib/connections/connections';
 
 /**
  * Proves the credentials work before a session is built on them.
@@ -75,13 +84,37 @@ export interface SwitchBucketOptions {
   discardActiveWork?: boolean;
 }
 
+/**
+ * What `switchConnection` did. Same shape and same reasoning as
+ * `BucketSwitchResult`: "work is in flight, ask first" is an answer, not an
+ * exception.
+ */
+export type ConnectionSwitchResult =
+  | { status: 'switched'; connectionId: string }
+  | { status: 'unchanged'; connectionId: string }
+  | { status: 'blocked'; activeWork: ActiveWork };
+
 interface AuthContextType {
   apiS3: BYOS3ApiProvider | null;
   uploadManager: UploadManager | null;
   signedUrlUploadManager: SignedUrlUploadManager | null;
   userCreds: Credentials | null;
+  /** Every saved connection. */
+  connections: Connection[];
+  /** The id of the saved connection the session is on, or null. */
+  activeConnectionId: string | null;
   isLoading: boolean;
-  createSession: (creds: Credentials) => Promise<void>;
+  /**
+   * Establishes a session and saves it as a connection. `details` carries the
+   * alias and provider the user chose, neither of which are part of the
+   * credentials themselves.
+   */
+  createSession: (creds: Credentials, details?: ConnectionDetails) => Promise<void>;
+  switchConnection: (
+    connectionId: string,
+    options?: SwitchBucketOptions
+  ) => Promise<ConnectionSwitchResult>;
+  removeConnection: (connectionId: string) => void;
   switchBucket: (
     bucketName: string,
     region?: string,
@@ -213,8 +246,16 @@ export const AuthContext = createContext<AuthContextType>({
   uploadManager: null,
   signedUrlUploadManager: null,
   userCreds: null,
+  connections: [],
+  activeConnectionId: null,
   isLoading: true,
   createSession: async () => {
+    throw new Error('AuthContext not initialized');
+  },
+  switchConnection: async () => {
+    throw new Error('AuthContext not initialized');
+  },
+  removeConnection: () => {
     throw new Error('AuthContext not initialized');
   },
   switchBucket: async () => {
@@ -304,6 +345,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useState<SignedUrlUploadManager | null>(null);
   const [userCreds, setUserCreds] = useState<Credentials | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [connections, setConnections] = useState<Connection[]>([]);
+
+  /**
+   * The list as of right now, for handlers that must not read a stale render.
+   * `createSession` and the switchers run from event handlers that may have
+   * closed over an older `connections`; writing from state would drop an entry
+   * added in between.
+   */
+  const connectionsRef = useRef<Connection[]>([]);
+
+  /**
+   * Which saved connection the live session is on.
+   *
+   * Tracked by id, not worked out by comparing credentials: a bucket switch
+   * moves the session to credentials that match no saved entry yet, and two
+   * entries can share the same keys. State for rendering, ref for handlers that
+   * must not read a stale render.
+   */
+  const [activeConnectionId, setActiveConnectionIdState] = useState<string | null>(null);
+  const activeConnectionIdRef = useRef<string | null>(null);
+
+  const setActiveConnectionId = (id: string | null) => {
+    activeConnectionIdRef.current = id;
+    setActiveConnectionIdState(id);
+  };
+
+  /** Applies a change to the saved list, in memory and in storage. */
+  const updateConnections = (change: (list: Connection[]) => Connection[]) => {
+    const next = change(connectionsRef.current);
+
+    connectionsRef.current = next;
+    setConnections(next);
+    writeConnections(next);
+  };
 
   const router = useRouter();
   const pathname = usePathname();
@@ -351,6 +426,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkAuth = async () => {
       setIsLoading(true);
+
+      // The saved list is read before the session so it is available to every
+      // route, not only to those that restore one. Applied unconditionally: a
+      // visitor with saved connections but no live session still has them.
+      const saved = readConnections();
+      connectionsRef.current = saved;
+      setConnections(saved);
+
       try {
         const storedCreds = localStorage.getItem(STORAGE_KEY);
         if (storedCreds) {
@@ -364,6 +447,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setSignedUrlUploadManager(signedUrlManager);
             setUserCreds(creds);
             setApiS3(api);
+
+            // A session that predates saved connections has no entry in the
+            // list, and the switcher would show an empty menu above a
+            // dashboard that is plainly connected. Adopt it, so upgrading
+            // costs nobody their connection.
+            const match = findConnection(connectionsRef.current, creds);
+
+            if (match) {
+              setActiveConnectionId(match.id);
+            } else {
+              const { list, connection } = addConnection(connectionsRef.current, creds);
+
+              updateConnections(() => list);
+              setActiveConnectionId(connection.id);
+            }
 
             // Restoring a session deliberately does not navigate anywhere.
             //
@@ -410,7 +508,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   // Create a session & persist in localStorage
-  const createSession = async (creds: Credentials): Promise<void> => {
+  const createSession = async (creds: Credentials, details?: ConnectionDetails): Promise<void> => {
     try {
       setIsLoading(true);
       const api = new BYOS3ApiProvider(creds, 'BYO');
@@ -425,6 +523,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUploadManager(manager);
       setSignedUrlUploadManager(signedUrlManager);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+
+      // Saved only once the session is live, so the list never holds an
+      // account whose keys were just rejected. A storage refusal here is not
+      // fatal: the session above is already up, and `writeConnections` says so
+      // in the console.
+      //
+      // Always appended, never merged: there is no deduplication, so even an
+      // exact repeat of a saved connection becomes another entry.
+      const { list, connection } = addConnection(connectionsRef.current, creds, details);
+
+      updateConnections(() => list);
+      setActiveConnectionId(connection.id);
 
       // Deliberately does not navigate. The one caller is ConnectWizard, which
       // lives at /connect/[provider] and pushes to /dashboard itself once this
@@ -441,6 +551,123 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw new ConnectionFailureError(classifyConnectionFailure(error));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Replaces the live session with `candidate`, after proving it works.
+   *
+   * The one teardown-and-rebuild path, shared by bucket switches and connection
+   * switches so neither can drift from the other. See `switchBucket` for why a
+   * switch builds a new provider instead of mutating the old one.
+   *
+   * Order is the whole point: the candidate is proved against the network
+   * before anything belonging to the current session is disposed. A target that
+   * turns out not to exist, or that these keys cannot read, leaves the session
+   * exactly as it was.
+   */
+  const swapSession = async (
+    candidate: Credentials,
+    connectionId: string | null,
+    options?: SwitchBucketOptions
+  ): Promise<{ status: 'swapped' } | { status: 'blocked'; activeWork: ActiveWork }> => {
+    if (!options?.discardActiveWork) {
+      const activeWork = countActiveWork(useUploadStore.getState());
+
+      if (activeWork.uploads > 0 || activeWork.deletes > 0) {
+        return { status: 'blocked', activeWork };
+      }
+    }
+
+    // Two switches running at once would each dispose the other's managers and
+    // race to persist their own credentials, and the loser's provider would
+    // outlive the winner's session. The loading gate below hides the UI that
+    // could start a second one, so this only has to catch a programmatic
+    // caller - refusing is enough.
+    //
+    // Everything above returns before the flag is taken, so a `blocked` or
+    // `unchanged` answer can never leave it set.
+    if (isSwitching.current) {
+      throw new Error('a session switch is already in progress');
+    }
+
+    isSwitching.current = true;
+
+    /**
+     * Whether this call is the one holding the loading gate up.
+     *
+     * The gate is lowered only by the path that raised it. A switch that fails
+     * verification never raises it at all, and lowering it unconditionally
+     * would lift a gate the startup restore is still holding.
+     */
+    let gateRaised = false;
+
+    try {
+      // Inside the try for the flag's sake. This builds an S3Client from the
+      // candidate's region and endpoint, and a throw out here with the flag
+      // still set would refuse every later switch for the life of the page -
+      // one bad endpoint and the picker is dead until a reload.
+      const api = new BYOS3ApiProvider(candidate, 'BYO');
+
+      try {
+        // The same one-object listing /connect uses, and for the same reason -
+        // except here the cost of skipping it is higher, because the session
+        // it would replace is a working one.
+        await verifyCredentials(api, candidate);
+      } catch (error) {
+        console.error('Bucket switch failed', error);
+
+        // Classified like createSession's, so the caller can say whether the
+        // bucket is missing, in another region, or simply not readable by
+        // these keys. Nothing has been torn down at this point.
+        throw new ConnectionFailureError(classifyConnectionFailure(error));
+      }
+
+      // Verified. Everything past here belongs to the new session, so the gate
+      // goes up: children are replaced by the placeholder for the length of
+      // the swap rather than being handed a session that is half of each.
+      setIsLoading(true);
+      gateRaised = true;
+
+      // Nothing in here rejects, which is what makes the teardown safe to
+      // start: `disposeInstance` clears the singleton synchronously and
+      // swallows its own cancellation errors, `getInstance` only assigns
+      // fields, and the three store resets are plain zustand writes. So there
+      // is no path that disposes the old managers and then fails to build the
+      // new ones - the half-switched state this ordering would otherwise have
+      // to recover from cannot arise.
+      const { manager, signedUrlManager } = await initializeUploadManagers(api, candidate);
+
+      // Applied in one continuation, so React commits them as a single update
+      // and a consumer of the context never reads the new credentials against
+      // the old provider. What makes that hold rather than merely usually hold
+      // is downstream: the effects that react to a switch key off `apiS3` and
+      // read the prefix back off that same object, never off `userCreds`, so
+      // none of them can pair one bucket's provider with another's session.
+      setUserCreds(candidate);
+      setApiS3(api);
+      setUploadManager(manager);
+      setSignedUrlUploadManager(signedUrlManager);
+
+      // Persisted only once the live session is actually on the new target.
+      // Written any earlier, a failure above would leave storage claiming a
+      // session the app is not on, and the next reload would restore it.
+      persistSession(candidate);
+
+      // The saved copy of this account follows the session, so choosing the
+      // connection again later returns to the bucket it was last on.
+      setActiveConnectionId(connectionId);
+      updateConnections((list) => refreshConnection(list, connectionId, candidate));
+
+      // The old prefix is gone with the old session, and the browse route
+      // carries one in its URL. Sending the user to the dashboard root is what
+      // stops the app asking the new bucket for the old bucket's folder.
+      router.push('/dashboard');
+
+      return { status: 'swapped' };
+    } finally {
+      if (gateRaised) setIsLoading(false);
+      isSwitching.current = false;
     }
   };
 
@@ -490,116 +717,83 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return { status: 'unchanged', bucketName: nextBucket };
     }
 
-    if (!options?.discardActiveWork) {
-      const activeWork = countActiveWork(useUploadStore.getState());
-
-      if (activeWork.uploads > 0 || activeWork.deletes > 0) {
-        return { status: 'blocked', activeWork };
-      }
-    }
-
-    // Two switches running at once would each dispose the other's managers and
-    // race to persist their own credentials, and the loser's provider would
-    // outlive the winner's session. The loading gate below hides the UI that
-    // could start a second one, so this only has to catch a programmatic
-    // caller - refusing is enough.
+    // Built immutably from the current credentials: the keys, the endpoint
+    // and anything else the provider needs stay exactly as they are, and the
+    // existing object is never edited, so a failure in `swapSession` leaves
+    // nothing half-rewritten.
     //
-    // Everything above returns before the flag is taken, so a `blocked` or
-    // `unchanged` answer can never leave it set.
-    if (isSwitching.current) {
-      throw new Error('switchBucket: a bucket switch is already in progress');
+    // The prefix is dropped rather than carried over. It names a folder in
+    // the bucket being left, and the odds that the same path means anything
+    // in the new one are poor - a prefix that does not exist lists empty,
+    // which reads as "this bucket is empty" rather than "you are looking in
+    // the wrong place". Every switch therefore lands at the bucket root.
+    const candidate: Credentials = {
+      ...current,
+      bucketName: nextBucket,
+      region: nextRegion,
+      prefix: '',
+    };
+
+    const outcome = await swapSession(candidate, activeConnectionIdRef.current, options);
+
+    if (outcome.status === 'blocked') {
+      return { status: 'blocked', activeWork: outcome.activeWork };
     }
 
-    isSwitching.current = true;
+    return { status: 'switched', bucketName: nextBucket };
+  };
 
-    /**
-     * Whether this call is the one holding the loading gate up.
-     *
-     * The gate is lowered only by the path that raised it. A switch that fails
-     * verification never raises it at all, and lowering it unconditionally
-     * would lift a gate the startup restore is still holding.
-     */
-    let gateRaised = false;
+  /**
+   * Moves the session to a saved connection.
+   *
+   * The connection's own credentials are used as stored, bucket and prefix
+   * included - it is a different account being returned to, and landing where
+   * it was last left is the point. Everything else is `swapSession`, the same
+   * verify-then-teardown path a bucket switch takes, so a connection whose keys
+   * have since been revoked fails on the way in and leaves the current session
+   * exactly as it was.
+   */
+  const switchConnection = async (
+    connectionId: string,
+    options?: SwitchBucketOptions
+  ): Promise<ConnectionSwitchResult> => {
+    const target = connectionsRef.current.find((entry) => entry.id === connectionId);
 
-    try {
-      // Built immutably from the current credentials: the keys, the endpoint
-      // and anything else the provider needs stay exactly as they are, and the
-      // existing object is never edited, so a failure below leaves nothing
-      // half-rewritten.
-      //
-      // The prefix is dropped rather than carried over. It names a folder in
-      // the bucket being left, and the odds that the same path means anything
-      // in the new one are poor - a prefix that does not exist lists empty,
-      // which reads as "this bucket is empty" rather than "you are looking in
-      // the wrong place". Every switch therefore lands at the bucket root.
-      const candidate: Credentials = {
-        ...current,
-        bucketName: nextBucket,
-        region: nextRegion,
-        prefix: '',
-      };
-
-      // Inside the try for the flag's sake. This builds an S3Client from the
-      // candidate's region and endpoint, and a throw out here with the flag
-      // still set would refuse every later switch for the life of the page -
-      // one bad endpoint and the bucket picker is dead until a reload.
-      const api = new BYOS3ApiProvider(candidate, 'BYO');
-
-      try {
-        // The same one-object listing /connect uses, and for the same reason -
-        // except here the cost of skipping it is higher, because the session
-        // it would replace is a working one.
-        await verifyCredentials(api, candidate);
-      } catch (error) {
-        console.error('Bucket switch failed', error);
-
-        // Classified like createSession's, so the caller can say whether the
-        // bucket is missing, in another region, or simply not readable by
-        // these keys. Nothing has been torn down at this point.
-        throw new ConnectionFailureError(classifyConnectionFailure(error));
-      }
-
-      // Verified. Everything past here belongs to the new bucket, so the gate
-      // goes up: children are replaced by the placeholder for the length of
-      // the swap rather than being handed a session that is half of each.
-      setIsLoading(true);
-      gateRaised = true;
-
-      // Nothing in here rejects, which is what makes the teardown safe to
-      // start: `disposeInstance` clears the singleton synchronously and
-      // swallows its own cancellation errors, `getInstance` only assigns
-      // fields, and the three store resets are plain zustand writes. So there
-      // is no path that disposes the old managers and then fails to build the
-      // new ones - the half-switched state this ordering would otherwise have
-      // to recover from cannot arise.
-      const { manager, signedUrlManager } = await initializeUploadManagers(api, candidate);
-
-      // Applied in one continuation, so React commits them as a single update
-      // and a consumer of the context never reads the new credentials against
-      // the old provider. What makes that hold rather than merely usually hold
-      // is downstream: the effects that react to a switch key off `apiS3` and
-      // read the prefix back off that same object, never off `userCreds`, so
-      // none of them can pair one bucket's provider with another's session.
-      setUserCreds(candidate);
-      setApiS3(api);
-      setUploadManager(manager);
-      setSignedUrlUploadManager(signedUrlManager);
-
-      // Persisted only once the live session is actually on the new bucket.
-      // Written any earlier, a failure above would leave storage claiming a
-      // bucket the app is not on, and the next reload would restore it.
-      persistSession(candidate);
-
-      // The old prefix is gone with the old bucket, and the browse route
-      // carries one in its URL. Sending the user to the dashboard root is what
-      // stops the app asking the new bucket for the old bucket's folder.
-      router.push('/dashboard');
-
-      return { status: 'switched', bucketName: nextBucket };
-    } finally {
-      if (gateRaised) setIsLoading(false);
-      isSwitching.current = false;
+    if (!target) {
+      throw new Error('switchConnection: that connection no longer exists');
     }
+
+    // Already the live connection: nothing to tear down.
+    if (connectionId === activeConnectionIdRef.current && userCreds) {
+      return { status: 'unchanged', connectionId };
+    }
+
+    const outcome = await swapSession(target.authContext, target.id, options);
+
+    if (outcome.status === 'blocked') {
+      return { status: 'blocked', activeWork: outcome.activeWork };
+    }
+
+    return { status: 'switched', connectionId };
+  };
+
+  /**
+   * Forgets a saved connection.
+   *
+   * The connection in use cannot be removed - it is the session, and
+   * `clearSession` is how that one ends. Refused by throwing rather than by a
+   * quiet return so a caller that skipped the check finds out.
+   */
+  const removeConnection = (connectionId: string): void => {
+    const target = connectionsRef.current.find((entry) => entry.id === connectionId);
+
+    if (!target) return;
+
+    if (userCreds && connectionId === activeConnectionIdRef.current) {
+      throw new Error('removeConnection: the connection in use cannot be removed');
+    }
+
+    updateConnections((list) => list.filter((entry) => entry.id !== connectionId));
   };
 
   // Clear session completely
@@ -652,6 +846,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Clear localStorage
       localStorage.removeItem(STORAGE_KEY);
 
+      // Signing out forgets the account being signed out of, keys included -
+      // "Clear Session" on a shared machine must not leave them behind in the
+      // list. Other saved connections are left alone: they are not what was
+      // asked to be cleared.
+      const leavingId = activeConnectionIdRef.current;
+      if (leavingId !== null) {
+        updateConnections((list) => list.filter((entry) => entry.id !== leavingId));
+      }
+      setActiveConnectionId(null);
+
       // Navigate away from authenticated routes first
       router.push('/');
 
@@ -676,8 +880,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         uploadManager,
         signedUrlUploadManager,
         userCreds,
+        connections,
+        activeConnectionId,
         isLoading,
         createSession,
+        switchConnection,
+        removeConnection,
         switchBucket,
         clearSession,
       }}

@@ -29,6 +29,7 @@ describe('privacy policy', () => {
   // renamed without the policy following, this is the reminder.
   it.each([
     's3_user_session',
+    's3_connections',
     'ui-theme',
     'opndrive_user_settings',
     'opndrive-layout-preference',

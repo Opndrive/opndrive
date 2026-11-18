@@ -47,6 +47,7 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
 };
 
 const SIZES = {
+  xs: { box: 'h-6 w-6 rounded-md', glyph: 14 },
   sm: { box: 'h-9 w-9 rounded-lg', glyph: 18 },
   md: { box: 'h-11 w-11 rounded-xl', glyph: 22 },
   lg: { box: 'h-14 w-14 rounded-2xl', glyph: 28 },

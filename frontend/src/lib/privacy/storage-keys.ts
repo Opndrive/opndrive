@@ -49,6 +49,14 @@ export const STORAGE_KEYS: readonly StorageKeyEntry[] = [
     lifetime: 'Until you disconnect',
   },
   {
+    key: 's3_connections',
+    mechanisms: ['localStorage'],
+    category: 'necessary',
+    purpose:
+      'The storage connections you have added, with their names and credentials, so you can switch between them',
+    lifetime: 'Until you delete the connection or disconnect it',
+  },
+  {
     key: 'ui-theme',
     mechanisms: ['localStorage'],
     category: 'necessary',

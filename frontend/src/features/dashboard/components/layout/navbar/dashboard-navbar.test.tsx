@@ -13,6 +13,7 @@ import { DashboardNavbar } from './dashboard-navbar';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
+  useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -33,7 +34,13 @@ vi.mock('./navbar-user-profile', () => ({
 }));
 
 vi.mock('@/hooks/use-auth', () => ({
-  useAuth: () => ({ switchBucket: vi.fn() }),
+  useAuth: () => ({
+    switchBucket: vi.fn(),
+    switchConnection: vi.fn(),
+    removeConnection: vi.fn(),
+    connections: [],
+    activeConnectionId: null,
+  }),
 }));
 
 vi.mock('@/context/notification-context', () => ({
@@ -71,16 +78,18 @@ vi.mock('@/features/dashboard/hooks/use-buckets', () => ({
 }));
 
 describe('the bucket switcher in the navbar', () => {
-  it('sits immediately after the menu button', () => {
+  it('sits directly after the connection switcher, which follows the menu button', () => {
     const { container } = render(<DashboardNavbar toggleSidebar={vi.fn()} />);
 
     // The header's first button is the sidebar toggle - the wordmark beside it
-    // is a link, not a button - so the switcher being the second one is what
-    // "immediately after the hamburger" means in the DOM.
+    // is a link, not a button. The connection switcher is the account and the
+    // bucket switcher is a bucket within it, so they read in that order.
     const buttons = container.querySelectorAll('header button');
-    const switcher = screen.getAllByRole('button', { name: /change bucket/i })[0];
+    const connection = screen.getAllByRole('button', { name: /change connection/i })[0];
+    const bucket = screen.getAllByRole('button', { name: /change bucket/i })[0];
 
-    expect(buttons[1]).toBe(switcher);
+    expect(buttons[1]).toBe(connection);
+    expect(buttons[2]).toBe(bucket);
   });
 
   it('is present in the narrow layout as well as the wide one', () => {
