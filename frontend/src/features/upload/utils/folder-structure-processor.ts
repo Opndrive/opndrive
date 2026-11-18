@@ -25,19 +25,29 @@ interface DirectoryRead {
   emptyFolders: string[];
 }
 
-/** Runs at most `limit` of the tasks handed to it at once. */
-function createLimiter(limit: number) {
+/**
+ * Runs at most `limit` of the tasks handed to it at once.
+ *
+ * A finished task hands its place straight to the next one waiting, rather
+ * than giving it up for that one to take. Given up, the place was free for
+ * the moment before the woken task resumed, and a task arriving in that
+ * moment took it as well: 17 reads at once against a limit of 16.
+ */
+export function createLimiter(limit: number) {
   let active = 0;
   const waiting: (() => void)[] = [];
 
   return async function run<T>(task: () => Promise<T>): Promise<T> {
-    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
-    active++;
+    if (active < limit) active++;
+    // Woken holding the place of the task that finished; see below.
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+
     try {
       return await task();
     } finally {
-      active--;
-      waiting.shift()?.();
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
     }
   };
 }

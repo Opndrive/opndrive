@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FolderStructureProcessor } from './folder-structure-processor';
+import { FolderStructureProcessor, createLimiter } from './folder-structure-processor';
 import {
   makeFile,
   makeFileWithPath,
@@ -291,6 +291,88 @@ describe('dropping a folder', () => {
     // structures with the same name, so both upload to the same prefix and the
     // second overwrites the first. Nothing here merges or disambiguates them.
     expect(result.folderStructures.map((f) => f.name)).toEqual(['photos', 'photos']);
+  });
+});
+
+describe('createLimiter', () => {
+  /** Tasks that run until the test finishes them, counting how many run at once. */
+  function heldTasks() {
+    const finishers: (() => void)[] = [];
+    let running = 0;
+    let peak = 0;
+    const task = () =>
+      new Promise<void>((resolve) => {
+        running++;
+        peak = Math.max(peak, running);
+        finishers.push(() => {
+          running--;
+          resolve();
+        });
+      });
+    return {
+      task,
+      finishNext: () => finishers.shift()!(),
+      get running() {
+        return running;
+      },
+      get peak() {
+        return peak;
+      },
+      get left() {
+        return finishers.length;
+      },
+    };
+  }
+
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('runs at most its limit, and the rest as places free up', async () => {
+    const limit = createLimiter(2);
+    const tasks = heldTasks();
+
+    const runs = Array.from({ length: 5 }, () => limit(tasks.task));
+    await flush();
+    expect(tasks.running).toBe(2);
+
+    while (tasks.left > 0) {
+      tasks.finishNext();
+      await flush();
+    }
+    await Promise.all(runs);
+    expect(tasks.peak).toBe(2);
+  });
+
+  it('keeps the limit when a task arrives as a place is handed to one waiting', async () => {
+    // A finished task freed its place and woke the next in line, which only
+    // took the place a moment later. A task arriving in that moment found it
+    // free too, and both ran: 17 reads against a limit of 16.
+    const limit = createLimiter(2);
+    const tasks = heldTasks();
+    const runs = [limit(tasks.task), limit(tasks.task), limit(tasks.task)];
+    await flush();
+
+    tasks.finishNext();
+    // Queued now, it runs after the finished task gives up its place and
+    // before the waiting one takes it.
+    queueMicrotask(() => runs.push(limit(tasks.task)));
+    await flush();
+
+    expect(tasks.running).toBe(2);
+    while (tasks.left > 0) {
+      tasks.finishNext();
+      await flush();
+    }
+    await Promise.all(runs);
+    expect(tasks.peak).toBe(2);
+  });
+
+  it('hands on its place when a task fails', async () => {
+    const limit = createLimiter(1);
+    const failing = limit(() => Promise.reject(new Error('unreadable')));
+    const next = limit(async () => 'read');
+
+    await expect(failing).rejects.toThrow('unreadable');
+    await expect(next).resolves.toBe('read');
   });
 });
 
