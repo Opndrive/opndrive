@@ -19,7 +19,9 @@ interface UploadSettingsStore {
 export const useUploadSettingsStore = create<UploadSettingsStore>()(
   persist(
     (set) => ({
-      uploadMode: 'multipart',
+      // Auto for a new install. Anyone who already picked a mode keeps it:
+      // the persisted value wins over this default.
+      uploadMode: 'auto',
       setUploadMode: (mode: UploadMode) => set({ uploadMode: mode }),
       duplicatePolicy: 'ask',
       setDuplicatePolicy: (policy: DuplicatePolicy) => set({ duplicatePolicy: policy }),

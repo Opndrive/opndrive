@@ -1,6 +1,7 @@
 'use client';
 
-import { UploadStatus, UploadManager, SignedUrlUploadManager } from '@opndrive/s3-api';
+import { UploadStatus } from '@opndrive/s3-api';
+import type { ActiveUploadManager } from '../services/auto-upload-manager';
 import { create } from 'zustand';
 import { useDriveStore } from '@/context/data-context';
 
@@ -267,12 +268,12 @@ export function countActiveWork(state: {
 export const SESSION_ENDED = Symbol('delete aborted: session ended');
 
 interface UploadStore {
-  uploadManager: UploadManager | SignedUrlUploadManager | null;
+  uploadManager: ActiveUploadManager | null;
   uploads: Record<string, UploadProgress>;
   deletes: Record<string, DeleteProgress>;
   /** Pending duplicate questions, oldest first. The UI renders index 0. */
   duplicateQueue: DuplicatePrompt[];
-  setUploadManager: (manager: UploadManager | SignedUrlUploadManager | null) => void;
+  setUploadManager: (manager: ActiveUploadManager | null) => void;
   setUploads: (uploads: Record<string, UploadProgress>) => void;
   addUpload: (id: string, upload: UploadProgress) => void;
   /**

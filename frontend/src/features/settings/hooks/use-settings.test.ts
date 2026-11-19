@@ -35,7 +35,7 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings());
 
     expect(result.current.settings.privacy.enableAnalytics).toBe(true);
-    expect(result.current.settings.general.uploadMethod).toBe('auto');
+    expect(result.current.settings.general.bulkShareDuration).toBe('7-days');
   });
 
   it('falls back to defaults when the stored copy is not valid json', () => {
@@ -68,6 +68,17 @@ describe('useSettings', () => {
       expect(result.current.settings.privacy).toEqual({ enableAnalytics: false });
     });
 
+    it('drops the retired upload method, which nothing ever read', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(legacyStored));
+
+      const { result } = renderHook(() => useSettings());
+      act(() => result.current.updateGeneralSettings({ startPage: 'my-drive' }));
+
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+
+      expect(saved.general).toEqual({ startPage: 'my-drive', bulkShareDuration: '7-days' });
+    });
+
     it('purges them from storage on the next save', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(legacyStored));
 
@@ -83,11 +94,11 @@ describe('useSettings', () => {
   it('persists an update and leaves the rest alone', () => {
     const { result } = renderHook(() => useSettings());
 
-    act(() => result.current.updateGeneralSettings({ uploadMethod: 'signed-url' }));
+    act(() => result.current.updateGeneralSettings({ bulkShareDuration: '1-day' }));
 
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
 
-    expect(saved.general.uploadMethod).toBe('signed-url');
+    expect(saved.general.bulkShareDuration).toBe('1-day');
     expect(saved.general.startPage).toBe('home');
     expect(saved.privacy.enableAnalytics).toBe(true);
   });

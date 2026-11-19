@@ -1,15 +1,17 @@
 export type StartPage = 'home' | 'my-drive';
 
-export type UploadMethod = 'auto' | 'signed-url' | 'multipart' | 'multipart-concurrent';
-
 export type BulkShareDuration = '1-hour' | '6-hours' | '1-day' | '3-days' | '7-days';
 
 // Allow custom duration strings (e.g., "2-hours", "4-days", etc.)
 export type BulkShareDurationValue = BulkShareDuration | string;
 
+/**
+ * `uploadMethod` used to live here too: a second upload setting with an Auto
+ * option, persisted and read by nothing. Uploads follow `uploadMode` in the
+ * upload settings store, which is the one the settings page shows.
+ */
 export interface GeneralSettings {
   startPage: StartPage;
-  uploadMethod: UploadMethod;
   bulkShareDuration: BulkShareDurationValue;
 }
 
@@ -38,12 +40,4 @@ export interface SettingsTabInfo {
   id: SettingsTab;
   label: string;
   description?: string;
-}
-
-export interface UploadMethodInfo {
-  id: UploadMethod;
-  label: string;
-  description: string;
-  performance?: 'fast' | 'faster' | 'fastest';
-  computeUsage?: 'low' | 'medium' | 'high';
 }

@@ -47,12 +47,9 @@ export function useActiveUploadManager() {
     return null;
   }
 
-  if (uploadMode === 'signed-url') {
-    return signedUrlUploadManager;
-  }
-
-  return uploadManager;
+  return managerForMode(uploadMode, uploadManager, signedUrlUploadManager);
 }
 
 // Import at the bottom to avoid circular dependency
 import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
+import { managerForMode } from '@/features/upload/services/auto-upload-manager';

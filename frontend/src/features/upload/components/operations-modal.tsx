@@ -14,6 +14,7 @@ import type { FileExtension } from '@/config/file-extensions';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
 import { TimeLeftMeter, formatTimeLeft } from '../utils/time-left';
+import { canPauseUpload } from '../services/auto-upload-manager';
 
 interface OperationItem {
   id: string;
@@ -165,9 +166,6 @@ export const OperationsModal: React.FC = () => {
   const noticeCount = useUploadQueueStore((state) => state.notices.length);
   // A drop being read or planned, before it has any cards to show.
   const isPreparing = useUploadQueueStore((state) => state.preparingDrops > 0);
-
-  // Check if pause/resume is supported in current mode
-  const supportsPauseResume = uploadMode === 'multipart';
 
   // Read inside the interval instead of depending on `uploads`, which changes
   // on every progress tick - the old dependency tore down and rebuilt the
@@ -739,7 +737,11 @@ export const OperationsModal: React.FC = () => {
                   totalFiles={operation.totalFiles}
                   completedFiles={operation.completedFiles}
                   isHovered={hoveredItem === operation.id}
-                  supportsPauseResume={supportsPauseResume}
+                  // Per upload: under Auto only the files sent multipart pause.
+                  supportsPauseResume={
+                    operation.operationType === 'upload' &&
+                    canPauseUpload(uploadMode, uploadManager, operation.id)
+                  }
                   onHoverChange={setHoveredItem}
                   onCancel={cancelOperation}
                   onRemove={removeOperation}

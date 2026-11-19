@@ -1,18 +1,31 @@
 // Upload mode types
-export type UploadMode = 'multipart' | 'signed-url';
+export type UploadMode = 'auto' | 'multipart' | 'signed-url';
 
 export interface UploadModeConfig {
   mode: UploadMode;
   label: string;
   description: string;
   features: {
-    pauseResume: boolean;
+    /** 'large-files': only the files Auto sends multipart. */
+    pauseResume: boolean | 'large-files';
     largeFiles: boolean;
     fasterSmallFiles: boolean;
   };
 }
 
+/** In the order the settings list them: Auto first, as the one to pick. */
 export const UPLOAD_MODES: Record<UploadMode, UploadModeConfig> = {
+  auto: {
+    mode: 'auto',
+    label: 'Auto',
+    description:
+      'Picks for each file: a direct upload under 100 MB, multipart from 100 MB up. Large files can be paused.',
+    features: {
+      pauseResume: 'large-files',
+      largeFiles: true,
+      fasterSmallFiles: true,
+    },
+  },
   multipart: {
     mode: 'multipart',
     label: 'Multipart Upload',

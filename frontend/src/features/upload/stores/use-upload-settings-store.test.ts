@@ -30,10 +30,10 @@ afterEach(() => {
 });
 
 describe('defaults', () => {
-  it('starts on multipart', () => {
+  it('starts on auto, which picks per file', () => {
     // Multipart is resumable and handles large files; signed-url is the
     // fallback for restricted buckets, so it must not be the default.
-    expect(store().uploadMode).toBe('multipart');
+    expect(store().uploadMode).toBe('auto');
   });
 });
 
@@ -88,7 +88,7 @@ describe('persistence', () => {
   it('keeps the default when nothing is stored', async () => {
     await useUploadSettingsStore.persist.rehydrate();
 
-    expect(store().uploadMode).toBe('multipart');
+    expect(store().uploadMode).toBe('auto');
   });
 
   it('keeps the default when the stored value is corrupt', async () => {
@@ -96,7 +96,7 @@ describe('persistence', () => {
 
     // A user with a mangled entry should still get a working uploader.
     await expect(useUploadSettingsStore.persist.rehydrate()).resolves.toBeUndefined();
-    expect(store().uploadMode).toBe('multipart');
+    expect(store().uploadMode).toBe('auto');
   });
 
   it('does not lose the setter when hydrating', async () => {
@@ -131,6 +131,6 @@ describe('isolation between tests', () => {
   it('B: still starts from the default', () => {
     // The zustand reset covers persisted stores too, so a preference set in one
     // test cannot leak into the next.
-    expect(store().uploadMode).toBe('multipart');
+    expect(store().uploadMode).toBe('auto');
   });
 });
