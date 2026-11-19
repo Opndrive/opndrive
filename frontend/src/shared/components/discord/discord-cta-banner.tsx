@@ -4,14 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { FaDiscord } from 'react-icons/fa';
 import { cn } from '@/shared/utils/utils';
 import { DISCORD_URL } from '@/config/links';
-import {
-  BENTO_EMOJI,
-  BuilderAvatars,
-  CornerEmoji,
-  LiveBadge,
-  Noise,
-  TILE_BASE,
-} from './bento-primitives';
+import { BuilderAvatars, Noise, TILE_BASE } from './bento-primitives';
 
 /**
  * Wide community tile for the landing page's closing CTA. Built from the same
@@ -31,19 +24,9 @@ export function DiscordCtaBanner({ className }: { className?: string }) {
         className="pointer-events-none absolute -bottom-16 right-1/4 h-40 w-40 rounded-full bg-discord-brand/20 blur-3xl"
       />
       <Noise opacity={0.25} />
-      <CornerEmoji
-        src={BENTO_EMOJI.builders}
-        className="-right-6 -top-6 h-28 w-28 -rotate-6 sm:h-32 sm:w-32"
-      />
-      <CornerEmoji
-        src={BENTO_EMOJI.hangouts}
-        className="-bottom-8 left-1/2 hidden h-24 w-24 rotate-12 opacity-30 lg:block"
-      />
 
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
         <div className="min-w-0">
-          <LiveBadge className="mb-3" />
-
           <h3 className="text-lg font-bold leading-snug text-foreground sm:text-xl">
             Build Opndrive with us
           </h3>

@@ -12,10 +12,8 @@ import { cn } from '@/shared/utils/utils';
  * broken-image glyph.
  */
 export const BENTO_EMOJI = {
-  hangouts: '/discord-bento/hangouts.svg',
   reviews: '/discord-bento/reviews.svg',
   debugging: '/discord-bento/debugging.svg',
-  builders: '/discord-bento/builders.svg',
 } as const;
 
 /**
@@ -80,26 +78,6 @@ export function BuilderAvatars({ className }: { className?: string }) {
           style={{ backgroundImage: `url('${src}')` }}
         />
       ))}
-    </div>
-  );
-}
-
-/** The pulsing "when we meet" badge. */
-export function LiveBadge({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border border-community-live/30 bg-community-live/10 px-2 py-0.5',
-        className
-      )}
-    >
-      <span className="relative flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-community-live opacity-75" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-community-live" />
-      </span>
-      <span className="whitespace-nowrap text-[10px] font-medium text-community-live">
-        Every other day @ 5 PM UTC
-      </span>
     </div>
   );
 }
