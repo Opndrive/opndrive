@@ -31,7 +31,7 @@ import {
   summariseSkipped,
   raceWithAbort,
   VERIFY_CONCURRENCY,
-  SKIPPED_GROUP_THRESHOLD,
+  MAX_LISTED_SKIPPED,
   MAX_NOTICES,
 } from './use-upload-queue-store';
 import type {
@@ -910,27 +910,51 @@ describe('summariseSkipped', () => {
     }));
   }
 
-  it('collapses a flood into one notice that keeps the true count', () => {
-    // Dropping a project directory produces thousands of these. Pushing each
-    // into state bloats it and buries the notices that matter.
+  /**
+   * The case that filled the panel: a big drop that lost a few files in each
+   * of many folders. Every folder stayed under the old per-folder threshold,
+   * so each file got a line of its own, up to a hundred of them.
+   */
+  it('gives a few losses in each of many folders one notice, not one each', () => {
+    const wide = Array.from({ length: 50 }, (_, folder) =>
+      flood(3, `backup/2024/month-${folder}/`, 'could not be read')
+    ).flat();
+
+    const notices = summariseSkipped(wide);
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ kind: 'skipped', count: 150, path: 'backup/2024/' });
+    expect(notices[0]!.detail).toBe('150 items could not be read and were not uploaded.');
+  });
+
+  it('keeps every path on the notice, for the panel to list and copy', () => {
+    const notices = summariseSkipped([
+      ...flood(2, 'a/', 'could not be read'),
+      { path: 'b/raw', reason: 'could not be read', kind: 'folder' },
+    ]);
+
+    expect(notices[0]!.items).toEqual([
+      { path: 'a/f0.js', kind: 'file' },
+      { path: 'a/f1.js', kind: 'file' },
+      { path: 'b/raw', kind: 'folder' },
+    ]);
+    // Nothing in common but the top of the drop.
+    expect(notices[0]!.path).toBe('');
+  });
+
+  it('keeps a huge flood to a bounded list, with the true count', () => {
     const notices = summariseSkipped(
-      flood(500, 'proj/node_modules/', 'could not be read (EACCES)')
+      flood(MAX_LISTED_SKIPPED + 500, 'proj/node_modules/', 'could not be read (EACCES)')
     );
 
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({
-      kind: 'skipped',
-      path: 'proj/node_modules/',
-      count: 500,
-    });
-    expect(notices[0]!.detail).toBe(
-      'proj/node_modules/f0.js and 499 other item(s) in this folder could not be read (EACCES) and were not uploaded.'
-    );
+    expect(notices[0]!.count).toBe(MAX_LISTED_SKIPPED + 500);
+    expect(notices[0]!.items).toHaveLength(MAX_LISTED_SKIPPED);
   });
 
-  it('splits a second reason in the same folder into its own group', () => {
-    // A permission error and a missing file are two different facts, even in
-    // one directory, so they must not be merged into a single count.
+  it('splits a second reason into its own notice', () => {
+    // A permission error and a missing file are two different facts, so they
+    // must not be merged into a single count.
     const notices = summariseSkipped([
       ...flood(30, 'proj/node_modules/', 'could not be read (EACCES)'),
       ...flood(25, 'proj/node_modules/', 'disappeared during the upload'),
@@ -942,57 +966,13 @@ describe('summariseSkipped', () => {
     expect(notices[1]!.detail).toContain('disappeared during the upload');
   });
 
-  it('splits the same reason across different folders', () => {
-    const notices = summariseSkipped([
-      ...flood(25, 'proj/node_modules/', 'could not be read (EACCES)'),
-      ...flood(25, 'proj/.git/', 'could not be read (EACCES)'),
-    ]);
-
-    expect(notices.map((n) => n.path)).toEqual(['proj/node_modules/', 'proj/.git/']);
-  });
-
-  it('lists entries individually at the threshold', () => {
-    const notices = summariseSkipped(
-      flood(SKIPPED_GROUP_THRESHOLD, 'proj/node_modules/', 'could not be read (EACCES)')
-    );
-
-    expect(notices).toHaveLength(SKIPPED_GROUP_THRESHOLD);
-    expect(notices.every((n) => n.count === 1)).toBe(true);
-  });
-
-  it('aggregates one past the threshold', () => {
-    const notices = summariseSkipped(
-      flood(SKIPPED_GROUP_THRESHOLD + 1, 'proj/node_modules/', 'could not be read (EACCES)')
-    );
-
-    expect(notices).toHaveLength(1);
-    expect(notices[0]!.count).toBe(SKIPPED_GROUP_THRESHOLD + 1);
-  });
-
-  it('honours a caller-supplied threshold', () => {
-    const notices = summariseSkipped(flood(5, 'proj/', 'could not be read (EACCES)'), 3);
-
-    expect(notices).toHaveLength(1);
-    expect(notices[0]!.count).toBe(5);
-  });
-
-  it('groups correctly when the folder name contains spaces', () => {
-    // The group key joins folder and reason, so a naive separator would split
-    // "my holiday photos/" at the wrong place.
-    const notices = summariseSkipped(
-      flood(50, 'my holiday photos/raw files/', 'could not be read (EACCES)')
-    );
-
-    expect(notices).toHaveLength(1);
-    expect(notices[0]!.path).toBe('my holiday photos/raw files/');
-  });
-
-  it('describes a single skipped file in full', () => {
+  it('describes a single skipped file in full, with no list', () => {
     const notices = summariseSkipped([
       { path: 'photos/locked.cr2', reason: 'could not be read', kind: 'file' },
     ]);
 
     expect(notices[0]).toMatchObject({ path: 'photos/locked.cr2', count: 1 });
+    expect(notices[0]!.items).toBeUndefined();
     expect(notices[0]!.detail).toBe(
       'File "photos/locked.cr2" could not be read and was not uploaded.'
     );
@@ -1008,95 +988,42 @@ describe('summariseSkipped', () => {
     );
   });
 
-  it('falls back to the entry path for root-level entries', () => {
-    const notices = summariseSkipped(
-      Array.from({ length: 30 }, (_, i) => ({
-        path: `loose-${i}.txt`,
-        reason: 'could not be read',
-        kind: 'file' as const,
-      }))
-    );
+  it('handles folder names with spaces when finding the shared folder', () => {
+    const notices = summariseSkipped([
+      ...flood(3, 'my holiday photos/raw files/', 'could not be read'),
+      ...flood(3, 'my holiday photos/edited/', 'could not be read'),
+    ]);
 
-    expect(notices).toHaveLength(1);
-    expect(notices[0]!.path).toBe('loose-0.txt');
+    expect(notices[0]!.path).toBe('my holiday photos/');
   });
 
   it('returns nothing for an empty list', () => {
     expect(summariseSkipped([])).toEqual([]);
   });
 
-  describe('flood bounding', () => {
-    it('caps a wide flood that never trips the group threshold', () => {
-      // The shape per-group aggregation cannot catch: 19 failures in each of
-      // 500 folders is under the threshold every single time, and used to put
-      // 9,500 notices into state.
-      const wide = Array.from({ length: 500 }, (_, folder) =>
-        Array.from({ length: 19 }, (_, file) => ({
-          path: `proj/pkg-${folder}/f${file}.js`,
-          reason: 'could not be read (EACCES)',
-          kind: 'file' as const,
-        }))
-      ).flat();
-
-      const notices = summariseSkipped(wide);
-
-      expect(notices).toHaveLength(MAX_NOTICES);
-      // Nothing is silently lost: the overflow notice accounts for every
-      // entry the truncated notices stood for.
-      const total = notices.reduce((sum, n) => sum + n.count, 0);
-      expect(total).toBe(9500);
-    });
-
-    it('describes the overflow in terms of items, not notices', () => {
-      const wide = Array.from({ length: 300 }, (_, folder) => ({
-        path: `proj/pkg-${folder}/f.js`,
-        reason: 'could not be read',
-        kind: 'file' as const,
-      }));
-
-      const overflow = summariseSkipped(wide).at(-1)!;
-
-      expect(overflow.count).toBe(201);
-      expect(overflow.detail).toBe(
-        '201 further item(s) across 201 other location(s) could not be uploaded.'
-      );
-    });
-
-    it('leaves a list that fits the cap completely alone', () => {
-      const modest = Array.from({ length: MAX_NOTICES }, (_, i) => ({
-        path: `proj/pkg-${i}/f.js`,
-        reason: 'could not be read',
-        kind: 'file' as const,
-      }));
-
-      const notices = summariseSkipped(modest);
-
-      expect(notices).toHaveLength(MAX_NOTICES);
-      expect(notices.every((n) => n.count === 1)).toBe(true);
-    });
-
-    it('counts aggregated groups correctly in the overflow total', () => {
-      // Mixes deep and wide: each folder trips the group threshold, so every
-      // notice already stands for 25 entries before the cap applies.
-      const deepAndWide = Array.from({ length: 200 }, (_, folder) =>
-        Array.from({ length: 25 }, (_, file) => ({
-          path: `proj/pkg-${folder}/f${file}.js`,
-          reason: 'could not be read (EACCES)',
-          kind: 'file' as const,
-        }))
-      ).flat();
-
-      const notices = summariseSkipped(deepAndWide);
-
-      expect(notices).toHaveLength(MAX_NOTICES);
-      expect(notices.reduce((sum, n) => sum + n.count, 0)).toBe(5000);
-    });
-  });
-
   it('gives every notice a distinct id', () => {
-    const notices = summariseSkipped(flood(10, 'proj/', 'could not be read'));
+    const notices = summariseSkipped(
+      Array.from({ length: 10 }, (_, i) => ({
+        path: `proj/f${i}.js`,
+        reason: `reason ${i}`,
+        kind: 'file' as const,
+      }))
+    );
 
     expect(new Set(notices.map((n) => n.id)).size).toBe(10);
+  });
+
+  it('still caps the number of notices when there are more reasons than fit', () => {
+    const notices = summariseSkipped(
+      Array.from({ length: 150 }, (_, i) => ({
+        path: `proj/f${i}.js`,
+        reason: `reason ${i}`,
+        kind: 'file' as const,
+      }))
+    );
+
+    expect(notices).toHaveLength(MAX_NOTICES);
+    expect(notices.reduce((sum, n) => sum + n.count, 0)).toBe(150);
   });
 });
 
@@ -1174,14 +1101,11 @@ describe('notices', () => {
   it('stays bounded across many drops', async () => {
     // Each drop is individually well behaved; the array still grows without a
     // session-level trim.
-    for (let drop = 0; drop < 40; drop++) {
+    // One notice a drop now, however many files each lost.
+    for (let drop = 0; drop < 120; drop++) {
       await store().planDrop(
         dropOf([], {
-          skipped: Array.from({ length: 5 }, (_, i) => ({
-            path: `drop-${drop}/f${i}.txt`,
-            reason: 'could not be read',
-            kind: 'file' as const,
-          })),
+          skipped: [{ path: `drop-${drop}/f.txt`, reason: 'could not be read', kind: 'file' }],
         }),
         { destinationPrefix: '' }
       );
@@ -1189,7 +1113,7 @@ describe('notices', () => {
 
     expect(store().notices).toHaveLength(MAX_NOTICES);
     // The newest survive - an old notice matters less than a fresh one.
-    expect(store().notices.at(-1)!.path).toBe('drop-39/f4.txt');
+    expect(store().notices.at(-1)!.path).toBe('drop-119/f.txt');
   });
 
   it('clears them all', async () => {

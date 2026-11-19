@@ -57,22 +57,21 @@ const MAX_SUFFIX_ATTEMPTS = 100;
 export const VERIFY_CONCURRENCY = 5;
 
 /**
- * Skipped entries sharing a folder and a reason collapse into one notice past
- * this many. Dropping a project directory can produce thousands of permission
- * errors from `node_modules`, and pushing each into state would bloat it and
- * bury the notices that matter.
+ * How many skipped paths one notice keeps for the panel to list and copy. The
+ * count is always the true one; past this, the list says how many it left out.
+ * Dropping a project directory can produce tens of thousands of permission
+ * errors from `node_modules`, and every path held in state is memory the tab
+ * keeps until the notice is dismissed.
  */
-export const SKIPPED_GROUP_THRESHOLD = 20;
+export const MAX_LISTED_SKIPPED = 5000;
 
 /**
  * Hard ceiling on how many notices exist at once.
  *
- * Per-group aggregation handles a DEEP flood (a thousand failures in one
- * node_modules), but not a WIDE one: nineteen failures in each of five hundred
- * folders stays under the group threshold every time and still lands 9,500
- * notices in state. Past this many, the tail collapses into a single overflow
- * notice - nobody reads notice 101, and the array is what the operations panel
- * maps over.
+ * Skipped files already come as one notice per reason, but notices also
+ * accumulate across drops for a whole session. Past this many, the tail
+ * collapses into a single overflow notice - nobody reads notice 101, and the
+ * array is what the operations panel maps over.
  */
 export const MAX_NOTICES = 100;
 
@@ -125,6 +124,19 @@ export interface QueueNotice {
   detail: string;
   /** How many underlying entries this notice stands for. >1 means aggregated. */
   count: number;
+  /**
+   * For a `skipped` notice standing for more than one entry: the entries
+   * themselves, so the panel can list them by folder and copy the list. At
+   * most MAX_LISTED_SKIPPED; `count` says how many there really were.
+   */
+  items?: SkippedItem[];
+}
+
+/** One entry a skipped notice lists. */
+export interface SkippedItem {
+  /** Relative to the drop, e.g. `photos/raw/img.cr2`. */
+  path: string;
+  kind: 'file' | 'folder';
 }
 
 /**
@@ -397,62 +409,79 @@ function trimNotices(notices: QueueNotice[], limit = MAX_NOTICES): QueueNotice[]
 }
 
 /**
- * Separates the two halves of a group key.
- *
- * NUL, because it is the one character that cannot occur in a path or in a
- * reason, so no two pairs can collide on a key. Written as an escape
- * deliberately: as a literal byte it is invisible in an editor and renders as
- * a space, which is how someone talks themselves into "fixing" it.
+ * The deepest folder every path sits in, e.g. `photos/` for `photos/a/1.jpg`
+ * and `photos/b/2.jpg`. Empty when they share none.
  */
-const GROUP_SEPARATOR = '\u0000';
+function commonFolder(paths: readonly string[]): string {
+  let common: string | undefined;
+
+  for (const path of paths) {
+    const folder = path.slice(0, path.lastIndexOf('/') + 1);
+    if (common === undefined) {
+      common = folder;
+      continue;
+    }
+    while (common && !folder.startsWith(common)) {
+      common = common.slice(0, common.lastIndexOf('/', common.length - 2) + 1);
+    }
+    if (!common) return '';
+  }
+
+  return common ?? '';
+}
 
 /**
- * Turns extraction losses into notices, collapsing floods.
+ * Turns extraction losses into notices: one for each reason, however many
+ * folders the losses are spread across.
  *
- * Grouped by the containing folder AND the reason, because "412 files in
- * node_modules could not be read" is one fact, while a permission error and a
- * missing file in the same folder are two.
+ * It used to be one per folder and reason, and only once a folder had more
+ * than twenty; below that, one per file. A large drop that lost a few files in
+ * each of many folders filled the panel with up to a hundred near-identical
+ * lines. Now the notice says how many, and carries the paths for the panel to
+ * list by folder when asked.
+ *
+ * Still split by reason, because a permission error and a file that vanished
+ * mid-drop are two different facts.
  */
-export function summariseSkipped(
-  skipped: readonly SkippedEntry[],
-  threshold = SKIPPED_GROUP_THRESHOLD
-): QueueNotice[] {
-  const groups = new Map<string, { parent: string; entries: SkippedEntry[] }>();
+export function summariseSkipped(skipped: readonly SkippedEntry[]): QueueNotice[] {
+  const byReason = new Map<string, SkippedEntry[]>();
 
   for (const entry of skipped) {
-    const slash = entry.path.lastIndexOf('/');
-    const parent = slash === -1 ? '' : entry.path.slice(0, slash + 1);
-    const key = `${parent}${GROUP_SEPARATOR}${entry.reason}`;
-    const group = groups.get(key);
-    if (group) group.entries.push(entry);
-    else groups.set(key, { parent, entries: [entry] });
+    const group = byReason.get(entry.reason);
+    if (group) group.push(entry);
+    else byReason.set(entry.reason, [entry]);
   }
 
   const notices: QueueNotice[] = [];
 
-  for (const { parent, entries } of groups.values()) {
+  for (const [reason, entries] of byReason) {
     const first = entries[0]!;
 
-    if (entries.length > threshold) {
+    if (entries.length === 1) {
       notices.push({
         id: nextId('skipped'),
         kind: 'skipped',
-        path: parent || first.path,
-        count: entries.length,
-        detail: `${first.path} and ${entries.length - 1} other item(s) in this folder ${first.reason} and were not uploaded.`,
+        path: first.path,
+        count: 1,
+        detail: `${first.kind === 'folder' ? 'Folder' : 'File'} "${first.path}" ${reason} and was not uploaded.`,
       });
       continue;
     }
 
+    const items: SkippedItem[] = [];
     for (const entry of entries) {
-      notices.push({
-        id: nextId('skipped'),
-        kind: 'skipped',
-        path: entry.path,
-        count: 1,
-        detail: `${entry.kind === 'folder' ? 'Folder' : 'File'} "${entry.path}" ${entry.reason} and was not uploaded.`,
-      });
+      if (items.length === MAX_LISTED_SKIPPED) break;
+      items.push({ path: entry.path, kind: entry.kind });
     }
+
+    notices.push({
+      id: nextId('skipped'),
+      kind: 'skipped',
+      path: commonFolder(entries.map((entry) => entry.path)),
+      count: entries.length,
+      detail: `${entries.length} items ${reason} and were not uploaded.`,
+      items,
+    });
   }
 
   return capNotices(notices);

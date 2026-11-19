@@ -16,6 +16,11 @@ enough to measure, and while uploads are paused or waiting for the network, the
 panel shows no time at all instead of a guess. Deletes no longer show
 "Calculating time..." that never resolved.
 
+Files a large upload could not read are now one notice per reason, such as "150
+items could not be read and were not uploaded", instead of a line for every
+file. "Show files" lists them grouped by folder, and "Copy list" copies every
+path.
+
 The advanced search sheet, its filter bar and the dropdown it used are gone.
 None of them were shown anywhere, the Search button discarded every filter, and
 nearly all of the fields (owner, shared drives, starred, encrypted, approvals,
