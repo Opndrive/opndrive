@@ -222,7 +222,9 @@ export default function HomePage() {
           >
             {(recentData) => (
               <>
-                {/* Folders Section */}
+                {/* Folders Section. The suggestions come from what has been
+                    read of this folder, never a separate copy of it; until the
+                    last page is in, the notes say so. */}
                 {recentData.folders && recentData.folders.length > 0 && (
                   <SuggestedFolders
                     folders={recentData.folders}
@@ -230,6 +232,11 @@ export default function HomePage() {
                     onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                     onViewMore={handleLoadMoreFolders}
                     hasMore={recentData.hasMoreFolders}
+                    note={
+                      recentData.complete
+                        ? undefined
+                        : `From the first ${recentData.loadedCount.toLocaleString()} items`
+                    }
                     className="mt-8"
                   />
                 )}
@@ -242,6 +249,11 @@ export default function HomePage() {
                     onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                     onViewMore={handleLoadMoreFiles}
                     hasMore={recentData.hasMoreFiles}
+                    note={
+                      recentData.complete
+                        ? undefined
+                        : `Recent among the first ${recentData.loadedCount.toLocaleString()} items`
+                    }
                     className="mt-8"
                   />
                 ) : (

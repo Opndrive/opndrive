@@ -8,8 +8,9 @@
  * authentication finished.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { resetImageSlots } from '@/services/image-slots';
 import type { FileItem } from '@/features/dashboard/types/file';
 
 const session = vi.hoisted(() => ({
@@ -25,6 +26,7 @@ const getSignedUrl = vi.fn(async ({ key }: { key: string }) => `https://s3/${key
 beforeEach(() => {
   signed = 0;
   getSignedUrl.mockClear();
+  resetImageSlots();
   // A fresh provider per test, so URLs cached by one test do not leak into
   // the next.
   session.current = { apiS3: { getSignedUrl }, isLoading: false, isAuthenticated: true };
@@ -191,6 +193,122 @@ describe('caching', () => {
     await waitFor(() =>
       expect(screen.getByRole('img').getAttribute('src')).toContain('photos/b.jpg')
     );
+  });
+});
+
+/**
+ * Only tiles on screen fetch, and only four at a time.
+ *
+ * jsdom has no IntersectionObserver; this one is driven by hand. Each tile's
+ * picture box is what gets observed.
+ */
+describe('only on screen, a few at a time', () => {
+  type Callback = (entries: { target: Element; isIntersecting: boolean }[]) => void;
+  let observed: { callback: Callback; elements: Set<Element> }[] = [];
+
+  class FakeObserver {
+    elements = new Set<Element>();
+    constructor(private callback: Callback) {
+      observed.push({ callback, elements: this.elements });
+    }
+    observe(element: Element) {
+      this.elements.add(element);
+    }
+    unobserve(element: Element) {
+      this.elements.delete(element);
+    }
+    disconnect() {
+      this.elements.clear();
+    }
+  }
+
+  const setOnScreen = (element: Element, isIntersecting: boolean) =>
+    act(() => {
+      for (const o of observed)
+        if (o.elements.has(element)) o.callback([{ target: element, isIntersecting }]);
+    });
+
+  beforeEach(() => {
+    observed = [];
+    resetImageSlots();
+    vi.stubGlobal('IntersectionObserver', FakeObserver);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const boxes = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('div.h-32')) as HTMLElement[];
+
+  it('signs nothing and fetches nothing for a tile drawn off screen', async () => {
+    render(tile(image('off.jpg', MB, { value: 1, unit: 'MB' })));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSignedUrl).not.toHaveBeenCalled();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  it('loads the image once the tile comes on screen', async () => {
+    const { container } = render(tile(image('on.jpg', MB, { value: 1, unit: 'MB' })));
+
+    setOnScreen(boxes(container)[0]!, true);
+
+    expect(await screen.findByRole('img', { name: 'on.jpg' })).toBeTruthy();
+  });
+
+  it('starts four at a time and the next as each finishes', async () => {
+    const files = Array.from({ length: 6 }, (_, i) =>
+      image(`p${i}.jpg`, MB, { value: 1, unit: 'MB' })
+    );
+    const { container } = render(
+      <>
+        {files.map((file) => (
+          <div key={file.Key}>{tile(file)}</div>
+        ))}
+      </>
+    );
+
+    for (const box of boxes(container)) setOnScreen(box, true);
+    await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(4));
+
+    fireEvent.load(screen.getAllByRole('img')[0]!);
+
+    await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(5));
+  });
+
+  it('gives the slot up, and stops the download, when the tile leaves the screen first', async () => {
+    const files = Array.from({ length: 5 }, (_, i) =>
+      image(`q${i}.jpg`, MB, { value: 1, unit: 'MB' })
+    );
+    const { container } = render(
+      <>
+        {files.map((file) => (
+          <div key={file.Key}>{tile(file)}</div>
+        ))}
+      </>
+    );
+    const all = boxes(container);
+    for (const box of all) setOnScreen(box, true);
+    await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(4));
+
+    const leaving = screen.getByRole('img', { name: 'q0.jpg' }) as HTMLImageElement;
+    setOnScreen(all[0]!, false);
+
+    // Its download is stopped, and the fifth tile, waiting, gets the slot.
+    expect(leaving.getAttribute('src')).toBeNull();
+    await waitFor(() => expect(screen.getByRole('img', { name: 'q4.jpg' })).toBeTruthy());
+    expect(screen.queryByRole('img', { name: 'q0.jpg' })).toBeNull();
+  });
+
+  it('keeps an image it has finished loading when scrolled off', async () => {
+    const { container } = render(tile(image('kept.jpg', MB, { value: 1, unit: 'MB' })));
+    const box = boxes(container)[0]!;
+    setOnScreen(box, true);
+    fireEvent.load(await screen.findByRole('img'));
+
+    setOnScreen(box, false);
+
+    expect(screen.getByRole('img', { name: 'kept.jpg' })).toBeTruthy();
   });
 });
 
