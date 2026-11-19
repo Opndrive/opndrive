@@ -270,7 +270,12 @@ function enrichFolder(obj: CommonPrefix): Folder {
   };
 }
 
-function formatBytes(bytes: number | undefined): { value: number; unit: DataUnits } {
+/**
+ * A size as a number and a unit, for the file list: 0 B for nothing (or a
+ * nonsense negative), two decimals at most, and TB as the largest unit.
+ * Exported for its tests.
+ */
+export function formatBytes(bytes: number | undefined): { value: number; unit: DataUnits } {
   if (!bytes || bytes < 0) return { value: 0, unit: 'B' };
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
