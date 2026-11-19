@@ -132,6 +132,19 @@ const openRequests = new Map<string, OpenRequest>();
  */
 let requestCounter = 0;
 
+/**
+ * When a folder was last used, for the recent-folders cap.
+ *
+ * A clock that never repeats rather than `Date.now()` alone. Two folders used
+ * within the same millisecond tied, and eviction then chose between them
+ * arbitrarily - sometimes dropping the folder the user had just gone back to.
+ */
+let lastUse = 0;
+function nextUse(): number {
+  lastUse = Math.max(lastUse + 1, Date.now());
+  return lastUse;
+}
+
 function isCurrent(key: string, id: number): boolean {
   return openRequests.get(key)?.id === id;
 }
@@ -238,7 +251,7 @@ function writeListing(
   change: (listing: FolderListing) => FolderListing
 ): void {
   set((state) => {
-    const before = state.listings[key] ?? emptyListing(Date.now());
+    const before = state.listings[key] ?? emptyListing(nextUse());
     const after = change(before);
     return after === state.listings[key] ? {} : { listings: { ...state.listings, [key]: after } };
   });
@@ -333,7 +346,7 @@ export const useDriveStore = create<Store>((set, get) => ({
       }
 
       const shown = listings[next];
-      if (shown) listings[next] = { ...shown, lastUsed: Date.now() };
+      if (shown) listings[next] = { ...shown, lastUsed: nextUse() };
 
       return { currentPrefix: prefix, listings };
     });
@@ -594,7 +607,7 @@ export const useDriveStore = create<Store>((set, get) => ({
         writeListing(set, key, (current) => ({
           ...appendPage(current, toPage(raw, apiPrefixOf(key))),
           nextPage: { status: 'idle' },
-          lastUsed: Date.now(),
+          lastUsed: nextUse(),
         }));
         evictLeastRecent(set, get);
       } catch (error) {
@@ -660,7 +673,7 @@ function loadFirstPage(
         status: 'ready',
         failure: undefined,
         nextPage: { status: 'idle' },
-        lastUsed: Date.now(),
+        lastUsed: nextUse(),
       }));
       evictLeastRecent(set, get);
     } catch (error) {
