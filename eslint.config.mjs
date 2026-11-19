@@ -150,6 +150,25 @@ export default [
           ],
         },
       ],
+      // Tests run against the react package, which has these; the app runs
+      // against the React that Next.js bundles, which does not. So a test
+      // passes and the production build only warns, while the page throws
+      // "is not a function" the first time it renders.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "ImportDeclaration[source.value='react'] > ImportSpecifier[imported.name=/^(useEffectEvent|Activity)$/]",
+          message:
+            'Not in the React that Next.js bundles for the app router, so it is undefined in production. Use a ref for the latest callback instead.',
+        },
+        {
+          selector:
+            "MemberExpression[object.name='React'][property.name=/^(useEffectEvent|Activity)$/]",
+          message:
+            'Not in the React that Next.js bundles for the app router, so it is undefined in production. Use a ref for the latest callback instead.',
+        },
+      ],
     },
   },
 
