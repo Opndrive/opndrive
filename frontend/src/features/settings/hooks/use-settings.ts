@@ -8,7 +8,6 @@ const SETTINGS_STORAGE_KEY = 'opndrive_user_settings';
 const DEFAULT_SETTINGS: UserSettings = {
   general: {
     startPage: 'home',
-    uploadMethod: 'auto',
     bulkShareDuration: '7-days',
   },
   privacy: {
@@ -31,7 +30,13 @@ function fromStored(stored: unknown): UserSettings {
   const parsed = (stored ?? {}) as Partial<UserSettings>;
 
   return {
-    general: { ...DEFAULT_SETTINGS.general, ...parsed.general },
+    // Named for the same reason: `uploadMethod`, a retired setting, is still
+    // in storage on older installs.
+    general: {
+      startPage: parsed.general?.startPage ?? DEFAULT_SETTINGS.general.startPage,
+      bulkShareDuration:
+        parsed.general?.bulkShareDuration ?? DEFAULT_SETTINGS.general.bulkShareDuration,
+    },
     privacy: {
       enableAnalytics: parsed.privacy?.enableAnalytics ?? DEFAULT_SETTINGS.privacy.enableAnalytics,
     },
