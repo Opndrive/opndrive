@@ -29,6 +29,11 @@ interface SuggestedFoldersProps {
    */
   title?: string;
   /**
+   * A line beside the title, saying what the suggestions were drawn from when
+   * that is not the whole folder.
+   */
+  note?: string;
+  /**
    * Rendered at the right of this section's heading.
    *
    * The layout toggle lives here in grid view. It used to sit in the file
@@ -52,6 +57,7 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
   className = '',
   hideTitle = false,
   title = 'Suggested Folders',
+  note,
   headerAction,
   onFilesDroppedToFolder,
 }) => {
@@ -84,43 +90,46 @@ export const SuggestedFolders: React.FC<SuggestedFoldersProps> = ({
           is a heading, so the toggle sits at the same y in both layouts. */}
       {!hideTitle && (
         <div className="flex min-h-9 items-center justify-between mb-3">
-          <AriaLabel
-            label={`${isExpanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} section`}
-            position="top"
-          >
-            <button
-              className="
+          <div className="flex min-w-0 items-center gap-2">
+            <AriaLabel
+              label={`${isExpanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} section`}
+              position="top"
+            >
+              <button
+                className="
               flex items-center cursor-pointer gap-2  p-2
               text-sm font-medium text-foreground
               hover:bg-secondary/80 rounded-lg
               transition-all duration-200
             "
-              onClick={toggleExpanded}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className={`transition-transform duration-200 ${
-                    isExpanded ? 'rotate-90' : 'rotate-0'
-                  }`}
-                >
-                  <svg
-                    className="w-4 h-4 text-muted-foreground"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                onClick={toggleExpanded}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`transition-transform duration-200 ${
+                      isExpanded ? 'rotate-90' : 'rotate-0'
+                    }`}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
+                    <svg
+                      className="w-4 h-4 text-muted-foreground"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </div>
+                  <span className="text-muted-foreground">{title}</span>
                 </div>
-                <span className="text-muted-foreground">{title}</span>
-              </div>
-            </button>
-          </AriaLabel>
+              </button>
+            </AriaLabel>
+            {note ? <span className="truncate text-xs text-muted-foreground">{note}</span> : null}
+          </div>
 
           {headerAction}
         </div>

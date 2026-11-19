@@ -31,6 +31,11 @@ interface SuggestedFilesProps {
    */
   title?: string;
   /**
+   * A line beside the title, saying what the suggestions were drawn from when
+   * that is not the whole folder.
+   */
+  note?: string;
+  /**
    * Leave the layout toggle to whichever section leads the page.
    *
    * This table owned it in both layouts, and in grid it is the second section,
@@ -52,6 +57,7 @@ export function SuggestedFiles({
   hideTitle = false,
   onFilesDropped,
   title = 'Suggested files',
+  note,
   hideLayoutToggle = false,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
@@ -146,34 +152,37 @@ export function SuggestedFiles({
           heading, so the layout toggle sits at the same y in both layouts. */}
       {!hideTitle ? (
         <div className="flex min-h-9 items-center justify-between mb-3">
-          <AriaLabel label={`${title} - Click to expand/collapse`} position="top">
-            <button
-              className="
+          <div className="flex min-w-0 items-center gap-2">
+            <AriaLabel label={`${title} - Click to expand/collapse`} position="top">
+              <button
+                className="
                 flex items-center cursor-pointer gap-2 p-2
                 text-sm font-medium text-foreground
                 hover:bg-secondary/80 rounded-lg
                 transition-colors duration-200
               "
-              onClick={toggleExpanded}
-              aria-expanded={isExpanded}
-              aria-controls="suggested-files-content"
-            >
-              <svg
-                className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+                onClick={toggleExpanded}
+                aria-expanded={isExpanded}
+                aria-controls="suggested-files-content"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-              {title}
-            </button>
-          </AriaLabel>
+                <svg
+                  className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+                {title}
+              </button>
+            </AriaLabel>
+            {note ? <span className="truncate text-xs text-muted-foreground">{note}</span> : null}
+          </div>
 
           {isExpanded && !hideLayoutToggle ? <LayoutToggle /> : null}
         </div>

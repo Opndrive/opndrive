@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileIconLarge } from '@/shared/components/icons/file-icons';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { forgetThumbnailUrl, thumbnailUrlFor } from '@/services/thumbnail-urls';
@@ -11,6 +11,8 @@ import {
 } from '@/config/file-extensions';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { PreviewLoading } from '@/components/file-preview/preview-loading';
+import { useOnScreen } from '@/hooks/use-on-screen';
+import { requestImageSlot } from '@/services/image-slots';
 
 interface FileThumbnailWithImageProps {
   extension: FileExtension;
@@ -45,6 +47,14 @@ async function freshThumbnailUrl(
 /**
  * A grid tile's picture: the image itself when it is small enough to fetch
  * for a tile, its file icon otherwise.
+ *
+ * Only for a tile on screen, and only a few at a time. A virtualized grid
+ * draws cards a few rows beyond what is visible, and a fling across a big
+ * folder draws and drops a screenful at a time; fetching for every card drawn
+ * spent the connection on images nobody saw. So the image waits until the
+ * tile is actually visible and a loading slot is free, and a tile that leaves
+ * the screen before its image arrives gives the slot back and stops the
+ * download. One that has its image keeps it.
  */
 export function FileThumbnailWithImage({
   extension,
@@ -76,11 +86,19 @@ export function FileThumbnailWithImage({
   // error handler reads it, and nothing on screen depends on it.
   const renewedFor = useRef<string | null>(null);
 
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const onScreen = useOnScreen(box);
+  // The URL whose image has finished loading here, so it stays shown when the
+  // tile is scrolled off and back, with nothing left to fetch.
+  const [shown, setShown] = useState<string | null>(null);
+  // The URL that holds a loading slot.
+  const [slotFor, setSlotFor] = useState<string | null>(null);
+
   // Above the early returns below, so this component calls the same hooks on
   // every render. It used to sit after them, which changed the hook count the
   // moment authentication finished.
   useEffect(() => {
-    if (!apiS3 || !wantsImage || !key) return;
+    if (!apiS3 || !wantsImage || !key || !onScreen) return;
 
     let cancelled = false;
     thumbnailUrlFor(apiS3, { key, version }).then(
@@ -95,7 +113,38 @@ export function FileThumbnailWithImage({
     return () => {
       cancelled = true;
     };
-  }, [apiS3, wantsImage, key, version, objectId]);
+  }, [apiS3, wantsImage, key, version, objectId, onScreen]);
+
+  const signed = wantsImage && loaded?.objectId === objectId ? loaded.url : null;
+  const usable = signed && signed !== failedUrl ? signed : null;
+  const done = usable !== null && shown === usable;
+
+  /**
+   * A slot while the image is wanted and not yet loaded: on screen, with a URL.
+   * Losing either - scrolled away, unmounted, loaded, failed - gives it back,
+   * or leaves the queue if it never got one.
+   */
+  const wantsSlot = usable !== null && !done && onScreen;
+  useEffect(() => {
+    if (!wantsSlot || !usable) return;
+    const release = requestImageSlot(() => setSlotFor(usable));
+    return () => {
+      release();
+      setSlotFor((current) => (current === usable ? null : current));
+    };
+  }, [wantsSlot, usable]);
+
+  /**
+   * Stops a download the tile no longer wants. An `<img>` taken out of the DOM
+   * mid-download goes on downloading; clearing its `src` first is what stops
+   * the request.
+   */
+  const image = useRef<HTMLImageElement | null>(null);
+  const setImage = useCallback((element: HTMLImageElement | null) => {
+    const previous = image.current;
+    if (!element && previous && !previous.complete) previous.removeAttribute('src');
+    image.current = element;
+  }, []);
 
   /**
    * The image would not load. The icon stands in, and the first time, a fresh
@@ -131,30 +180,29 @@ export function FileThumbnailWithImage({
     return null;
   }
 
-  const url = wantsImage && loaded?.objectId === objectId ? loaded.url : null;
+  // The image once it has loaded, or while it holds a slot to load; the icon
+  // otherwise. One box either way, so the tile is observed as one element.
+  const url = usable !== null && (done || slotFor === usable) ? usable : null;
 
-  if (url && url !== failedUrl) {
-    return (
-      <div
-        className={`${className} ${getFileBackground(extension)} border-b border-border/50 overflow-hidden relative`}
-      >
+  return (
+    <div
+      ref={setBox}
+      className={`${className} ${getFileBackground(extension)} relative flex items-center justify-center overflow-hidden border-b border-border/50`}
+    >
+      {url ? (
         <img
+          ref={setImage}
           src={url}
           alt={name}
           className="w-full h-full object-cover"
+          onLoad={() => setShown(url)}
           onError={() => handleImageError(url)}
           loading="lazy"
           decoding="async"
         />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`${className} ${getFileBackground(extension)} flex items-center justify-center border-b border-border/50`}
-    >
-      <FileIconLarge extension={extension} filename={filename} className="h-16 w-16" />
+      ) : (
+        <FileIconLarge extension={extension} filename={filename} className="h-16 w-16" />
+      )}
     </div>
   );
 }
