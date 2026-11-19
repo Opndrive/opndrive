@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { DeleteRecoveryBanner } from './delete-recovery-banner';
 import { useDriveStore } from '@/context/data-context';
+import { listingOf } from '@/context/folder-listing';
+import type { Folder } from '@/features/dashboard/types/folder';
 import {
   useDeleteRecoveryStore,
   type InterruptedDelete,
@@ -81,22 +83,19 @@ function standingIn(prefix: string) {
   useDriveStore.setState({
     rootPrefix: '/',
     currentPrefix: prefix,
-    cache: {
-      '/': {
+    listings: {
+      '/': listingOf({
         folders: [
           {
             Prefix: 'docs/',
             id: 'docs/',
             name: 'docs',
             location: { type: 'my-drive', label: 'My Drive' },
-          },
+          } as Folder,
         ],
-        files: [],
-        isTruncated: false,
-      },
-      [prefix]: { folders: [], files: [], isTruncated: false },
+      }),
+      [prefix]: listingOf({}),
     },
-    directory: { '/': { status: 'ready' }, [prefix]: { status: 'ready' } },
   });
 }
 
@@ -342,7 +341,7 @@ describe('dismissing', () => {
     await click('Dismiss');
 
     expect(routerReplace).not.toHaveBeenCalled();
-    expect(useDriveStore.getState().cache['docs/2024/']).toBeDefined();
+    expect(useDriveStore.getState().listings['docs/2024/']).toBeDefined();
   });
 });
 
@@ -374,8 +373,8 @@ describe('recovering from inside the folder', () => {
     await click(/Check what is left/);
     await click(/Delete 2 items/);
 
-    await waitFor(() => expect(useDriveStore.getState().cache['docs/2024/']).toBeUndefined());
-    expect(useDriveStore.getState().cache['/'].folders).toEqual([]);
+    await waitFor(() => expect(useDriveStore.getState().listings['docs/2024/']).toBeUndefined());
+    expect(useDriveStore.getState().listings['/'].folders).toEqual([]);
   });
 
   it('cleans up even when the delete had already gone through', async () => {
@@ -387,7 +386,7 @@ describe('recovering from inside the folder', () => {
     await click(/Check what is left/);
 
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/dashboard'));
-    expect(useDriveStore.getState().cache['/'].folders).toEqual([]);
+    expect(useDriveStore.getState().listings['/'].folders).toEqual([]);
   });
 
   // Records are read back from localStorage, so a prefix can be anything
@@ -396,21 +395,18 @@ describe('recovering from inside the folder', () => {
     useDriveStore.setState({
       rootPrefix: '/',
       currentPrefix: '/',
-      cache: {
-        '/': {
+      listings: {
+        '/': listingOf({
           folders: [
             {
               Prefix: 'docs/',
               id: 'docs/',
               name: 'docs',
               location: { type: 'my-drive', label: 'My Drive' },
-            },
+            } as Folder,
           ],
-          files: [],
-          isTruncated: false,
-        },
+        }),
       },
-      directory: { '/': { status: 'ready' } },
     });
     listFromPrefix.mockResolvedValue(['a.txt']);
     render(<DeleteRecoveryBanner />);
@@ -420,7 +416,7 @@ describe('recovering from inside the folder', () => {
 
     await waitFor(() => expect(batchDeleteByKeys).toHaveBeenCalled());
     expect(routerReplace).not.toHaveBeenCalled();
-    expect(useDriveStore.getState().cache['/'].folders).toHaveLength(1);
+    expect(useDriveStore.getState().listings['/'].folders).toHaveLength(1);
   });
 
   it('stays put when the delete fails, since the folder is still there', async () => {
@@ -435,6 +431,6 @@ describe('recovering from inside the folder', () => {
 
     await waitFor(() => expect(batchDeleteByKeys).toHaveBeenCalled());
     expect(routerReplace).not.toHaveBeenCalled();
-    expect(useDriveStore.getState().cache['docs/2024/']).toBeDefined();
+    expect(useDriveStore.getState().listings['docs/2024/']).toBeDefined();
   });
 });

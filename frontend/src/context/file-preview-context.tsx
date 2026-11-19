@@ -170,7 +170,7 @@ export function FilePreviewProvider({ children, config = {} }: FilePreviewProvid
   // unrelated change in the drive store.
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
   const folderFiles = useDriveStore((state) =>
-    state.currentPrefix ? state.cache[state.currentPrefix]?.files : undefined
+    state.currentPrefix ? state.listings[state.currentPrefix]?.files : undefined
   );
 
   /**

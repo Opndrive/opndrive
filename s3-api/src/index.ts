@@ -97,7 +97,8 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
   async fetchDirectoryStructure(
     prefix: string | undefined | null,
     maxKeys: number = 50,
-    token?: string
+    token?: string,
+    options: { signal?: AbortSignal } = {}
   ): Promise<DirectoryStructure> {
     const input: ListObjectsV2CommandInput = {
       Bucket: this.credentials.bucketName,
@@ -108,7 +109,9 @@ export class BYOS3ApiProvider extends BaseS3ApiProvider {
     };
 
     const command = new ListObjectsV2Command(input);
-    const response = await this.s3.send(command);
+    // `signal` lets a caller that no longer wants the page - the user left the
+    // folder - stop the request itself rather than only ignoring its answer.
+    const response = await this.s3.send(command, { abortSignal: options.signal });
 
     return {
       files: response.Contents ?? [],

@@ -3,6 +3,7 @@ import { useContext, type ContextType } from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { AuthContext, AuthProvider } from './auth-context';
 import { useDriveStore } from './data-context';
+import { listingOf } from './folder-listing';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
@@ -772,15 +773,11 @@ describe('switching bucket rebuilds the session around a new provider', () => {
     await renderSessionOnBucketA();
 
     useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
-    useDriveStore.getState().setPrefixData('foo/bar/', {
-      files: [],
-      folders: [],
-      isTruncated: false,
-    });
+    useDriveStore.setState({ listings: { 'foo/bar/': listingOf({}) } });
 
     s3.fetchDirectoryStructure.mockImplementation(async () => {
       seen.disposed = api.disposeUploadManager.mock.calls.length > 0;
-      seen.cached = Object.keys(useDriveStore.getState().cache).length;
+      seen.cached = Object.keys(useDriveStore.getState().listings).length;
       return { files: [], folders: [] };
     });
 
@@ -814,11 +811,7 @@ describe('switching bucket rebuilds the session around a new provider', () => {
     await renderSessionOnBucketA();
 
     useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
-    useDriveStore.getState().setPrefixData('foo/bar/', {
-      files: [],
-      folders: [],
-      isTruncated: false,
-    });
+    useDriveStore.setState({ listings: { 'foo/bar/': listingOf({}) } });
     useDriveStore.getState().setRootPrefix('foo/bar/');
 
     await act(async () => {
@@ -828,7 +821,7 @@ describe('switching bucket rebuilds the session around a new provider', () => {
     // Both hold object keys from bucket-a. Left behind, the dashboard shows
     // bucket-a's files under bucket-b's name until something refetches.
     expect(useSearchStore.getState().getCachedOrNull('payroll', '')).toBeNull();
-    expect(useDriveStore.getState().cache).toEqual({});
+    expect(useDriveStore.getState().listings).toEqual({});
     expect(useDriveStore.getState().rootPrefix).toBeNull();
   });
 
@@ -1029,11 +1022,7 @@ describe('a bucket switch that fails verification leaves the session alone', () 
 
   it('destroys none of the bucket-scoped state', async () => {
     useSearchStore.getState().setSearchResults('payroll', '', bucketAResults);
-    useDriveStore.getState().setPrefixData('foo/bar/', {
-      files: [],
-      folders: [],
-      isTruncated: false,
-    });
+    useDriveStore.setState({ listings: { 'foo/bar/': listingOf({}) } });
     const signal = useUploadStore.getState().startDeleteOperation('d1', {
       id: 'd1',
       name: 'd1.pdf',
@@ -1051,7 +1040,7 @@ describe('a bucket switch that fails verification leaves the session alone', () 
     });
 
     expect(useSearchStore.getState().getCachedOrNull('payroll', '')).not.toBeNull();
-    expect(Object.keys(useDriveStore.getState().cache)).toEqual(['foo/bar/']);
+    expect(Object.keys(useDriveStore.getState().listings)).toEqual(['foo/bar/']);
     expect(signal.aborted).toBe(false);
     expect(api.disposeUploadManager).not.toHaveBeenCalled();
     expect(api.disposeSignedUrlManager).not.toHaveBeenCalled();
