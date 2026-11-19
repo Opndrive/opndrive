@@ -571,25 +571,24 @@ describe('what the delete card says it is deleting', () => {
     expect(card().operationLabel).toBe('Deleting 2 files');
   });
 
-  it('treats a folder marker as a folder, however file-shaped it is', async () => {
+  /**
+   * A folder marker - a zero-byte object whose key ends in a slash - is a
+   * FileItem to the type system, so nothing but this check keeps one out.
+   * It used to get in, be counted in the label ("Deleting 1 file and 1
+   * folder"), and then not be deleted at all.
+   */
+  it('refuses a folder marker before touching anything', async () => {
     const { result } = renderHook(() => useDeleteOperations());
+
     await act(async () => {
-      await result.current.batchDelete([item('photos/', 'photos')]);
+      await expect(
+        result.current.batchDelete([item('docs/a.txt'), item('photos/', 'photos')])
+      ).rejects.toThrow(/files only/);
     });
 
-    // A zero-byte object whose key ends in a slash is a folder to anyone
-    // looking at it. The trailing slash is the only thing that says so.
-    expect(card().type).toBe('folder');
-  });
-
-  it('says mixed when the selection is both', async () => {
-    const { result } = renderHook(() => useDeleteOperations());
-    await act(async () => {
-      await result.current.batchDelete([item('docs/a.txt'), item('photos/', 'photos')]);
-    });
-
-    expect(card().type).toBe('mixed');
-    expect(card().operationLabel).toBe('Deleting 1 file and 1 folder');
+    // No card, and nothing sent to the bucket - not even the file beside it.
+    expect(Object.values(useUploadStore.getState().deletes)).toHaveLength(0);
+    expect(deleteBatch).not.toHaveBeenCalled();
   });
 });
 

@@ -63,6 +63,32 @@ describe('generateUniqueFileName', () => {
     await expect(generateUniqueFileName(api, 'README', '')).resolves.toBe('README (1)');
   });
 
+  it('treats a dotfile as all name, not an empty name with an extension', async () => {
+    // ".gitignore" split at its dot would number the empty part: " (1).gitignore".
+    const { api } = bucketHolding('.gitignore');
+
+    await expect(generateUniqueFileName(api, '.gitignore', '')).resolves.toBe('.gitignore (1)');
+  });
+
+  it('numbers a name that already carries a number, as a copy of that name', async () => {
+    // A copy of "report (1).pdf" is "report (1) (1).pdf". Reading the "(1)"
+    // as our own counter and moving to "(2)" would name it after a different
+    // file, which may well exist and mean something else.
+    const { api } = bucketHolding('report (1).pdf');
+
+    await expect(generateUniqueFileName(api, 'report (1).pdf', '')).resolves.toBe(
+      'report (1) (1).pdf'
+    );
+  });
+
+  it('numbers only the last extension of a name with several dots', async () => {
+    const { api } = bucketHolding('backup.2024.zip');
+
+    await expect(generateUniqueFileName(api, 'backup.2024.zip', '')).resolves.toBe(
+      'backup.2024 (1).zip'
+    );
+  });
+
   it('throws when the original name could not be checked', async () => {
     const api = bucketThatCannotBeChecked(new Error('AccessDenied'));
 
