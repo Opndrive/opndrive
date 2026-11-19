@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useEffectEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
@@ -27,10 +27,12 @@ export const Notification: React.FC<NotificationProps> = ({
   const [isExiting, setIsExiting] = useState(false);
   const [progress, setProgress] = useState(100);
 
-  // An effect event, so the timer below runs once per duration and still
-  // calls the latest onClose, rather than restarting whenever the parent
-  // hands down a new callback.
-  const closeWhenDue = useEffectEvent(() => handleClose());
+  // The latest close handler, read by the timer below when it fires. The timer
+  // runs once per duration rather than restarting whenever the parent hands
+  // down a new onClose. A ref, not useEffectEvent: the React that Next.js
+  // bundles has no useEffectEvent, so in a production build it is undefined and
+  // every notification threw the moment it rendered.
+  const closeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const progressInterval = setInterval(() => {
@@ -41,7 +43,7 @@ export const Notification: React.FC<NotificationProps> = ({
     }, 50);
 
     const timer = setTimeout(() => {
-      closeWhenDue();
+      closeRef.current();
     }, duration);
 
     return () => {
@@ -56,6 +58,10 @@ export const Notification: React.FC<NotificationProps> = ({
       onClose?.(id);
     }, 300); // Match animation duration
   };
+
+  useEffect(() => {
+    closeRef.current = handleClose;
+  });
 
   // Simplified icons object
   const icons = {
