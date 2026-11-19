@@ -124,8 +124,9 @@ export default function TermsOfServicePage() {
 
       <LegalSection id="termination" heading="7. Ending your use">
         <p>
-          Stop whenever you like. Using Disconnect removes your credentials from your browser, and
-          since we hold no account there is nothing else to close.
+          Stop whenever you like. Using Clear Session removes your credentials, and every saved
+          connection, from your browser, and since we hold no account there is nothing else to
+          close.
         </p>
         <p>
           We may block access to the hosted service where it is being used to attack our

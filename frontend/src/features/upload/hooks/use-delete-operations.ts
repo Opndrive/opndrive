@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { useDriveStore, type Revert } from '@/context/data-context';
 import { SESSION_ENDED, useUploadStore } from '../stores/use-upload-store';
 import { useDeleteRecoveryStore } from '../stores/use-delete-recovery-store';
+import { accountKey } from '@/lib/connections/connections';
 import { useNotification } from '@/context/notification-context';
 import { useDeletedFolderCleanup } from './use-deleted-folder-cleanup';
 import { deleteListedKeys } from '../utils/delete-listed-keys';
@@ -220,7 +221,7 @@ function describeItems(names: string[]): string | undefined {
 }
 
 export function useDeleteOperations() {
-  const { apiS3 } = useAuthGuard();
+  const { apiS3, userCreds } = useAuthGuard();
   const refreshCurrentData = useDriveStore((state) => state.refreshCurrentData);
   const removeFiles = useDriveStore((state) => state.removeFiles);
   const { error: errorFunction } = useNotification();
@@ -376,6 +377,9 @@ export function useDeleteOperations() {
             recordStarted({
               id: itemId,
               bucket: apiS3.getBucketName(),
+              // The account too: the same bucket name in another saved
+              // connection must never be offered this recovery.
+              account: userCreds ? accountKey(userCreds) : undefined,
               prefix: normalizedKey,
               name: folder.name,
               totalItems: listed,
@@ -456,6 +460,7 @@ export function useDeleteOperations() {
     },
     [
       apiS3,
+      userCreds,
       refreshCurrentData,
       errorFunction,
       startDeleteOperation,

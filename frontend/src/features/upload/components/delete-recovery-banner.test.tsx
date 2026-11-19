@@ -22,10 +22,22 @@ const notifySuccess = vi.fn();
 const notifyError = vi.fn();
 const routerReplace = vi.fn();
 let currentBucket = 'bucket-a';
+let currentEndpoint = 'https://minio-1.local';
+
+/** What `accountKey` makes of the session below. */
+const ACCOUNT = 'https://minio-1.local|KEY_A';
 
 vi.mock('@/hooks/use-auth-guard', () => ({
   useAuthGuard: () => ({
     apiS3: { listFromPrefix, getBucketName: () => currentBucket },
+    userCreds: {
+      accessKeyId: 'KEY_A',
+      secretAccessKey: 'secret',
+      region: 'us-east-1',
+      bucketName: currentBucket,
+      prefix: '',
+      endpoint: currentEndpoint,
+    },
   }),
 }));
 
@@ -51,6 +63,7 @@ function seed(overrides: Partial<InterruptedDelete> = {}) {
   const record: InterruptedDelete = {
     id: 'op-1',
     bucket: 'bucket-a',
+    account: ACCOUNT,
     prefix: 'docs/',
     name: 'docs',
     totalItems: 12,
@@ -96,6 +109,7 @@ async function click(name: string | RegExp) {
 
 beforeEach(() => {
   currentBucket = 'bucket-a';
+  currentEndpoint = 'https://minio-1.local';
   useDeleteRecoveryStore.setState({ records: {} });
   listFromPrefix.mockReset();
   batchDeleteByKeys.mockReset().mockResolvedValue(undefined);
@@ -134,6 +148,26 @@ describe('what it shows', () => {
 
   it('stays hidden for a record belonging to another bucket', () => {
     seed({ bucket: 'bucket-b' });
+    render(<DeleteRecoveryBanner />);
+
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  /**
+   * Two saved connections can both hold a bucket called "bucket-a". The banner
+   * deletes on a click, so offering one account's record in the other would
+   * delete files nobody asked to delete.
+   */
+  it('stays hidden in a same-named bucket of another account', () => {
+    seed();
+    currentEndpoint = 'https://minio-2.local';
+    render(<DeleteRecoveryBanner />);
+
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('stays hidden for a record that predates accounts being recorded', () => {
+    seed({ account: undefined });
     render(<DeleteRecoveryBanner />);
 
     expect(screen.queryByRole('status')).toBeNull();
@@ -237,6 +271,7 @@ describe('switching bucket mid flow', () => {
         'op-a': {
           id: 'op-a',
           bucket: 'bucket-a',
+          account: ACCOUNT,
           prefix: 'docs/',
           name: 'docs',
           totalItems: 3,
@@ -245,6 +280,7 @@ describe('switching bucket mid flow', () => {
         'op-b': {
           id: 'op-b',
           bucket: 'bucket-b',
+          account: ACCOUNT,
           prefix: 'photos/',
           name: 'photos',
           totalItems: 5,

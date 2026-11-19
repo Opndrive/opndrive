@@ -6,6 +6,7 @@ import { useDriveStore } from './data-context';
 import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { useUploadStore } from '@/features/upload/stores/use-upload-store';
 import { useUploadQueueStore } from '@/features/upload/stores/use-upload-queue-store';
+import { useDeleteRecoveryStore } from '@/features/upload/stores/use-delete-recovery-store';
 import type { Credentials, SearchResult } from '@opndrive/s3-api';
 
 /**
@@ -872,6 +873,24 @@ describe('switching bucket rebuilds the session around a new provider', () => {
     expect(pushMock).toHaveBeenCalledWith('/dashboard');
   });
 
+  /**
+   * The dashboard remounts behind the loading gate on a switch, notifications
+   * with it, so the switcher cannot announce the result itself. The provider's
+   * own live region is outside the gate and survives.
+   */
+  it('tells a screen reader which bucket it is on now', async () => {
+    await renderSessionOnBucketA();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-b', 'eu-west-1');
+    });
+
+    const status = screen
+      .getAllByRole('status')
+      .find((element) => element.textContent?.includes('bucket-b'));
+    expect(status?.textContent).toBe('Switched to bucket bucket-b.');
+  });
+
   it('does nothing when the bucket picked is the one already open', async () => {
     const before = await renderSessionOnBucketA();
 
@@ -1242,13 +1261,14 @@ describe('a bucket switch cleans up after itself whatever happens', () => {
 
     await act(async () => {
       first = auth!.switchBucket('bucket-b');
-      second = await auth!.switchBucket('bucket-c').catch((error: unknown) => error);
+      second = await auth!.switchBucket('bucket-c');
       release();
       await first;
     });
 
-    expect(second).toBeInstanceOf(Error);
-    expect((second as Error).message).toMatch(/already in progress/);
+    // An answer, not an error: the switchers are disabled while one runs, so
+    // only a caller that raced that gets here, and there is nothing to report.
+    expect(second).toEqual({ status: 'busy' });
     // The loser never got as far as building anything: no provider, no
     // teardown, nothing of bucket-c anywhere.
     expect(api.created.some((creds) => creds.bucketName === 'bucket-c')).toBe(false);
@@ -1653,5 +1673,772 @@ describe('loading the app clears upload state an earlier version left behind', (
       '{"state":{"uploadMode":"signed-url"}}'
     );
     expect(localStorage.getItem('upload:holiday.mp4:videos/holiday.mp4')).toBeNull();
+  });
+});
+
+/**
+ * Saved connections: the list in `s3_connections` beside the live session.
+ *
+ * `s3_user_session` stays the source of truth for the connection in use. These
+ * pin the rules that keep the two from drifting: the session is adopted into
+ * the list, the list follows bucket switches, and switching connection goes
+ * through the same verify-then-teardown path a bucket switch does.
+ */
+describe('saved connections', () => {
+  const CONNECTIONS_KEY = 's3_connections';
+
+  const ACCOUNT_A: Credentials = {
+    accessKeyId: 'AKIA_A',
+    secretAccessKey: 'secret-a',
+    region: 'us-east-1',
+    bucketName: 'bucket-a',
+    prefix: 'foo/',
+  };
+
+  const ACCOUNT_B: Credentials = {
+    accessKeyId: 'R2_B',
+    secretAccessKey: 'secret-b',
+    region: 'auto',
+    bucketName: 'media',
+    prefix: 'shots/',
+    endpoint: 'https://abc.r2.cloudflarestorage.com',
+  };
+
+  let auth: ContextType<typeof AuthContext> | null = null;
+
+  function AuthProbe() {
+    auth = useContext(AuthContext);
+    return <div>ready</div>;
+  }
+
+  type StoredConnection = {
+    id: string;
+    name: string;
+    provider: string;
+    authContext: Credentials;
+  };
+
+  /** The stored record: the list and the id of the entry in use. */
+  const savedRecord = () =>
+    JSON.parse(localStorage.getItem(CONNECTIONS_KEY) ?? '{"activeId":null,"connections":[]}') as {
+      activeId: string | null;
+      connections: StoredConnection[];
+    };
+
+  const saved = () => savedRecord().connections;
+
+  async function mount() {
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    api.disposeUploadManager.mockClear();
+    pushMock.mockClear();
+  }
+
+  /** A session on account A with account B already saved beside it. */
+  async function mountWithTwoConnections() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_A));
+    localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify({
+        activeId: 'a',
+        connections: [
+          { id: 'a', name: 'Personal', provider: 'aws-s3', authContext: ACCOUNT_A },
+          { id: 'b', name: 'Studio media', provider: 'cloudflare-r2', authContext: ACCOUNT_B },
+        ],
+      })
+    );
+    await mount();
+  }
+
+  beforeEach(() => {
+    auth = null;
+    route.current = '/dashboard';
+    pushMock.mockClear();
+    localStorage.clear();
+
+    api.created.length = 0;
+    api.disposeUploadManager.mockClear();
+    api.disposeSignedUrlManager.mockClear();
+
+    s3.fetchDirectoryStructure.mockReset();
+    s3.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+
+    useSearchStore.getState().clearCache();
+    useSearchStore.getState().setLoading(false);
+    useUploadStore.getState().clearSessionData();
+    useDriveStore.getState().clearAllData();
+    useDeleteRecoveryStore.setState({ records: {} });
+  });
+
+  it('adopts a session that predates the list, and records it as the one in use', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_B));
+    await mount();
+
+    expect(saved()).toHaveLength(1);
+    expect(saved()[0]).toMatchObject({
+      name: 'Cloudflare R2 - media',
+      provider: 'cloudflare-r2',
+      authContext: ACCOUNT_B,
+    });
+    expect(auth?.connections).toHaveLength(1);
+    expect(savedRecord().activeId).toBe(saved()[0]!.id);
+  });
+
+  it('reads the list the first version stored, a bare array', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_B));
+    localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify([
+        { id: 'a', name: 'Personal', provider: 'aws-s3', authContext: ACCOUNT_A },
+        { id: 'b', name: 'Studio media', provider: 'cloudflare-r2', authContext: ACCOUNT_B },
+      ])
+    );
+    await mount();
+
+    expect(auth?.activeConnectionId).toBe('b');
+    expect(savedRecord()).toMatchObject({ activeId: 'b' });
+    expect(saved().map((c) => c.name)).toEqual(['Personal', 'Studio media']);
+  });
+
+  /**
+   * Two entries can hold exactly the same credentials (the same keys added
+   * twice, or one switched onto the other's bucket). Matching credentials on a
+   * reload picked the first every time, so the name in the switcher changed
+   * under the user. The id recorded with the list decides instead.
+   */
+  it('marks the entry recorded as active after a reload, even when another matches too', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_A));
+    localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify({
+        activeId: 'second',
+        connections: [
+          { id: 'first', name: 'Personal', provider: 'aws-s3', authContext: ACCOUNT_A },
+          { id: 'second', name: 'Personal again', provider: 'aws-s3', authContext: ACCOUNT_A },
+        ],
+      })
+    );
+    await mount();
+
+    expect(auth?.activeConnectionId).toBe('second');
+  });
+
+  it('keeps every saved connection when the stored session will not load', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    localStorage.setItem(STORAGE_KEY, '{"accessKeyId": 42}');
+    localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify({
+        activeId: 'a',
+        connections: [
+          { id: 'a', name: 'Personal', provider: 'aws-s3', authContext: ACCOUNT_A },
+          { id: 'b', name: 'Studio media', provider: 'cloudflare-r2', authContext: ACCOUNT_B },
+        ],
+      })
+    );
+    await mount();
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(saved().map((c) => c.id)).toEqual(['a', 'b']);
+    expect(savedRecord().activeId).toBeNull();
+    expect(auth?.connections.map((c) => c.id)).toEqual(['a', 'b']);
+  });
+
+  it('exposes the list even when there is no live session', async () => {
+    localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify([{ id: 'a', name: 'Personal', provider: 'aws-s3', authContext: ACCOUNT_A }])
+    );
+    await mount();
+
+    expect(auth?.userCreds).toBeNull();
+    expect(auth?.connections.map((c) => c.name)).toEqual(['Personal']);
+  });
+
+  it('saves a connection under its alias when a session is created', async () => {
+    await mount();
+
+    await act(async () => {
+      await auth!.createSession(ACCOUNT_B, { name: 'Studio media', provider: 'cloudflare-r2' });
+    });
+
+    expect(saved()).toHaveLength(1);
+    expect(saved()[0]).toMatchObject({
+      name: 'Studio media',
+      provider: 'cloudflare-r2',
+      authContext: ACCOUNT_B,
+    });
+    // The session itself is stored in its own, unchanged shape.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(ACCOUNT_B);
+  });
+
+  it('adds to the list rather than replacing it', async () => {
+    await mountWithTwoConnections();
+
+    await act(async () => {
+      await auth!.createSession(
+        { ...ACCOUNT_A, accessKeyId: 'AKIA_C', bucketName: 'bucket-c' },
+        { provider: 'aws-s3' }
+      );
+    });
+
+    expect(saved()).toHaveLength(3);
+    expect(auth?.userCreds?.accessKeyId).toBe('AKIA_C');
+  });
+
+  it('does not save credentials that were rejected', async () => {
+    await mount();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    s3.fetchDirectoryStructure.mockRejectedValue(
+      Object.assign(new Error('AccessDenied'), { name: 'AccessDenied' })
+    );
+
+    await act(async () => {
+      await expect(auth!.createSession(ACCOUNT_B, { name: 'Nope' })).rejects.toBeDefined();
+    });
+
+    expect(saved()).toEqual([]);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps the saved copy on the bucket the session switches to', async () => {
+    await mountWithTwoConnections();
+
+    await act(async () => {
+      await auth!.switchBucket('bucket-z', 'eu-west-1');
+    });
+
+    expect(saved().find((c) => c.id === 'a')?.authContext).toMatchObject({
+      bucketName: 'bucket-z',
+      region: 'eu-west-1',
+    });
+    // The other account is untouched.
+    expect(saved().find((c) => c.id === 'b')?.authContext).toEqual(ACCOUNT_B);
+  });
+
+  describe('switchConnection', () => {
+    it('builds a provider from the saved credentials, bucket and prefix included', async () => {
+      await mountWithTwoConnections();
+
+      let result: unknown;
+      await act(async () => {
+        result = await auth!.switchConnection('b');
+      });
+
+      expect(result).toEqual({ status: 'switched', connectionId: 'b' });
+      expect(api.created[api.created.length - 1]).toEqual(ACCOUNT_B);
+      expect(auth?.userCreds).toEqual(ACCOUNT_B);
+    });
+
+    it('makes the switched-to account the persisted session and opens the dashboard', async () => {
+      await mountWithTwoConnections();
+
+      await act(async () => {
+        await auth!.switchConnection('b');
+      });
+
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(ACCOUNT_B);
+      expect(pushMock).toHaveBeenCalledWith('/dashboard');
+    });
+
+    it('tells a screen reader which connection it is on now', async () => {
+      await mountWithTwoConnections();
+
+      await act(async () => {
+        await auth!.switchConnection('b');
+      });
+
+      expect(screen.getByRole('status').textContent).toBe('Switched to Studio media.');
+    });
+
+    it('tears the old session down and rebuilds the managers', async () => {
+      await mountWithTwoConnections();
+      const before = auth?.uploadManager;
+
+      await act(async () => {
+        await auth!.switchConnection('b');
+      });
+
+      expect(api.disposeUploadManager).toHaveBeenCalled();
+      expect(auth?.uploadManager).not.toBe(before);
+    });
+
+    it('leaves everything as it was when the connection no longer works', async () => {
+      await mountWithTwoConnections();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      s3.fetchDirectoryStructure.mockRejectedValue(
+        Object.assign(new Error('AccessDenied'), {
+          name: 'AccessDenied',
+          $metadata: { httpStatusCode: 403 },
+        })
+      );
+
+      await act(async () => {
+        await expect(auth!.switchConnection('b')).rejects.toMatchObject({
+          name: 'ConnectionFailureError',
+        });
+      });
+
+      expect(auth?.userCreds).toEqual(ACCOUNT_A);
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(ACCOUNT_A);
+      expect(api.disposeUploadManager).not.toHaveBeenCalled();
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(saved()).toHaveLength(2);
+    });
+
+    it('does nothing when the connection is the one already in use', async () => {
+      await mountWithTwoConnections();
+      const providers = api.created.length;
+
+      let result: unknown;
+      await act(async () => {
+        result = await auth!.switchConnection('a');
+      });
+
+      expect(result).toEqual({ status: 'unchanged', connectionId: 'a' });
+      expect(api.created.length).toBe(providers);
+      expect(api.disposeUploadManager).not.toHaveBeenCalled();
+    });
+
+    it('asks before throwing away work in progress, and goes ahead once told to', async () => {
+      await mountWithTwoConnections();
+      useUploadStore.getState().addUpload('u1', {
+        id: 'u1',
+        name: 'holiday.mov',
+        status: 'uploading',
+        progress: 12,
+        type: 'file',
+      });
+
+      let result: unknown;
+      await act(async () => {
+        result = await auth!.switchConnection('b');
+      });
+
+      expect(result).toEqual({ status: 'blocked', activeWork: { uploads: 1, deletes: 0 } });
+      expect(auth?.userCreds).toEqual(ACCOUNT_A);
+
+      await act(async () => {
+        result = await auth!.switchConnection('b', { discardActiveWork: true });
+      });
+
+      expect(result).toEqual({ status: 'switched', connectionId: 'b' });
+      expect(auth?.userCreds).toEqual(ACCOUNT_B);
+    });
+
+    it('rejects a connection that is not in the list', async () => {
+      await mountWithTwoConnections();
+
+      await expect(auth!.switchConnection('missing')).rejects.toThrow(/no longer saved/);
+    });
+  });
+
+  describe('removeConnection', () => {
+    it('forgets a connection that is not in use', async () => {
+      await mountWithTwoConnections();
+
+      act(() => auth!.removeConnection('b'));
+
+      expect(auth?.connections.map((c) => c.id)).toEqual(['a']);
+      expect(saved().map((c) => c.id)).toEqual(['a']);
+      // Deleting one saved connection is not a reason to touch the live session.
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(ACCOUNT_A);
+    });
+
+    it('refuses to remove the connection in use', async () => {
+      await mountWithTwoConnections();
+
+      expect(() => auth!.removeConnection('a')).toThrow(/in use/);
+      expect(saved()).toHaveLength(2);
+    });
+
+    it('ignores an id that is not there', async () => {
+      await mountWithTwoConnections();
+
+      act(() => auth!.removeConnection('missing'));
+
+      expect(saved()).toHaveLength(2);
+    });
+
+    /**
+     * The stored session belongs to whichever tab switched last. Deleting the
+     * entry it is on from another tab would only see the session adopted back
+     * on the next load, under a made-up name.
+     */
+    it('refuses to remove the connection another tab is on', async () => {
+      await mountWithTwoConnections();
+      localStorage.setItem(CONNECTIONS_KEY, JSON.stringify({ ...savedRecord(), activeId: 'b' }));
+
+      expect(() => auth!.removeConnection('b')).toThrow(/another tab/);
+      expect(saved()).toHaveLength(2);
+    });
+  });
+
+  describe('more than one tab', () => {
+    const ACCOUNT_C: Credentials = { ...ACCOUNT_A, accessKeyId: 'AKIA_C', bucketName: 'c' };
+    const third = { id: 'c', name: 'Third', provider: 'aws-s3', authContext: ACCOUNT_C };
+
+    it('shows a connection another tab added', async () => {
+      await mountWithTwoConnections();
+
+      const value = JSON.stringify({ ...savedRecord(), connections: [...saved(), third] });
+      localStorage.setItem(CONNECTIONS_KEY, value);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', { key: CONNECTIONS_KEY, newValue: value })
+        );
+      });
+
+      expect(auth?.connections.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+      // Which connection this tab is on is its own.
+      expect(auth?.activeConnectionId).toBe('a');
+    });
+
+    /**
+     * Every write used to start from this tab's copy of the list, so a tab
+     * opened earlier wiped out whatever another tab had added since.
+     */
+    it('does not overwrite what another tab added when this one saves', async () => {
+      await mountWithTwoConnections();
+
+      // Written with no event: this tab's copy is now out of date.
+      localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify({ ...savedRecord(), connections: [...saved(), third] })
+      );
+
+      await act(async () => {
+        await auth!.switchBucket('bucket-z');
+      });
+
+      expect(saved().map((c) => c.id)).toEqual(['a', 'b', 'c']);
+      expect(saved().find((c) => c.id === 'a')!.authContext.bucketName).toBe('bucket-z');
+    });
+
+    it('switches to a connection where another tab last left it', async () => {
+      await mountWithTwoConnections();
+      const moved = { ...ACCOUNT_B, bucketName: 'media-archive', prefix: '' };
+
+      // Another tab moved connection b to another bucket, and this tab was not told.
+      localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify({
+          ...savedRecord(),
+          connections: saved().map((c) => (c.id === 'b' ? { ...c, authContext: moved } : c)),
+        })
+      );
+
+      await act(async () => {
+        await auth!.switchConnection('b');
+      });
+
+      expect(auth?.userCreds).toEqual(moved);
+    });
+  });
+
+  describe('createSession while another account is live', () => {
+    function startUpload() {
+      useUploadStore.getState().addUpload('u1', {
+        id: 'u1',
+        name: 'holiday.mov',
+        status: 'uploading',
+        progress: 12,
+        type: 'file',
+      });
+    }
+
+    it('asks before cancelling running uploads, and touches nothing until told', async () => {
+      await mountWithTwoConnections();
+      startUpload();
+
+      let result: unknown;
+      await act(async () => {
+        result = await auth!.createSession(ACCOUNT_B, { name: 'Again' });
+      });
+
+      expect(result).toEqual({ status: 'blocked', activeWork: { uploads: 1, deletes: 0 } });
+      expect(auth?.userCreds).toEqual(ACCOUNT_A);
+      expect(saved()).toHaveLength(2);
+      expect(api.disposeUploadManager).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead once cancelling has been authorised', async () => {
+      await mountWithTwoConnections();
+      startUpload();
+
+      let result: { status: string; connectionId?: string } | undefined;
+      await act(async () => {
+        result = await auth!.createSession(
+          ACCOUNT_B,
+          { name: 'Again' },
+          { discardActiveWork: true }
+        );
+      });
+
+      expect(result?.status).toBe('created');
+      expect(auth?.userCreds).toEqual(ACCOUNT_B);
+      expect(auth?.activeConnectionId).toBe(result?.connectionId);
+      expect(saved()).toHaveLength(3);
+    });
+
+    it('does not ask when nothing is running', async () => {
+      await mountWithTwoConnections();
+
+      let result: { status: string } | undefined;
+      await act(async () => {
+        result = await auth!.createSession(ACCOUNT_B, { name: 'Again' });
+      });
+
+      expect(result?.status).toBe('created');
+    });
+
+    it('is turned away while a switch is still being verified', async () => {
+      await mountWithTwoConnections();
+
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      s3.fetchDirectoryStructure.mockImplementation(async () => {
+        await held;
+        return { files: [], folders: [] };
+      });
+
+      let created: unknown;
+      await act(async () => {
+        const switching = auth!.switchConnection('b');
+        created = await auth!.createSession(ACCOUNT_A, { name: 'Racing' });
+        release();
+        await switching;
+      });
+
+      expect(created).toEqual({ status: 'busy' });
+      expect(auth?.userCreds).toEqual(ACCOUNT_B);
+      expect(saved()).toHaveLength(2);
+    });
+  });
+
+  describe('signing out while a change is being verified', () => {
+    function holdVerification() {
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      s3.fetchDirectoryStructure.mockImplementation(async () => {
+        await held;
+        return { files: [], folders: [] };
+      });
+      return () => release();
+    }
+
+    /**
+     * Clear Session pressed during a slow switch used to be undone when the
+     * switch's verification came back: it rebuilt the session and wrote the
+     * keys back to storage.
+     */
+    it('keeps the user signed out once a slow switch comes back', async () => {
+      await mountWithTwoConnections();
+      const release = holdVerification();
+
+      let outcome: unknown;
+      await act(async () => {
+        const switching = auth!.switchConnection('b');
+        auth!.clearSession();
+        release();
+        outcome = await switching;
+      });
+      // Past the sign-out's loading gate, so the probe reads the context again.
+      await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+      expect(outcome).toEqual({ status: 'cancelled' });
+      expect(auth?.userCreds).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(CONNECTIONS_KEY)).toBeNull();
+    });
+
+    it('keeps the user signed out once a slow connect comes back', async () => {
+      await mountWithTwoConnections();
+      const release = holdVerification();
+
+      let outcome: unknown;
+      await act(async () => {
+        const connecting = auth!.createSession(ACCOUNT_B, { name: 'Late' });
+        auth!.clearSession();
+        release();
+        outcome = await connecting;
+      });
+
+      // The sign-out's loading gate is still up: the connect that lost must not
+      // lower it early and show the routes it was protecting.
+      expect(screen.queryByText('ready')).toBeNull();
+      await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+      expect(outcome).toEqual({ status: 'cancelled' });
+      expect(auth?.userCreds).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(CONNECTIONS_KEY)).toBeNull();
+    });
+  });
+
+  /**
+   * A switcher's handler can come from a render before another switch
+   * finished. A bucket switch built from that render's credentials would put
+   * the previous account's keys under the new connection's id.
+   */
+  it('builds a bucket switch from the session live now, not the one it was rendered with', async () => {
+    await mountWithTwoConnections();
+    const renderedEarlier = auth!.switchBucket;
+
+    await act(async () => {
+      await auth!.switchConnection('b');
+    });
+    await act(async () => {
+      await renderedEarlier('media-archive');
+    });
+
+    expect(auth?.userCreds).toMatchObject({
+      accessKeyId: ACCOUNT_B.accessKeyId,
+      endpoint: ACCOUNT_B.endpoint,
+      bucketName: 'media-archive',
+    });
+    expect(saved().find((c) => c.id === 'b')!.authContext.bucketName).toBe('media-archive');
+    expect(saved().find((c) => c.id === 'a')!.authContext).toEqual(ACCOUNT_A);
+  });
+
+  describe('the same keys on more than one bucket', () => {
+    const OTHER_BUCKET: Credentials = { ...ACCOUNT_A, bucketName: 'bucket-other', prefix: '' };
+
+    it('are separate connections, each kept beside the other', async () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_A));
+      await mount();
+
+      await act(async () => {
+        await auth!.createSession(OTHER_BUCKET, { name: 'Other bucket', provider: 'aws-s3' });
+      });
+
+      expect(saved().map((c) => c.authContext.bucketName)).toEqual(['bucket-a', 'bucket-other']);
+      expect(auth?.connections).toHaveLength(2);
+      expect(auth?.activeConnectionId).toBe(saved()[1]!.id);
+    });
+
+    it('keeps adding without ever dropping an earlier one', async () => {
+      await mount();
+
+      for (const bucket of ['one', 'two', 'three']) {
+        await act(async () => {
+          await auth!.createSession({ ...ACCOUNT_A, bucketName: bucket }, { name: bucket });
+        });
+      }
+
+      expect(saved().map((c) => c.name)).toEqual(['one', 'two', 'three']);
+    });
+
+    it('adds the exact same connection again as another entry', async () => {
+      await mount();
+
+      await act(async () => {
+        await auth!.createSession(ACCOUNT_A, { name: 'Personal' });
+      });
+      const firstId = auth?.activeConnectionId;
+
+      await act(async () => {
+        await auth!.createSession(ACCOUNT_A, { name: 'Personal again' });
+      });
+
+      expect(saved().map((c) => c.name)).toEqual(['Personal', 'Personal again']);
+      expect(saved()[0]!.id).toBe(firstId);
+      expect(auth?.activeConnectionId).toBe(saved()[1]!.id);
+      expect(auth?.activeConnectionId).not.toBe(firstId);
+    });
+
+    it('switch between each other, and the right one is marked active after a reload', async () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_A));
+      localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify([
+          { id: 'a', name: 'First', provider: 'aws-s3', authContext: ACCOUNT_A },
+          { id: 'c', name: 'Second', provider: 'aws-s3', authContext: OTHER_BUCKET },
+        ])
+      );
+      const { unmount } = render(
+        <AuthProvider>
+          <AuthProbe />
+        </AuthProvider>
+      );
+      await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+      expect(auth?.activeConnectionId).toBe('a');
+
+      await act(async () => {
+        await auth!.switchConnection('c');
+      });
+      expect(auth?.activeConnectionId).toBe('c');
+
+      unmount();
+      await mount();
+
+      expect(auth?.userCreds).toEqual(OTHER_BUCKET);
+      expect(auth?.activeConnectionId).toBe('c');
+      expect(saved()).toHaveLength(2);
+    });
+
+    it('records a bucket switch on the connection that made it and no other', async () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ACCOUNT_A));
+      localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify([
+          { id: 'a', name: 'First', provider: 'aws-s3', authContext: ACCOUNT_A },
+          { id: 'c', name: 'Second', provider: 'aws-s3', authContext: OTHER_BUCKET },
+        ])
+      );
+      await mount();
+
+      await act(async () => {
+        await auth!.switchBucket('bucket-z');
+      });
+
+      expect(saved().find((c) => c.id === 'a')!.authContext.bucketName).toBe('bucket-z');
+      expect(saved().find((c) => c.id === 'c')!.authContext).toEqual(OTHER_BUCKET);
+      expect(auth?.activeConnectionId).toBe('a');
+    });
+  });
+
+  /**
+   * Clear Session is how a shared machine is left clean. Forgetting only the
+   * connection in use kept every other account's secret in this browser, one
+   * click away for whoever connected next.
+   */
+  it('forgets every saved connection and its keys on Clear Session', async () => {
+    await mountWithTwoConnections();
+
+    act(() => auth!.clearSession());
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(CONNECTIONS_KEY)).toBeNull();
+    expect(auth?.connections).toEqual([]);
+    expect(auth?.activeConnectionId).toBeNull();
+  });
+
+  it('forgets interrupted deletes on Clear Session too', async () => {
+    await mountWithTwoConnections();
+    useDeleteRecoveryStore.getState().recordStarted({
+      id: 'op-1',
+      bucket: 'media',
+      account: 'https://abc.r2.cloudflarestorage.com|R2_B',
+      prefix: 'docs/',
+      name: 'docs',
+      totalItems: 3,
+      startedAt: 1,
+    });
+
+    act(() => auth!.clearSession());
+    await waitFor(() => expect(screen.getByText('ready')).toBeDefined());
+
+    expect(useDeleteRecoveryStore.getState().records).toEqual({});
   });
 });

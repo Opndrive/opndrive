@@ -10,9 +10,10 @@ import { useDeletedFolderCleanup } from '../hooks/use-deleted-folder-cleanup';
 import { markerLast } from '../utils/delete-key-order';
 import {
   useDeleteRecoveryStore,
-  interruptedDeletesForBucket,
+  interruptedDeletesFor,
   type InterruptedDelete,
 } from '../stores/use-delete-recovery-store';
+import { accountKey } from '@/lib/connections/connections';
 
 type Stage =
   | { kind: 'idle' }
@@ -31,12 +32,15 @@ type Stage =
  * blind resume.
  */
 export function DeleteRecoveryBanner() {
-  const { apiS3 } = useAuthGuard();
+  const { apiS3, userCreds } = useAuthGuard();
   const records = useDeleteRecoveryStore((state) => state.records);
 
-  // Records for other buckets stay untouched, ready for whenever that session
-  // comes back
-  const record = interruptedDeletesForBucket(records, apiS3?.getBucketName())[0];
+  // Records for other buckets, and for same-named buckets in other accounts,
+  // stay untouched, ready for whenever that session comes back.
+  const record = interruptedDeletesFor(records, {
+    bucket: apiS3?.getBucketName(),
+    account: userCreds ? accountKey(userCreds) : null,
+  })[0];
 
   if (!apiS3 || !record) {
     return null;

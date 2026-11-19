@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import NavbarUserProfile from './navbar-user-profile';
 import { BucketSwitcher } from './bucket-switcher';
+import { ConnectionSwitcher } from './connection-switcher';
 import { useScroll } from '@/context/scroll-context';
 import { SearchPage } from '../../views';
 import { useEffect, useState } from 'react';
@@ -70,13 +71,16 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
     >
       {/* Desktop and Tablet Navbar (md and up - 768px+) */}
       <div className="hidden md:flex w-full items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        {/* min-w-0 so this group, and the two switchers in it, give way before
+            the search and the avatar are pushed off the edge. The wordmark
+            waits for lg, where there is room for it beside two long names. */}
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity"
           >
             <Image src="/logo.png" alt="Opndrive" width={32} height={32} className="h-8 w-8" />
-            <h1 className="text-xl font-bold text-foreground">Opndrive</h1>
+            <h1 className="hidden text-xl font-bold text-foreground lg:block">Opndrive</h1>
           </Link>
           <AriaLabel label="Toggle sidebar navigation" position="bottom">
             <Button
@@ -88,6 +92,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               <Menu size={20} />
             </Button>
           </AriaLabel>
+          <ConnectionSwitcher />
           <BucketSwitcher />
         </div>
 
@@ -112,15 +117,25 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
           showMobileSearch ? 'min-h-[3rem]' : 'min-h-[2.5rem]'
         }`}
       >
-        {/* Initial State - Hamburger + Logo + Profile */}
+        {/* Initial state: menu, the two switchers, then search and profile.
+            On a phone the switchers take the logo's place - which account and
+            bucket you are in matters more there than the brand - and the
+            left group is min-w-0 so the bucket name truncates rather than
+            pushing the profile off the screen.
+
+            The two states sit on top of each other and cross-fade, so the one
+            not shown is inert: transparent is not hidden, and without this a
+            keyboard or screen reader user met every control twice, half of
+            them invisible. */}
         <div
-          className={`flex w-full items-center justify-between transition-all duration-300 ease-in-out ${
+          inert={showMobileSearch}
+          className={`flex w-full items-center justify-between gap-2 transition-all duration-300 ease-in-out ${
             showMobileSearch
               ? 'opacity-0 transform -translate-y-2 pointer-events-none absolute inset-0'
               : 'opacity-100 transform translate-y-0 relative'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
             <AriaLabel label="Toggle sidebar navigation" position="bottom">
               <Button
                 variant="ghost"
@@ -133,10 +148,11 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
                 <Menu size={18} />
               </Button>
             </AriaLabel>
+            <ConnectionSwitcher />
             <BucketSwitcher />
             <Link
               href="/dashboard"
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              className="hidden shrink-0 items-center gap-2 hover:opacity-80 transition-opacity sm:flex"
             >
               <Image
                 src="/logo.png"
@@ -156,7 +172,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
               </h1>
             </Link>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {/* Search Icon Button - Always accessible */}
             <AriaLabel label="Search files and folders" position="bottom">
               <Button
@@ -180,6 +196,7 @@ export function DashboardNavbar({ toggleSidebar }: DashboardNavbarProps) {
 
         {/* Search State - Animated Search Bar */}
         <div
+          inert={!showMobileSearch}
           className={`flex w-full items-center gap-3 transition-all duration-300 ease-in-out ${
             showMobileSearch
               ? 'opacity-100 transform translate-y-0 relative'
