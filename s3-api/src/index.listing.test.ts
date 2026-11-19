@@ -93,6 +93,18 @@ describe('fetchDirectoryStructure', () => {
     });
   });
 
+  it('hands the caller abort signal to the request, so leaving a folder stops it', async () => {
+    s3Mock.on(ListObjectsV2Command).resolves({});
+    const controller = new AbortController();
+
+    await makeApi().fetchDirectoryStructure('photos/', 1000, undefined, {
+      signal: controller.signal,
+    });
+
+    const options = (s3Mock.call(0).args as unknown[])[1];
+    expect(options).toEqual({ abortSignal: controller.signal });
+  });
+
   it('defaults to 50 keys when no page size is given', async () => {
     s3Mock.on(ListObjectsV2Command).resolves({});
 

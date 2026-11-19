@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { formatBytes } from './data-context';
+import { formatBytes } from './folder-listing';
 
 describe('formatBytes', () => {
   it.each([

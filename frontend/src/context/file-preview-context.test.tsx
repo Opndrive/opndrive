@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { FilePreviewProvider, useFilePreview, PREVIEW_PARAM } from './file-preview-context';
 import { useDriveStore } from './data-context';
+import { listingOf } from './folder-listing';
 import type { PreviewableFile } from '@/types/file-preview';
 
 const router = vi.hoisted(() => ({
@@ -83,7 +84,7 @@ beforeEach(() => {
   goTo(FOLDER);
   pushState = vi.spyOn(window.history, 'pushState');
   auth.apiS3 = null;
-  useDriveStore.setState({ currentPrefix: null, cache: {} });
+  useDriveStore.setState({ currentPrefix: null, listings: {} });
 });
 
 afterEach(() => {
@@ -254,15 +255,13 @@ describe('a preview reached by link or reload', () => {
     await act(async () => {
       useDriveStore.setState({
         currentPrefix: 'docs/',
-        cache: {
-          'docs/': {
+        listings: {
+          'docs/': listingOf({
             files: [
               { id: 'a', name: 'report.pdf', Key: 'docs/report.pdf', extension: 'pdf' },
               { id: 'b', name: 'notes.txt', Key: 'docs/notes.txt', extension: 'txt' },
-            ],
-            folders: [],
-            isTruncated: false,
-          },
+            ] as never,
+          }),
         },
       } as never);
     });

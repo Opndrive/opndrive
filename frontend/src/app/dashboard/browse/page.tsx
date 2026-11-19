@@ -5,7 +5,7 @@ import { DriveList } from '@/features/dashboard/components/views/drive/drive-lis
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
-import { useDriveStore, useDirectoryState } from '@/context/data-context';
+import { useDriveStore, useDirectoryState, useCurrentListing } from '@/context/data-context';
 import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useEffect, Suspense, useState, useCallback, useRef } from 'react';
@@ -41,12 +41,10 @@ function BrowsePageContent() {
   const CHUNK_SIZE = 100; // Display 100 items per chunk
 
   // One selector per value rather than `useDriveStore()`, which subscribes to
-  // the whole store. `cache` and `loadMoreStatus` are read whole here because
-  // this page genuinely indexes into both by prefix; the rest are stable
+  // the whole store. The listing is this folder's alone; the rest are stable
   // actions, which never trigger a render of their own.
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
-  const cache = useDriveStore((state) => state.cache);
-  const loadMoreStatus = useDriveStore((state) => state.loadMoreStatus);
+  const listing = useCurrentListing();
   const fetchData = useDriveStore((state) => state.fetchData);
   const loadMoreData = useDriveStore((state) => state.loadMoreData);
   const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
@@ -208,8 +206,8 @@ function BrowsePageContent() {
   // 'not ready yet', so a listing that had failed drew the loading skeleton and
   // sat there for good.
   const directory = useDirectoryState();
-  const isLoadingMore = currentPrefix ? loadMoreStatus[currentPrefix] === 'loading' : false;
-  const currentData = currentPrefix ? cache[currentPrefix] : null;
+  const isLoadingMore = listing?.nextPage.status === 'loading';
+  const currentData = listing?.loaded ? listing : null;
 
   // Calculate item counts and chunked data
   const allFolders = currentData?.folders || [];
@@ -224,7 +222,7 @@ function BrowsePageContent() {
   const displayedFiles = allFiles.slice(0, maxVisibleFiles);
 
   const totalVisibleItems = displayedFolders.length + displayedFiles.length;
-  const hasMoreItems = currentData?.isTruncated || false;
+  const hasMoreItems = currentData ? !currentData.complete : false;
 
   // Check if we can load more chunks from cache
   const canLoadMoreFileChunks = allFiles.length > maxVisibleFiles;
@@ -451,7 +449,7 @@ function BrowsePageContent() {
                 {hasMoreItems && !canLoadMoreChunks && (
                   <div className="flex justify-center mt-8 mb-8">
                     <button
-                      onClick={loadMoreData}
+                      onClick={() => void loadMoreData()}
                       disabled={isLoadingMore}
                       className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                     >

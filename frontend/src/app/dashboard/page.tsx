@@ -23,6 +23,9 @@ import { MultiSelectToolbar } from '@/features/dashboard/components/ui/multi-sel
 import { useMultiShareDialog } from '@/features/dashboard/hooks/use-multi-share-dialog';
 import { MultiShareDialog } from '@/features/dashboard/components/dialogs/multi-share-dialog';
 
+/** Suggestions shown at first, and added by each "View more". */
+const SUGGESTIONS_STEP = 10;
+
 export default function HomePage() {
   const { isSearchHidden } = useScroll();
   const router = useRouter();
@@ -31,16 +34,16 @@ export default function HomePage() {
   // and the whole tree of cards under it. The actions are stable references, so
   // selecting them costs nothing and never triggers a render on its own.
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
-  const fetchRecentItems = useDriveStore((state) => state.fetchRecentItems);
-  const loadMoreRecentFiles = useDriveStore((state) => state.loadMoreRecentFiles);
-  const loadMoreRecentFolders = useDriveStore((state) => state.loadMoreRecentFolders);
+  const fetchData = useDriveStore((state) => state.fetchData);
   const setCurrentPrefix = useDriveStore((state) => state.setCurrentPrefix);
   const setRootPrefix = useDriveStore((state) => state.setRootPrefix);
   const setApiS3 = useDriveStore((state) => state.setApiS3);
 
   const dispatchDrop = useUploadDispatch();
-  const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false);
-  const [isLoadingMoreFolders, setIsLoadingMoreFolders] = useState(false);
+  // How many suggestions to show. "View more" raises these; the suggestions
+  // themselves are read off the folder's listing, not kept as a second copy.
+  const [fileLimit, setFileLimit] = useState(SUGGESTIONS_STEP);
+  const [folderLimit, setFolderLimit] = useState(SUGGESTIONS_STEP);
   const [isSyncing, setIsSyncing] = useState(false);
   const { apiS3, isLoading, isAuthenticated } = useAuthGuard();
 
@@ -50,7 +53,7 @@ export default function HomePage() {
 
   // Was the same collapsed flag the browse page had, written out a second
   // time, with the same consequence: a failed fetch drew the skeleton.
-  const recent = useRecentState();
+  const recent = useRecentState(fileLimit, folderLimit);
 
   // Every hook lives above the early returns below. They used to sit after
   // them, so React saw a different number of hooks depending on whether the
@@ -86,8 +89,8 @@ export default function HomePage() {
   }, [apiS3, setRootPrefix, setCurrentPrefix]);
 
   useEffect(() => {
-    if (currentPrefix) fetchRecentItems({ sync: false, itemsPerType: 10 });
-  }, [currentPrefix, fetchRecentItems]);
+    if (currentPrefix) void fetchData();
+  }, [currentPrefix, fetchData]);
 
   // Clear selection when returning to home page
   useEffect(() => {
@@ -144,30 +147,15 @@ export default function HomePage() {
     }
   };
 
-  const handleLoadMoreFiles = async () => {
-    setIsLoadingMoreFiles(true);
-    try {
-      await loadMoreRecentFiles();
-    } finally {
-      setIsLoadingMoreFiles(false);
-    }
-  };
-
-  const handleLoadMoreFolders = async () => {
-    setIsLoadingMoreFolders(true);
-    try {
-      await loadMoreRecentFolders();
-    } finally {
-      setIsLoadingMoreFolders(false);
-    }
-  };
+  const handleLoadMoreFiles = () => setFileLimit((limit) => limit + SUGGESTIONS_STEP);
+  const handleLoadMoreFolders = () => setFolderLimit((limit) => limit + SUGGESTIONS_STEP);
 
   const handleSync = async () => {
     if (isSyncing || !currentPrefix) return;
 
     setIsSyncing(true);
     try {
-      await fetchRecentItems({ sync: true, itemsPerType: 10 });
+      await fetchData({ sync: true });
     } catch (error) {
       console.error('Failed to sync data:', error);
     } finally {
@@ -242,7 +230,6 @@ export default function HomePage() {
                     onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
                     onViewMore={handleLoadMoreFolders}
                     hasMore={recentData.hasMoreFolders}
-                    isLoadingMore={isLoadingMoreFolders}
                     className="mt-8"
                   />
                 )}
@@ -255,7 +242,6 @@ export default function HomePage() {
                     onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                     onViewMore={handleLoadMoreFiles}
                     hasMore={recentData.hasMoreFiles}
-                    isLoadingMore={isLoadingMoreFiles}
                     className="mt-8"
                   />
                 ) : (

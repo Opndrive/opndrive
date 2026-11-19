@@ -1,19 +1,16 @@
 /**
- * Localized edits to the drive cache.
+ * Localized edits to the drive's listings.
  *
- * Every file operation used to end in refreshCurrentData, which re-lists the
- * prefix the user is standing in - twice, once for the listing and once for the
- * recent items - whatever prefix the operation actually touched. These mutators
- * replace that with an edit to the rows themselves.
- *
- * What is pinned here is mostly the ways that edit can go wrong: matching a
- * file by prefix instead of by whole key, inserting into a page nobody has
- * fetched, moving a window without moving the offset that marks its edge, and
- * undoing a change by restoring a snapshot that also undoes everyone else's.
+ * Uploads, deletes, renames and new folders edit the affected folder's rows in
+ * place instead of re-listing it. What is pinned here is mostly the ways that
+ * edit can go wrong: matching a file by prefix instead of by whole key,
+ * inserting into a page nobody has read yet, and undoing a change by restoring
+ * a snapshot that also undoes everyone else's.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDriveStore } from './data-context';
+import { listingOf } from './folder-listing';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 
@@ -40,33 +37,28 @@ function file(key: string, minutesAgo = 0): FileItem {
 }
 
 const store = () => useDriveStore.getState();
-const keysAt = (prefix: string) => store().cache[prefix]?.files.map((item) => item.Key);
-const foldersAt = (prefix: string) => store().cache[prefix]?.folders.map((item) => item.Prefix);
+const keysAt = (prefix: string) => store().listings[prefix]?.files.map((item) => item.Key);
+const foldersAt = (prefix: string) => store().listings[prefix]?.folders.map((item) => item.Prefix);
+
+/** Seeds listings: `cursor` set means more pages remain. */
+function seed(
+  listings: Record<string, { files?: FileItem[]; folders?: Folder[]; cursor?: string }>
+) {
+  useDriveStore.setState({
+    listings: Object.fromEntries(
+      Object.entries(listings).map(([key, rows]) => [key, listingOf(rows)])
+    ),
+  });
+}
 
 beforeEach(() => {
-  useDriveStore.setState({
-    apiS3: null,
-    cache: {},
-    recentCache: {},
-    directory: {},
-    recent: {},
-    loadMoreStatus: {},
-    rootPrefix: '/',
-    currentPrefix: '/',
-  });
+  store().clearAllData();
+  useDriveStore.setState({ rootPrefix: '/', currentPrefix: '/' });
 });
 
 describe('removing files by whole key', () => {
   beforeEach(() => {
-    useDriveStore.setState({
-      cache: {
-        '/': {
-          files: [file('report.pdf'), file('report.pdf.bak'), file('notes.txt')],
-          folders: [],
-          isTruncated: false,
-        },
-      },
-    });
+    seed({ '/': { files: [file('report.pdf'), file('report.pdf.bak'), file('notes.txt')] } });
   });
 
   it('takes out only the file named', () => {
@@ -76,21 +68,16 @@ describe('removing files by whole key', () => {
   });
 
   it('leaves a listing alone when nothing matches', () => {
-    const before = store().cache['/'];
+    const before = store().listings['/'];
     store().removeFiles(['absent.txt']);
 
     // Same object, not merely an equal one: a change aimed elsewhere must not
     // re-render the folder on screen.
-    expect(store().cache['/']).toBe(before);
+    expect(store().listings['/']).toBe(before);
   });
 
   it('routes each key to the listing that holds it', () => {
-    useDriveStore.setState({
-      cache: {
-        '/': { files: [file('a.txt')], folders: [], isTruncated: false },
-        'docs/': { files: [file('docs/b.txt')], folders: [], isTruncated: false },
-      },
-    });
+    seed({ '/': { files: [file('a.txt')] }, 'docs/': { files: [file('docs/b.txt')] } });
 
     store().removeFiles(['a.txt', 'docs/b.txt']);
 
@@ -99,39 +86,37 @@ describe('removing files by whole key', () => {
   });
 });
 
-describe('inserting into a truncated listing', () => {
+describe('inserting into a listing with pages still to read', () => {
   beforeEach(() => {
-    useDriveStore.setState({
-      cache: {
-        'x/': {
-          files: [file('x/a.txt'), file('x/m.txt')],
-          folders: [],
-          isTruncated: true,
-          nextToken: 'token',
-        },
-      },
-    });
+    seed({ 'x/': { files: [file('x/a.txt'), file('x/m.txt')], cursor: 'token' } });
   });
 
-  it('skips a key belonging to a page nobody has fetched', () => {
+  it('skips a key belonging to a page nobody has read', () => {
     store().addFile('x/', { key: 'x/z.txt', size: 10 });
 
     // 'z' sorts past the last key read, so the real object is in a page still
-    // to come. Placing it here would make appendUnique drop that object when
-    // the page arrives, stranding this guess in its place.
+    // to come. Placing it here would make that page's row a duplicate, dropped
+    // in favour of this guess.
     expect(keysAt('x/')).toEqual(['x/a.txt', 'x/m.txt']);
   });
 
-  it('still places a key that falls inside what was fetched', () => {
+  it('still places a key that falls inside what was read', () => {
     store().addFile('x/', { key: 'x/b.txt', size: 10 });
 
     expect(keysAt('x/')).toEqual(['x/a.txt', 'x/b.txt', 'x/m.txt']);
   });
 
+  it('counts a folder read past the last file as part of what was read', () => {
+    // The page ended on a folder: everything up to it has been seen.
+    seed({ 'x/': { files: [file('x/a.txt')], folders: [folder('x/q/')], cursor: 'token' } });
+
+    store().addFile('x/', { key: 'x/p.txt', size: 10 });
+
+    expect(keysAt('x/')).toEqual(['x/a.txt', 'x/p.txt']);
+  });
+
   it('places a key past the end once the listing is complete', () => {
-    useDriveStore.setState({
-      cache: { 'x/': { files: [file('x/a.txt')], folders: [], isTruncated: false } },
-    });
+    seed({ 'x/': { files: [file('x/a.txt')] } });
 
     store().addFile('x/', { key: 'x/z.txt', size: 10 });
 
@@ -141,74 +126,15 @@ describe('inserting into a truncated listing', () => {
   it('leaves the server cursor alone when removing', () => {
     store().removeFiles(['x/a.txt']);
 
-    // nextToken marks where the server stopped reading, not what we are
-    // holding, so filtering locally must not disturb it.
-    expect(store().cache['x/']?.nextToken).toBe('token');
-    expect(store().cache['x/']?.isTruncated).toBe(true);
-  });
-});
-
-describe('the recent list and its pagination window', () => {
-  beforeEach(() => {
-    useDriveStore.setState({
-      recentCache: {
-        '/': {
-          files: [file('c.txt', 1), file('b.txt', 2), file('a.txt', 3)],
-          folders: [],
-          _allFiles: [file('c.txt', 1), file('b.txt', 2), file('a.txt', 3), file('old.txt', 99)],
-          _allFolders: [],
-          fileOffset: 3,
-          folderOffset: 0,
-          hasMoreFiles: true,
-          hasMoreFolders: false,
-        },
-      },
-    });
-  });
-
-  it('adds a new file to the window and the source behind it', () => {
-    store().addFile('/', { key: 'fresh.txt', size: 5 });
-
-    const recent = store().recentCache['/']!;
-
-    expect(recent.files[0]?.Key).toBe('fresh.txt');
-    expect(recent._allFiles?.[0]?.Key).toBe('fresh.txt');
-    expect(recent._allFiles).toHaveLength(5);
-    // The window grew, so the mark of how far it reaches grows with it.
-    // Left at 3, "View more" would hand back c.txt a second time.
-    expect(recent.fileOffset).toBe(4);
-    expect(recent.hasMoreFiles).toBe(true);
-  });
-
-  it('keeps a file older than the window out of it', () => {
-    store().addFile('/', { key: 'ancient.txt', size: 5, lastModified: new Date(0) });
-
-    const recent = store().recentCache['/']!;
-
-    expect(recent.files.map((item) => item.Key)).toEqual(['c.txt', 'b.txt', 'a.txt']);
-    expect(recent._allFiles?.map((item) => item.Key)).toContain('ancient.txt');
-    expect(recent.fileOffset).toBe(3);
-  });
-
-  it('moves the offset down with the window on a removal', () => {
-    store().removeFiles(['b.txt']);
-
-    const recent = store().recentCache['/']!;
-
-    expect(recent.files.map((item) => item.Key)).toEqual(['c.txt', 'a.txt']);
-    expect(recent._allFiles).toHaveLength(3);
-    expect(recent.fileOffset).toBe(2);
-    expect(recent.hasMoreFiles).toBe(true);
+    // The cursor marks where S3 stopped, not what we are holding.
+    expect(store().listings['x/']?.cursor).toBe('token');
+    expect(store().listings['x/']?.complete).toBe(false);
   });
 });
 
 describe('undoing a change without undoing anyone else', () => {
   beforeEach(() => {
-    useDriveStore.setState({
-      cache: {
-        '/': { files: [file('a.txt'), file('b.txt')], folders: [], isTruncated: false },
-      },
-    });
+    seed({ '/': { files: [file('a.txt'), file('b.txt')] } });
   });
 
   it('takes back only what it added', () => {
@@ -221,10 +147,8 @@ describe('undoing a change without undoing anyone else', () => {
   });
 
   it('leaves a concurrent delete in place when an upload is rolled back', () => {
-    // The interleaving that a snapshot-restoring undo gets wrong: ten files
-    // uploading, two existing files deleted while they are in flight, then one
-    // upload fails. Putting back the array as it was before the upload would
-    // resurrect both deleted files.
+    // Putting back the array as it was before the upload would resurrect both
+    // files deleted while it was in flight.
     const undoUpload = store().addFile('/', { key: 'new.txt', size: 1 });
     store().removeFiles(['a.txt', 'b.txt']);
 
@@ -254,15 +178,7 @@ describe('undoing a change without undoing anyone else', () => {
 
 describe('renaming', () => {
   it('moves a file to its new place in the order', () => {
-    useDriveStore.setState({
-      cache: {
-        '/': {
-          files: [file('a.txt'), file('m.txt'), file('z.txt')],
-          folders: [],
-          isTruncated: false,
-        },
-      },
-    });
+    seed({ '/': { files: [file('a.txt'), file('m.txt'), file('z.txt')] } });
 
     store().renameFile('a.txt', 'q.txt');
 
@@ -271,22 +187,18 @@ describe('renaming', () => {
 
   it('carries the size and timestamp across', () => {
     const original = file('a.txt', 30);
-    useDriveStore.setState({
-      cache: { '/': { files: [original], folders: [], isTruncated: false } },
-    });
+    seed({ '/': { files: [original] } });
 
     store().renameFile('a.txt', 'renamed.md');
 
-    const [renamed] = store().cache['/']?.files ?? [];
+    const [renamed] = store().listings['/']?.files ?? [];
     expect(renamed?.name).toBe('renamed.md');
     expect(renamed?.extension).toBe('md');
     expect(renamed?.lastModified).toEqual(original.lastModified);
   });
 
   it('restores the original name on undo', () => {
-    useDriveStore.setState({
-      cache: { '/': { files: [file('a.txt')], folders: [], isTruncated: false } },
-    });
+    seed({ '/': { files: [file('a.txt')] } });
 
     const undo = store().renameFile('a.txt', 'b.txt');
     undo();
@@ -295,29 +207,19 @@ describe('renaming', () => {
   });
 
   it('forgets what was cached under a renamed folder', () => {
-    useDriveStore.setState({
-      cache: {
-        '/': { files: [], folders: [folder('docs/')], isTruncated: false },
-        'docs/': { files: [file('docs/inner.txt')], folders: [], isTruncated: false },
-      },
-    });
+    seed({ '/': { folders: [folder('docs/')] }, 'docs/': { files: [file('docs/inner.txt')] } });
 
     store().renameFolder('docs/', 'papers');
 
     expect(foldersAt('/')).toEqual(['papers/']);
-    // Those objects live under a different prefix now, so the listing that
-    // described them cannot be served again.
-    expect(store().cache['docs/']).toBeUndefined();
+    // Those objects live under a different prefix now.
+    expect(store().listings['docs/']).toBeUndefined();
   });
 });
 
 describe('creating a folder', () => {
   it('places the row in order and takes it back on undo', () => {
-    useDriveStore.setState({
-      cache: {
-        '/': { files: [], folders: [folder('a/'), folder('z/')], isTruncated: false },
-      },
-    });
+    seed({ '/': { folders: [folder('a/'), folder('z/')] } });
 
     const undo = store().addFolder('/', 'm');
     expect(foldersAt('/')).toEqual(['a/', 'm/', 'z/']);
@@ -327,9 +229,7 @@ describe('creating a folder', () => {
   });
 
   it('nests under the prefix it was created in', () => {
-    useDriveStore.setState({
-      cache: { 'docs/': { files: [], folders: [], isTruncated: false } },
-    });
+    seed({ 'docs/': {} });
 
     store().addFolder('docs/', 'drafts');
 
@@ -337,63 +237,56 @@ describe('creating a folder', () => {
   });
 });
 
-describe('statuses left behind by a retired request', () => {
-  it('frees a "Show more" that was mid-flight', () => {
+describe('statuses left behind by a stopped request', () => {
+  it('frees a next page and a first page that were mid-flight', () => {
     useDriveStore.setState({
-      cache: { '/': { files: [file('a.txt')], folders: [], isTruncated: true } },
-      directory: { '/': { status: 'loading' } },
-      loadMoreStatus: { '/': 'loading' },
+      listings: {
+        '/': {
+          ...listingOf({ files: [file('a.txt')], cursor: 'token' }),
+          status: 'loading',
+          nextPage: { status: 'loading' },
+        },
+      },
     });
 
     store().removeFiles(['a.txt']);
 
-    // The retired request never writes the 'ready' it would have written, so
-    // without this repair the button refuses to run again for good.
-    expect(store().loadMoreStatus['/']).toBeUndefined();
-    expect(store().directory['/']).toEqual({ status: 'ready' });
+    // The stopped request never writes the 'ready' it would have written, so
+    // without this the next page refuses to start again for good.
+    expect(store().listings['/']!.nextPage.status).toBe('idle');
+    expect(store().listings['/']!.status).toBe('ready');
   });
 });
 
 describe('a silent re-read', () => {
   it('leaves rows on screen when it fails', async () => {
     const fetchDirectoryStructure = vi.fn().mockRejectedValue(new Error('network'));
-    useDriveStore.setState({
-      currentPrefix: '/',
-      rootPrefix: '/',
-      cache: { '/': { files: [file('a.txt')], folders: [], isTruncated: false } },
-      directory: { '/': { status: 'ready' } },
-    });
+    seed({ '/': { files: [file('a.txt')] } });
     store().setApiS3({ fetchDirectoryStructure, getPrefix: () => '' } as never);
 
     await store().fetchData({ silent: true });
 
-    // toAsyncState reads 'error' before it reads the data, so writing one here
-    // would replace a listing the user is reading with a full-page failure
-    // notice - over rows that are still perfectly good.
-    expect(store().directory['/']).toEqual({ status: 'ready' });
+    // An 'error' here would replace a listing the user is reading with a
+    // full-page failure notice - over rows that are still perfectly good.
+    expect(store().listings['/']!.status).toBe('ready');
     expect(keysAt('/')).toEqual(['a.txt']);
   });
 
   it('still reports a failure when there is nothing to show', async () => {
     const fetchDirectoryStructure = vi.fn().mockRejectedValue(new Error('network'));
-    useDriveStore.setState({ currentPrefix: '/', rootPrefix: '/', cache: {}, directory: {} });
     store().setApiS3({ fetchDirectoryStructure, getPrefix: () => '' } as never);
 
     await store().fetchData({ silent: true });
 
-    expect(store().directory['/']?.status).toBe('error');
+    expect(store().listings['/']?.status).toBe('error');
   });
 });
 
 describe('an undo takes back only what its own call did', () => {
   it('leaves a file that was already listed alone', () => {
-    useDriveStore.setState({
-      cache: { '/': { files: [file('a.txt')], folders: [], isTruncated: false } },
-    });
+    seed({ '/': { files: [file('a.txt')] } });
 
-    // An upload that replaced an existing object finds the row already there,
-    // so this call added nothing - and an undo that removed it would take out
-    // a row this call is not responsible for.
+    // An upload that replaced an existing object finds the row already there.
     const undo = store().addFile('/', { key: 'a.txt', size: 5 });
     undo();
 
@@ -401,11 +294,8 @@ describe('an undo takes back only what its own call did', () => {
   });
 
   it('leaves a folder that was already listed alone', () => {
-    useDriveStore.setState({
-      cache: { '/': { files: [], folders: [folder('docs/')], isTruncated: false } },
-    });
+    seed({ '/': { folders: [folder('docs/')] } });
 
-    // The "replace" answer to the create-folder duplicate prompt.
     const undo = store().addFolder('/', 'docs');
     undo();
 
@@ -413,42 +303,22 @@ describe('an undo takes back only what its own call did', () => {
   });
 });
 
-describe('an undo restores what a truncated listing had', () => {
+describe('an undo restores what a partly read listing had', () => {
   it('puts back a row that was the last one loaded', () => {
-    useDriveStore.setState({
-      cache: {
-        'x/': {
-          files: [file('x/a.txt'), file('x/z.txt')],
-          folders: [],
-          isTruncated: true,
-          nextToken: 'token',
-        },
-      },
-    });
+    seed({ 'x/': { files: [file('x/a.txt'), file('x/z.txt')], cursor: 'token' } });
 
     const undo = store().removeFiles(['x/z.txt']);
     expect(keysAt('x/')).toEqual(['x/a.txt']);
 
     undo();
 
-    // Removing z left a as the last key, so the truncation guard would have
-    // refused to put z back. That guard is about objects the listing has never
-    // held, not ones it held a moment ago - and refusing here is a rollback
-    // quietly losing a file that was never deleted.
+    // With z gone, a is the last key, so the loaded-range rule alone would
+    // refuse to put z back - a rollback quietly losing a file never deleted.
     expect(keysAt('x/')).toEqual(['x/a.txt', 'x/z.txt']);
   });
 
   it('puts back a renamed row that sorted last', () => {
-    useDriveStore.setState({
-      cache: {
-        'x/': {
-          files: [file('x/a.txt'), file('x/z.txt')],
-          folders: [],
-          isTruncated: true,
-          nextToken: 'token',
-        },
-      },
-    });
+    seed({ 'x/': { files: [file('x/a.txt'), file('x/z.txt')], cursor: 'token' } });
 
     const undo = store().renameFile('x/z.txt', 'x/b.txt');
     expect(keysAt('x/')).toEqual(['x/a.txt', 'x/b.txt']);
@@ -461,22 +331,14 @@ describe('an undo restores what a truncated listing had', () => {
 
 describe('renaming onto a name that is already taken', () => {
   beforeEach(() => {
-    useDriveStore.setState({
-      cache: {
-        '/': { files: [file('a.txt'), file('b.txt')], folders: [], isTruncated: false },
-      },
-    });
+    seed({ '/': { files: [file('a.txt'), file('b.txt')] } });
   });
 
   it('leaves the file that was already there alone when undone', () => {
-    // The "replace" answer to the rename duplicate prompt: b.txt is listed
-    // already, so this call takes a.txt out and adds nothing.
     const undo = store().renameFile('a.txt', 'b.txt');
 
     undo();
 
-    // An undo that removed b.txt would delete a row this call never added, and
-    // b.txt is still a perfectly real file.
     expect(keysAt('/')).toEqual(['a.txt', 'b.txt']);
   });
 

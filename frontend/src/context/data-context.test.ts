@@ -1,18 +1,17 @@
 /**
- * Drive store: the races around fetching a prefix and paging through it.
+ * Drive store: reading a folder page by page, and the races around it.
  *
  * Every test here drives real concurrency rather than asserting on a single
  * settled call. The bugs only exist in the window between issuing a request and
  * its response landing, so a test that awaits each call in turn would pass
- * against the broken code as happily as against the fix.
- *
- * `deferred()` is the tool for that: it hands back a request whose resolution
- * the test controls, so two calls can genuinely be open at once and be resolved
- * in whichever order the scenario needs.
+ * against broken code as happily as against the fix. `deferred()` hands back a
+ * request whose resolution the test controls.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useDriveStore } from './data-context';
+import { act, renderHook } from '@testing-library/react';
+import { PAGE_SIZE, useDriveStore, useRecentState } from './data-context';
+import { MAX_LISTINGS, listingOf } from './folder-listing';
 
 vi.mock('@opndrive/s3-api', () => ({
   BYOS3ApiProvider: class {},
@@ -20,244 +19,290 @@ vi.mock('@opndrive/s3-api', () => ({
 
 vi.mock('@/features/dashboard/stores/use-search-store', () => ({
   useSearchStore: {
-    getState: () => ({
-      invalidatePrefix: vi.fn(),
-      clearCache: vi.fn(),
-    }),
+    getState: () => ({ invalidatePrefix: vi.fn(), clearCache: vi.fn() }),
   },
 }));
 
 const store = () => useDriveStore.getState();
 
-type DirectoryStructure = {
-  files: { Key: string }[];
+type Page = {
+  files: { Key: string; LastModified?: Date }[];
   folders: { Prefix: string }[];
   nextToken?: string;
   isTruncated?: boolean;
 };
 
-/** A page of results whose resolution the test controls. */
 function deferred() {
-  let resolve!: (value: DirectoryStructure) => void;
+  let resolve!: (value: Page) => void;
   let reject!: (reason: unknown) => void;
-  const promise = new Promise<DirectoryStructure>((res, rej) => {
+  const promise = new Promise<Page>((res, rej) => {
     resolve = res;
     reject = rej;
   });
   return { promise, resolve, reject };
 }
 
-function page(keys: string[], overrides: Partial<DirectoryStructure> = {}): DirectoryStructure {
-  return {
-    files: keys.map((Key) => ({ Key })),
-    folders: [],
-    isTruncated: false,
-    ...overrides,
-  };
+function page(keys: string[], overrides: Partial<Page> = {}): Page {
+  return { files: keys.map((Key) => ({ Key })), folders: [], isTruncated: false, ...overrides };
 }
 
+/** The signal each call was given, in order. */
+const signals: (AbortSignal | undefined)[] = [];
 const fetchDirectoryStructure = vi.fn();
 
-/** Mounts a store pointed at the bucket root, the way the browse page does. */
 function connect() {
   store().setApiS3({ fetchDirectoryStructure } as never);
   store().setRootPrefix('/');
   store().setCurrentPrefix('/');
 }
 
-/** Object keys currently cached for the root prefix, in order. */
-function cachedKeys(): string[] {
-  return (useDriveStore.getState().cache['/']?.files ?? []).map((file) => file.id);
-}
+const keysAt = (key = '/') => (store().listings[key]?.files ?? []).map((file) => file.id);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // clearAllData also resets the module-scope request bookkeeping, which the
-  // zustand auto-reset between tests cannot reach.
+  signals.length = 0;
+  // A request the test did not queue an answer for is a bug in the test.
+  fetchDirectoryStructure.mockImplementation(() => Promise.reject(new Error('unexpected request')));
   store().clearAllData();
   connect();
 });
 
-describe('returning to a folder whose request is still open', () => {
-  it('does not issue a second identical request', async () => {
+/** Queues answers and records the abort signal each request was given. */
+function answer(...results: (Page | Promise<Page> | Error)[]) {
+  for (const result of results) {
+    fetchDirectoryStructure.mockImplementationOnce(
+      (_p: string, _m: number, _t?: string, opts?: { signal?: AbortSignal }) => {
+        signals.push(opts?.signal);
+        return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+      }
+    );
+  }
+}
+
+describe('reading a folder for the first time', () => {
+  it('asks S3 for a full page of 1,000, from the top', async () => {
+    answer(page(['a.txt']));
+
+    await store().fetchData();
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledWith('', PAGE_SIZE, undefined, {
+      signal: signals[0],
+    });
+    expect(store().listings['/']).toMatchObject({ status: 'ready', loaded: true, complete: true });
+  });
+
+  it('leaves the marker object of the folder itself out of its rows', async () => {
+    store().setCurrentPrefix('docs/');
+    answer(page(['docs/', 'docs/a.txt']));
+
+    await store().fetchData();
+
+    expect(keysAt('docs/')).toEqual(['docs/a.txt']);
+  });
+
+  it('does not issue a second request when asked again while the first is open', async () => {
     const first = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(first.promise);
+    answer(first.promise);
 
-    // Navigate into A, away, and back before A's request has answered.
-    const navigateIn = store().fetchData({ sync: false });
-    const navigateBack = store().fetchData({ sync: false });
+    const navigateIn = store().fetchData();
+    const navigateBack = store().fetchData();
 
-    // 'loading' is not 'ready', and the cache is still empty, so both the
-    // status check and the data check used to wave the second call through.
     expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
 
     first.resolve(page(['a.txt', 'b.txt']));
     await Promise.all([navigateIn, navigateBack]);
 
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
-    expect(store().directory['/']?.status).toBe('ready');
+    // Joining has to mean waiting for it, not returning early to a caller that
+    // then renders an empty folder.
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
   });
 
-  it('gives the second caller the first caller result', async () => {
-    const first = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(first.promise);
+  it('records why a read failed, specifically enough to act on', async () => {
+    answer(Object.assign(new Error('Access Denied'), { name: 'AccessDenied' }));
 
-    const navigateIn = store().fetchData({ sync: false });
-    const navigateBack = store().fetchData({ sync: false });
+    await store().fetchData();
 
-    first.resolve(page(['a.txt']));
-    await Promise.all([navigateIn, navigateBack]);
-
-    // Joining the open request has to mean waiting for it, not returning early
-    // to a caller that then renders an empty folder.
-    expect(cachedKeys()).toEqual(['a.txt']);
+    expect(store().listings['/']).toMatchObject({ status: 'error', loaded: false });
+    expect(store().listings['/']!.failure?.kind).toBe('permissions');
   });
 
-  it('starts a fresh request once the first one has finished', async () => {
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
-    await store().fetchData({ sync: false });
+  it('forgets the reason once the folder loads', async () => {
+    answer(new Error('network'), page(['a.txt']));
 
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt', 'b.txt']));
+    await store().fetchData();
     await store().fetchData({ sync: true });
 
-    // The dedupe is per open request, not a permanent lock.
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
+    expect(store().listings['/']).toMatchObject({ status: 'ready', failure: undefined });
   });
+});
 
-  it('does not dedupe two different folders against each other', async () => {
-    const rootPage = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(rootPage.promise);
-    const loadingRoot = store().fetchData({ sync: false });
-
-    // Open a subfolder while the root is still loading.
-    store().setCurrentPrefix('docs/');
-    const docsPage = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(docsPage.promise);
-    const loadingDocs = store().fetchData({ sync: false });
-
-    // The dedupe is per cache key. Sharing one would leave the second folder
-    // waiting on a request that answers for the first.
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
-
-    docsPage.resolve(page(['docs/a.txt']));
-    rootPage.resolve(page(['root.txt']));
-    await Promise.all([loadingRoot, loadingDocs]);
-
-    expect(useDriveStore.getState().cache['/']?.files.map((f) => f.id)).toEqual(['root.txt']);
-    expect(useDriveStore.getState().cache['docs/']?.files.map((f) => f.id)).toEqual(['docs/a.txt']);
-  });
-
-  it('lets a forced sync run rather than joining a read already open', async () => {
-    const initial = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(initial.promise);
-
-    const loading = store().fetchData({ sync: false });
-    // A turn later, as a refresh after a rename or delete always is. Reads
-    // started in the same turn share one request, which cannot be stale.
-    await Promise.resolve();
+describe('coming back to a folder', () => {
+  it('shows the cached rows at once and re-reads page 1 quietly', async () => {
+    answer(page(['a.txt']));
+    await store().fetchData();
 
     const refresh = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(refresh.promise);
+    answer(refresh.promise);
+    const revisit = store().fetchData();
+
+    // The cached rows are there, and not behind a 'loading' skeleton.
+    expect(keysAt()).toEqual(['a.txt']);
+    expect(store().listings['/']!.status).toBe('ready');
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+
+    refresh.resolve(page(['a.txt', 'b.txt']));
+    await revisit;
+
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('keeps the rows when the quiet re-read fails', async () => {
+    answer(page(['a.txt']), new Error('network'));
+    await store().fetchData();
+
+    await store().fetchData();
+
+    expect(store().listings['/']!.status).toBe('ready');
+    expect(keysAt()).toEqual(['a.txt']);
+  });
+
+  it('remembers where the folder was scrolled to', () => {
+    useDriveStore.setState({ listings: { 'docs/': listingOf({}) } });
+
+    store().rememberScrollOffset('docs/', 4200);
+
+    expect(store().listings['docs/']!.scrollOffset).toBe(4200);
+  });
+});
+
+describe('one request at a time per folder', () => {
+  it('lets a forced refresh replace a read already open, and stops the old one', async () => {
+    const initial = deferred();
+    const refresh = deferred();
+    answer(initial.promise, refresh.promise);
+
+    const loading = store().fetchData();
     const refreshing = store().fetchData({ sync: true });
 
-    // The user asked for fresh data, not for whatever was already being read
-    // before they asked.
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
 
     refresh.resolve(page(['fresh.txt']));
     initial.resolve(page(['stale.txt']));
     await Promise.all([loading, refreshing]);
 
-    // The refresh was issued last, so it wins even though it answered first.
-    // Letting the older read land here is how a rename or delete appeared to
-    // undo itself a moment after it succeeded.
-    expect(cachedKeys()).toEqual(['fresh.txt']);
+    // The refresh was asked for last, so it wins whatever order they answer in.
+    expect(keysAt()).toEqual(['fresh.txt']);
   });
 
-  it('does not let a superseded request report an error', async () => {
+  it('does not let a replaced read report an error', async () => {
     const initial = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(initial.promise);
-    const loading = store().fetchData({ sync: false });
-    await Promise.resolve();
+    answer(initial.promise, page(['fresh.txt']));
 
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['fresh.txt']));
+    const loading = store().fetchData();
     await store().fetchData({ sync: true });
 
     initial.reject(new Error('network down'));
     await loading;
 
-    // A folder that loaded fine must not render as failed because an older
-    // request for it happened to give up afterwards.
-    expect(store().directory['/']?.status).toBe('ready');
-    expect(cachedKeys()).toEqual(['fresh.txt']);
+    expect(store().listings['/']!.status).toBe('ready');
+    expect(keysAt()).toEqual(['fresh.txt']);
+  });
+
+  it('gives each folder its own request', async () => {
+    answer(page(['root.txt']));
+    await store().fetchData();
+
+    store().setCurrentPrefix('docs/');
+    answer(page(['docs/a.txt']));
+    await store().fetchData();
+
+    expect(keysAt('/')).toEqual(['root.txt']);
+    expect(keysAt('docs/')).toEqual(['docs/a.txt']);
+  });
+});
+
+describe('leaving a folder', () => {
+  it('stops what it was still reading and leaves nothing half done', async () => {
+    const rootPage = deferred();
+    answer(rootPage.promise);
+    const reading = store().fetchData();
+
+    store().setCurrentPrefix('docs/');
+
+    expect(signals[0]?.aborted).toBe(true);
+
+    rootPage.resolve(page(['root.txt']));
+    await reading;
+
+    // Not 'loading' for good: read again on the way back.
+    expect(store().listings['/']).toMatchObject({ status: 'idle', loaded: false });
+  });
+
+  it('stops a next page too, and keeps the rows already read', async () => {
+    answer(page(['a.txt'], { isTruncated: true, nextToken: 't1' }));
+    await store().fetchData();
+
+    const next = deferred();
+    answer(next.promise);
+    const paging = store().loadMoreData();
+
+    store().setCurrentPrefix('docs/');
+    next.resolve(page(['b.txt']));
+    await paging;
+
+    expect(signals[1]?.aborted).toBe(true);
+    expect(keysAt()).toEqual(['a.txt']);
+    expect(store().listings['/']!.nextPage.status).toBe('idle');
   });
 });
 
 describe('paging through a folder', () => {
-  /** Loads page one, leaving a continuation token behind. */
   async function loadFirstPage() {
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
-    await store().fetchData({ sync: false });
+    answer(page(['a.txt'], { isTruncated: true, nextToken: 'token-1' }));
+    await store().fetchData();
     fetchDirectoryStructure.mockClear();
   }
 
-  it('fetches the next page once for two clicks in the same tick', async () => {
+  it('reads the next page from where S3 stopped', async () => {
     await loadFirstPage();
+    answer(page(['b.txt']));
 
+    await store().loadMoreData();
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledWith('', PAGE_SIZE, 'token-1', {
+      signal: signals[1],
+    });
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
+    expect(store().listings['/']!.complete).toBe(true);
+  });
+
+  it('reads the next page once for two asks in the same tick', async () => {
+    await loadFirstPage();
     const next = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(next.promise);
+    answer(next.promise);
 
-    const firstClick = store().loadMoreData();
-    const secondClick = store().loadMoreData();
-
+    const first = store().loadMoreData();
+    const second = store().loadMoreData();
     expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
 
     next.resolve(page(['b.txt']));
-    await Promise.all([firstClick, secondClick]);
+    await Promise.all([first, second]);
 
-    // Both clicks reading the same continuation token is what put every row of
-    // that page on screen twice.
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
   });
 
   it('drops rows it already has rather than showing them twice', async () => {
     await loadFirstPage();
+    answer(page(['a.txt', 'b.txt']));
 
-    // A page that overlaps what is already cached, however it arises.
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt', 'b.txt']));
     await store().loadMoreData();
 
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
-  });
-
-  it('appends to the refreshed list, not to the copy it started with', async () => {
-    await loadFirstPage();
-
-    const nextPage = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(nextPage.promise);
-    const paging = store().loadMoreData();
-
-    // A delete or rename refreshes the folder while the page is still open.
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
-    await store().fetchData({ sync: true });
-
-    nextPage.resolve(page(['b.txt']));
-    await paging;
-
-    // Appending to the pre-refresh snapshot would have put back whatever that
-    // refresh removed.
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
   });
 
   it('does nothing when there is no next page', async () => {
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt'], { isTruncated: false }));
-    await store().fetchData({ sync: false });
+    answer(page(['a.txt']));
+    await store().fetchData();
     fetchDirectoryStructure.mockClear();
 
     await store().loadMoreData();
@@ -265,341 +310,240 @@ describe('paging through a folder', () => {
     expect(fetchDirectoryStructure).not.toHaveBeenCalled();
   });
 
-  it('reports a failed page without losing what is already listed', async () => {
+  it('keeps every row when a page fails, says why, and can be retried', async () => {
     await loadFirstPage();
+    answer(new Error('network down'), page(['b.txt']));
 
-    // The store logs this itself; capturing it keeps the suite output clean and
-    // pins that a failed page is actually reported somewhere.
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    fetchDirectoryStructure.mockRejectedValueOnce(new Error('network down'));
     await store().loadMoreData();
 
-    expect(store().loadMoreStatus['/']).toBe('error');
-    expect(cachedKeys()).toEqual(['a.txt']);
-    expect(logged).toHaveBeenCalled();
+    expect(keysAt()).toEqual(['a.txt']);
+    expect(store().listings['/']!.status).toBe('ready');
+    expect(store().listings['/']!.nextPage).toMatchObject({ status: 'error' });
+    expect(store().listings['/']!.nextPage.failure).toBeDefined();
 
-    logged.mockRestore();
+    await store().loadMoreData();
+
+    expect(keysAt()).toEqual(['a.txt', 'b.txt']);
+    expect(store().listings['/']!.nextPage).toEqual({ status: 'idle' });
+  });
+
+  it('waits behind a first page being read rather than racing it', async () => {
+    await loadFirstPage();
+    const refresh = deferred();
+    answer(refresh.promise);
+    const refreshing = store().fetchData({ sync: true });
+
+    await store().loadMoreData();
+
+    // The refresh may move the cursor; a page read now could follow the old one.
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
+
+    refresh.resolve(page(['a.txt'], { isTruncated: true, nextToken: 'token-1' }));
+    await refreshing;
+  });
+
+  it('gives way to a refresh that starts while it is open', async () => {
+    await loadFirstPage();
+    const next = deferred();
+    answer(next.promise, page(['a.txt'], { isTruncated: true, nextToken: 'token-1' }));
+    const paging = store().loadMoreData();
+
+    await store().fetchData({ sync: true });
+    next.resolve(page(['b.txt']));
+    await paging;
+
+    expect(signals[1]?.aborted).toBe(true);
+    expect(keysAt()).toEqual(['a.txt']);
+    expect(store().listings['/']!.nextPage.status).toBe('idle');
   });
 });
 
 describe('refreshing a folder that has been paged through', () => {
-  it('reloads from the top instead of just the last page', async () => {
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
-    await store().fetchData({ sync: false });
-
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['b.txt'], { isTruncated: true, nextToken: 'token-2' })
-    );
+  async function twoPages() {
+    answer(page(['a.txt', 'c.txt'], { isTruncated: true, nextToken: 't1' }));
+    await store().fetchData();
+    answer(page(['m.txt', 'z.txt'], { isTruncated: true, nextToken: 't2' }));
     await store().loadMoreData();
-    expect(cachedKeys()).toEqual(['a.txt', 'b.txt']);
+  }
 
+  it('reads page 1 again and keeps the rows the user scrolled to beyond it', async () => {
+    await twoPages();
     fetchDirectoryStructure.mockClear();
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
+    answer(page(['a.txt', 'b.txt', 'd.txt'], { isTruncated: true, nextToken: 'fresh-t1' }));
+
     await store().fetchData({ sync: true });
 
-    // A sync replaces the cache wholesale, so it has to read from the top. It
-    // used to pass the stored continuation token, which replaced a fully paged
-    // folder with nothing but the page after the last one loaded.
-    expect(fetchDirectoryStructure).toHaveBeenCalledWith('', 1000);
-    expect(cachedKeys()).toEqual(['a.txt']);
-  });
-});
-
-describe('recent items on the home page', () => {
-  it('does not issue a second request when returning to the folder', async () => {
-    const first = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(first.promise);
-
-    const navigateIn = store().fetchRecentItems({ sync: false, itemsPerType: 10 });
-    const navigateBack = store().fetchRecentItems({ sync: false, itemsPerType: 10 });
-
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(1);
-
-    first.resolve(page(['a.txt']));
-    await Promise.all([navigateIn, navigateBack]);
-
-    expect(store().recentCache['/']?.files.map((file) => file.id)).toEqual(['a.txt']);
+    // From the top, never from the stored cursor.
+    expect(fetchDirectoryStructure).toHaveBeenCalledWith('', PAGE_SIZE, undefined, {
+      signal: signals[signals.length - 1],
+    });
+    // c.txt was inside page 1's new range and is gone; m.txt and z.txt lie
+    // beyond it and stay, with the cursor that continues after them.
+    expect(keysAt()).toEqual(['a.txt', 'b.txt', 'd.txt', 'm.txt', 'z.txt']);
+    expect(store().listings['/']!.cursor).toBe('t2');
   });
 
-  it('tracks its requests separately from the folder listing', async () => {
-    const listing = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(listing.promise);
-    const loadingListing = store().fetchData({ sync: false });
-    // Apart, so each goes out on its own. Issued in the same turn they would
-    // share one read, which 'two lists for one prefix' covers.
-    await Promise.resolve();
+  it('becomes the whole folder when page 1 is now the only page', async () => {
+    await twoPages();
+    answer(page(['a.txt']));
 
-    // Same prefix, different cache. One must not be treated as superseding the
-    // other just because they were issued for the same folder.
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['recent.txt']));
-    await store().fetchRecentItems({ sync: false, itemsPerType: 10 });
+    await store().fetchData({ sync: true });
 
-    listing.resolve(page(['listed.txt']));
-    await loadingListing;
-
-    expect(cachedKeys()).toEqual(['listed.txt']);
-    expect(store().recentCache['/']?.files.map((file) => file.id)).toEqual(['recent.txt']);
+    expect(keysAt()).toEqual(['a.txt']);
+    expect(store().listings['/']!.complete).toBe(true);
   });
 });
 
 describe('ending the session', () => {
   it('ignores a response that arrives after the data was cleared', async () => {
     const pending = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(pending.promise);
-    const loading = store().fetchData({ sync: false });
+    answer(pending.promise);
+    const reading = store().fetchData();
 
     store().clearAllData();
+    expect(signals[0]?.aborted).toBe(true);
 
-    pending.resolve(page(['a.txt']));
-    await loading;
+    pending.resolve(page(['old-bucket.txt']));
+    await reading;
 
-    // Writing here would repopulate the previous session's listing into a store
-    // that logout had just emptied.
-    expect(useDriveStore.getState().cache['/']).toBeUndefined();
+    expect(store().listings).toEqual({});
   });
 
   it('does not append a page requested before the session ended', async () => {
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['old-a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
-    await store().fetchData({ sync: false });
-
-    const nextPage = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(nextPage.promise);
+    answer(page(['a.txt'], { isTruncated: true, nextToken: 't1' }));
+    await store().fetchData();
+    const next = deferred();
+    answer(next.promise);
     const paging = store().loadMoreData();
 
-    // Log out and connect somewhere else, then open the same prefix. The cache
-    // is populated again by the time the old page lands, so checking that it
-    // exists is not enough to tell the two sessions apart.
     store().clearAllData();
     connect();
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['new-a.txt']));
-    await store().fetchData({ sync: false });
+    answer(page(['new-bucket.txt']));
+    await store().fetchData();
 
-    nextPage.resolve(page(['old-b.txt']));
+    next.resolve(page(['old-bucket-page-2.txt']));
     await paging;
 
-    // Appending here would list the previous bucket's objects inside the new one.
-    expect(cachedKeys()).toEqual(['new-a.txt']);
-  });
-
-  it('does not write paging status back into a cleared store', async () => {
-    fetchDirectoryStructure.mockResolvedValueOnce(
-      page(['a.txt'], { isTruncated: true, nextToken: 'token-1' })
-    );
-    await store().fetchData({ sync: false });
-
-    const nextPage = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(nextPage.promise);
-    const paging = store().loadMoreData();
-
-    store().clearAllData();
-
-    nextPage.resolve(page(['b.txt']));
-    await paging;
-
-    // Logout emptied these; a response landing afterwards must not put a stray
-    // entry back for a folder that no longer belongs to anyone.
-    expect(useDriveStore.getState().loadMoreStatus).toEqual({});
-    expect(useDriveStore.getState().cache).toEqual({});
+    expect(keysAt()).toEqual(['new-bucket.txt']);
   });
 
   it('does not let a new session join the previous session request', async () => {
-    const pending = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(pending.promise);
-    const loading = store().fetchData({ sync: false });
+    const old = deferred();
+    answer(old.promise);
+    const oldRead = store().fetchData();
 
     store().clearAllData();
     connect();
+    answer(page(['new.txt']));
+    await store().fetchData();
 
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['new-bucket.txt']));
-    await store().fetchData({ sync: false });
-
-    pending.resolve(page(['old-bucket.txt']));
-    await loading;
-
-    expect(cachedKeys()).toEqual(['new-bucket.txt']);
-  });
-});
-
-/**
- * A failed listing used to be indistinguishable from one still in flight: the
- * catch threw the error away and set a status that both dashboard pages read
- * through `=== 'ready'`, so the "not ready" branch drew a loading skeleton that
- * nothing would ever replace.
- */
-describe('a listing that fails', () => {
-  function sdkError(name: string, httpStatusCode?: number) {
-    const error = new Error(name);
-    error.name = name;
-
-    return Object.assign(error, { $metadata: { httpStatusCode } });
-  }
-
-  it('records why, rather than discarding it', async () => {
-    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
-
-    await store().fetchData({ sync: false });
-
-    expect(useDriveStore.getState().directory['/']?.status).toBe('error');
-    expect(useDriveStore.getState().directory['/']?.failure?.kind).toBe('permissions');
-  });
-
-  it('keeps the reason specific enough to act on', async () => {
-    fetchDirectoryStructure.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-
-    await store().fetchData({ sync: false });
-
-    // A blocked CORS preflight and a wrong secret key are different problems
-    // fixed in different places, so they must not arrive as the same message.
-    expect(useDriveStore.getState().directory['/']?.failure?.kind).toBe('network');
-  });
-
-  it('forgets the reason once the folder loads', async () => {
-    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
-    await store().fetchData({ sync: false });
-    expect(useDriveStore.getState().directory['/']?.failure).toBeDefined();
-
-    // What Retry does. A stale reason left behind would render over a folder
-    // that had just come back fine.
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
-    await store().fetchData({ sync: true });
-
-    expect(useDriveStore.getState().directory['/']?.status).toBe('ready');
-    expect(useDriveStore.getState().directory['/']?.failure).toBeUndefined();
+    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
+    old.resolve(page(['old.txt']));
+    await oldRead;
+    expect(keysAt()).toEqual(['new.txt']);
   });
 
   it('does not carry a failure into the next session', async () => {
-    fetchDirectoryStructure.mockRejectedValueOnce(sdkError('AccessDenied', 403));
-    await store().fetchData({ sync: false });
+    answer(new Error('network'));
+    await store().fetchData();
 
     store().clearAllData();
 
-    expect(useDriveStore.getState().directory).toEqual({});
-  });
-
-  // The superseding rule already covered the status; the reason has to follow
-  // it, or a folder that loaded fine renders someone else's failure.
-  it('does not report a superseded failure over a newer result', async () => {
-    const slowFailure = deferred();
-    fetchDirectoryStructure.mockReturnValueOnce(slowFailure.promise);
-    const first = store().fetchData({ sync: true });
-    await Promise.resolve();
-
-    fetchDirectoryStructure.mockResolvedValueOnce(page(['a.txt']));
-    await store().fetchData({ sync: true });
-
-    slowFailure.reject(sdkError('AccessDenied', 403));
-    await first;
-
-    expect(useDriveStore.getState().directory['/']?.status).toBe('ready');
-    expect(useDriveStore.getState().directory['/']?.failure).toBeUndefined();
+    expect(store().listings).toEqual({});
   });
 });
 
-/**
- * The directory listing and the recent-items list come from the same listing
- * of the same prefix. refreshCurrentData asks for both at once, and used to
- * send that listing twice; now the two share one read when they start
- * together. Reads that start apart still go out separately, because a refresh
- * must not be answered by a read from before the change it is looking for -
- * and then their outcomes have to stay apart: one succeeding must not erase
- * why the other failed.
- */
-describe('two lists for one prefix', () => {
-  function sdkError(name: string, httpStatusCode?: number) {
-    const error = new Error(name);
-    error.name = name;
+describe('the recent-folders cap', () => {
+  it('forgets the least recently used folder past the cap, never the one on screen', async () => {
+    for (let i = 0; i <= MAX_LISTINGS; i++) {
+      store().setCurrentPrefix(`f${i}/`);
+      answer(page([`f${i}/a.txt`]));
+      await store().fetchData();
+    }
 
-    return Object.assign(error, { $metadata: { httpStatusCode } });
+    const keys = Object.keys(store().listings);
+    expect(keys).toHaveLength(MAX_LISTINGS);
+    expect(keys).not.toContain('f0/');
+    expect(keys).toContain(`f${MAX_LISTINGS}/`);
+  });
+
+  it('keeps a folder that was shown again recently', async () => {
+    // Every folder used within one millisecond, which is what a fast machine
+    // does here: recency has to come from order, not the clock alone.
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+
+    for (let i = 0; i < MAX_LISTINGS; i++) {
+      store().setCurrentPrefix(`f${i}/`);
+      answer(page([`f${i}/a.txt`]));
+      await store().fetchData();
+    }
+
+    // Back to the first folder, then one more new folder.
+    store().setCurrentPrefix('f0/');
+    store().setCurrentPrefix('new/');
+    answer(page(['new/a.txt']));
+    await store().fetchData();
+
+    expect(Object.keys(store().listings)).toContain('f0/');
+    expect(Object.keys(store().listings)).not.toContain('f1/');
+    vi.restoreAllMocks();
+  });
+});
+
+describe('the home page suggestions', () => {
+  const at = (minutesAgo: number) => new Date(Date.UTC(2026, 0, 1) - minutesAgo * 60_000);
+
+  async function loadRoot(complete: boolean) {
+    answer({
+      files: [
+        { Key: 'old.txt', LastModified: at(60) },
+        { Key: 'new.txt', LastModified: at(1) },
+        { Key: 'mid.txt', LastModified: at(30) },
+      ],
+      folders: [{ Prefix: 'a/' }, { Prefix: 'b/' }],
+      isTruncated: !complete,
+      nextToken: complete ? undefined : 't1',
+    });
+    await store().fetchData();
   }
 
-  it('lists the prefix once when both are refreshed together', async () => {
-    fetchDirectoryStructure.mockResolvedValue(page(['a.txt', 'b.txt']));
+  it('lists the newest of the loaded files first', async () => {
+    await loadRoot(true);
+    const { result } = renderHook(() => useRecentState(2, 1));
 
-    await store().refreshCurrentData();
-
-    expect(fetchDirectoryStructure).toHaveBeenCalledOnce();
-    const state = useDriveStore.getState();
-    expect(state.cache['/']?.files.map((f) => f.id)).toEqual(['a.txt', 'b.txt']);
-    expect(state.recentCache['/']?.files.map((f) => f.id).sort()).toEqual(['a.txt', 'b.txt']);
+    expect(result.current.state).toBe('ready');
+    const data = result.current.state === 'ready' ? result.current.data : undefined;
+    expect(data?.files.map((file) => file.Key)).toEqual(['new.txt', 'mid.txt']);
+    expect(data?.folders.map((folder) => folder.Prefix)).toEqual(['a/']);
+    expect(data).toMatchObject({ hasMoreFiles: true, hasMoreFolders: true });
   });
 
-  it('gives both lists the reason when their shared listing fails', async () => {
-    fetchDirectoryStructure.mockRejectedValue(sdkError('AccessDenied', 403));
+  it('is built from the listing itself, not a copy kept beside it', async () => {
+    await loadRoot(true);
+    const { result } = renderHook(() => useRecentState());
 
-    await store().refreshAll();
-
-    const state = useDriveStore.getState();
-    expect(fetchDirectoryStructure).toHaveBeenCalledOnce();
-    expect(state.directory['/']?.failure?.kind).toBe('permissions');
-    expect(state.recent['/']?.failure?.kind).toBe('permissions');
+    const data = result.current.state === 'ready' ? result.current.data : undefined;
+    const fromListing = store().listings['/']!.files.find((file) => file.Key === 'new.txt');
+    expect(data?.files[0]).toBe(fromListing);
   });
 
-  it('does not let one list change the shared page under the other', async () => {
-    // Both filter out the folder's own marker. They used to do it by
-    // reassigning the response's arrays, which is fine for a response of
-    // one's own and not for one that is shared.
-    const shared = page(['a.txt']);
-    const { files, folders } = shared;
-    fetchDirectoryStructure.mockResolvedValue(shared);
+  it('says when it was chosen from only the loaded part of the folder', async () => {
+    await loadRoot(false);
+    const { result } = renderHook(() => useRecentState());
 
-    await store().refreshCurrentData();
-
-    expect(shared.files).toBe(files);
-    expect(shared.folders).toBe(folders);
+    const data = result.current.state === 'ready' ? result.current.data : undefined;
+    expect(data).toMatchObject({ complete: false, loadedCount: 5 });
   });
 
-  it('reads again for a refresh asked for after another read began', async () => {
-    const earlier = deferred();
-    fetchDirectoryStructure
-      .mockReturnValueOnce(earlier.promise)
-      .mockResolvedValueOnce(page(['after-the-change.txt']));
+  it('follows the listing as rows change', async () => {
+    await loadRoot(true);
+    const { result } = renderHook(() => useRecentState());
 
-    const first = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
-    await Promise.resolve();
-    const second = store().fetchData({ sync: true });
+    act(() => {
+      store().removeFiles(['new.txt']);
+    });
 
-    earlier.resolve(page(['before-the-change.txt']));
-    await Promise.all([first, second]);
-
-    expect(fetchDirectoryStructure).toHaveBeenCalledTimes(2);
-    expect(cachedKeys()).toEqual(['after-the-change.txt']);
-  });
-
-  it('keeps the recent failure when a separate directory listing succeeds', async () => {
-    fetchDirectoryStructure
-      .mockRejectedValueOnce(sdkError('AccessDenied', 403))
-      .mockResolvedValueOnce(page(['a.txt']));
-
-    const recent = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
-    await Promise.resolve();
-    await Promise.all([recent, store().fetchData({ sync: true })]);
-
-    const state = useDriveStore.getState();
-    expect(state.recent['/']?.status).toBe('error');
-    // Not 'unknown': the recent list still has to be able to say it was denied.
-    expect(state.recent['/']?.failure?.kind).toBe('permissions');
-    expect(state.directory['/']?.status).toBe('ready');
-  });
-
-  it('keeps the directory failure when a separate recent listing succeeds', async () => {
-    fetchDirectoryStructure
-      .mockResolvedValueOnce(page(['a.txt']))
-      .mockRejectedValueOnce(sdkError('NoSuchBucket', 404));
-
-    const recent = store().fetchRecentItems({ sync: true, itemsPerType: 10 });
-    await Promise.resolve();
-    await Promise.all([recent, store().fetchData({ sync: true })]);
-
-    const state = useDriveStore.getState();
-    expect(state.directory['/']?.status).toBe('error');
-    expect(state.directory['/']?.failure?.kind).toBe('bucket');
-    expect(state.recent['/']?.status).toBe('ready');
+    const data = result.current.state === 'ready' ? result.current.data : undefined;
+    expect(data?.files.map((file) => file.Key)).toEqual(['mid.txt', 'old.txt']);
   });
 });
