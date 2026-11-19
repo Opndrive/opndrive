@@ -11,7 +11,7 @@ import { deleteListedKeys } from '../utils/delete-listed-keys';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { isFile, isFolderLike } from '@/shared/utils/drive-item';
+import { isFile } from '@/shared/utils/drive-item';
 
 /**
  * S3 DeleteObjects responds 200 even when individual keys are rejected
@@ -485,26 +485,29 @@ export function useDeleteOperations() {
         return;
       }
 
+      // Files only, and said so before anything is touched. A folder needs
+      // listing, progress and a recovery record, which deleteFolderWithProgress
+      // does; here one used to be counted in the card's label ("Deleting 1
+      // folder") and then never deleted. A folder marker is a FileItem as far
+      // as the type goes, so the type alone cannot keep one out.
+      const folders = items.filter((item) => !isFile(item));
+      if (folders.length > 0) {
+        throw new Error(
+          `batchDelete deletes files only, and was given ${folders.length} folder(s): ` +
+            'delete folders with deleteFolderWithProgress.'
+        );
+      }
+
       const itemId = `delete-batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // Determine batch operation details
-      const fileCount = items.filter(isFile).length;
-      const folderCount = items.length - fileCount;
-      const operationLabel =
-        folderCount > 0 && fileCount > 0
-          ? `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''} and ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
-          : folderCount > 0
-            ? `Deleting ${folderCount} folder${folderCount !== 1 ? 's' : ''}`
-            : `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+      const count = items.length;
+      const operationLabel = `Deleting ${count} file${count !== 1 ? 's' : ''}`;
 
       // Deleting one thing is not a batch to the person doing it, so the card
       // says which thing. Only a real multi-selection falls back to a count.
-      const single = items.length === 1 ? items[0] : undefined;
+      const single = count === 1 ? items[0] : undefined;
       const names = items.map(displayName);
-
-      // Only meaningful when the whole selection is files: a folder has no
-      // extension to agree with.
-      const uniform = folderCount === 0 ? sharedExtension(names) : undefined;
+      const uniform = sharedExtension(names);
 
       const signal = startDeleteOperation(itemId, {
         id: itemId,
@@ -513,24 +516,12 @@ export function useDeleteOperations() {
         // is named "8 items", which has no extension to read back off it, so
         // claiming 'file' without one lands on FileIcon's unknown-type
         // question mark - which reads as an error rather than as eight files.
-        type: single
-          ? isFolderLike(single)
-            ? 'folder'
-            : 'file'
-          : fileCount === 0
-            ? 'folder'
-            : uniform
-              ? 'file'
-              : 'mixed',
+        type: single || uniform ? 'file' : 'mixed',
         size: 0,
         status: 'deleting',
         progress: 0,
         operationLabel,
-        extension: single
-          ? isFolderLike(single)
-            ? undefined
-            : (single as FileItem).extension
-          : uniform,
+        extension: single ? single.extension : uniform,
         detail: describeItems(names),
       });
 
@@ -560,7 +551,7 @@ export function useDeleteOperations() {
           throw abortError();
         }
 
-        // Collect all keys to delete (including folder contents)
+        // Every item is a file, checked above, so its key is all there is.
         const allKeysToDelete: string[] = [];
 
         for (const item of items) {
@@ -568,9 +559,7 @@ export function useDeleteOperations() {
             throw abortError();
           }
 
-          if (isFile(item)) {
-            allKeysToDelete.push(item.Key || item.name);
-          }
+          allKeysToDelete.push(item.Key || item.name);
         }
 
         // Remove duplicates
