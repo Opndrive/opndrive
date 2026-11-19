@@ -54,7 +54,7 @@ function BrowsePageContent() {
     useMultiShareDialog();
 
   // Clear selection when clicking outside - only for single item selection
-  const { clearSelection, getSelectionCount } = useMultiSelectStore();
+  const { clearSelection, getSelectionCount, selectAll } = useMultiSelectStore();
 
   // Clear selection when multi-share dialog closes
   useEffect(() => {
@@ -206,6 +206,15 @@ function BrowsePageContent() {
     void loadMoreData();
   }, [loadMoreData]);
 
+  // Everything loaded, folders then files, the order both layouts draw.
+  const selectAllOffer = currentData
+    ? {
+        loaded: loadedCount,
+        complete: currentData.complete,
+        onSelectAll: () => selectAll([...currentData.folders, ...currentData.files]),
+      }
+    : undefined;
+
   if (isLoading) {
     return <DashboardLoading />;
   }
@@ -272,7 +281,10 @@ function BrowsePageContent() {
           {/* Multi-select toolbar - inside same sticky container, floats below header */}
           <div className="relative h-0">
             <div className="absolute top-0 left-0 right-0 z-20 bg-background">
-              <MultiSelectToolbar openMultiShareDialog={openMultiShareDialog} />
+              <MultiSelectToolbar
+                openMultiShareDialog={openMultiShareDialog}
+                selectAll={selectAllOffer}
+              />
             </div>
           </div>
         </div>

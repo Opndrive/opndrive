@@ -33,6 +33,12 @@ type SelectionType = ItemType | 'mixed';
 
 interface MultiSelectState {
   selectedItems: SelectableItem[];
+  /**
+   * The keys of `selectedItems`, kept beside it so asking whether a row is
+   * selected costs a lookup rather than a scan. Every drawn row asks on every
+   * render, and "select all" in a large folder holds tens of thousands.
+   */
+  selectedKeys: ReadonlySet<string>;
   selectedType: SelectionType | null;
   lastSelectedIndex: number | null;
   /**
@@ -65,6 +71,12 @@ interface MultiSelectState {
     shiftKey: boolean,
     allItems: SelectableItem[]
   ) => void;
+  /**
+   * Holds exactly these items, in order. For "select all", which can only ever
+   * mean the items that are loaded: S3 gives no way to act on a key it has not
+   * listed yet.
+   */
+  selectAll: (items: SelectableItem[]) => void;
   clearSelection: () => void;
   isSelected: (item: SelectableItem) => boolean;
   getSelectionCount: () => number;
@@ -92,8 +104,16 @@ const typeOf = (items: SelectableItem[]): SelectionType | null => {
   return 'mixed';
 };
 
+/** A selection and everything derived from it, so the three cannot disagree. */
+const holding = (items: SelectableItem[]) => ({
+  selectedItems: items,
+  selectedKeys: new Set(items.map(getItemKey)),
+  selectedType: typeOf(items),
+});
+
 export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
   selectedItems: [],
+  selectedKeys: new Set<string>(),
   selectedType: null,
   lastSelectedIndex: null,
   anchorKey: null,
@@ -129,8 +149,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
       const rangeItems = allItems.slice(start, end + 1);
 
       set({
-        selectedItems: rangeItems,
-        selectedType: typeOf(rangeItems),
+        ...holding(rangeItems),
         // Don't update lastSelectedIndex - keep the anchor point fixed
       });
       return;
@@ -139,9 +158,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
     // Ctrl+Click: Toggle selection
     if (ctrlKey) {
       const itemKey = getItemKey(item);
-      const isCurrentlySelected = state.selectedItems.some(
-        (selected) => getItemKey(selected) === itemKey
-      );
+      const isCurrentlySelected = state.selectedKeys.has(itemKey);
 
       if (isCurrentlySelected) {
         // Remove from selection
@@ -149,8 +166,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
           (selected) => getItemKey(selected) !== itemKey
         );
         set({
-          selectedItems: newSelection,
-          selectedType: typeOf(newSelection),
+          ...holding(newSelection),
           lastSelectedIndex: index,
           anchorKey: itemKey,
         });
@@ -158,8 +174,7 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
         // Add to selection
         const newSelection = [...state.selectedItems, item];
         set({
-          selectedItems: newSelection,
-          selectedType: typeOf(newSelection),
+          ...holding(newSelection),
           lastSelectedIndex: index,
           anchorKey: itemKey,
         });
@@ -171,27 +186,26 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
     //
     // Derived from the item, like every other path here.
     set({
-      selectedItems: [item],
-      selectedType: typeOf([item]),
+      ...holding([item]),
       lastSelectedIndex: index,
       anchorKey: getItemKey(item),
     });
   },
 
+  selectAll: (items) => {
+    // No anchor: a shift-click after "select all" starts a fresh range.
+    set({ ...holding(items), lastSelectedIndex: null, anchorKey: null });
+  },
+
   clearSelection: () => {
     set({
-      selectedItems: [],
-      selectedType: null,
+      ...holding([]),
       lastSelectedIndex: null,
       anchorKey: null,
     });
   },
 
-  isSelected: (item) => {
-    const state = get();
-    const itemKey = getItemKey(item);
-    return state.selectedItems.some((selected) => getItemKey(selected) === itemKey);
-  },
+  isSelected: (item) => get().selectedKeys.has(getItemKey(item)),
 
   getSelectionCount: () => {
     return get().selectedItems.length;

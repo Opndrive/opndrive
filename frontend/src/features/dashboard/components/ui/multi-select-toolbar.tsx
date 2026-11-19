@@ -24,6 +24,15 @@ interface MultiSelectToolbarProps {
   openMultiShareDialog: (files: FileItem[]) => void;
   onDeleteSuccess?: () => void;
   showLocationActions?: boolean; // Show "Show in folder" for items from different locations
+  /**
+   * Offers to select everything in the folder shown.
+   *
+   * Everything means everything loaded: S3 lists a folder a page at a time and
+   * nothing can be done to a key that has not been listed. So until the last
+   * page is in, the offer says "loaded", and only once the folder is complete
+   * does it name the whole count.
+   */
+  selectAll?: { loaded: number; complete: boolean; onSelectAll: () => void };
 }
 
 interface MoreAction {
@@ -38,6 +47,7 @@ export function MultiSelectToolbar({
   openMultiShareDialog,
   onDeleteSuccess,
   showLocationActions = false,
+  selectAll,
 }: MultiSelectToolbarProps) {
   const router = useRouter();
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
@@ -176,8 +186,26 @@ export function MultiSelectToolbar({
         </AriaLabel>
 
         <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-          {count} selected
+          {count.toLocaleString()} selected
         </span>
+
+        {selectAll && selectAll.loaded > 1 ? (
+          count < selectAll.loaded ? (
+            <button
+              type="button"
+              onClick={selectAll.onSelectAll}
+              className="cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              {selectAll.complete
+                ? `Select all ${selectAll.loaded.toLocaleString()} items`
+                : `Select all ${selectAll.loaded.toLocaleString()} loaded`}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {selectAll.complete ? 'Every item in this folder' : 'Every item loaded so far'}
+            </span>
+          )
+        ) : null}
       </div>
 
       {/* Right side: Action buttons */}
