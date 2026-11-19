@@ -1,4 +1,29 @@
 /**
+ * One formatter per shape, made once.
+ *
+ * `toLocaleString` with options builds a fresh `Intl.DateTimeFormat` on every
+ * call, and every row in a listing formats two dates. Scrolling a long list
+ * mounts a screenful of rows at a time, and building sixty formatters was a
+ * visible share of each frame. The output is the same: `toLocaleString(locale,
+ * options)` is defined as formatting with exactly this formatter.
+ */
+const SHORT_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const SHORT_DATE_WITH_YEAR = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+const FULL_TIMESTAMP = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+/**
  * Formats a date to relative time (e.g., "5 minutes ago", "2 hours ago", "yesterday")
  * @param date - The date to format
  * @returns Formatted relative time string
@@ -32,18 +57,7 @@ export function formatRelativeTime(date: Date | undefined): string {
 
   const isCurrentYear = date.getFullYear() === now.getFullYear();
 
-  if (isCurrentYear) {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  } else {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
+  return isCurrentYear ? SHORT_DATE.format(date) : SHORT_DATE_WITH_YEAR.format(date);
 }
 
 /**
@@ -58,15 +72,7 @@ export function formatTimeWithTooltip(date: Date | undefined): {
   if (!date) return { display: '', tooltip: '' };
 
   const display = formatRelativeTime(date);
-  const tooltip = date.toLocaleString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const tooltip = FULL_TIMESTAMP.format(date);
 
   return { display, tooltip };
 }

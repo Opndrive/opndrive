@@ -36,6 +36,10 @@ export function LayoutToggle({ onLayoutChange, className = '' }: LayoutTogglePro
     <div className={`flex rounded-lg bg-secondary p-1 ${className}`}>
       <AriaLabel label="Switch to list view" position="bottom">
         <button
+          // The tooltip only describes the button while it shows; the icon
+          // alone gave a screen reader nothing to call it.
+          aria-label="List view"
+          aria-pressed={layout === 'list'}
           onClick={() => handleLayoutChange('list')}
           className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
             layout === 'list'
@@ -48,6 +52,8 @@ export function LayoutToggle({ onLayoutChange, className = '' }: LayoutTogglePro
       </AriaLabel>
       <AriaLabel label="Switch to grid view" position="bottom">
         <button
+          aria-label="Grid view"
+          aria-pressed={layout === 'grid'}
           onClick={() => handleLayoutChange('grid')}
           className={`flex items-center cursor-pointer justify-center rounded-md px-2 py-1 text-sm transition-colors ${
             layout === 'grid'

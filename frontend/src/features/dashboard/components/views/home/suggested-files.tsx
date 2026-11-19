@@ -1,18 +1,15 @@
 'use client';
 
-import { useState, Fragment, useEffect, Children } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useCurrentLayout } from '@/hooks/use-current-layout';
 import type { FileItem } from '@/features/dashboard/types/file';
-import type { Folder } from '@/features/dashboard/types/folder';
 import { FileItemGrid, FileItemList, FileItemMobile } from '../../ui';
 import { cn } from '@/shared/utils/utils';
-import { readDroppedItems } from '@/features/upload/utils/drop-preparation';
 import { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import { AriaLabel } from '@/shared/components/custom-aria-label';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
-import { useEnhancedDragDrop } from '@/features/upload/providers/enhanced-drag-drop-provider';
-import { isExternalFileDrag } from '@/features/upload/utils/drag-events';
+import { useListingDrop } from '@/features/dashboard/hooks/use-listing-drop';
 
 interface SuggestedFilesProps {
   files: FileItem[];
@@ -33,30 +30,6 @@ interface SuggestedFilesProps {
    * suggestion. Home keeps the suggesting; browse passes its own plain label.
    */
   title?: string;
-  /**
-   * Rows rendered above the files, under the same header.
-   *
-   * How the list view shows one directory instead of two: DriveList hands the
-   * folder rows in here rather than stacking a second table above this one.
-   * Absent - on Home, and in grid layout - nothing changes.
-   */
-  leadingRows?: React.ReactNode;
-  /**
-   * The same rows in their mobile form.
-   *
-   * The list view renders two trees, one per breakpoint, and only one is ever
-   * visible. Handing folder rows to the desktop tree alone made them vanish
-   * below `sm`, which on a folder-only prefix left the page blank.
-   */
-  leadingMobileRows?: React.ReactNode;
-  /**
-   * How many rows precede the files, so a file's index describes its place in
-   * the table rather than in the files array. Shift-select slices `allItems` by
-   * these numbers, so being off by the folder count selects the wrong rows.
-   */
-  fileIndexOffset?: number;
-  /** Folders and files together, the range a shift-select can span. */
-  allItems?: (FileItem | Folder)[];
   /**
    * Leave the layout toggle to whichever section leads the page.
    *
@@ -79,33 +52,16 @@ export function SuggestedFiles({
   hideTitle = false,
   onFilesDropped,
   title = 'Suggested files',
-  leadingRows,
-  leadingMobileRows,
-  fileIndexOffset = 0,
-  allItems,
   hideLayoutToggle = false,
 }: SuggestedFilesProps) {
   const { layout } = useCurrentLayout();
   const [isExpanded, setIsExpanded] = useState(true);
   const { clearSelection } = useMultiSelectStore();
-  /**
-   * The drag is one fact about the page, so one listener at the window owns it.
-   *
-   * It used to be tracked here, by counting dragenter against dragleave. Both
-   * fire once per descendant, so a table of rows full of icons and buttons
-   * emits them in bursts and the count drifts - the wash would stick on after
-   * the pointer left, or never appear at all.
-   */
-  const { isFileDragActive, hoveredTargetId } = useEnhancedDragDrop();
-
-  /**
-   * The listing is the destination only while no folder in it is.
-   *
-   * Drawing this at the same time as a folder row's own highlight would offer
-   * two answers to where the files are about to land. A folder claiming the
-   * drop is the more specific answer, so it wins and this steps back.
-   */
-  const isDropTarget = isFileDragActive && hoveredTargetId === null;
+  const {
+    isDropTarget,
+    onDragOver: handleDragOver,
+    onDrop: handleDrop,
+  } = useListingDrop(onFilesDropped);
 
   // Handle ESC key to clear selection
   useEffect(() => {
@@ -123,39 +79,6 @@ export function SuggestedFiles({
     setIsExpanded(!isExpanded);
   };
 
-  /**
-   * No stopPropagation here.
-   *
-   * Stopping the drag events on the way up is what broke dropping onto a folder
-   * once folders moved into this table: the window listener that tracks the
-   * drag sits above this component, so a drag that began over the rows was
-   * never seen at all, and every folder in the list stayed inert for the rest
-   * of it.
-   */
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!isExternalFileDrag(e.dataTransfer)) return;
-    e.preventDefault();
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    if (!isExternalFileDrag(e.dataTransfer)) return;
-
-    e.preventDefault();
-
-    // A drop on a folder row never reaches here - the row stops it - so
-    // anything that does was aimed at the listing, and belongs in the prefix
-    // the listing is showing.
-    if (!onFilesDropped) return;
-
-    try {
-      const processedData = await readDroppedItems(e.dataTransfer.items);
-
-      onFilesDropped(processedData);
-    } catch (error) {
-      console.error('Error processing drag and drop:', error);
-    }
-  };
-
   const handleFileClick = (file: FileItem) => {
     onFileClick?.(file);
   };
@@ -164,11 +87,7 @@ export function SuggestedFiles({
     onFileAction?.(action, file);
   };
 
-  // Empty means nothing to show at all, not merely no files. Once folders
-  // render as leading rows in this same table, asking only about `files` put
-  // the drop zone in front of a folder that has subfolders and no files in it -
-  // a directory with contents, drawn as an empty one.
-  if (files.length === 0 && Children.count(leadingRows) === 0) {
+  if (files.length === 0) {
     return (
       <div
         className={cn(`w-full ${className} transition-all duration-200 relative text-center`)}
@@ -293,15 +212,13 @@ export function SuggestedFiles({
                   <div className="col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1 xl:col-span-1"></div>
                 </div>
 
-                {leadingRows}
-
                 {files.map((file, index) => (
                   <Fragment key={file.Key}>
                     <FileItemList
                       file={file}
-                      allFiles={allItems ?? files}
+                      allFiles={files}
                       _onAction={handleFileAction}
-                      index={index + fileIndexOffset}
+                      index={index}
                     />
                     {index < files.length - 1 && (
                       <div className="mx-4" aria-hidden="true">
@@ -313,21 +230,16 @@ export function SuggestedFiles({
               </div>
 
               <div className="sm:hidden">
-                {/* "Files" would be a lie above a list that opens with folders,
-                    the same reason the desktop table drops its heading. */}
-                {Children.count(leadingMobileRows) === 0 && (
-                  <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
-                    Files
-                  </div>
-                )}
+                <div className="px-4 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+                  Files
+                </div>
                 <div className="divide-y divide-border/30">
-                  {leadingMobileRows}
                   {files.map((file, index) => (
                     <FileItemMobile
                       key={file.Key}
                       file={file}
-                      allFiles={allItems ?? files}
-                      index={index + fileIndexOffset}
+                      allFiles={files}
+                      index={index}
                       onFileClick={handleFileClick}
                       _onAction={handleFileAction}
                     />
