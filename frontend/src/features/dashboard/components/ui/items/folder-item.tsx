@@ -7,6 +7,7 @@ import { HiOutlineCheck } from 'react-icons/hi';
 import { FaRegCircle } from 'react-icons/fa';
 import { FolderOverflowMenu } from '../menus/folder-overflow-menu';
 import { Folder, FolderMenuAction } from '@/features/dashboard/types/folder';
+import type { FileItem } from '@/features/dashboard/types/file';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { getItemKeyIntent, opensMenuOnKey } from './item-keyboard';
@@ -17,7 +18,11 @@ interface FolderItemProps {
   onMenuClick?: (folder: Folder, event: React.MouseEvent) => void;
   className?: string;
   index?: number; // For shift-select range
-  allFolders?: Folder[]; // For range selection
+  /**
+   * What a shift-click range is sliced from. In the drive's grid that is
+   * folders then files, so a range can run from a folder card into the files.
+   */
+  allFolders?: (Folder | FileItem)[];
   additionalActions?: FolderMenuAction[]; // Additional menu actions
   insertAdditionalActionsAfter?: string; // Where to insert additional actions
 }

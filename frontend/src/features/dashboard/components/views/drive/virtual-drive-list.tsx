@@ -1,28 +1,32 @@
 'use client';
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  defaultRangeExtractor,
-  useVirtualizer,
-  type Range,
-  type Virtualizer,
-} from '@tanstack/react-virtual';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
 import type { ProcessedDragData } from '@/features/upload/types/folder-upload-types';
 import type { DragDropTarget } from '@/features/upload/types/drag-drop-types';
 import type { PageState } from '@/context/folder-listing';
-import { useDriveStore } from '@/context/data-context';
 import { DESKTOP_LIST_QUERY, useMediaQuery } from '@/hooks/use-media-query';
 import { FolderDropTarget } from '@/features/upload/components/folder-drop-target';
 import { LayoutToggle } from '@/features/dashboard/components/ui/layout-toggle';
 import { useListingDrop } from '@/features/dashboard/hooks/use-listing-drop';
-import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
 import { FileItemList } from '../../ui/items/file-item-list';
 import { FileItemMobile } from '../../ui/items/file-item-mobile';
 import { FolderItemList } from '../../ui/items/folder-item-list';
 import { FolderItemMobile } from '../../ui/items/folder-item-mobile';
 import { listRows, rowHeight, type ListRow } from './list-rows';
+import {
+  FoldersNote,
+  MoreRow,
+  scrollInstantly,
+  scrollParentOf,
+  useLoadedAnnouncement,
+  usePrefetchNextPage,
+  useRememberScroll,
+  useMeasureScrollMargin,
+  useSelectionKeys,
+} from './virtual-shared';
 
 /**
  * One folder in list view, drawing only the rows near the screen.
@@ -42,15 +46,11 @@ import { listRows, rowHeight, type ListRow } from './list-rows';
  * row at the top of the screen where it was, so nothing visibly moves.
  */
 
-/** How close to the loaded end, in screens, before the next page is read. */
-const PREFETCH_SCREENS = 2;
 /**
  * Rows drawn beyond each edge of the screen: enough that wheel scrolling never
  * shows a gap, few enough that a jump across the list mounts one screenful.
  */
 const OVERSCAN = 6;
-/** The fewest milliseconds between two "items loaded" announcements. */
-const ANNOUNCE_EVERY_MS = 2000;
 
 interface VirtualDriveListProps {
   folders: Folder[];
@@ -77,57 +77,6 @@ interface VirtualDriveListProps {
   onFilesDroppedToFolder?: (processedData: ProcessedDragData, targetFolder: DragDropTarget) => void;
 }
 
-/**
- * Jumps rather than glides.
- *
- * `<main>` has `scroll-behavior: smooth`, which every `scrollTo` without a
- * behavior inherits. The virtualizer writes the scroll position to keep rows in
- * place, and a write that animates is the very jump it exists to prevent.
- */
-function scrollInstantly(
-  offset: number,
-  { adjustments = 0, behavior }: { adjustments?: number; behavior?: ScrollBehavior },
-  instance: Virtualizer<HTMLElement, Element>
-) {
-  instance.scrollElement?.scrollTo?.({
-    top: offset + adjustments,
-    behavior: behavior === 'smooth' ? 'smooth' : 'instant',
-  });
-}
-
-/** Says how much has loaded, at most every couple of seconds. Silent on mount. */
-function useLoadedAnnouncement(count: number, complete: boolean): string {
-  const [text, setText] = useState('');
-  const first = useRef(true);
-  const last = useRef(0);
-
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-
-    const message = complete
-      ? `All ${count.toLocaleString()} items loaded`
-      : `${count.toLocaleString()} items loaded`;
-    const wait = ANNOUNCE_EVERY_MS - (Date.now() - last.current);
-    const say = () => {
-      last.current = Date.now();
-      setText(message);
-    };
-
-    if (wait <= 0) {
-      say();
-      return;
-    }
-
-    const timer = setTimeout(say, wait);
-    return () => clearTimeout(timer);
-  }, [count, complete]);
-
-  return text;
-}
-
 export function VirtualDriveList({
   folders,
   files,
@@ -146,18 +95,13 @@ export function VirtualDriveList({
 }: VirtualDriveListProps) {
   const desktop = useMediaQuery(DESKTOP_LIST_QUERY, true);
   const { isDropTarget, onDragOver, onDrop } = useListingDrop(onFilesDropped);
-  const clearSelection = useMultiSelectStore((state) => state.clearSelection);
-  const rememberScrollOffset = useDriveStore((state) => state.rememberScrollOffset);
 
   const rows = useMemo(() => listRows(folders, files, complete), [folders, files, complete]);
   // What shift-select slices: folders then files, the order they are drawn in.
   const allItems = useMemo<(Folder | FileItem)[]>(() => [...folders, ...files], [folders, files]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
-  const getScrollElement = useCallback(
-    () => bodyRef.current?.closest<HTMLElement>('main') ?? null,
-    []
-  );
+  const getScrollElement = useCallback(() => scrollParentOf(bodyRef), []);
 
   /**
    * The row with focus is always drawn, wherever the list has scrolled to.
@@ -192,10 +136,10 @@ export function VirtualDriveList({
   const estimateSize = useCallback((i: number) => rowHeight(rows[i]!, desktop), [rows, desktop]);
   const getItemKey = useCallback((i: number) => rows[i]!.key, [rows]);
 
-  /** Where the rows start within `<main>`'s scrolling content. */
-  const [scrollMargin, setScrollMargin] = useState(0);
-
   const initialOffset = useRef(initialScrollOffset).current;
+  /** Where the rows start within `<main>`'s scrolling content. */
+  const margin = useState(0);
+  const scrollMargin = margin[0];
 
   const virtualizer = useVirtualizer<HTMLElement, Element>({
     count: rows.length,
@@ -223,78 +167,15 @@ export function VirtualDriveList({
     anchorTo: 'end',
   });
 
-  /**
-   * Where the user was, kept for when they come back.
-   *
-   * The virtualizer's own record of the last scroll event, not `<main>` read
-   * at unmount: by then the next folder's rows are in the DOM and the browser
-   * may already have clamped `scrollTop` to fit them. Nor a listener of our
-   * own, which would run after the virtualizer has re-rendered the rows and
-   * force the browser to lay them all out on the spot to answer it.
-   */
-  useEffect(() => {
-    if (!listingKey) return;
-    return () => rememberScrollOffset(listingKey, virtualizer.scrollOffset ?? initialOffset);
-  }, [listingKey, rememberScrollOffset, virtualizer, initialOffset]);
-
-  // Escape clears the selection, as it does over every other listing.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') clearSelection();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [clearSelection]);
+  useRememberScroll(listingKey, virtualizer, initialOffset);
+  useSelectionKeys(allItems);
 
   const items = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
-  const rangeEnd = virtualizer.range?.endIndex ?? -1;
 
-  /**
-   * `scrollMargin` follows whatever sits above the list: banners, breadcrumb,
-   * header.
-   *
-   * Not measured on every scroll. Reading layout straight after the rows for a
-   * new screen are committed forces the browser to lay them out there and
-   * then, and that was the largest single cost of a jump across the list.
-   * Instead it is measured when the list's own size changes, and otherwise
-   * once the scrolling stops, when a frame's work no longer matters. Between
-   * the two, a stale margin only shifts which rows count as near the screen,
-   * which the overscan absorbs; rows are positioned within the list, so none
-   * are drawn in the wrong place.
-   */
-  const isScrolling = virtualizer.isScrolling;
-  useLayoutEffect(() => {
-    if (isScrolling) return;
+  useMeasureScrollMargin(bodyRef, margin, virtualizer.isScrolling, totalSize, desktop);
 
-    const body = bodyRef.current;
-    const main = getScrollElement();
-    if (!body || !main) return;
-
-    const mainRect = main.getBoundingClientRect();
-    // Nothing laid out yet, or no layout at all (jsdom).
-    if (mainRect.height === 0) return;
-
-    const margin = Math.round(body.getBoundingClientRect().top - mainRect.top + main.scrollTop);
-    if (margin !== scrollMargin) setScrollMargin(margin);
-  }, [getScrollElement, scrollMargin, isScrolling, totalSize, desktop]);
-
-  /**
-   * Reads the next page once the user is within two screens of the loaded end.
-   *
-   * Runs again whenever the visible range moves or a page lands, so a page
-   * that leaves the user still near the end asks for the one after it. Never
-   * after a failure: that waits for the retry row.
-   */
-  useEffect(() => {
-    if (complete || nextPage.status !== 'idle' || !onLoadMore) return;
-
-    const viewport = virtualizer.scrollRect?.height ?? window.innerHeight;
-    const offset = (virtualizer.scrollOffset ?? 0) - scrollMargin;
-    const remaining = totalSize - (offset + viewport);
-
-    if (remaining <= viewport * PREFETCH_SCREENS) onLoadMore();
-  }, [complete, nextPage.status, onLoadMore, rangeEnd, totalSize, scrollMargin, virtualizer]);
+  usePrefetchNextPage(virtualizer, { complete, nextPage, onLoadMore, scrollMargin });
 
   const announcement = useLoadedAnnouncement(allItems.length, complete);
 
@@ -495,34 +376,15 @@ const RowContent = memo(function RowContent({
 
     case 'folders-note':
       return (
-        <div role="cell" className="flex h-full items-center px-4 text-xs text-muted-foreground">
-          More folders may still appear as the rest of this folder loads.
+        <div role="cell" className="h-full">
+          <FoldersNote />
         </div>
       );
 
     case 'more':
-      return nextPage.status === 'error' ? (
-        <div
-          role="cell"
-          className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"
-        >
-          <span>Couldn&apos;t load more</span>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            onClick={() => onLoadMore?.()}
-            className="cursor-pointer rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10"
-          >
-            Retry
-          </button>
-        </div>
-      ) : (
-        <div
-          role="cell"
-          className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"
-        >
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Loading more…</span>
+      return (
+        <div role="cell" className="h-full">
+          <MoreRow nextPage={nextPage} onLoadMore={onLoadMore} />
         </div>
       );
   }

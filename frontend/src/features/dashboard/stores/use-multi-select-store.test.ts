@@ -187,6 +187,25 @@ describe('shift+click range', () => {
     expect(store().lastSelectedIndex).toBe(2);
   });
 
+  it('starts a fresh range after select all, rather than from a stale anchor', () => {
+    store().selectItem(files[1]!, 1, false, false, files);
+    store().selectAll(files);
+
+    expect(keysOf()).toHaveLength(files.length);
+
+    store().selectItem(files[3]!, 3, false, true, files);
+    expect(keysOf()).toEqual(['d.txt']);
+  });
+
+  it('answers isSelected from the keys it holds', () => {
+    store().selectAll(files);
+
+    // A different object for the same item is the same selection.
+    expect(store().isSelected({ ...files[2]! })).toBe(true);
+    expect(store().isSelected(file('nope.txt'))).toBe(false);
+    expect(store().selectedKeys.size).toBe(files.length);
+  });
+
   /**
    * A folder found on a later page joins the folders above every file, so a
    * file clicked a moment ago is now one row further down. The range has to

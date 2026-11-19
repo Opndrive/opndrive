@@ -416,6 +416,23 @@ describe('where the user was in each folder', () => {
   });
 });
 
+describe('selecting everything loaded', () => {
+  it('selects every loaded row with Ctrl+A, drawn or not', () => {
+    show(
+      <VirtualDriveList
+        folders={[folder('a')]}
+        files={files(5000)}
+        complete={false}
+        nextPage={IDLE}
+      />
+    );
+
+    fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+
+    expect(useMultiSelectStore.getState().selectedItems).toHaveLength(5001);
+  });
+});
+
 describe('keyboard focus', () => {
   it('keeps the focused row drawn after scrolling away from it', () => {
     show(<VirtualDriveList folders={[]} files={files(1000)} complete nextPage={IDLE} />);

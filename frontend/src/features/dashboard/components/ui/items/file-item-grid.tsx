@@ -4,6 +4,7 @@ import { HiOutlineDotsVertical, HiOutlineCheck } from 'react-icons/hi';
 import { FaUserAlt, FaRegCircle } from 'react-icons/fa';
 import { FileThumbnailWithImage } from './file-thumbnail-with-image';
 import { FileExtension, FileItem, FileMenuAction } from '@/features/dashboard/types/file';
+import type { Folder } from '@/features/dashboard/types/folder';
 import { FileOverflowMenu } from '../menus/file-overflow-menu';
 import { formatTimeWithTooltip } from '@/shared/utils/time-utils';
 import { useFilePreviewActions } from '@/hooks/use-file-preview-actions';
@@ -15,6 +16,12 @@ import { isFile } from '@/shared/utils/drive-item';
 interface FileItemGridProps {
   file: FileItem;
   allFiles?: FileItem[]; // For navigation between files
+  /**
+   * What a shift-click range is sliced from, when it is more than the files:
+   * in the drive's grid, folders then files. `allFiles` stays the files alone,
+   * because the preview arrows through it.
+   */
+  rangeItems?: (FileItem | Folder)[];
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
   additionalActions?: FileMenuAction[]; // Additional menu actions
@@ -24,11 +31,13 @@ interface FileItemGridProps {
 export function FileItemGrid({
   file,
   allFiles = [],
+  rangeItems,
   _onAction,
   index = 0,
   additionalActions,
   insertAdditionalActionsAfter,
 }: FileItemGridProps) {
+  const range = rangeItems ?? allFiles;
   const { openFilePreview } = useFilePreviewActions();
   const { selectItem, isSelected, getSelectionCount } = useMultiSelectStore();
 
@@ -57,14 +66,14 @@ export function FileItemGrid({
 
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      selectItem(file, index, false, false, allFiles);
+      selectItem(file, index, false, false, range);
     }
   };
 
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!opensMenuOnKey(event)) return;
 
-    selectItem(file, index, false, false, allFiles);
+    selectItem(file, index, false, false, range);
   };
 
   const handleMenuClick = (event: React.MouseEvent) => {
@@ -78,7 +87,7 @@ export function FileItemGrid({
     const timer = setTimeout(() => {
       setIsLongPress(true);
       // Trigger selection on long press - start selection mode with ctrlKey=true to toggle/add
-      selectItem(file, index, true, false, allFiles); // true = toggle/add to selection
+      selectItem(file, index, true, false, range); // true = toggle/add to selection
       // Haptic feedback if available (wrapped in try-catch to avoid console errors)
       try {
         if (navigator.vibrate) {
@@ -108,7 +117,7 @@ export function FileItemGrid({
       if (hasSelection) {
         event.preventDefault();
         event.stopPropagation();
-        selectItem(file, index, true, false, allFiles); // true = toggle/add to selection
+        selectItem(file, index, true, false, range); // true = toggle/add to selection
         setIsLongPress(false);
         return; // Stop here, don't open file
       }
@@ -128,7 +137,7 @@ export function FileItemGrid({
       setIsLongPress(false);
     } else {
       // Desktop: Single click to select
-      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, range);
     }
   };
 
@@ -148,7 +157,7 @@ export function FileItemGrid({
     event.preventDefault();
 
     if (intent === 'select') {
-      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, allFiles);
+      selectItem(file, index, event.ctrlKey || event.metaKey, event.shiftKey, range);
       return;
     }
 
