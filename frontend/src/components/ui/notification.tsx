@@ -4,6 +4,7 @@ import type React from 'react';
 import { useState, useEffect, useEffectEvent } from 'react';
 import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
+import { AriaLabel } from '@/shared/components/custom-aria-label';
 
 // Simplified props
 export interface NotificationProps {
@@ -115,14 +116,18 @@ export const Notification: React.FC<NotificationProps> = ({
           {icons[type]}
         </div>
         <div className="flex-1 mr-2 font-medium">{message}</div>
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label="Close notification"
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {/* The tooltip is for the eye; aria-label is what a screen reader reads.
+            Both came from the second copy of this component, deleted in #70. */}
+        <AriaLabel label="Close notification" position="top">
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Close notification"
+            className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none transition-colors duration-200 rounded-full p-1 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </AriaLabel>
       </div>
     </div>
   );

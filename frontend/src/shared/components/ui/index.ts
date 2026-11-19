@@ -9,7 +9,6 @@ export * from './dialog';
 export * from './dropdown-menu';
 export * from './input';
 export * from './label';
-export * from './notification';
 export * from './secret-input';
 export * from './skeleton';
 export * from './switch';
