@@ -20,6 +20,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { UploadCard } from '@/features/upload/components/upload-card';
 import { useUnloadGuard } from '@/features/upload/hooks/use-unload-guard';
 import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
+import { OfflineBanner } from '@/features/dashboard/components/layout/offline-banner';
+import { useRefreshOnReturn } from '@/hooks/use-refresh-on-return';
 
 /**
  * The provider now listens at the window for itself, so there is no detection
@@ -139,6 +141,7 @@ const LayoutShell = ({ children }: { children: React.ReactNode }) => {
               ref={mainRef}
               className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 min-h-0 scroll-smooth custom-scrollbar"
             >
+              <OfflineBanner />
               <DeleteRecoveryBanner />
               <DragAndDropWrapper>{children}</DragAndDropWrapper>
             </main>
@@ -166,6 +169,9 @@ export default function DynamicDashboardLayout({ children }: { children: React.R
   // Sits out here rather than in LayoutShell, which returns early for the
   // preview and settings routes and would change its hook count
   useUnloadGuard();
+  // Out here for the same reason. Harmless without a session or a folder:
+  // refreshCurrentData does nothing until a prefix is set.
+  useRefreshOnReturn();
 
   return (
     <ScrollProvider>
