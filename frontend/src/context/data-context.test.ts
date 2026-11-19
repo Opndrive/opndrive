@@ -468,6 +468,10 @@ describe('the recent-folders cap', () => {
   });
 
   it('keeps a folder that was shown again recently', async () => {
+    // Every folder used within one millisecond, which is what a fast machine
+    // does here: recency has to come from order, not the clock alone.
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+
     for (let i = 0; i < MAX_LISTINGS; i++) {
       store().setCurrentPrefix(`f${i}/`);
       answer(page([`f${i}/a.txt`]));
@@ -482,6 +486,7 @@ describe('the recent-folders cap', () => {
 
     expect(Object.keys(store().listings)).toContain('f0/');
     expect(Object.keys(store().listings)).not.toContain('f1/');
+    vi.restoreAllMocks();
   });
 });
 
