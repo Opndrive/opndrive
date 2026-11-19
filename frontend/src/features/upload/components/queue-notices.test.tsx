@@ -11,7 +11,7 @@
  * still fails.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import React, { Profiler } from 'react';
 import { render, screen, within, fireEvent, act } from '@testing-library/react';
 import { QueueNotices } from './queue-notices';
@@ -76,14 +76,13 @@ describe('the three kinds', () => {
         kind: 'skipped',
         path: 'proj/node_modules/',
         count: 500,
-        detail:
-          'proj/node_modules/f0.js and 499 other item(s) in this folder could not be read (EACCES) and were not uploaded.',
+        detail: '500 items could not be read (EACCES) and were not uploaded.',
       }),
     ]);
 
     render(<QueueNotices />);
 
-    expect(screen.getByText(/499 other item\(s\)/)).toBeTruthy();
+    expect(screen.getByText(/500 items could not be read/)).toBeTruthy();
     expect(screen.getByText('500 items')).toBeTruthy();
   });
 
@@ -282,5 +281,110 @@ describe('render isolation', () => {
 
     expect(commits()).toBeGreaterThan(initial);
     expect(screen.getByText('new notice')).toBeTruthy();
+  });
+});
+
+describe('the list behind a skipped notice', () => {
+  const items = [
+    { path: 'backup/may/a.jpg', kind: 'file' as const },
+    { path: 'backup/may/b.jpg', kind: 'file' as const },
+    { path: 'backup/june/locked', kind: 'folder' as const },
+  ];
+
+  function seedList(count = items.length, list = items) {
+    seed([
+      notice({
+        path: 'backup/',
+        count,
+        detail: `${count} items could not be read and were not uploaded.`,
+        items: list,
+      }),
+    ]);
+  }
+
+  it('is closed until asked for, so the notice is one line however many files', () => {
+    seedList();
+    render(<QueueNotices />);
+
+    const toggle = screen.getByRole('button', { name: 'Show files' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('a.jpg')).toBeNull();
+  });
+
+  it('opens grouped by folder, with how many in each', () => {
+    seedList();
+    render(<QueueNotices />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show files' }));
+
+    expect(screen.getByRole('button', { name: 'Hide files' }).getAttribute('aria-expanded')).toBe(
+      'true'
+    );
+    expect(screen.getByText('backup/may/')).toBeTruthy();
+    expect(screen.getByText('a.jpg')).toBeTruthy();
+    expect(screen.getByText('b.jpg')).toBeTruthy();
+    expect(screen.getByText('backup/june/')).toBeTruthy();
+    expect(screen.getByText('locked/')).toBeTruthy();
+  });
+
+  it('says how many it is not showing when the notice kept fewer than it stands for', () => {
+    seedList(10);
+    render(<QueueNotices />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show files' }));
+
+    expect(screen.getByText(/7 more not shown/)).toBeTruthy();
+  });
+
+  it('renders at most 300 names, and points to the copied list for the rest', () => {
+    const many = Array.from({ length: 450 }, (_, i) => ({
+      path: `big/f${i}.txt`,
+      kind: 'file' as const,
+    }));
+    seedList(450, many);
+    render(<QueueNotices />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show files' }));
+
+    expect(screen.getByText('f299.txt')).toBeTruthy();
+    expect(screen.queryByText('f300.txt')).toBeNull();
+    expect(screen.getByText(/150 more not shown\. Copy the list to see them all/)).toBeTruthy();
+  });
+
+  it('copies every path, one a line', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    seedList();
+    render(<QueueNotices />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy list' }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      'backup/may/a.jpg\nbackup/may/b.jpg\nbackup/june/locked/'
+    );
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
+  });
+
+  it('says so when the clipboard is not available', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    seedList();
+    render(<QueueNotices />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy list' }));
+    });
+
+    expect(screen.getByRole('button', { name: 'Could not copy' })).toBeTruthy();
+  });
+
+  it('has no list for a notice about a single file', () => {
+    seed([notice()]);
+    render(<QueueNotices />);
+
+    expect(screen.queryByRole('button', { name: 'Show files' })).toBeNull();
   });
 });

@@ -101,7 +101,6 @@ features/dashboard/components/
     │   └── suggested-folders.tsx # Folder recommendations
     └── search/             # Search interface
         ├── search-bar.tsx
-        ├── filter-bar.tsx
         └── search-results.tsx
 ```
 

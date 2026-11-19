@@ -13,6 +13,7 @@ import { useUploadQueueStore } from '../stores/use-upload-queue-store';
 import type { FileExtension } from '@/config/file-extensions';
 import { useActiveUploadManager } from '@/hooks/use-auth';
 import { useUploadSettingsStore } from '@/features/upload/stores/use-upload-settings-store';
+import { TimeLeftMeter, formatTimeLeft } from '../utils/time-left';
 
 interface OperationItem {
   id: string;
@@ -49,50 +50,8 @@ const ACTIVE_STATUSES = ['uploading', 'deleting', 'downloading', 'pending', 'que
 
 const isActiveOperation = (op: { status: string }) => ACTIVE_STATUSES.includes(op.status);
 
-// Upload speed tracking for better time estimation
-interface SpeedTracker {
-  speeds: number[]; // bytes per second samples
-  timestamps: number[];
-  maxSamples: number;
-}
-
-const speedTracker: SpeedTracker = {
-  speeds: [],
-  timestamps: [],
-  maxSamples: 10, // Keep last 10 speed samples
-};
-
-const trackUploadSpeed = (bytesUploaded: number, timeElapsed: number) => {
-  if (timeElapsed > 0) {
-    const speed = bytesUploaded / timeElapsed; // bytes per second
-    const now = Date.now();
-
-    speedTracker.speeds.push(speed);
-    speedTracker.timestamps.push(now);
-
-    // Keep only recent samples (last 30 seconds)
-    const cutoffTime = now - 30000;
-    const validIndices = speedTracker.timestamps
-      .map((time, index) => (time > cutoffTime ? index : -1))
-      .filter((index) => index !== -1);
-
-    speedTracker.speeds = validIndices.map((i) => speedTracker.speeds[i]);
-    speedTracker.timestamps = validIndices.map((i) => speedTracker.timestamps[i]);
-
-    // Keep max samples limit
-    if (speedTracker.speeds.length > speedTracker.maxSamples) {
-      speedTracker.speeds = speedTracker.speeds.slice(-speedTracker.maxSamples);
-      speedTracker.timestamps = speedTracker.timestamps.slice(-speedTracker.maxSamples);
-    }
-  }
-};
-
-const getAverageUploadSpeed = (): number => {
-  if (speedTracker.speeds.length === 0) return 0;
-
-  const totalSpeed = speedTracker.speeds.reduce((sum, speed) => sum + speed, 0);
-  return totalSpeed / speedTracker.speeds.length;
-};
+/** How often the time left is re-measured. */
+const TIME_LEFT_INTERVAL_MS = 2000;
 
 type UploadsMap = ReturnType<typeof useUploadStore.getState>['uploads'];
 
@@ -217,23 +176,26 @@ export const OperationsModal: React.FC = () => {
   const uploadsRef = useRef(uploads);
   uploadsRef.current = uploads;
 
-  // Simulate speed tracking for active uploads (demo purposes).
-  // Must stay above the uploadManager guard below: hooks cannot sit after an
-  // early return, or the hook count changes once the manager resolves.
+  /**
+   * "About 25 min left", measured from the bytes the files have really sent,
+   * or null when there is not enough to go on - no estimate beats a made-up
+   * one. Kept as the rounded label so the panel re-renders when what it says
+   * changes, not on every reading.
+   *
+   * Must stay above the uploadManager guard below: hooks cannot sit after an
+   * early return, or the hook count changes once the manager resolves.
+   */
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Check if there are any uploading operations
-      const hasActiveUploads = Object.values(uploadsRef.current).some(
-        (upload) => upload.status === 'uploading'
-      );
+    const meter = new TimeLeftMeter();
+    const measure = () => {
+      const seconds = meter.update(Object.values(uploadsRef.current), Date.now());
+      setTimeLeft(seconds === null ? null : formatTimeLeft(seconds) || null);
+    };
 
-      if (hasActiveUploads) {
-        // Simulate varying upload speeds (0.5MB/s to 2MB/s)
-        const simulatedSpeed = (0.5 + Math.random() * 1.5) * 1024 * 1024;
-        trackUploadSpeed(simulatedSpeed, 1);
-      }
-    }, 3000); // Update every 3 seconds
-
+    measure();
+    const interval = setInterval(measure, TIME_LEFT_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -583,77 +545,6 @@ export const OperationsModal: React.FC = () => {
     return `${sortedOperations.length} operation${sortedOperations.length > 1 ? 's' : ''}`;
   };
 
-  // Enhanced time estimation with size-awareness and speed tracking
-  const getEnhancedTimeEstimate = (operations: OperationItem[]) => {
-    const uploadOps = operations.filter((op) => op.operationType === 'upload');
-    if (uploadOps.length === 0) return null;
-
-    // Calculate total bytes and completed bytes
-    let totalBytes = 0;
-    let completedBytes = 0;
-    let hasFileSizes = false;
-
-    uploadOps.forEach((op) => {
-      if (op.size && op.size > 0) {
-        hasFileSizes = true;
-        totalBytes += op.size;
-        completedBytes += (op.size * op.progress) / 100;
-      }
-    });
-
-    // If we don't have file sizes, fall back to simple progress-based estimation
-    if (!hasFileSizes) {
-      const totalProgress = uploadOps.reduce((sum, op) => sum + op.progress, 0);
-      const avgProgress = Math.round(totalProgress / uploadOps.length);
-      if (avgProgress > 0) {
-        const remainingProgress = (100 - avgProgress) * uploadOps.length;
-        const estimatedMinutes = Math.max(1, Math.round(remainingProgress / 15)); // Slightly faster than before
-        return estimatedMinutes;
-      }
-      return null;
-    }
-
-    const remainingBytes = totalBytes - completedBytes;
-    if (remainingBytes <= 0) return 0;
-
-    // Get current upload speed
-    const avgSpeed = getAverageUploadSpeed();
-
-    // If we don't have speed data yet, estimate based on typical speeds
-    if (avgSpeed === 0) {
-      // Assume reasonable upload speed based on file types and connection
-      const estimatedSpeed = 1024 * 1024; // 1 MB/s as baseline
-      const estimatedSeconds = remainingBytes / estimatedSpeed;
-
-      // Account for concurrency (max 2 uploads)
-      const maxConcurrency = 2;
-      const activeUploads = uploadOps.filter((op) => op.status === 'uploading').length;
-      const concurrencyFactor =
-        Math.min(maxConcurrency, uploadOps.length) / Math.max(1, activeUploads);
-
-      return Math.max(1, Math.ceil((estimatedSeconds * concurrencyFactor) / 60));
-    }
-
-    // Use actual speed data
-    const estimatedSeconds = remainingBytes / avgSpeed;
-
-    // Account for queue and concurrency
-    const maxConcurrency = 2;
-    const activeCount = uploadOps.filter((op) => op.status === 'uploading').length;
-    const queuedCount = uploadOps.filter((op) => op.status === 'queued').length;
-
-    // If we have queued items, add estimated queue time
-    let queueTime = 0;
-    if (queuedCount > 0 && activeCount < maxConcurrency) {
-      const availableSlots = maxConcurrency - activeCount;
-      const avgFileTime = estimatedSeconds / Math.max(1, activeCount);
-      queueTime = (queuedCount / availableSlots) * avgFileTime;
-    }
-
-    const totalEstimatedSeconds = estimatedSeconds + queueTime;
-    return Math.max(1, Math.ceil(totalEstimatedSeconds / 60));
-  };
-
   // Get subtitle based on active operations
   const getSubtitle = () => {
     const totalActiveOps = activeUploads + activeDeletes + activeDownloads;
@@ -665,31 +556,12 @@ export const OperationsModal: React.FC = () => {
       );
       const queuedItems = sortedOperations.filter((op) => op.status === 'queued');
 
-      // If we have items actually processing, show enhanced time estimate
-      if (processingItems.length > 0) {
-        const estimatedMinutes = getEnhancedTimeEstimate(sortedOperations);
-
-        if (estimatedMinutes !== null && estimatedMinutes > 0) {
-          // Show more granular time for short durations
-          if (estimatedMinutes < 2) {
-            const estimatedSeconds = estimatedMinutes * 60;
-            if (estimatedSeconds < 60) {
-              return `${Math.max(30, estimatedSeconds)} sec left...`;
-            }
-            return `1 min left...`;
-          }
-
-          // Show queue information if relevant
-          const queuedCount = queuedItems.length;
-          if (queuedCount > 0) {
-            return `${estimatedMinutes} min total, ${queuedCount} queued`;
-          }
-
-          return `${estimatedMinutes} min left...`;
-        } else {
-          // Still calculating speed/gathering data
-          return 'Calculating time...';
-        }
+      // Measured, so only for uploads, and only while they are all that is
+      // running: a time next to a delete would be about the wrong thing. With
+      // no measurement there is nothing about time at all, rather than a
+      // guess that counts down regardless of the network.
+      if (timeLeft && activeUploads > 0 && activeDeletes === 0 && activeDownloads === 0) {
+        return timeLeft;
       }
 
       // If all items are queued or just started processing (0% progress)
