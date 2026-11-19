@@ -21,6 +21,12 @@ interface FileItemListProps {
    * files below has to be sliceable out of a single array.
    */
   allFiles?: (FileItem | Folder)[];
+  /**
+   * The files alone, when the caller already has them. Filtering `allFiles` on
+   * every render is the most expensive thing this row does once a folder has
+   * tens of thousands of entries loaded.
+   */
+  previewFiles?: FileItem[];
   _onAction?: (action: string, file: FileItem) => void;
   index?: number; // For shift-select range
   additionalActions?: FileMenuAction[]; // Additional menu actions
@@ -30,6 +36,7 @@ interface FileItemListProps {
 export function FileItemList({
   file,
   allFiles = [],
+  previewFiles,
   _onAction,
   index = 0,
   additionalActions,
@@ -45,7 +52,7 @@ export function FileItemList({
    * the whole table - but a folder has nothing to preview, so it is dropped
    * here rather than handed to a viewer that would not know what to do with it.
    */
-  const previewableFiles = allFiles.filter(isFile);
+  const previewableFiles = previewFiles ?? allFiles.filter(isFile);
 
   const selected = isSelected(file);
   const hasSelection = getSelectionCount() > 0;

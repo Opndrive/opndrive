@@ -12,7 +12,7 @@
  * leaves a ragged grid for no gain.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DriveList } from './drive-list';
 import { useMultiSelectStore } from '../../../stores/use-multi-select-store';
@@ -158,21 +158,46 @@ describe('grid view keeps the two sections', () => {
 });
 
 /**
- * The list view renders one tree per breakpoint and shows whichever the CSS
- * allows. Handing the folder rows to the desktop tree alone made them vanish
- * below `sm`, and on a prefix holding only folders it left the page blank -
- * the empty-state drop zone having been suppressed by then too.
+ * The list view draws one tree, the one for the screen's width.
+ *
+ * It used to render a table and a column of cards for every item and hide one
+ * with CSS, so each row cost two in the DOM. Below `sm` the cards are drawn,
+ * folders included: handing the folder rows to the table alone once made them
+ * vanish on a phone and left a folder-only prefix blank.
  */
-describe('the mobile tree lists the folders as well', () => {
-  it('renders each folder in both trees, not just the desktop one', () => {
-    render(<DriveList folders={[folder()]} files={[file()]} />);
-
-    // One row per breakpoint tree. Before the fix the folder appeared once,
-    // in the desktop tree, and was invisible on a phone.
-    expect(screen.getAllByText('Reports')).toHaveLength(2);
+describe('one tree, for the width of the screen', () => {
+  afterEach(() => {
+    // jsdom has no matchMedia; the hook falls back to the desktop table.
+    delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
-  it('does not head the mobile list "Files" when folders open it', () => {
+  function narrowScreen() {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  it('draws each item once', () => {
+    render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    expect(screen.getAllByText('Reports')).toHaveLength(1);
+    expect(screen.getAllByText('budget.xlsx')).toHaveLength(1);
+  });
+
+  it('draws the folders as cards on a narrow screen', () => {
+    narrowScreen();
+    const { container } = render(<DriveList folders={[folder()]} files={[file()]} />);
+
+    expect(screen.getAllByText('Reports')).toHaveLength(1);
+    // The card, not the table row: it has no column grid.
+    expect(container.querySelector('[data-folder-item]')!.className).not.toContain('grid-cols');
+  });
+
+  it('does not head the cards "Files" when folders open them', () => {
+    narrowScreen();
     render(<DriveList folders={[folder()]} files={[file()]} />);
 
     expect(screen.queryAllByText('Files')).toHaveLength(0);
@@ -271,9 +296,7 @@ describe('folder rows as drop targets', () => {
       <DriveList folders={[folder()]} files={[file()]} onFilesDroppedToFolder={vi.fn()} />
     );
 
-    // The list renders a tree per breakpoint and shows one, so the row is
-    // marked twice - whichever is on screen has to be findable.
-    expect(container.querySelectorAll('[data-drop-target-id="folder-reports/"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-drop-target-id="folder-reports/"]')).toHaveLength(1);
   });
 
   it('leaves a folder unmarked when nothing handles its drops', () => {

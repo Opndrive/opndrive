@@ -109,14 +109,23 @@ export const useMultiSelectStore = create<MultiSelectState>((set, get) => ({
     // instead: a view that numbers folders and files separately hands over an
     // index that means nothing in this array, and slicing on it would select
     // rows the user never pointed at.
-    const anchorHolds =
-      state.lastSelectedIndex !== null &&
-      state.anchorKey !== null &&
-      getItemKey(allItems[state.lastSelectedIndex] ?? ({} as SelectableItem)) === state.anchorKey;
+    //
+    // The anchor is found by its key when it is no longer at its index. Rows
+    // move while a folder is still loading: a folder found on a later page
+    // joins the folders above every file, and each file below it is then one
+    // further down than when it was clicked. A view that numbers its sections
+    // separately still gets no range, because the anchor is not in its array.
+    const anchorIndex = (() => {
+      if (state.lastSelectedIndex === null || state.anchorKey === null) return null;
+      const at = allItems[state.lastSelectedIndex];
+      if (at && getItemKey(at) === state.anchorKey) return state.lastSelectedIndex;
+      const found = allItems.findIndex((candidate) => getItemKey(candidate) === state.anchorKey);
+      return found < 0 ? null : found;
+    })();
 
-    if (shiftKey && anchorHolds) {
-      const start = Math.min(state.lastSelectedIndex!, index);
-      const end = Math.max(state.lastSelectedIndex!, index);
+    if (shiftKey && anchorIndex !== null) {
+      const start = Math.min(anchorIndex, index);
+      const end = Math.max(anchorIndex, index);
       const rangeItems = allItems.slice(start, end + 1);
 
       set({

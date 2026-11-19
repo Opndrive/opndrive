@@ -6,9 +6,10 @@ import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/d
 import { Folder } from '@/features/dashboard/types/folder';
 import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore, useDirectoryState, useCurrentListing } from '@/context/data-context';
+import { entryCount } from '@/context/folder-listing';
 import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { useEffect, Suspense, useState, useCallback, useRef } from 'react';
+import { useEffect, Suspense, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { EnhancedFolderBreadcrumb } from '@/features/dashboard/components/layout/breadcrumb/enhanced-folder-breadcrumb';
 import {
@@ -32,13 +33,7 @@ function BrowsePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Chunked display state
-  const [visibleFileChunks, setVisibleFileChunks] = useState(1); // Start with 1 chunk (100 items)
-  const [visibleFolderChunks, setVisibleFolderChunks] = useState(1);
-  const [isLoadingMoreChunks, setIsLoadingMoreChunks] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-
-  const CHUNK_SIZE = 100; // Display 100 items per chunk
 
   // One selector per value rather than `useDriveStore()`, which subscribes to
   // the whole store. The listing is this folder's alone; the rest are stable
@@ -139,12 +134,6 @@ function BrowsePageContent() {
     }
   }, [currentPrefix, fetchData]);
 
-  // Reset chunks when data changes (new folder)
-  useEffect(() => {
-    setVisibleFileChunks(1);
-    setVisibleFolderChunks(1);
-  }, [currentPrefix]);
-
   // Clear selection when navigating to different folder
   useEffect(() => {
     clearSelection();
@@ -192,9 +181,6 @@ function BrowsePageContent() {
     setIsSyncing(true);
     try {
       await fetchData({ sync: true });
-      // Reset chunks to show fresh data from the beginning
-      setVisibleFileChunks(1);
-      setVisibleFolderChunks(1);
     } catch (error) {
       console.error('Sync failed:', error);
     } finally {
@@ -206,99 +192,19 @@ function BrowsePageContent() {
   // 'not ready yet', so a listing that had failed drew the loading skeleton and
   // sat there for good.
   const directory = useDirectoryState();
-  const isLoadingMore = listing?.nextPage.status === 'loading';
   const currentData = listing?.loaded ? listing : null;
 
-  // Calculate item counts and chunked data
-  const allFolders = currentData?.folders || [];
-  const allFiles = currentData?.files || [];
+  // Entries loaded so far, hedged with a "+" until the last page is in. S3
+  // never says how many keys a prefix holds, so there is no total to show
+  // before then.
+  const loadedCount = currentData ? entryCount(currentData) : 0;
+  const countLabel = currentData?.complete
+    ? `${loadedCount.toLocaleString()} item${loadedCount === 1 ? '' : 's'}`
+    : `${loadedCount.toLocaleString()}+ items`;
 
-  // Calculate how many items to show based on chunks
-  const maxVisibleFiles = visibleFileChunks * CHUNK_SIZE;
-  const maxVisibleFolders = visibleFolderChunks * CHUNK_SIZE;
-
-  // Get the actual items to display (chunked)
-  const displayedFolders = allFolders.slice(0, maxVisibleFolders);
-  const displayedFiles = allFiles.slice(0, maxVisibleFiles);
-
-  const totalVisibleItems = displayedFolders.length + displayedFiles.length;
-  const hasMoreItems = currentData ? !currentData.complete : false;
-
-  // Check if we can load more chunks from cache
-  const canLoadMoreFileChunks = allFiles.length > maxVisibleFiles;
-  const canLoadMoreFolderChunks = allFolders.length > maxVisibleFolders;
-  const canLoadMoreChunks = canLoadMoreFileChunks || canLoadMoreFolderChunks;
-
-  // Intersection Observer for loading more chunks (professional approach)
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    // Only create observer if we can load more chunks and not currently loading
-    if (!canLoadMoreChunks || isLoadingMoreChunks) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-
-        if (entry.isIntersecting && !isLoadingMoreChunks) {
-          setIsLoadingMoreChunks(true);
-
-          // Load next chunk
-          setTimeout(() => {
-            if (canLoadMoreFileChunks && canLoadMoreFolderChunks) {
-              // Load both if both have more
-              setVisibleFileChunks((prev) => prev + 1);
-              setVisibleFolderChunks((prev) => prev + 1);
-            } else if (canLoadMoreFileChunks) {
-              setVisibleFileChunks((prev) => prev + 1);
-            } else if (canLoadMoreFolderChunks) {
-              setVisibleFolderChunks((prev) => prev + 1);
-            }
-            setIsLoadingMoreChunks(false);
-          }, 300);
-        }
-      },
-      {
-        // Trigger when the sentinel is 200px away from being visible
-        rootMargin: '200px 0px',
-        threshold: 0,
-      }
-    );
-
-    observer.observe(sentinel);
-
-    return () => {
-      if (sentinel) {
-        observer.unobserve(sentinel);
-      }
-      observer.disconnect();
-    };
-  }, [canLoadMoreChunks, canLoadMoreFileChunks, canLoadMoreFolderChunks, isLoadingMoreChunks]);
-
-  // Manual function to load more chunks
-  const loadMoreChunks = useCallback(() => {
-    if (isLoadingMoreChunks || !canLoadMoreChunks) return;
-
-    setIsLoadingMoreChunks(true);
-
-    setTimeout(() => {
-      if (canLoadMoreFileChunks && canLoadMoreFolderChunks) {
-        // Load both if both have more
-        setVisibleFileChunks((prev) => prev + 1);
-        setVisibleFolderChunks((prev) => prev + 1);
-      } else if (canLoadMoreFileChunks) {
-        setVisibleFileChunks((prev) => prev + 1);
-      } else if (canLoadMoreFolderChunks) {
-        setVisibleFolderChunks((prev) => prev + 1);
-      }
-      setIsLoadingMoreChunks(false);
-    }, 300);
-  }, [isLoadingMoreChunks, canLoadMoreChunks, canLoadMoreFileChunks, canLoadMoreFolderChunks]);
+  const handleLoadMore = useCallback(() => {
+    void loadMoreData();
+  }, [loadMoreData]);
 
   if (isLoading) {
     return <DashboardLoading />;
@@ -336,11 +242,12 @@ function BrowsePageContent() {
               <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-foreground break-words leading-tight sm:leading-normal">
                 {currentFolderName}
               </h2>
-              {totalVisibleItems > 0 && (
-                <span className="item-count-badge flex-shrink-0 self-start sm:self-auto">
-                  {hasMoreItems || canLoadMoreChunks
-                    ? `Showing ${totalVisibleItems.toLocaleString()}+ items`
-                    : `${totalVisibleItems.toLocaleString()} item${totalVisibleItems === 1 ? '' : 's'}`}
+              {loadedCount > 0 && (
+                <span
+                  data-testid="folder-count"
+                  className="item-count-badge flex-shrink-0 self-start sm:self-auto"
+                >
+                  {countLabel}
                 </span>
               )}
             </div>
@@ -380,107 +287,23 @@ function BrowsePageContent() {
               </div>
             }
           >
-            {() => (
-              <>
-                {/* Folders and files, one table in list view. */}
-                <DriveList
-                  folders={displayedFolders}
-                  files={displayedFiles}
-                  onFolderClick={handleFolderClick}
-                  onFolderMenuClick={handleFolderMenuClick}
-                  onFileClick={handleFileClick}
-                  onFileAction={handleFileAction}
-                  onFilesDropped={handleFilesDroppedToDirectoryWrapper}
-                  onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
-                />
-
-                {/* Invisible sentinel element for Intersection Observer - only render when chunks available */}
-                {canLoadMoreChunks && (
-                  <div
-                    ref={sentinelRef}
-                    className="h-1 w-full"
-                    style={{ visibility: 'hidden' }}
-                    aria-hidden="true"
-                  />
-                )}
-
-                {/* Chunk loading indicator */}
-                {isLoadingMoreChunks && (
-                  <div className="flex justify-center py-6">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
-                      <span className="text-sm">Loading more items...</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Load More Chunks Button (backup for scroll detection) */}
-                {!isLoadingMoreChunks && canLoadMoreChunks && (
-                  <div className="flex justify-center py-6">
-                    <button
-                      onClick={loadMoreChunks}
-                      className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                      Load More Items (
-                      {Math.min(
-                        CHUNK_SIZE,
-                        (canLoadMoreFileChunks ? allFiles.length - maxVisibleFiles : 0) +
-                          (canLoadMoreFolderChunks ? allFolders.length - maxVisibleFolders : 0)
-                      )}{' '}
-                      more)
-                    </button>
-                  </div>
-                )}
-
-                {/* Show More S3 Items Button (only when all cached chunks are displayed) */}
-                {hasMoreItems && !canLoadMoreChunks && (
-                  <div className="flex justify-center mt-8 mb-8">
-                    <button
-                      onClick={() => void loadMoreData()}
-                      disabled={isLoadingMore}
-                      className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                    >
-                      {isLoadingMore ? (
-                        <>
-                          <div className="spinner"></div>
-                          Loading more items...
-                        </>
-                      ) : (
-                        <>
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                            />
-                          </svg>
-                          Show More Items
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </>
+            {(data) => (
+              <DriveList
+                folders={data.folders}
+                files={data.files}
+                complete={data.complete}
+                nextPage={data.nextPage}
+                onLoadMore={handleLoadMore}
+                listingKey={currentPrefix ?? undefined}
+                initialScrollOffset={data.scrollOffset}
+                label={`Contents of ${currentFolderName}`}
+                onFolderClick={handleFolderClick}
+                onFolderMenuClick={handleFolderMenuClick}
+                onFileClick={handleFileClick}
+                onFileAction={handleFileAction}
+                onFilesDropped={handleFilesDroppedToDirectoryWrapper}
+                onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
+              />
             )}
           </AsyncBoundary>
         </div>

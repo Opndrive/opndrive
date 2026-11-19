@@ -186,6 +186,20 @@ describe('shift+click range', () => {
     expect(keysOf()).toEqual(['c.txt']);
     expect(store().lastSelectedIndex).toBe(2);
   });
+
+  /**
+   * A folder found on a later page joins the folders above every file, so a
+   * file clicked a moment ago is now one row further down. The range has to
+   * start at that file, wherever it now is.
+   */
+  it('finds the anchor by key when rows have moved under it', () => {
+    store().selectItem(files[1]!, 1, false, false, files);
+
+    const moved = [folder('late/'), ...files];
+    store().selectItem(moved[4]!, 4, false, true, moved);
+
+    expect(keysOf()).toEqual(['b.txt', 'c.txt', 'd.txt']);
+  });
 });
 
 describe('mixing files and folders', () => {
