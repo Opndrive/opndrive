@@ -4,7 +4,7 @@
  * anything else in the post.
  */
 import { describe, expect, it } from 'vitest';
-import { renderPostContent, getRenderedPostContent } from './render';
+import { renderPostContent, getRenderedPostContent, fingerprint } from './render';
 import { getLanguageLabel } from './code-blocks';
 
 function parse(html: string): HTMLElement {
@@ -118,11 +118,19 @@ describe('getRenderedPostContent', () => {
     expect((await first).html).toBe('<p>a</p>');
   });
 
-  it('renders again after the post changes in WordPress', async () => {
+  it('renders again when the HTML changes, even with the same modified date', async () => {
+    // A synced pattern or a re-captioned image changes the HTML WordPress
+    // sends without moving the post's modified date.
     const before = { slug: 'memo-edit', modifiedDate: '2026-11-02T04:30:00Z', content: '<p>a</p>' };
-    const after = { ...before, modifiedDate: '2026-11-03T04:30:00Z', content: '<p>b</p>' };
+    const after = { ...before, content: '<p>b</p>' };
 
     await getRenderedPostContent(before);
     expect((await getRenderedPostContent(after)).html).toBe('<p>b</p>');
+  });
+
+  it('fingerprints different HTML differently, and the same HTML the same', () => {
+    expect(fingerprint('<p>a</p>')).toBe(fingerprint('<p>a</p>'));
+    expect(fingerprint('<p>a</p>')).not.toBe(fingerprint('<p>b</p>'));
+    expect(fingerprint('ab')).not.toBe(fingerprint('ba'));
   });
 });

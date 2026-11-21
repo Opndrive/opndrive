@@ -18,4 +18,9 @@ post's 1.8, which spread them almost two lines apart.
 
 Underneath, a post's HTML is now parsed into a tree once and transformed there,
 instead of being edited with regular expressions, and the result is kept per
-post version in memory, so a post is highlighted once rather than on every view.
+version of the post's HTML in memory, so a post is highlighted once rather than
+on every view, and any change WordPress sends is picked up.
+
+None of this can cost a reader the post: without the highlighter the code is
+framed and uncoloured, a block a grammar fails on stays as written, and if the
+body cannot be rendered at all the page shows it as WordPress sent it.

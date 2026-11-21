@@ -24,9 +24,40 @@ export interface RenderedPostContent {
 export async function renderPostContent(html: string): Promise<RenderedPostContent> {
   const tree = fromHtml(html, { fragment: true });
 
-  transformCodeBlocks(tree, await getHighlighter());
+  // Colour is a nicety. A highlighter that fails to load (a grammar chunk
+  // missing after a deploy, say) leaves the code uncoloured, not the post
+  // unreadable.
+  const highlighter = await getHighlighter().catch((error: unknown) => {
+    console.error('Code highlighting is unavailable', error);
+    return null;
+  });
+  transformCodeBlocks(tree, highlighter);
 
   return { html: toHtml(tree) };
+}
+
+/**
+ * What the page shows when the body cannot be rendered at all: WordPress's
+ * HTML as it came, which is what every post was before any of this. The
+ * reader loses the extras, never the post.
+ */
+function unrenderedContent(html: string): RenderedPostContent {
+  return { html };
+}
+
+/**
+ * A short fingerprint of a post's HTML (FNV-1a and the length), to key the
+ * rendered copy by what WordPress actually sent. The modified date is not
+ * enough: a synced pattern, a re-captioned image or a dynamic block changes
+ * the HTML of every post that shows it without touching their dates.
+ */
+export function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${text.length.toString(36)}.${(hash >>> 0).toString(36)}`;
 }
 
 /** How many rendered posts are kept in memory at once. */
@@ -34,27 +65,32 @@ const MEMO_LIMIT = 100;
 const memo = new Map<string, Promise<RenderedPostContent>>();
 
 /**
- * renderPostContent, remembered per post version.
+ * renderPostContent, remembered per version of the post's HTML, and never a
+ * reason for the page to fail.
  *
  * Every page here is rendered per request (the CSP nonce), so without this a
- * busy post would be parsed and highlighted on every view. The key includes
- * the post's modified date, so an edit in WordPress is rendered afresh, and
+ * busy post would be parsed and highlighted on every view. The key is the
+ * HTML's fingerprint, so any change WordPress sends is rendered afresh, and
  * the memory is per server process, so a deploy never serves HTML from the
  * code it replaced. The oldest entry is dropped once there are MEMO_LIMIT.
+ *
+ * Should rendering fail, the page gets the post's HTML as WordPress sent it;
+ * the failure is not remembered, so the next request tries again.
  */
 export function getRenderedPostContent(post: {
   slug: string;
-  modifiedDate: string;
   content: string;
 }): Promise<RenderedPostContent> {
-  const key = `${post.slug}\u0000${post.modifiedDate}`;
+  const key = `${post.slug}\u0000${fingerprint(post.content)}`;
   const known = memo.get(key);
   if (known) return known;
 
-  const rendered = renderPostContent(post.content);
+  const rendered = renderPostContent(post.content).catch((error: unknown) => {
+    memo.delete(key);
+    console.error(`Could not render post "${post.slug}"; showing it as WordPress sent it`, error);
+    return unrenderedContent(post.content);
+  });
   memo.set(key, rendered);
-  // A failed render is not kept: the next request tries again.
-  rendered.catch(() => memo.delete(key));
 
   if (memo.size > MEMO_LIMIT) {
     const oldest = memo.keys().next().value;

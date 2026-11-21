@@ -146,31 +146,39 @@ function header(label: string | null): Element {
 function highlight(
   code: string,
   language: string | null,
-  highlighter: HighlighterCore
+  highlighter: HighlighterCore | null
 ): Element | null {
-  if (!language || PLAIN_TEXT.has(language)) return null;
+  if (!highlighter || !language || PLAIN_TEXT.has(language)) return null;
 
   const grammar = GRAMMAR_ALIASES[language] ?? language;
   if (!highlighter.getLoadedLanguages().includes(grammar)) return null;
 
-  const root = highlighter.codeToHast(code, {
-    lang: grammar,
-    themes: { light: LIGHT_THEME, dark: DARK_THEME },
-    // Variables only, no colour of its own: CSS picks the theme's variable,
-    // so the colours follow the page's theme toggle.
-    defaultColor: false,
-  });
-  const pre = root.children.find(
-    (child): child is Element => child.type === 'element' && child.tagName === 'pre'
-  );
-  return pre ?? null;
+  try {
+    const root = highlighter.codeToHast(code, {
+      lang: grammar,
+      themes: { light: LIGHT_THEME, dark: DARK_THEME },
+      // Variables only, no colour of its own: CSS picks the theme's variable,
+      // so the colours follow the page's theme toggle.
+      defaultColor: false,
+    });
+    const pre = root.children.find(
+      (child): child is Element => child.type === 'element' && child.tagName === 'pre'
+    );
+    return pre ?? null;
+  } catch (error) {
+    // One block the grammar cannot handle stays as written; the rest of the
+    // post is still highlighted.
+    console.error(`Could not highlight a ${language} block`, error);
+    return null;
+  }
 }
 
 /**
  * Frames, and where possible highlights, every `<pre>` in the tree. Runs in
- * place.
+ * place. With no highlighter (it failed to load), blocks are framed, with
+ * their copy buttons, and left uncoloured.
  */
-export function transformCodeBlocks(tree: Root, highlighter: HighlighterCore): void {
+export function transformCodeBlocks(tree: Root, highlighter: HighlighterCore | null): void {
   const blocks: Array<{ node: Element; index: number; parent: Root | Element }> = [];
 
   visit(tree, 'element', (node, index, parent) => {
