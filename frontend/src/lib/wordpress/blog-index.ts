@@ -88,6 +88,14 @@ export function loadFeedPosts(): Promise<BlogPostSummary[] | null> {
 }
 
 /**
+ * Every post, cached as long as the feed is: for /llms.txt, which lists them
+ * all and is rebuilt hourly like the feed.
+ */
+export function loadAllPostsHourly(): Promise<BlogPostSummary[] | null> {
+  return fetchPostSummaries(BLOG_INDEX_POST_LIMIT, FEED_REVALIDATE_SECONDS);
+}
+
+/**
  * The `?page=` of a blog index URL, read strictly.
  *
  * `number` for a page past the first, written the one way it should be

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { BlogPostSummary } from '@/lib/wordpress/types';
 import { formatDate } from '@/lib/wordpress/utils';
 import { BlogCoverImage } from './blog-cover-image';
+import { coverImageFor } from '@/lib/blog-cover/cover-url';
 
 interface FeaturedBlogPostProps {
   post: BlogPostSummary;
@@ -13,7 +14,7 @@ export function FeaturedBlogPost({ post }: FeaturedBlogPostProps) {
       <article className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 overflow-hidden transition-all duration-300">
         {/* Featured Image */}
         <BlogCoverImage
-          image={post.featuredImage}
+          image={coverImageFor(post)}
           shape="intrinsic"
           sizes="(max-width: 1024px) 100vw, 480px"
           priority

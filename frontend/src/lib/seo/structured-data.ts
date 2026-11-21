@@ -4,7 +4,9 @@
  */
 
 import { SEO_CONFIG } from './config';
-import type { BlogPost } from '@/lib/wordpress/types';
+import type { BlogPost, BlogPostSummary } from '@/lib/wordpress/types';
+import { coverImageFor, type CoverImage } from '@/lib/blog-cover/cover-url';
+import { countWords } from '@/lib/wordpress/utils';
 
 /**
  * Generate Organization Schema
@@ -40,60 +42,69 @@ export function generateWebSiteSchema() {
   };
 }
 
-/**
- * Generate Blog Schema
- */
-export function generateBlogSchema() {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'Blog',
-    name: SEO_CONFIG.blog.title,
-    description: SEO_CONFIG.blog.description,
-    url: `${SEO_CONFIG.siteUrl}/blog`,
-    publisher: {
-      '@type': 'Organization',
-      name: SEO_CONFIG.organization.name,
-      logo: {
-        '@type': 'ImageObject',
-        url: SEO_CONFIG.organization.logo,
-      },
-    },
-  };
+/** The blog as one entity that every post is part of. */
+const BLOG_ID = `${SEO_CONFIG.siteUrl}/blog#blog`;
+
+const PUBLISHER = {
+  '@type': 'Organization',
+  name: SEO_CONFIG.organization.name,
+  url: SEO_CONFIG.organization.url,
+  logo: {
+    '@type': 'ImageObject',
+    url: SEO_CONFIG.organization.logo,
+  },
+} as const;
+
+/** A post's absolute address. */
+function postUrl(slug: string): string {
+  return `${SEO_CONFIG.siteUrl}/blog/${slug}`;
+}
+
+/** A path or address as an absolute URL, as structured data wants. */
+function absolute(url: string): string {
+  return url.startsWith('/') ? `${SEO_CONFIG.siteUrl}${url}` : url;
 }
 
 /**
- * Generate Article Schema for blog posts
+ * Who wrote a post. The posts are published under the "Opndrive" account, which
+ * is the organisation itself, not a person; calling it a Person would be false.
  */
-export function generateArticleSchema(post: BlogPost) {
-  const absoluteUrl = `${SEO_CONFIG.siteUrl}/blog/${post.slug}`;
+function postAuthor(name: string) {
+  return name === SEO_CONFIG.organization.name
+    ? { '@type': 'Organization', name, url: SEO_CONFIG.organization.url }
+    : { '@type': 'Person', name };
+}
 
+/**
+ * The blog, with the posts its index page shows. Listing them ties each post
+ * to the blog for search engines the same way the page's links do for readers.
+ */
+export function generateBlogSchema(
+  posts: ReadonlyArray<
+    Pick<BlogPostSummary, 'slug' | 'title' | 'publishedDate' | 'modifiedDate' | 'featuredImage'>
+  > = []
+) {
   return {
     '@context': 'https://schema.org',
-    '@type': 'Article',
-    headline: post.title,
-    description: post.seo.description,
-    image: post.featuredImage?.url || SEO_CONFIG.ogImage,
-    datePublished: post.publishedDate,
-    dateModified: post.modifiedDate,
-    author: {
-      '@type': 'Person',
-      name: post.author.name,
-      url: SEO_CONFIG.defaultAuthor.url,
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: SEO_CONFIG.organization.name,
-      logo: {
-        '@type': 'ImageObject',
-        url: SEO_CONFIG.organization.logo,
-      },
-    },
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': absoluteUrl,
-    },
-    keywords: post.tags.map((tag) => tag.name).join(', '),
-    articleSection: post.categories.map((cat) => cat.name).join(', '),
+    '@type': 'Blog',
+    '@id': BLOG_ID,
+    name: SEO_CONFIG.blog.title,
+    description: SEO_CONFIG.blog.description,
+    url: `${SEO_CONFIG.siteUrl}/blog`,
+    inLanguage: 'en-US',
+    publisher: PUBLISHER,
+    ...(posts.length
+      ? {
+          blogPost: posts.map((post) => ({
+            '@type': 'BlogPosting',
+            headline: post.title,
+            url: postUrl(post.slug),
+            datePublished: post.publishedDate,
+            dateModified: post.modifiedDate,
+            image: absolute(coverImageFor(post).url),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -114,50 +125,68 @@ export function generateBreadcrumbSchema(items: Array<{ name: string; url: strin
 }
 
 /**
- * Generate BlogPosting Schema with enhanced metadata
+ * A post, as one BlogPosting. (It used to be described twice, as an Article
+ * and as a BlogPosting, with the Article's author linking to an /about page
+ * that does not exist.)
  */
-export function generateBlogPostingSchema(post: BlogPost) {
-  const absoluteUrl = `${SEO_CONFIG.siteUrl}/blog/${post.slug}`;
-  const wordCount = post.content.split(/\s+/).length;
-  const readingTime = Math.ceil(wordCount / 200); // 200 words per minute
+export function generateBlogPostingSchema(post: BlogPost, cover: CoverImage) {
+  const url = postUrl(post.slug);
+  // Words of the text, not of the HTML around it.
+  const wordCount = countWords(post.content);
 
   return {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
+    '@id': `${url}#post`,
     headline: post.title,
-    alternativeHeadline: post.seo.ogTitle || post.title,
     description: post.seo.description,
     image: {
       '@type': 'ImageObject',
-      url: post.featuredImage?.url || SEO_CONFIG.ogImage,
-      width: post.featuredImage?.width || SEO_CONFIG.ogImageWidth,
-      height: post.featuredImage?.height || SEO_CONFIG.ogImageHeight,
+      url: absolute(cover.url),
+      width: cover.width,
+      height: cover.height,
     },
     datePublished: post.publishedDate,
     dateModified: post.modifiedDate,
-    author: {
-      '@type': 'Person',
-      name: post.author.name,
-      image: post.author.avatar,
-      description: post.author.bio,
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: SEO_CONFIG.organization.name,
-      logo: {
-        '@type': 'ImageObject',
-        url: SEO_CONFIG.organization.logo,
-      },
-    },
+    author: postAuthor(post.author.name),
+    publisher: PUBLISHER,
     mainEntityOfPage: {
       '@type': 'WebPage',
-      '@id': absoluteUrl,
+      '@id': url,
     },
-    url: absoluteUrl,
-    keywords: post.tags.map((tag) => tag.name).join(', '),
-    articleSection: post.categories.map((cat) => cat.name),
-    wordCount: wordCount,
-    timeRequired: `PT${readingTime}M`,
+    isPartOf: { '@id': BLOG_ID },
+    url,
+    ...(post.tags.length ? { keywords: post.tags.map((tag) => tag.name).join(', ') } : {}),
+    ...(post.categories.length
+      ? { articleSection: post.categories.map((category) => category.name) }
+      : {}),
+    wordCount,
+    timeRequired: `PT${Math.max(1, Math.ceil(wordCount / 200))}M`,
     inLanguage: 'en-US',
+  };
+}
+
+/**
+ * The questions a post answers in its own FAQ section, as an FAQPage.
+ *
+ * Only what the page shows: the questions and answers are read from the
+ * post's FAQ section (lib/blog-content/outline). Google shows FAQ results for
+ * few sites these days, but the markup is still read, by Google and by other
+ * search and answer engines, as a plain statement of what the page answers.
+ */
+export function generateFaqPageSchema(
+  slug: string,
+  faq: ReadonlyArray<{ question: string; answer: string }>
+) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    '@id': `${postUrl(slug)}#faq`,
+    url: `${postUrl(slug)}#faq`,
+    mainEntity: faq.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer },
+    })),
   };
 }

@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
    * readers to the blog and tells search engines the right address, post
    * paths and query strings (?page=2) included.
    */
+  /**
+   * The drawn blog cover reads its fonts and the logo from /public at run
+   * time. Listed here so a serverless build packs them with that route; the
+   * Docker image carries /public anyway.
+   */
+  outputFileTracingIncludes: {
+    '/blog/[slug]/cover.png': ['./public/fonts/**/*', './public/logo.png'],
+  },
   async redirects() {
     return [
       { source: '/blogs', destination: '/blog', permanent: true },

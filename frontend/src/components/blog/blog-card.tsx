@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { BlogPostSummary } from '@/lib/wordpress/types';
 import { formatDate } from '@/lib/wordpress/utils';
 import { BlogCoverImage } from './blog-cover-image';
+import { coverImageFor } from '@/lib/blog-cover/cover-url';
 
 interface BlogCardProps {
   post: BlogPostSummary;
@@ -13,7 +14,7 @@ export function BlogCard({ post }: BlogCardProps) {
       <article className="h-full overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-xl flex flex-col">
         {/* Featured Image */}
         <BlogCoverImage
-          image={post.featuredImage}
+          image={coverImageFor(post)}
           sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
           zoomOnHover
         />

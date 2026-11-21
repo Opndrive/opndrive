@@ -44,12 +44,6 @@ export const SEO_CONFIG = {
       // Add more social profiles
     ],
   },
-
-  // Author Information (for blog posts)
-  defaultAuthor: {
-    name: 'Opndrive Team',
-    url: 'https://opndrive.app/about',
-  },
 };
 
 /**
