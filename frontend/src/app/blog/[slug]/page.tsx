@@ -8,6 +8,9 @@ import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
+import { TableOfContents } from '@/components/blog/table-of-contents';
+import { ReadingAids } from '@/components/blog/reading-aids';
+import { TOC_MIN_SECTIONS } from '@/lib/blog-content/headings';
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { StructuredData } from '@/components/seo';
@@ -207,10 +210,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
 
+  // A short post reads fine without a list of its sections.
+  const showToc =
+    content.headings.filter((heading) => heading.level === 2).length >= TOC_MIN_SECTIONS;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Structured Data for SEO */}
       <StructuredData data={[articleSchema, blogPostingSchema, breadcrumbSchema]} />
+
+      {/* Reading progress along the top, and back to top once well in */}
+      <ReadingAids articleId="post-body" titleId="post-title" />
 
       {/* Navbar */}
       <BlogNavbar />
@@ -221,7 +231,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       {/* Article Container */}
       <article className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         {/* Title */}
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center mb-6 leading-tight">
+        <h1
+          id="post-title"
+          // Back to top moves focus here, so it needs to be able to take it.
+          tabIndex={-1}
+          className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center mb-6 leading-tight text-balance"
+        >
           {post.title}
         </h1>
 
@@ -245,16 +260,31 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           />
         ) : null}
 
+        {/* On a narrow screen the sections are a closed panel above the post */}
+        {showToc ? (
+          <TableOfContents
+            headings={content.headings}
+            variant="collapsible"
+            className="mb-10 lg:hidden"
+          />
+        ) : null}
+
         {/* Content Layout with Sticky Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
-          {/* Left Sidebar - Sticky CTA */}
+          {/* Left Sidebar: the post's sections, then the call to action. The
+              column never grows past the window; a long list of sections
+              scrolls inside it instead of pushing the call to action off. */}
           <aside className="hidden lg:block">
-            <div className="sticky top-20">
-              <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-bold text-foreground text-center">
+            <div className="sticky top-8 flex max-h-[calc(100vh-4rem)] flex-col gap-6">
+              {showToc ? <TableOfContents headings={content.headings} variant="sidebar" /> : null}
+
+              <div className="shrink-0 bg-card border border-border rounded-2xl p-5 shadow-sm">
+                <div className="space-y-3">
+                  {/* Not a heading: it would sit between the title and the
+                      post's first section in a screen reader's outline. */}
+                  <p className="text-base font-bold text-foreground text-center">
                     Ready to manage your S3 storage?
-                  </h3>
+                  </p>
 
                   <p className="text-sm text-muted-foreground text-center leading-relaxed">
                     Open-source modern UI for S3 Compatible Storage Services with full control over
@@ -263,7 +293,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
                   <Link
                     href="/connect"
-                    className="block w-full bg-primary hover:bg-primary/90 text-primary-foreground text-center font-semibold py-3 px-6 rounded-xl transition-colors"
+                    className="block w-full bg-primary hover:bg-primary/90 text-primary-foreground text-center font-semibold py-2.5 px-6 rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Get Started
                   </Link>
