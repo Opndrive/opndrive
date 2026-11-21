@@ -1,6 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import type { LightboxImage } from './image-lightbox';
+import { largestSource } from './image-source';
+
+// Loaded the first time a reader opens a picture: most never do, and the
+// dialog it needs would otherwise ship with every post.
+const ImageLightbox = dynamic(() => import('./image-lightbox').then((mod) => mod.ImageLightbox), {
+  ssr: false,
+});
 
 const STATUS_VISIBLE_MS = 2000;
 const resetTimers = new WeakMap<HTMLElement, number>();
@@ -50,7 +59,8 @@ async function copyCode(button: HTMLButtonElement) {
 
 /**
  * Handles the controls inside a post's HTML with one listener: the copy
- * button on each code block, and the link on each section heading.
+ * button on each code block, the link on each section heading, and the
+ * button around each picture that opens it larger.
  *
  * Both are part of the post's HTML (see lib/blog-content), not React
  * elements, so they cannot carry handlers of their own. Their clicks bubble
@@ -58,6 +68,10 @@ async function copyCode(button: HTMLButtonElement) {
  */
 export function PostContentListener({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState('');
+  // The picture last opened, kept after closing so the dialog can animate
+  // out with it and give focus back to its button.
+  const [zoomed, setZoomed] = useState<LightboxImage | null>(null);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
@@ -91,6 +105,20 @@ export function PostContentListener({ children }: { children: ReactNode }) {
       return;
     }
 
+    const zoom = target.closest<HTMLButtonElement>('[data-image-zoom]');
+    const picture = zoom?.querySelector('img');
+    if (zoom && picture && event.currentTarget.contains(zoom)) {
+      setZoomOpen(true);
+      setZoomed({
+        src: largestSource(picture),
+        alt: picture.alt,
+        width: picture.naturalWidth,
+        height: picture.naturalHeight,
+        trigger: zoom,
+      });
+      return;
+    }
+
     const anchor = target.closest<HTMLAnchorElement>('[data-heading-anchor]');
     if (anchor && event.currentTarget.contains(anchor)) {
       // A modified click (new tab, new window) is the reader's own.
@@ -102,6 +130,10 @@ export function PostContentListener({ children }: { children: ReactNode }) {
   return (
     <div onClick={handleClick}>
       {children}
+      {/* Mounted from the first opening on; never loaded until then. */}
+      {zoomed ? (
+        <ImageLightbox image={zoomed} open={zoomOpen} onClose={() => setZoomOpen(false)} />
+      ) : null}
       <div
         role="status"
         aria-live="polite"

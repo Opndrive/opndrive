@@ -1341,6 +1341,38 @@ body {
 }
 
 /*
+ * The button that opens a post's picture larger (lib/blog-content/images).
+ * It takes the picture's place and spacing, so it reads as the picture, not
+ * as a button; the pointer and a focus ring say it can be pressed.
+ */
+.prose .image-zoom {
+  display: block;
+  width: 100%;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  cursor: zoom-in;
+}
+
+.prose .image-zoom > img {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose figure .image-zoom {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose .image-zoom:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/*
  * Pictures in a post are drawn for a white page: a diagram on a white canvas
  * sat in the dark theme as a glaring white slab. Dimmed a little there, with
  * the contrast lifted so the lines stay crisp - the treatment web.dev

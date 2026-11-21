@@ -158,6 +158,11 @@ export interface BlogPost {
   publishedDateLocal: string;
   /** When the post last changed, as an ISO string in UTC (from `modifiedGmt`). */
   modifiedDate: string;
+  /**
+   * The last change as the site's own clock gave it, with no offset. Only for
+   * showing to readers, for the same reason as `publishedDateLocal`.
+   */
+  modifiedDateLocal: string;
   author: {
     name: string;
     avatar?: string;

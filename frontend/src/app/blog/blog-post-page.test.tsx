@@ -36,6 +36,7 @@ function post(content: string): BlogPost {
     publishedDate: '2026-11-21T03:30:00Z',
     publishedDateLocal: '2026-11-21T09:00:00',
     modifiedDate: '2026-11-21T03:30:00Z',
+    modifiedDateLocal: '2026-11-21T09:00:00',
     author: { name: 'Opndrive' },
     categories: [{ id: 'dGVybTo0', name: 'Troubleshooting', slug: 'troubleshooting' }],
     tags: [],
@@ -103,6 +104,34 @@ describe('the post page', () => {
     expect(heading.className).not.toContain('text-white');
     expect(screen.getByRole('link', { name: 'See all posts' }).className).not.toContain(
       'text-white'
+    );
+  });
+
+  it('says when a post was updated, but not for a change on the day it went out', async () => {
+    const sameDay = post('<p>Body.</p>');
+    getPostBySlug.mockResolvedValue(sameDay);
+    const { unmount } = render(
+      await BlogPostPage({ params: Promise.resolve({ slug: sameDay.slug }) })
+    );
+    expect(screen.queryByText(/Updated/)).toBeNull();
+    unmount();
+
+    const later = { ...post('<p>Body.</p>'), modifiedDateLocal: '2026-11-24T10:00:00' };
+    later.modifiedDate = '2026-11-24T04:30:00Z';
+    getPostBySlug.mockResolvedValue(later);
+    render(await BlogPostPage({ params: Promise.resolve({ slug: later.slug }) }));
+
+    const updated = screen.getByText(/Updated/);
+    expect(updated.textContent).toBe('Updated November 24, 2026');
+    expect(updated.querySelector('time')?.getAttribute('datetime')).toBe('2026-11-24T04:30:00Z');
+  });
+
+  it('offers ways to share the post, with its canonical address', async () => {
+    const current = await renderPost('<p>Body.</p>');
+
+    const x = screen.getByRole('link', { name: 'Share on X (opens in a new tab)' });
+    expect(x.getAttribute('href')).toContain(
+      encodeURIComponent(`https://opndrive.app/blog/${current.slug}`)
     );
   });
 

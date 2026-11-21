@@ -3,13 +3,14 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
-import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
+import { formatDate, getReadingTime, wasUpdatedAfterPublishing } from '@/lib/wordpress/utils';
 import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { TableOfContents } from '@/components/blog/table-of-contents';
 import { ReadingAids } from '@/components/blog/reading-aids';
+import { ShareButtons } from '@/components/blog/share-buttons';
 import { TOC_MIN_SECTIONS } from '@/lib/blog-content/headings';
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
@@ -210,6 +211,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
 
+  // Said only when the change came on a later day than publishing.
+  const updated = wasUpdatedAfterPublishing(post.publishedDateLocal, post.modifiedDateLocal);
+
   // A short post reads fine without a list of its sections.
   const showToc =
     content.headings.filter((heading) => heading.level === 2).length >= TOC_MIN_SECTIONS;
@@ -240,12 +244,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           {post.title}
         </h1>
 
-        {/* Meta Info */}
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-8">
+        {/* Meta Info. Wraps on a narrow screen rather than running off it. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-8">
           <span>by {post.author.name}</span>
-          <span>|</span>
+          <span aria-hidden="true">|</span>
           <time dateTime={post.publishedDate}>{formatDate(post.publishedDateLocal)}</time>
-          <span>|</span>
+          {updated ? (
+            <>
+              <span aria-hidden="true">|</span>
+              <span>
+                Updated{' '}
+                <time dateTime={post.modifiedDate}>{formatDate(post.modifiedDateLocal)}</time>
+              </span>
+            </>
+          ) : null}
+          <span aria-hidden="true">|</span>
           <span>{readingTime} min read</span>
         </div>
 
@@ -306,6 +319,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <div className="min-w-0 ">
             {/* Post Content */}
             <BlogPostContent html={content.html} />
+
+            {/* After the last line: pass it on */}
+            <footer className="mt-14 border-t border-border pt-8">
+              <p className="mb-4 text-sm font-semibold text-foreground">Share this post</p>
+              <ShareButtons url={getAbsoluteUrl(`/blog/${post.slug}`)} title={post.title} />
+            </footer>
           </div>
         </div>
       </article>

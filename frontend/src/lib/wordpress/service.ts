@@ -76,6 +76,7 @@ export function transformPostSummary(
     publishedDate: gmtToIso(post.dateGmt) ?? post.date,
     publishedDateLocal: post.date,
     modifiedDate: gmtToIso(post.modifiedGmt) ?? post.modified,
+    modifiedDateLocal: post.modified,
     author: {
       name: post.author?.node?.name || 'Anonymous',
       avatar: post.author?.node?.avatar?.url,
