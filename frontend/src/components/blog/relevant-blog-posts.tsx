@@ -1,12 +1,10 @@
-'use client';
-
 import Link from 'next/link';
-import { BlogPost } from '@/lib/wordpress/types';
-import { BlogCard } from './blog-card';
 import { ChevronRight } from 'lucide-react';
+import type { BlogPostSummary } from '@/lib/wordpress/types';
+import { BlogCard } from './blog-card';
 
 interface RelevantBlogPostsProps {
-  posts: BlogPost[];
+  posts: BlogPostSummary[];
 }
 
 export function RelevantBlogPosts({ posts }: RelevantBlogPostsProps) {
@@ -17,8 +15,9 @@ export function RelevantBlogPosts({ posts }: RelevantBlogPostsProps) {
   return (
     <section className="bg-background py-12 sm:py-14 lg:py-16">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-10 text-center">
+        {/* Section Header. Theme colours: this was text-white, which vanished
+            on the light theme's white page. */}
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-10 text-center">
           Relevant blog posts
         </h2>
 
@@ -29,14 +28,15 @@ export function RelevantBlogPosts({ posts }: RelevantBlogPostsProps) {
           ))}
         </div>
 
-        {/* See All Posts Button */}
+        {/* See All Posts Button. primary-foreground, not white: the dark
+            theme's primary is a light blue that white text barely shows on. */}
         <div className="flex justify-center mt-10">
           <Link
             href="/blog"
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-medium px-6 py-3 rounded-full transition-colors"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-6 py-3 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             See all posts
-            <ChevronRight size={16} />
+            <ChevronRight size={16} aria-hidden="true" />
           </Link>
         </div>
       </div>

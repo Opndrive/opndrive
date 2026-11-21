@@ -1298,6 +1298,23 @@ body {
   width: 100%;
 }
 
+/*
+ * Pictures in a post are drawn for a white page: a diagram on a white canvas
+ * sat in the dark theme as a glaring white slab. Dimmed a little there, with
+ * the contrast lifted so the lines stay crisp - the treatment web.dev
+ * suggests for images in dark mode - and back at full strength while the
+ * reader points at one or focuses it.
+ */
+[data-theme='dark'] .prose img {
+  filter: brightness(0.8) contrast(1.2);
+  transition: filter 200ms ease;
+}
+
+[data-theme='dark'] .prose img:hover,
+[data-theme='dark'] .prose :focus-visible > img {
+  filter: none;
+}
+
 .prose hr {
   border-color: var(--border);
   margin-top: 2.5rem;

@@ -10,8 +10,8 @@ import {
   GET_POST_BY_SLUG,
   GET_ALL_POST_SLUGS,
   GET_POSTS_BY_CATEGORY,
-  GET_RELATED_POSTS,
   GET_POST_SUMMARIES,
+  GET_RELATED_POST_SUMMARIES,
 } from './queries-simple'; // Using simplified queries without SEO
 import type {
   WordPressPostsResponse,
@@ -264,51 +264,43 @@ export async function getPostsByCategory(categorySlug: string, limit = 10): Prom
 }
 
 /**
- * Get related posts based on current post's categories
+ * Up to `limit` posts to read after `post`: the newest in its categories,
+ * topped up with the newest overall when its categories run short, never
+ * `post` itself or the same post twice. Summaries, without bodies.
+ *
+ * Takes the post the page already has. It used to take a slug and fetch the
+ * post twice more - once for its categories, once for its database ID - each
+ * time with the full body, before asking for the related posts themselves.
  */
-export async function getRelatedPosts(currentPostSlug: string, limit = 3): Promise<BlogPost[]> {
-  try {
-    // First, get the current post to extract its categories
-    const currentPost = await getPostBySlug(currentPostSlug);
-
-    if (!currentPost || !currentPost.categories || currentPost.categories.length === 0) {
-      // Fallback to recent posts if no categories
-      return getRecentPosts(limit);
+export async function getRelatedPosts(
+  post: Pick<BlogPost, 'slug' | 'categories'>,
+  limit = 3
+): Promise<BlogPostSummary[]> {
+  const related: BlogPostSummary[] = [];
+  const seen = new Set([post.slug]);
+  const take = (candidates: BlogPostSummary[]) => {
+    for (const candidate of candidates) {
+      if (related.length >= limit) return;
+      if (seen.has(candidate.slug)) continue;
+      seen.add(candidate.slug);
+      related.push(candidate);
     }
+  };
 
-    // Get category IDs
-    const categoryIds = currentPost.categories.map((cat) => cat.id);
-
-    // Get database ID of current post to exclude it
-    const currentPostData = await fetchGraphQL<WordPressPostBySlugResponse>(GET_POST_BY_SLUG, {
-      slug: currentPostSlug,
-    });
-
-    const currentPostId = currentPostData.post?.databaseId;
-
-    // Fetch related posts
-    const data = await fetchGraphQL<WordPressPostsResponse>(GET_RELATED_POSTS, {
-      categoryIn: categoryIds,
-      notIn: currentPostId ? [currentPostId] : [],
-      first: limit,
-    });
-
-    const relatedPosts = data.posts.nodes.map(transformPost);
-
-    // If we don't have enough related posts, fill with recent posts
-    if (relatedPosts.length < limit) {
-      const recentPosts = await getRecentPosts(limit);
-      const additionalPosts = recentPosts
-        .filter((post) => post.slug !== currentPostSlug)
-        .slice(0, limit - relatedPosts.length);
-
-      return [...relatedPosts, ...additionalPosts];
-    }
-
-    return relatedPosts;
-  } catch (error) {
-    console.error('Error fetching related posts:', error);
-    // Fallback to recent posts on error
-    return getRecentPosts(limit);
+  if (post.categories.length > 0) {
+    const data = await fetchGraphQLWithTags<WordPressPostSummariesResponse>(
+      GET_RELATED_POST_SUMMARIES,
+      // One more than needed: the post itself is in its own categories.
+      { categoryIn: post.categories.map((category) => category.id), first: limit + 1 },
+      ['posts']
+    );
+    take(data.posts.nodes.map(transformPostSummary));
   }
+
+  if (related.length < limit) {
+    // Enough to fill the gap even if every one already shown comes first.
+    take(await getPostSummaries({ limit: limit + related.length + 1 }));
+  }
+
+  return related;
 }
