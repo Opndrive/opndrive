@@ -1162,11 +1162,48 @@ body {
   background-color: hsl(240 4.8% 95.9%);
 }
 
+/*
+ * Code keeps its lines. Wrapped, a long line folds into the next and the
+ * indentation stops meaning anything, so a block scrolls sideways instead (it
+ * takes keyboard focus for that, see transformCodeBlocks). The line height is
+ * set for code rather than inherited from the post's 1.8 prose, which spread
+ * lines of code almost two lines apart.
+ */
 .prose .code-block > pre {
   margin: 0;
   border: 0;
   border-radius: 0;
   background-color: transparent;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  white-space: pre;
+  word-wrap: normal;
+  word-break: normal;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.prose .code-block > pre code {
+  white-space: inherit;
+  word-wrap: normal;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.prose .code-block > pre:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+/* Shiki writes both themes' colours into each token as variables; the page's
+   theme picks one. Tokens without a colour of their own take the text colour. */
+.prose .shiki span {
+  color: var(--shiki-light);
+}
+
+[data-theme='dark'] .prose .shiki span {
+  color: var(--shiki-dark);
 }
 
 .prose .code-block-header {

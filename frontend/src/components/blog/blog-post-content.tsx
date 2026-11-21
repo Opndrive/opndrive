@@ -1,15 +1,15 @@
-import { addCodeBlockToolbars } from '@/lib/wordpress/code-blocks';
 import { CodeCopyListener } from './code-copy-listener';
 
 interface BlogPostContentProps {
-  content: string;
+  /** The post body after renderPostContent: highlighted, framed code and all. */
+  html: string;
 }
 
-export function BlogPostContent({ content }: BlogPostContentProps) {
+export function BlogPostContent({ html }: BlogPostContentProps) {
   return (
     <CodeCopyListener>
       <article className="custom-scrollbar prose prose-lg max-w-none dark:prose-invert">
-        <div dangerouslySetInnerHTML={{ __html: addCodeBlockToolbars(content) }} />
+        <div dangerouslySetInnerHTML={{ __html: html }} />
       </article>
     </CodeCopyListener>
   );

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
+import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
@@ -203,6 +204,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
 
+  // Highlighted and framed on the server; remembered per post version.
+  const content = await getRenderedPostContent(post);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Structured Data for SEO */}
@@ -271,7 +275,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           {/* Right Content */}
           <div className="min-w-0 ">
             {/* Post Content */}
-            <BlogPostContent content={post.content} />
+            <BlogPostContent html={content.html} />
           </div>
         </div>
       </article>
