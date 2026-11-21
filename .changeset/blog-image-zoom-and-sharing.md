@@ -9,7 +9,8 @@ Open a blog post's pictures larger, share a post, and see when it was updated
   than shrinking until its text is unreadable, and a small one is drawn up to
   twice its size. Escape or a press outside closes it, and focus goes back to
   the picture. The dialog's code loads the first time a reader opens a picture,
-  not with every post.
+  not with every post. Pictures that are part of a sentence - an icon, a badge,
+  an emoji - stay as they are.
 - **Pictures load as they come near.** Every picture in a post's body is now
   loaded lazily and decoded off the main thread.
 - **Share this post.** The end of each post has Copy link, X, LinkedIn, Hacker

@@ -50,6 +50,47 @@ describe('pictures in a post', () => {
   });
 });
 
+describe('pictures that are part of the text', () => {
+  it('stay inline: an icon in a sentence is not turned into a block button', async () => {
+    const root = parse(
+      (await renderPostContent('<p>Press <img src="/save.png" alt="Save" width="16"> to save.</p>'))
+        .html
+    );
+
+    expect(root.querySelector('[data-image-zoom]')).toBeNull();
+    expect(root.querySelector('p > img')?.getAttribute('loading')).toBe('lazy');
+  });
+
+  it("leave WordPress's emoji images alone", async () => {
+    const root = parse(
+      (await renderPostContent('<p><img class="emoji" src="/e.svg" alt="🙂"></p>')).html
+    );
+    expect(root.querySelector('[data-image-zoom]')).toBeNull();
+  });
+
+  it('wrap a <picture> whole, so its sources still apply', async () => {
+    const root = parse(
+      (
+        await renderPostContent(
+          '<figure><picture><source type="image/webp" srcset="/a.webp"><img src="/a.jpg" alt="A"></picture></figure>'
+        )
+      ).html
+    );
+
+    const button = root.querySelector('figure > button[data-image-zoom]');
+    expect(button?.firstElementChild?.tagName).toBe('PICTURE');
+    expect(root.querySelector('picture > img')).not.toBeNull();
+    expect(root.querySelector('picture > source')).not.toBeNull();
+  });
+
+  it('still load lazily when they are links', async () => {
+    const root = parse(
+      (await renderPostContent('<a href="/x"><img src="/a.png" alt="A"></a>')).html
+    );
+    expect(root.querySelector('a > img')?.getAttribute('loading')).toBe('lazy');
+  });
+});
+
 describe('the picture lightbox', () => {
   let html: string;
 
