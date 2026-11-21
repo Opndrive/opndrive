@@ -63,6 +63,12 @@ describe('section headings', () => {
     expect(headings).toHaveLength(1);
   });
 
+  it("never gives a heading one of the page's own ids", async () => {
+    const { headings } = await render('<h2>Get started</h2><h2>FAQ</h2>');
+
+    expect(headings.map((heading) => heading.id)).toEqual(['get-started-1', 'faq-1']);
+  });
+
   it('skips empty headings', async () => {
     const { headings } = await render('<h2></h2><h2>Real</h2>');
     expect(headings.map((heading) => heading.text)).toEqual(['Real']);

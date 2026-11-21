@@ -40,15 +40,36 @@ function useActiveHeading(ids: string[]): string | null {
       setActive(current);
     };
 
-    const observer = new IntersectionObserver(update, {
-      // A band from the top of the page to the reading line: a heading enters
-      // or leaves it exactly when it crosses the line.
-      rootMargin: `0px 0px -${Math.max(0, window.innerHeight - READING_LINE_PX)}px 0px`,
-    });
-    elements.forEach((element) => observer.observe(element));
-    update();
+    // A band from the top of the page to the reading line: a heading enters
+    // or leaves it exactly when it crosses the line. The band is measured in
+    // pixels from the window's height, so it is drawn again when that changes.
+    let observer: IntersectionObserver | undefined;
+    const observe = () => {
+      observer?.disconnect();
+      observer = new IntersectionObserver(update, {
+        rootMargin: `0px 0px -${Math.max(0, window.innerHeight - READING_LINE_PX)}px 0px`,
+      });
+      elements.forEach((element) => observer!.observe(element));
+      update();
+    };
 
-    return () => observer.disconnect();
+    let frame = 0;
+    const onResize = () => {
+      if (!frame) {
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          observe();
+        });
+      }
+    };
+
+    observe();
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (frame) window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
   }, [ids]);
 
   return active;

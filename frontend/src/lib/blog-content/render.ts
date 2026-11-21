@@ -55,7 +55,8 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
  * reader loses the extras, never the post.
  */
 function unrenderedContent(html: string): RenderedPostContent {
-  return { html, faq: [] };
+  // No headings to list: they have no ids or links without the pipeline.
+  return { html, headings: [], faq: [] };
 }
 
 /**

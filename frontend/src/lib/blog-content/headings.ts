@@ -20,6 +20,13 @@ import { visit } from 'unist-util-visit';
 /** Fewer top-level sections than this, and a table of contents adds nothing. */
 export const TOC_MIN_SECTIONS = 3;
 
+/**
+ * Ids the post page gives its own elements. A heading's id made from its text
+ * must not repeat one - a section called "Get started" would otherwise share
+ * an address with the call to action below the post.
+ */
+export const PAGE_IDS = ['post-title', 'post-body', 'toc-heading', 'faq', 'get-started'] as const;
+
 export interface PostHeading {
   id: string;
   text: string;
@@ -65,7 +72,7 @@ function linkIcon(): Element {
 /** Gives headings ids and self-links, in place, and lists them in order. */
 export function linkHeadings(tree: Root): PostHeading[] {
   const headings: Element[] = [];
-  const taken = new Set<string>();
+  const taken = new Set<string>(PAGE_IDS);
 
   visit(tree, 'element', (node) => {
     const id = node.properties?.id;

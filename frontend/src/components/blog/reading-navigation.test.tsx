@@ -32,14 +32,17 @@ function placeHeadings(tops: Record<string, number>) {
 }
 
 let observerCallback: (() => void) | null = null;
+let observerMargins: string[] = [];
 
 beforeEach(() => {
   observerCallback = null;
+  observerMargins = [];
   vi.stubGlobal(
     'IntersectionObserver',
     class {
-      constructor(callback: () => void) {
+      constructor(callback: () => void, options?: IntersectionObserverInit) {
         observerCallback = callback;
+        observerMargins.push(options?.rootMargin ?? '');
       }
       observe() {}
       disconnect() {}
@@ -95,6 +98,23 @@ describe('TableOfContents, beside the post', () => {
     expect(within(nav).getByRole('link', { current: 'location' }).textContent).toBe('Step 2');
     expect(within(nav).getByRole('link', { name: 'Replay it' })).toBeDefined();
     expect(within(nav).queryByRole('link', { name: 'Read the URL' })).toBeNull();
+  });
+
+  it('draws its reading band again when the window changes height', () => {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    placeHeadings({ intro: -800, 'step-1': 400 });
+    render(<TableOfContents headings={headings} variant="sidebar" />);
+    expect(observerMargins.at(-1)).toBe('0px 0px -780px 0px');
+
+    Object.defineProperty(window, 'innerHeight', { value: 1300, configurable: true });
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    expect(observerMargins.at(-1)).toBe('0px 0px -1180px 0px');
   });
 
   it('links each entry to its section', () => {
