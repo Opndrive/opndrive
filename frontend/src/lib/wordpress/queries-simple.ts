@@ -75,6 +75,65 @@ export const POST_FIELDS = `
 `;
 
 /**
+ * What a list of posts needs to draw a card: everything but the body.
+ *
+ * A post's `content` is the whole article, tens of kilobytes of HTML, and the
+ * blog index, the feed and the related posts never show it. Leaving it out is
+ * what makes it cheap to ask for every post rather than the newest fifty.
+ */
+export const POST_SUMMARY_FIELDS = `
+  fragment PostSummaryFields on Post {
+    id
+    databaseId
+    slug
+    title
+    excerpt
+    date
+    dateGmt
+    modified
+    modifiedGmt
+    author {
+      ...AuthorFields
+    }
+    featuredImage {
+      ...FeaturedImageFields
+    }
+    categories {
+      nodes {
+        id
+        name
+        slug
+      }
+    }
+  }
+`;
+
+/**
+ * Published posts as summaries, newest first, a page at a time. `$after` is
+ * the cursor from the previous page's `pageInfo.endCursor`.
+ */
+export const GET_POST_SUMMARIES = `
+  query GetPostSummaries($first: Int = 100, $after: String) {
+    posts(
+      first: $first
+      after: $after
+      where: { status: PUBLISH, orderby: { field: DATE, order: DESC } }
+    ) {
+      nodes {
+        ...PostSummaryFields
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+  ${AUTHOR_FRAGMENT}
+  ${FEATURED_IMAGE_FRAGMENT}
+`;
+
+/**
  * Query to fetch all published posts with pagination
  */
 export const GET_ALL_POSTS = `

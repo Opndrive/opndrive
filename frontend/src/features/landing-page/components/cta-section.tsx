@@ -1,29 +1,43 @@
+import Link from 'next/link';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
 import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner';
 
-interface CTASectionProps {
-  handleGetStarted: () => void;
-  /**
-   * The blog's copies own their navigation and hold this true from the click
-   * until the route changes, so the button reads as busy rather than sitting
-   * disabled under a label that still invites a press. The landing page has
-   * nothing to wait for and leaves it alone.
-   */
-  isLoading?: boolean;
+/**
+ * Where the button goes: a plain link, or a handler for a page that has to
+ * decide at click time (the landing page picks /dashboard or /connect from the
+ * session). A link is the default for a fixed destination: it works before
+ * hydration, opens in a new tab on a middle click, and needs no server action
+ * behind it. The blog index used to pass an empty server action here, so its
+ * button did nothing at all.
+ */
+type CTADestination =
+  | { href: string; handleGetStarted?: never; isLoading?: never }
+  | {
+      href?: never;
+      handleGetStarted: () => void;
+      /** Holds the button busy from the click until the route changes. */
+      isLoading?: boolean;
+    };
+
+type CTASectionProps = CTADestination & {
   /**
    * Named by the page, which is the only thing that knows the destination.
-   * The blog's copies of this section always route to /connect, so they take
-   * the default rather than growing session logic of their own.
+   * The blog always links to /connect, so it takes the default rather than
+   * growing session logic of its own.
    */
   ctaLabel?: string;
-}
+};
 
 export default function CTASection({
+  href,
   handleGetStarted,
   isLoading = false,
   ctaLabel = 'Get Started',
 }: CTASectionProps) {
+  const buttonClassName =
+    'bg-primary hover:bg-primary/90 text-primary-foreground px-6 sm:px-8 md:px-10 lg:px-12 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-medium min-w-[120px] sm:min-w-[140px] md:min-w-[160px]';
+
   return (
     <section
       id="get-started"
@@ -51,14 +65,20 @@ export default function CTASection({
           </p>
 
           <div className="flex justify-center items-center">
-            <Button
-              size="lg"
-              onClick={handleGetStarted}
-              disabled={isLoading}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 sm:px-8 md:px-10 lg:px-12 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-medium min-w-[120px] sm:min-w-[140px] md:min-w-[160px]"
-            >
-              {isLoading ? 'Loading...' : ctaLabel}
-            </Button>
+            {href ? (
+              <Button size="lg" asChild className={buttonClassName}>
+                <Link href={href}>{ctaLabel}</Link>
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                onClick={handleGetStarted}
+                disabled={isLoading}
+                className={buttonClassName}
+              >
+                {isLoading ? 'Loading...' : ctaLabel}
+              </Button>
+            )}
           </div>
 
           <DiscordCtaBanner className="mt-8 sm:mt-10 max-w-2xl mx-auto" />

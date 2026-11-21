@@ -113,6 +113,19 @@ export interface WordPressPostsResponse {
   };
 }
 
+/** A post as GET_POST_SUMMARIES returns it: no body, tags or SEO fields. */
+export type WordPressPostSummary = Omit<WordPressPost, 'content' | 'tags' | 'seo'>;
+
+export interface WordPressPostSummariesResponse {
+  posts: {
+    nodes: WordPressPostSummary[];
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+  };
+}
+
 export interface WordPressPostResponse {
   post: WordPressPost | null;
 }
@@ -177,6 +190,13 @@ export interface BlogPost {
     nofollow?: boolean;
   };
 }
+
+/**
+ * A post as a list shows it: a card on the blog index, an item in the feed, a
+ * related post. Everything but the body and the SEO overrides, which only the
+ * post's own page reads.
+ */
+export type BlogPostSummary = Omit<BlogPost, 'content' | 'seo'>;
 
 export interface PaginationInfo {
   hasNextPage: boolean;

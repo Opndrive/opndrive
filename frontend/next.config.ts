@@ -16,6 +16,18 @@ const nextConfig: NextConfig = {
    * first byte did not move beyond run-to-run noise (about 10 ms either way).
    */
   htmlLimitedBots: /.*/,
+  /**
+   * /blogs is the address people guess, and the one a mistyped link carries.
+   * It has never had a page, so it answered 404. A permanent redirect sends
+   * readers to the blog and tells search engines the right address, post
+   * paths and query strings (?page=2) included.
+   */
+  async redirects() {
+    return [
+      { source: '/blogs', destination: '/blog', permanent: true },
+      { source: '/blogs/:path*', destination: '/blog/:path*', permanent: true },
+    ];
+  },
   images: {
     remotePatterns: [
       {

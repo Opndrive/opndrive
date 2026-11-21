@@ -4,22 +4,28 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getRecentPosts = vi.fn();
+const getPostSummaries = vi.fn();
 let blogEnabled = true;
 
 vi.mock('./service', () => ({
-  getRecentPosts: (...args: unknown[]) => getRecentPosts(...args),
+  getPostSummaries: (...args: unknown[]) => getPostSummaries(...args),
 }));
 vi.mock('@/config/features', () => ({
   isBlogEnabled: () => blogEnabled,
   requiresWordPressCredentials: () => blogEnabled,
 }));
 
-import { FEED_REVALIDATE_SECONDS, loadFeedPosts } from './blog-index';
+import {
+  BLOG_INDEX_POST_LIMIT,
+  FEED_POST_LIMIT,
+  FEED_REVALIDATE_SECONDS,
+  loadBlogIndexPosts,
+  loadFeedPosts,
+} from './blog-index';
 import { revalidate as feedRouteRevalidate } from '@/app/blog/rss.xml/route';
 
 beforeEach(() => {
-  getRecentPosts.mockReset();
+  getPostSummaries.mockReset();
   blogEnabled = true;
   vi.stubEnv('WORDPRESS_GRAPHQL_URL', 'https://wp.example.test/graphql');
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -31,12 +37,12 @@ afterEach(() => {
 
 describe('loadFeedPosts', () => {
   it('returns the posts WordPress gives', async () => {
-    getRecentPosts.mockResolvedValue([{ slug: 'a' }]);
+    getPostSummaries.mockResolvedValue([{ slug: 'a' }]);
     expect(await loadFeedPosts()).toEqual([{ slug: 'a' }]);
   });
 
   it('returns null, not an empty list, when WordPress cannot be reached', async () => {
-    getRecentPosts.mockRejectedValue(new Error('ETIMEDOUT'));
+    getPostSummaries.mockRejectedValue(new Error('ETIMEDOUT'));
     expect(await loadFeedPosts()).toBeNull();
   });
 
@@ -45,24 +51,37 @@ describe('loadFeedPosts', () => {
     // a configured WordPress that fails to answer is treated as unknown.
     vi.stubEnv('WORDPRESS_GRAPHQL_URL', '');
     expect(await loadFeedPosts()).toEqual([]);
-    expect(getRecentPosts).not.toHaveBeenCalled();
+    expect(getPostSummaries).not.toHaveBeenCalled();
   });
 
   it('returns an empty list when the blog is turned off, without asking WordPress', async () => {
     blogEnabled = false;
     expect(await loadFeedPosts()).toEqual([]);
-    expect(getRecentPosts).not.toHaveBeenCalled();
+    expect(getPostSummaries).not.toHaveBeenCalled();
   });
 
   it('asks for the answer to be cached as long as the feed is', async () => {
     // A route is regenerated as often as its shortest-lived fetch, so the
     // feed's hour has to reach the WordPress fetch too.
-    getRecentPosts.mockResolvedValue([]);
+    getPostSummaries.mockResolvedValue([]);
     await loadFeedPosts();
 
-    expect(getRecentPosts).toHaveBeenCalledWith(expect.any(Number), {
+    expect(getPostSummaries).toHaveBeenCalledWith({
+      limit: FEED_POST_LIMIT,
       revalidate: FEED_REVALIDATE_SECONDS,
     });
     expect(feedRouteRevalidate).toBe(FEED_REVALIDATE_SECONDS);
+  });
+});
+
+describe('loadBlogIndexPosts', () => {
+  it('asks for every post, so none is left without a page on the index', async () => {
+    // It asked for the newest 50, with their bodies, and the 51st post had no
+    // index page linking to it.
+    getPostSummaries.mockResolvedValue([]);
+    await loadBlogIndexPosts();
+
+    expect(getPostSummaries).toHaveBeenCalledWith({ limit: BLOG_INDEX_POST_LIMIT });
+    expect(BLOG_INDEX_POST_LIMIT).toBeGreaterThanOrEqual(1000);
   });
 });

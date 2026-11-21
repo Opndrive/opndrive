@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import type { BlogPost } from '@/lib/wordpress/types';
-import { formatDate } from '@/lib/wordpress';
+import type { BlogPostSummary } from '@/lib/wordpress/types';
+import { formatDate } from '@/lib/wordpress/utils';
 import { BlogCoverImage } from './blog-cover-image';
 
 interface BlogCardProps {
-  post: BlogPost;
+  post: BlogPostSummary;
 }
 
 export function BlogCard({ post }: BlogCardProps) {

@@ -10,12 +10,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getRecentPosts = vi.fn();
+const getPostSummaries = vi.fn();
 const getPostBySlug = vi.fn();
 const getAllPostSitemapData = vi.fn();
 
 vi.mock('@/lib/wordpress/service', () => ({
-  getRecentPosts: (...args: unknown[]) => getRecentPosts(...args),
+  getPostSummaries: (...args: unknown[]) => getPostSummaries(...args),
   getPostBySlug: (...args: unknown[]) => getPostBySlug(...args),
   getAllPostSitemapData: (...args: unknown[]) => getAllPostSitemapData(...args),
   getRelatedPosts: async () => [],
@@ -35,7 +35,7 @@ const unreachable = new Error('ETIMEDOUT');
 beforeEach(() => {
   vi.stubEnv('WORDPRESS_GRAPHQL_URL', 'https://wp.example.test/graphql');
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  getRecentPosts.mockRejectedValue(unreachable);
+  getPostSummaries.mockRejectedValue(unreachable);
   getPostBySlug.mockRejectedValue(unreachable);
   getAllPostSitemapData.mockRejectedValue(unreachable);
 });
