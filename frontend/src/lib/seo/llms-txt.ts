@@ -30,7 +30,8 @@ function oneLine(text: string, max = 200): string {
   const chars = Array.from(flat);
   if (chars.length <= max) return flat;
   const cut = chars.slice(0, max).join('');
-  return `${cut.slice(0, cut.lastIndexOf(' ')).trimEnd() || cut}…`;
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 0 ? cut.slice(0, space).trimEnd() : '') || cut}…`;
 }
 
 function link(title: string, url: string, note?: string): string {

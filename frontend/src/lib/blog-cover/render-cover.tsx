@@ -75,7 +75,10 @@ export function fitTitle(title: string, max = 150): string {
   const chars = Array.from(title.trim());
   if (chars.length <= max) return chars.join('');
   const cut = chars.slice(0, max).join('');
-  const atWord = cut.slice(0, cut.lastIndexOf(' ')).trimEnd();
+  // At the last word break, if there is one: a title with no spaces (a long
+  // URL, a CJK title) keeps every character up to the cut.
+  const space = cut.lastIndexOf(' ');
+  const atWord = space > 0 ? cut.slice(0, space).trimEnd() : '';
   return `${atWord || cut}…`;
 }
 

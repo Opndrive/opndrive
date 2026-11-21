@@ -176,13 +176,16 @@ export function generateBlogPostingSchema(post: BlogPost, cover: CoverImage) {
  */
 export function generateFaqPageSchema(
   slug: string,
-  faq: ReadonlyArray<{ question: string; answer: string }>
+  faq: ReadonlyArray<{ question: string; answer: string }>,
+  /** The FAQ heading's id on the page, so the address points at it. */
+  sectionId: string | null
 ) {
+  const url = sectionId ? `${postUrl(slug)}#${sectionId}` : postUrl(slug);
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    '@id': `${postUrl(slug)}#faq`,
-    url: `${postUrl(slug)}#faq`,
+    '@id': sectionId ? url : `${url}#faq`,
+    url,
     mainEntity: faq.map((item) => ({
       '@type': 'Question',
       name: item.question,

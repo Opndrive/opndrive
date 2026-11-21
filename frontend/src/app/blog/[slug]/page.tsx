@@ -95,8 +95,13 @@ export async function generateMetadata({
   // title: every post has one now, where a post without a cover used to be
   // shared as a bare link.
   const cover = coverImageFor(post);
-  const shareImage = post.seo.ogImage
-    ? { url: post.seo.ogImage, width: 1200, height: 630, alt: post.title }
+  // seo.ogImage is the featured image itself unless an SEO plugin set one of
+  // its own. Only that separate image has no known size; the cover's own
+  // width, height and description are used otherwise.
+  const separateShareImage =
+    post.seo.ogImage && post.seo.ogImage !== post.featuredImage?.url ? post.seo.ogImage : null;
+  const shareImage = separateShareImage
+    ? { url: separateShareImage, alt: post.title }
     : {
         url: getAbsoluteUrlOf(cover.url),
         width: cover.width,
@@ -225,7 +230,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       { name: post.title, url: `/blog/${post.slug}` },
     ]),
     // The questions the post's own FAQ section answers, as it shows them.
-    ...(content.faq.length ? [generateFaqPageSchema(post.slug, content.faq)] : []),
+    ...(content.faq.length ? [generateFaqPageSchema(post.slug, content.faq, content.faqId)] : []),
   ];
 
   // Calculate reading time

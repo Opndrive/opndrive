@@ -67,12 +67,16 @@ describe('generateBlogPostingSchema', () => {
 
 describe('generateFaqPageSchema', () => {
   it('lists each question with its accepted answer', () => {
-    const schema = generateFaqPageSchema('fix-signature', [
-      { question: 'Can CORS cause it?', answer: 'No. CORS fails first.' },
-    ]);
+    const schema = generateFaqPageSchema(
+      'fix-signature',
+      [{ question: 'Can CORS cause it?', answer: 'No. CORS fails first.' }],
+      'frequently-asked-questions'
+    );
 
     expect(schema).toMatchObject({
       '@type': 'FAQPage',
+      // The address of the FAQ heading that is really on the page.
+      url: 'https://opndrive.app/blog/fix-signature#frequently-asked-questions',
       mainEntity: [
         {
           '@type': 'Question',
@@ -81,6 +85,15 @@ describe('generateFaqPageSchema', () => {
         },
       ],
     });
+  });
+});
+
+describe('fitting text at a word', () => {
+  it('keeps every character up to the cut when there is no space to stop at', async () => {
+    const { fitTitle } = await import('@/lib/blog-cover/render-cover');
+    const unbroken = 'x'.repeat(200);
+
+    expect(fitTitle(unbroken)).toBe(`${'x'.repeat(150)}…`);
   });
 });
 
