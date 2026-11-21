@@ -1,4 +1,5 @@
-'use client';
+import { addCodeBlockToolbars } from '@/lib/wordpress/code-blocks';
+import { CodeCopyListener } from './code-copy-listener';
 
 interface BlogPostContentProps {
   content: string;
@@ -6,8 +7,10 @@ interface BlogPostContentProps {
 
 export function BlogPostContent({ content }: BlogPostContentProps) {
   return (
-    <article className="custom-scrollbar prose prose-lg max-w-none dark:prose-invert">
-      <div dangerouslySetInnerHTML={{ __html: content }} />
-    </article>
+    <CodeCopyListener>
+      <article className="custom-scrollbar prose prose-lg max-w-none dark:prose-invert">
+        <div dangerouslySetInnerHTML={{ __html: addCodeBlockToolbars(content) }} />
+      </article>
+    </CodeCopyListener>
   );
 }
