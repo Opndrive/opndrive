@@ -92,8 +92,9 @@ describe('code blocks', () => {
     expect(root.lastElementChild?.outerHTML).toBe('<p>Then this.</p>');
   });
 
-  it('returns HTML with no code blocks unchanged in meaning', async () => {
-    const html = '<h2 id="a">Title</h2><p>Text &amp; more, “quoted”.</p>';
+  it('returns prose with no code blocks unchanged in meaning', async () => {
+    // Headings are left out: they gain a link to themselves (headings.test.ts).
+    const html = '<p>Text &amp; more, “quoted”.</p><ul><li>One</li><li>Two</li></ul>';
     const root = await render(html);
     expect(root.innerHTML).toBe(parse(html).innerHTML);
   });

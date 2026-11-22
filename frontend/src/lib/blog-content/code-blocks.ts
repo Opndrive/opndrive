@@ -5,7 +5,7 @@
  * becomes a frame with a header - the language on the left, a copy button on
  * the right - around the block itself, with its tokens coloured by Shiki when
  * the language is one it knows. The click on the button is handled in the
- * browser by CodeCopyListener, which listens for presses on any element
+ * browser by PostContentListener, which listens for presses on any element
  * marked `data-code-copy`.
  */
 

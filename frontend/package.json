@@ -40,6 +40,7 @@
     "clsx": "^2.1.1",
     "entities": "8.0.0",
     "framer-motion": "^12.42.2",
+    "github-slugger": "2.0.0",
     "hast-util-from-html": "2.0.3",
     "hast-util-to-html": "9.0.5",
     "hast-util-to-string": "3.0.1",

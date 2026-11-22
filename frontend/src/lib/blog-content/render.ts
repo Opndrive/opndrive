@@ -15,12 +15,15 @@ import { fromHtml } from 'hast-util-from-html';
 import { toHtml } from 'hast-util-to-html';
 import { transformCodeBlocks } from './code-blocks';
 import { getHighlighter } from './highlighter';
+import { linkHeadings, type PostHeading } from './headings';
 import { extractFaq, type PostFaqItem } from './outline';
 import { wrapTables } from './tables';
 
 export interface RenderedPostContent {
   /** The post body, ready for dangerouslySetInnerHTML. */
   html: string;
+  /** The post's h2 and h3 sections in order, for the table of contents. */
+  headings: PostHeading[];
   /** The questions and answers in the post's own FAQ section, if it has one. */
   faq: PostFaqItem[];
 }
@@ -31,6 +34,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
   // Read before anything below adds markup of its own.
   const faq = extractFaq(tree);
 
+  const headings = linkHeadings(tree);
   wrapTables(tree);
 
   // Colour is a nicety. A highlighter that fails to load (a grammar chunk
@@ -42,7 +46,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
   });
   transformCodeBlocks(tree, highlighter);
 
-  return { html: toHtml(tree), faq };
+  return { html: toHtml(tree), headings, faq };
 }
 
 /**
@@ -51,7 +55,8 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
  * reader loses the extras, never the post.
  */
 function unrenderedContent(html: string): RenderedPostContent {
-  return { html, faq: [] };
+  // No headings to list: they have no ids or links without the pipeline.
+  return { html, headings: [], faq: [] };
 }
 
 /**

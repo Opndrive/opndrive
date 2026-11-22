@@ -1,4 +1,4 @@
-import { CodeCopyListener } from './code-copy-listener';
+import { PostContentListener } from './post-content-listener';
 
 interface BlogPostContentProps {
   /** The post body after renderPostContent: highlighted, framed code and all. */
@@ -7,10 +7,13 @@ interface BlogPostContentProps {
 
 export function BlogPostContent({ html }: BlogPostContentProps) {
   return (
-    <CodeCopyListener>
-      <article className="custom-scrollbar prose prose-lg max-w-none dark:prose-invert">
+    <PostContentListener>
+      <article
+        id="post-body"
+        className="custom-scrollbar prose prose-lg max-w-none dark:prose-invert"
+      >
         <div dangerouslySetInnerHTML={{ __html: html }} />
       </article>
-    </CodeCopyListener>
+    </PostContentListener>
   );
 }

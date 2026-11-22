@@ -89,6 +89,8 @@ describe('when rendering fails outright', () => {
 
     const fallback = await getRenderedPostContent(post);
     expect(fallback.html).toBe('<p>Still readable.</p>');
+    expect(fallback.headings).toEqual([]);
+    expect(fallback.faq).toEqual([]);
 
     parsing.fail = false;
     const next = await getRenderedPostContent(post);
