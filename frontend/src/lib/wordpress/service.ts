@@ -11,11 +11,15 @@ import {
   GET_ALL_POST_SLUGS,
   GET_POSTS_BY_CATEGORY,
   GET_RELATED_POSTS,
+  GET_POST_SUMMARIES,
 } from './queries-simple'; // Using simplified queries without SEO
 import type {
   WordPressPostsResponse,
   WordPressPostBySlugResponse,
+  WordPressPostSummariesResponse,
+  WordPressPostSummary,
   BlogPost,
+  BlogPostSummary,
   WordPressPost,
   CategoryNode,
   TagNode,
@@ -56,7 +60,9 @@ function plainText(rendered: string | undefined | null): string {
  * for the exact instant, and the local one is kept only for showing the date.
  * `content` is HTML and stays as it is.
  */
-export function transformPost(post: WordPressPost): BlogPost {
+export function transformPostSummary(
+  post: WordPressPostSummary & Partial<Pick<WordPressPost, 'tags'>>
+): BlogPostSummary {
   // Plain text from here on: components show it as it is, without stripping
   // tags again, which would eat a "<b>" the author wrote as text.
   const cleanExcerpt = post.excerpt ? htmlToText(post.excerpt).trim() : '';
@@ -67,7 +73,6 @@ export function transformPost(post: WordPressPost): BlogPost {
     slug: post.slug,
     title,
     excerpt: cleanExcerpt,
-    content: post.content,
     publishedDate: gmtToIso(post.dateGmt) ?? post.date,
     publishedDateLocal: post.date,
     modifiedDate: gmtToIso(post.modifiedGmt) ?? post.modified,
@@ -96,6 +101,16 @@ export function transformPost(post: WordPressPost): BlogPost {
         name: plainText(tag.name),
         slug: tag.slug,
       })) || [],
+  };
+}
+
+export function transformPost(post: WordPressPost): BlogPost {
+  const summary = transformPostSummary(post);
+  const { title, excerpt: cleanExcerpt } = summary;
+
+  return {
+    ...summary,
+    content: post.content,
     seo: {
       title: plainText(post.seo?.title) || title,
       description: plainText(post.seo?.metaDesc) || firstChars(cleanExcerpt, 160),
@@ -138,6 +153,46 @@ export async function getRecentPosts(
   );
 
   return data.posts.nodes.map(transformPost);
+}
+
+/** WPGraphQL's default ceiling on `first`; asking for more returns 100 anyway. */
+const SUMMARY_PAGE_SIZE = 100;
+
+/**
+ * Published posts as summaries, newest first, up to `limit` of them.
+ *
+ * Pages through WordPress with its cursor, so `limit` can be larger than the
+ * 100 WPGraphQL hands out per request. Without the body, a hundred summaries
+ * are a few kilobytes, which is what lets the blog index ask for every post.
+ */
+export async function getPostSummaries({
+  limit,
+  revalidate,
+}: {
+  limit: number;
+  revalidate?: number;
+}): Promise<BlogPostSummary[]> {
+  const posts: BlogPostSummary[] = [];
+  let after: string | null = null;
+
+  while (posts.length < limit) {
+    const data: WordPressPostSummariesResponse =
+      await fetchGraphQLWithTags<WordPressPostSummariesResponse>(
+        GET_POST_SUMMARIES,
+        { first: Math.min(SUMMARY_PAGE_SIZE, limit - posts.length), after },
+        ['posts'],
+        revalidate
+      );
+
+    posts.push(...data.posts.nodes.map(transformPostSummary));
+
+    const { hasNextPage, endCursor } = data.posts.pageInfo;
+    // A page with no cursor cannot be followed, whatever hasNextPage says.
+    if (!hasNextPage || !endCursor) break;
+    after = endCursor;
+  }
+
+  return posts;
 }
 
 /**

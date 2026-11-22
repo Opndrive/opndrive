@@ -8,7 +8,7 @@ import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { BlogFAQSection } from '@/components/blog/blog-faq-section';
-import { BlogCTASection } from '@/components/blog/blog-cta-section';
+import CTASection from '@/features/landing-page/components/cta-section';
 import { StructuredData } from '@/components/seo';
 import {
   generateArticleSchema,
@@ -287,9 +287,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       </div>
 
       {/* CTA Section */}
-      <div className="overflow-x-hidden">
-        <BlogCTASection />
-      </div>
+      <CTASection href="/connect" />
     </div>
   );
 }

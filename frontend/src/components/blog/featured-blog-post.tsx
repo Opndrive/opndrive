@@ -1,12 +1,10 @@
-'use client';
-
 import Link from 'next/link';
-import type { BlogPost } from '@/lib/wordpress/types';
-import { formatDate } from '@/lib/wordpress';
+import type { BlogPostSummary } from '@/lib/wordpress/types';
+import { formatDate } from '@/lib/wordpress/utils';
 import { BlogCoverImage } from './blog-cover-image';
 
 interface FeaturedBlogPostProps {
-  post: BlogPost;
+  post: BlogPostSummary;
 }
 
 export function FeaturedBlogPost({ post }: FeaturedBlogPostProps) {
