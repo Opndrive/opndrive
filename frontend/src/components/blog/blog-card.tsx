@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import type { BlogPost } from '@/lib/wordpress/types';
 import { formatDate } from '@/lib/wordpress';
+import { BlogCoverImage } from './blog-cover-image';
 
 interface BlogCardProps {
   post: BlogPost;
@@ -12,24 +12,11 @@ export function BlogCard({ post }: BlogCardProps) {
     <Link href={`/blog/${post.slug}`} className="group block h-full">
       <article className="h-full overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-xl flex flex-col">
         {/* Featured Image */}
-        <div className="relative h-48 sm:h-56 w-full overflow-hidden bg-muted">
-          {post.featuredImage ? (
-            <Image
-              src={post.featuredImage.url}
-              alt={post.featuredImage.alt}
-              fill
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
-              <div className="text-center space-y-2">
-                <div className="text-4xl">Opndrive</div>
-                <p className="text-sm font-medium text-muted-foreground">Blog Image</p>
-              </div>
-            </div>
-          )}
-        </div>
+        <BlogCoverImage
+          image={post.featuredImage}
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          zoomOnHover
+        />
 
         <div className="p-4 sm:p-4 flex-1 flex flex-col">
           {/* Title */}

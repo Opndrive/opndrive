@@ -1,12 +1,12 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { formatDate, getReadingTime } from '@/lib/wordpress/utils';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
+import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { BlogFAQSection } from '@/components/blog/blog-faq-section';
 import { BlogCTASection } from '@/components/blog/blog-cta-section';
 import { StructuredData } from '@/components/seo';
@@ -232,19 +232,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
         {/* Featured Image */}
         {post.featuredImage ? (
-          <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden bg-muted mb-12">
-            <Image
-              src={post.featuredImage.url}
-              alt={post.featuredImage.alt}
-              fill
-              className="object-cover"
-              priority
-              sizes="(max-width: 768px) 100vw, 896px"
-            />
-          </div>
-        ) : (
-          <></>
-        )}
+          <BlogCoverImage
+            image={post.featuredImage}
+            shape="intrinsic"
+            sizes="(max-width: 1024px) 100vw, 960px"
+            priority
+            className="rounded-2xl mb-12"
+          />
+        ) : null}
 
         {/* Content Layout with Sticky Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
