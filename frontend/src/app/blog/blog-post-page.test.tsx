@@ -197,16 +197,16 @@ describe('the post page', () => {
     expect(json).toContain('"name":"Does CORS cause it?"');
   });
 
-  it('leads back to the blog, and offers its feed and Discord', async () => {
+  it('leads back to the blog, and offers Discord without a visible feed button', async () => {
     await renderPost('<p>Body.</p>');
 
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(breadcrumb).getByRole('link', { name: 'Blog' }).getAttribute('href')).toBe(
       '/blog'
     );
-    expect(screen.getByRole('link', { name: 'RSS feed' }).getAttribute('href')).toBe(
-      '/blog/rss.xml'
-    );
+    // The feed is found through the page's <head> (checked in the metadata
+    // test above), not through a button.
+    expect(screen.queryByRole('link', { name: /RSS/ })).toBeNull();
     expect(
       screen
         .getByRole('link', { name: 'Join our Discord (opens in a new tab)' })

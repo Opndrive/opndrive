@@ -7,7 +7,7 @@ import { formatDate, getReadingTime, wasUpdatedAfterPublishing } from '@/lib/wor
 import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { BlogPostContent } from '@/components/blog/blog-post-content';
 import { RelevantBlogPosts } from '@/components/blog/relevant-blog-posts';
-import { BlogFollowLinks } from '@/components/blog/blog-follow-links';
+import { BlogDiscordLink } from '@/components/blog/blog-discord-link';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { coverImageFor } from '@/lib/blog-cover/cover-url';
@@ -282,7 +282,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           id="post-title"
           // Back to top moves focus here, so it needs to be able to take it.
           tabIndex={-1}
-          className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center mb-6 leading-tight text-balance"
+          // break-words: a title word longer than a small phone is wide
+          // (SignatureDoesNotMatch, at this size) breaks instead of widening
+          // the page.
+          className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center mb-6 leading-tight text-balance break-words"
         >
           {post.title}
         </h1>
@@ -368,8 +371,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <ShareButtons url={getAbsoluteUrl(`/blog/${post.slug}`)} title={post.title} />
               </div>
               <div>
-                <p className="mb-4 text-sm font-semibold text-foreground">Follow the blog</p>
-                <BlogFollowLinks />
+                <p className="mb-4 text-sm font-semibold text-foreground">Join the community</p>
+                <BlogDiscordLink />
               </div>
             </footer>
           </div>

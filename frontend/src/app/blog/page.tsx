@@ -12,7 +12,7 @@ import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { BlogPagination } from '@/components/blog/blog-pagination';
 import { FeaturedBlogPost } from '@/components/blog/featured-blog-post';
-import { BlogFollowLinks } from '@/components/blog/blog-follow-links';
+import { BlogDiscordLink } from '@/components/blog/blog-discord-link';
 import { StructuredData } from '@/components/seo';
 import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
 import { SEO_CONFIG } from '@/lib/seo/config';
@@ -166,7 +166,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
               Guides, fixes and comparisons for running your own S3-compatible storage.
             </p>
           )}
-          <BlogFollowLinks className="mt-6 justify-center" />
+          <BlogDiscordLink className="mt-6 justify-center" />
         </div>
       </section>
 
