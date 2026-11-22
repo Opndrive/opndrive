@@ -1022,6 +1022,20 @@ body {
   --tw-prose-bold: var(--foreground);
   --tw-prose-code: var(--foreground);
   --tw-prose-quotes: var(--muted-foreground);
+  /*
+   * A string with no spaces - a URL, a long identifier like
+   * SignatureDoesNotMatch in a heading - cannot be wrapped at a space, so it
+   * ran past the column and widened the whole page on a small phone (375px
+   * on a 320px screen). Such a string now breaks where it has to; text that
+   * fits is untouched. Code blocks keep their lines and scroll instead.
+   */
+  overflow-wrap: break-word;
+}
+
+/* Inline code is where most of those strings are: endpoint URLs, keys,
+   header names. `anywhere` also lets a table cell holding one narrow. */
+.prose :not(pre) > code {
+  overflow-wrap: anywhere;
 }
 
 .prose p {
@@ -1056,6 +1070,29 @@ body {
   font-weight: 700;
   margin-top: 2rem;
   margin-bottom: 1rem;
+}
+
+/*
+ * Section headings a size down on phones. At 30px an h2 holds about 18
+ * characters a line on a 320px screen, so a name like SignatureDoesNotMatch
+ * had to be broken in the middle; at 24px it fits on its own line.
+ */
+@media (max-width: 639px) {
+  .prose h1 {
+    font-size: 1.75rem;
+  }
+
+  .prose h2 {
+    font-size: 1.5rem;
+  }
+
+  .prose h3 {
+    font-size: 1.25rem;
+  }
+
+  .prose h4 {
+    font-size: 1.125rem;
+  }
 }
 
 /*
