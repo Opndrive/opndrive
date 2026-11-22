@@ -32,6 +32,29 @@ function text(nodes: Array<RootContent | ElementContent>): string {
     .trim();
 }
 
+interface FaqHeading {
+  heading: Element;
+  parent: Root | Element;
+  index: number;
+}
+
+/**
+ * The post's FAQ heading: the first `<h2>` reading "FAQ" (or "Frequently asked
+ * questions"), or with id "faq". Null when the post has none.
+ */
+export function findFaqHeading(tree: Root): FaqHeading | null {
+  let found: FaqHeading | null = null;
+
+  visit(tree, 'element', (node, index, parent) => {
+    if (found || node.tagName !== 'h2' || index === undefined || !parent) return;
+    if (node.properties?.id === 'faq' || FAQ_HEADING.test(toString(node).trim())) {
+      found = { heading: node, parent: parent as Root | Element, index };
+    }
+  });
+
+  return found;
+}
+
 /**
  * The questions and answers under the post's FAQ heading.
  *
@@ -41,17 +64,10 @@ function text(nodes: Array<RootContent | ElementContent>): string {
  * with no answer under it is left out. Empty when the post has no FAQ.
  */
 export function extractFaq(tree: Root): PostFaqItem[] {
-  let section: { parent: Root | Element; start: number } | null = null;
-
-  visit(tree, 'element', (node, index, parent) => {
-    if (section || node.tagName !== 'h2' || index === undefined || !parent) return;
-    if (node.properties?.id === 'faq' || FAQ_HEADING.test(toString(node).trim())) {
-      section = { parent: parent as Root | Element, start: index + 1 };
-    }
-  });
-
+  const section = findFaqHeading(tree);
   if (!section) return [];
-  const { parent, start } = section as { parent: Root | Element; start: number };
+  const { parent, index } = section;
+  const start = index + 1;
 
   const items: PostFaqItem[] = [];
   let question: string | null = null;

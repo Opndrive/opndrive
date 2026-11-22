@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
    */
   htmlLimitedBots: /.*/,
   /**
+   * The drawn blog cover reads its fonts and the logo from /public at run
+   * time. Listed here so a serverless build packs them with that route; the
+   * Docker image carries /public anyway.
+   */
+  outputFileTracingIncludes: {
+    '/blog/[slug]/cover.png': ['./public/fonts/**/*', './public/logo.png'],
+  },
+  /**
    * /blogs is the address people guess, and the one a mistyped link carries.
    * It has never had a page, so it answered 404. A permanent redirect sends
    * readers to the blog and tells search engines the right address, post
@@ -29,6 +37,14 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    /**
+     * Local images next/image may show. Listing any turns the list into a
+     * rule, so the first entry keeps every local image allowed as before
+     * (without a query string); the second admits the drawn blog covers,
+     * whose ?v= changes with the post. Next.js warns about local images with
+     * a query string that no pattern admits, and 16 refuses them.
+     */
+    localPatterns: [{ pathname: '/**', search: '' }, { pathname: '/blog/*/cover.png' }],
     remotePatterns: [
       {
         protocol: 'https',

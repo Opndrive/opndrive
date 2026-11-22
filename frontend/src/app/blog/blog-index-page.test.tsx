@@ -4,6 +4,11 @@
  * action goes.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The first test renders the whole page cold - every module imported for the
+// first time, the highlighter started - which under a full parallel run can
+// pass the default 5 s. Later tests take a fraction of that.
+vi.setConfig({ testTimeout: 20_000 });
 import { render, screen, within } from '@testing-library/react';
 import type { BlogPostSummary } from '@/lib/wordpress/types';
 

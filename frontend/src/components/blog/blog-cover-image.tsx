@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import type { BlogPost } from '@/lib/wordpress/types';
+import type { CoverImage } from '@/lib/blog-cover/cover-url';
 import { cn } from '@/shared/utils/utils';
 
 /**
@@ -11,7 +11,8 @@ import { cn } from '@/shared/utils/utils';
 export const COVER_ASPECT_RATIO = '1200 / 630';
 
 interface BlogCoverImageProps {
-  image: BlogPost['featuredImage'];
+  /** The author's cover, or the one drawn from the title (coverImageFor). */
+  image: CoverImage;
   sizes: string;
   /**
    * `intrinsic` takes the shape of the uploaded picture, so a single large
@@ -34,32 +35,29 @@ export function BlogCoverImage({
   className,
 }: BlogCoverImageProps) {
   const aspectRatio =
-    shape === 'intrinsic' && image ? `${image.width} / ${image.height}` : COVER_ASPECT_RATIO;
+    shape === 'intrinsic' ? `${image.width} / ${image.height}` : COVER_ASPECT_RATIO;
 
   return (
     <div
       className={cn('relative w-full overflow-hidden bg-muted', className)}
       style={{ aspectRatio }}
     >
-      {image ? (
-        <Image
-          src={image.url}
-          alt={image.alt}
-          fill
-          sizes={sizes}
-          priority={priority}
-          className={cn(
-            'object-cover',
-            // 2%, not the 5% this used to be: the covers keep their text about
-            // 3% in from each side, so a larger zoom pushed it off the edge.
-            zoomOnHover && 'transition-transform duration-500 group-hover:scale-[1.02]'
-          )}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
-          <span className="text-3xl font-semibold text-foreground/80">Opndrive</span>
-        </div>
-      )}
+      <Image
+        src={image.url}
+        alt={image.alt}
+        fill
+        sizes={sizes}
+        priority={priority}
+        // The drawn cover is already a sized PNG from this app, at an address
+        // that changes with the post; the optimiser has nothing to add.
+        unoptimized={image.generated}
+        className={cn(
+          'object-cover',
+          // 2%, not the 5% this used to be: the covers keep their text about
+          // 3% in from each side, so a larger zoom pushed it off the edge.
+          zoomOnHover && 'transition-transform duration-500 group-hover:scale-[1.02]'
+        )}
+      />
     </div>
   );
 }

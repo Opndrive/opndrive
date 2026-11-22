@@ -4,7 +4,12 @@
  * calls to action are links.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+
+// The first test renders the whole page cold - every module imported for the
+// first time, the highlighter started - which under a full parallel run can
+// pass the default 5 s. Later tests take a fraction of that.
+vi.setConfig({ testTimeout: 20_000 });
+import { render, screen, within } from '@testing-library/react';
 import type { BlogPost } from '@/lib/wordpress/types';
 
 const getPostBySlug = vi.fn();
@@ -20,7 +25,7 @@ vi.mock('@/config/features', () => ({
 }));
 vi.mock('@/components/blog/blog-navbar', () => ({ default: () => null }));
 
-import BlogPostPage from './[slug]/page';
+import BlogPostPage, { generateMetadata } from './[slug]/page';
 
 let postCounter = 0;
 
@@ -133,6 +138,80 @@ describe('the post page', () => {
     expect(x.getAttribute('href')).toContain(
       encodeURIComponent(`https://opndrive.app/blog/${current.slug}`)
     );
+  });
+
+  it('shares a post without a cover with the one drawn from its title', async () => {
+    const current = post('<p>Body.</p>');
+    getPostBySlug.mockResolvedValue(current);
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: current.slug }) });
+    const images = metadata.openGraph?.images as Array<{ url: string; width: number }>;
+
+    expect(
+      images[0]!.url.startsWith(`https://opndrive.app/blog/${current.slug}/cover.png?v=`)
+    ).toBe(true);
+    expect(images[0]!.width).toBe(1200);
+    expect(metadata.twitter?.images).toEqual([images[0]!.url]);
+    expect(metadata.alternates?.types?.['application/rss+xml']).toBeDefined();
+  });
+
+  it("shares a post with its cover's own size and description", async () => {
+    const featuredImage = {
+      url: 'https://wp.example/cover.webp',
+      alt: 'The cover',
+      width: 1600,
+      height: 900,
+    };
+    // transformPost puts the featured image in seo.ogImage when no SEO plugin
+    // sets one of its own.
+    const current = { ...post('<p>Body.</p>'), featuredImage };
+    current.seo = { ...current.seo, ogImage: featuredImage.url };
+    getPostBySlug.mockResolvedValue(current);
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: current.slug }) });
+
+    expect(metadata.openGraph?.images).toEqual([
+      { url: featuredImage.url, width: 1600, height: 900, alt: 'The cover' },
+    ]);
+  });
+
+  it('points the FAQPage at the FAQ heading that is on the page', async () => {
+    await renderPost('<h2>Frequently asked questions</h2><h3>Q?</h3><p>A.</p>');
+
+    const json = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+      .map((script) => script.textContent ?? '')
+      .join(' ');
+    expect(json).toContain('#frequently-asked-questions"');
+    expect(document.getElementById('frequently-asked-questions')).not.toBeNull();
+  });
+
+  it('describes the post once, as a BlogPosting, and its own FAQ as an FAQPage', async () => {
+    await renderPost('<p>Body.</p><h2>FAQ</h2><h3>Does CORS cause it?</h3><p>No.</p>');
+
+    const json = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+      .map((script) => script.textContent ?? '')
+      .join(' ');
+    expect(json).toContain('"@type":"BlogPosting"');
+    expect(json).not.toContain('"@type":"Article"');
+    expect(json).toContain('"@type":"FAQPage"');
+    expect(json).toContain('"name":"Does CORS cause it?"');
+  });
+
+  it('leads back to the blog, and offers its feed and Discord', async () => {
+    await renderPost('<p>Body.</p>');
+
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByRole('link', { name: 'Blog' }).getAttribute('href')).toBe(
+      '/blog'
+    );
+    expect(screen.getByRole('link', { name: 'RSS feed' }).getAttribute('href')).toBe(
+      '/blog/rss.xml'
+    );
+    expect(
+      screen
+        .getByRole('link', { name: 'Join our Discord (opens in a new tab)' })
+        .getAttribute('target')
+    ).toBe('_blank');
   });
 
   it('links Get Started to /connect', async () => {

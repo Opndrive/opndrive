@@ -12,6 +12,7 @@ import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { BlogPagination } from '@/components/blog/blog-pagination';
 import { FeaturedBlogPost } from '@/components/blog/featured-blog-post';
+import { BlogFollowLinks } from '@/components/blog/blog-follow-links';
 import { StructuredData } from '@/components/seo';
 import { generateBlogSchema, generateWebSiteSchema, getAbsoluteUrl } from '@/lib/seo';
 import { SEO_CONFIG } from '@/lib/seo/config';
@@ -135,8 +136,8 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   const firstFourPosts = posts.slice(0, 4);
   const nextSixPosts = posts.slice(4, 10);
 
-  // Generate structured data
-  const blogSchema = generateBlogSchema();
+  // Generate structured data: the blog, with the posts this page lists
+  const blogSchema = generateBlogSchema(featured ? [featured, ...posts] : posts);
   const websiteSchema = generateWebSiteSchema();
 
   return (
@@ -153,14 +154,19 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
       {/* Hero Section */}
       <section className="pt-16 bg-background">
         <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 sm:mb-6 text-foreground">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 sm:mb-5 text-foreground">
             Opndrive Blog
           </h1>
           {page > 1 ? (
             <p className="text-muted-foreground">
               Page {page} of {totalPages}
             </p>
-          ) : null}
+          ) : (
+            <p className="mx-auto max-w-2xl text-base sm:text-lg text-muted-foreground text-pretty">
+              Guides, fixes and comparisons for running your own S3-compatible storage.
+            </p>
+          )}
+          <BlogFollowLinks className="mt-6 justify-center" />
         </div>
       </section>
 

@@ -2,6 +2,8 @@
  * WordPress utility functions
  */
 
+import { decodeHtmlEntities } from './entities';
+
 /**
  * Format a date string to a human-readable format
  */
@@ -65,11 +67,18 @@ export function truncateText(text: string, maxLength: number): string {
  */
 export function getReadingTime(content: string): number {
   const wordsPerMinute = 200;
-  const text = stripHtmlTags(content);
-  const wordCount = text.split(/\s+/).length;
-  const minutes = Math.ceil(wordCount / wordsPerMinute);
+  return Math.max(1, Math.ceil(countWords(content) / wordsPerMinute));
+}
 
-  return minutes;
+/**
+ * Words in a post's HTML. Each tag counts as a space: removed outright, the
+ * end of one block ran into the start of the next ("three.</p><p>Four" read
+ * as one word), and entities are decoded so "&amp;" is not a word.
+ */
+export function countWords(html: string): number {
+  return decodeHtmlEntities(html.replace(/<[^>]*>/g, ' '))
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 /**

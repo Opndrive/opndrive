@@ -17,7 +17,7 @@ import { transformCodeBlocks } from './code-blocks';
 import { getHighlighter } from './highlighter';
 import { linkHeadings, type PostHeading } from './headings';
 import { prepareImages } from './images';
-import { extractFaq, type PostFaqItem } from './outline';
+import { extractFaq, findFaqHeading, type PostFaqItem } from './outline';
 import { wrapTables } from './tables';
 
 export interface RenderedPostContent {
@@ -27,6 +27,8 @@ export interface RenderedPostContent {
   headings: PostHeading[];
   /** The questions and answers in the post's own FAQ section, if it has one. */
   faq: PostFaqItem[];
+  /** The id of that section's heading, once it has one; null without a section. */
+  faqId: string | null;
 }
 
 export async function renderPostContent(html: string): Promise<RenderedPostContent> {
@@ -34,8 +36,11 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
 
   // Read before anything below adds markup of its own.
   const faq = extractFaq(tree);
+  const faqHeading = findFaqHeading(tree)?.heading;
 
   const headings = linkHeadings(tree);
+  // Every h2 has an id once linkHeadings has run.
+  const faqId = typeof faqHeading?.properties.id === 'string' ? faqHeading.properties.id : null;
   wrapTables(tree);
   prepareImages(tree);
 
@@ -48,7 +53,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
   });
   transformCodeBlocks(tree, highlighter);
 
-  return { html: toHtml(tree), headings, faq };
+  return { html: toHtml(tree), headings, faq, faqId };
 }
 
 /**
@@ -58,7 +63,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
  */
 function unrenderedContent(html: string): RenderedPostContent {
   // No headings to list: they have no ids or links without the pipeline.
-  return { html, headings: [], faq: [] };
+  return { html, headings: [], faq: [], faqId: null };
 }
 
 /**

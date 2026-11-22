@@ -5,9 +5,12 @@ import { getPostBySlug, getRelatedPosts } from '@/lib/wordpress/service';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { formatDate, getReadingTime, wasUpdatedAfterPublishing } from '@/lib/wordpress/utils';
 import { getRenderedPostContent } from '@/lib/blog-content/render';
-import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
+import { BlogPostContent } from '@/components/blog/blog-post-content';
+import { RelevantBlogPosts } from '@/components/blog/relevant-blog-posts';
+import { BlogFollowLinks } from '@/components/blog/blog-follow-links';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
+import { coverImageFor } from '@/lib/blog-cover/cover-url';
 import { TableOfContents } from '@/components/blog/table-of-contents';
 import { ReadingAids } from '@/components/blog/reading-aids';
 import { ShareButtons } from '@/components/blog/share-buttons';
@@ -16,9 +19,9 @@ import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { StructuredData } from '@/components/seo';
 import {
-  generateArticleSchema,
   generateBlogPostingSchema,
   generateBreadcrumbSchema,
+  generateFaqPageSchema,
   getAbsoluteUrl,
   optimizeDescription,
   generateKeywords,
@@ -40,6 +43,11 @@ import { isBlogEnabled } from '@/config/features';
  * Rendered per request instead, the WordPress responses are still cached:
  * the client asks fetch for force-cache with a 60 second revalidate.
  */
+
+/** A cover's address as an absolute URL, as share images need. */
+function getAbsoluteUrlOf(url: string): string {
+  return url.startsWith('/') ? getAbsoluteUrl(url) : url;
+}
 
 // Generate metadata for each post
 export async function generateMetadata({
@@ -83,7 +91,23 @@ export async function generateMetadata({
 
   // Absolute URLs for Open Graph
   const absoluteUrl = getAbsoluteUrl(`/blog/${post.slug}`);
-  const ogImageUrl = post.seo.ogImage || post.featuredImage?.url;
+  // The author's share image or cover, and otherwise the cover drawn from the
+  // title: every post has one now, where a post without a cover used to be
+  // shared as a bare link.
+  const cover = coverImageFor(post);
+  // seo.ogImage is the featured image itself unless an SEO plugin set one of
+  // its own. Only that separate image has no known size; the cover's own
+  // width, height and description are used otherwise.
+  const separateShareImage =
+    post.seo.ogImage && post.seo.ogImage !== post.featuredImage?.url ? post.seo.ogImage : null;
+  const shareImage = separateShareImage
+    ? { url: separateShareImage, alt: post.title }
+    : {
+        url: getAbsoluteUrlOf(cover.url),
+        width: cover.width,
+        height: cover.height,
+        alt: cover.alt,
+      };
 
   return {
     title: post.seo.title,
@@ -111,17 +135,9 @@ export async function generateMetadata({
       url: absoluteUrl,
       siteName: 'Opndrive',
       locale: 'en_US',
-      images: ogImageUrl
-        ? [
-            {
-              url: ogImageUrl,
-              width: post.featuredImage?.width || 1200,
-              height: post.featuredImage?.height || 630,
-              alt: post.featuredImage?.alt || post.title,
-              type: 'image/jpeg',
-            },
-          ]
-        : [],
+      // No `type`: covers are PNG as often as JPEG, and a wrong one is worse
+      // than none.
+      images: [shareImage],
     },
 
     // Twitter Card
@@ -129,14 +145,19 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: post.seo.ogTitle || post.seo.title,
       description: post.seo.ogDescription || optimizedDescription,
-      images: ogImageUrl ? [ogImageUrl] : [],
+      images: [shareImage.url],
       creator: '@opndrive',
       site: '@opndrive',
     },
 
-    // Canonical URL
+    // Canonical URL, and the blog's feed for readers who land on a post
     alternates: {
       canonical: post.seo.canonical || absoluteUrl,
+      types: {
+        'application/rss+xml': [
+          { url: getAbsoluteUrl('/blog/rss.xml'), title: 'Opndrive Blog RSS Feed' },
+        ],
+      },
     },
 
     // Robots meta
@@ -200,13 +221,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   ]);
 
   // Generate structured data for SEO
-  const articleSchema = generateArticleSchema(post);
-  const blogPostingSchema = generateBlogPostingSchema(post);
-  const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: 'Home', url: '/' },
-    { name: 'Blog', url: '/blog' },
-    { name: post.title, url: `/blog/${post.slug}` },
-  ]);
+  const cover = coverImageFor(post);
+  const structuredData: Array<Record<string, unknown>> = [
+    generateBlogPostingSchema(post, cover),
+    generateBreadcrumbSchema([
+      { name: 'Home', url: '/' },
+      { name: 'Blog', url: '/blog' },
+      { name: post.title, url: `/blog/${post.slug}` },
+    ]),
+    // The questions the post's own FAQ section answers, as it shows them.
+    ...(content.faq.length ? [generateFaqPageSchema(post.slug, content.faq, content.faqId)] : []),
+  ];
 
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
@@ -221,7 +246,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   return (
     <div className="min-h-screen bg-background">
       {/* Structured Data for SEO */}
-      <StructuredData data={[articleSchema, blogPostingSchema, breadcrumbSchema]} />
+      <StructuredData data={structuredData} />
 
       {/* Reading progress along the top, and back to top once well in */}
       <ReadingAids articleId="post-body" titleId="post-title" />
@@ -234,6 +259,24 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
       {/* Article Container */}
       <article className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        {/* Where this post sits, matching the breadcrumb in the structured
+            data, and the way back to the blog from any post */}
+        <nav aria-label="Breadcrumb" className="mb-6 flex justify-center">
+          <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+            <li>
+              <Link href="/" className="hover:text-foreground hover:underline">
+                Home
+              </Link>
+            </li>
+            <li aria-hidden="true">/</li>
+            <li>
+              <Link href="/blog" className="hover:text-foreground hover:underline">
+                Blog
+              </Link>
+            </li>
+          </ol>
+        </nav>
+
         {/* Title */}
         <h1
           id="post-title"
@@ -262,16 +305,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <span>{readingTime} min read</span>
         </div>
 
-        {/* Featured Image */}
-        {post.featuredImage ? (
-          <BlogCoverImage
-            image={post.featuredImage}
-            shape="intrinsic"
-            sizes="(max-width: 1024px) 100vw, 960px"
-            priority
-            className="rounded-2xl mb-12"
-          />
-        ) : null}
+        {/* Featured Image: the author's cover, or the one drawn from the title */}
+        <BlogCoverImage
+          image={cover}
+          shape="intrinsic"
+          sizes="(max-width: 1024px) 100vw, 960px"
+          priority
+          className="rounded-2xl mb-12"
+        />
 
         {/* On a narrow screen the sections are a closed panel above the post */}
         {showToc ? (
@@ -320,10 +361,16 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             {/* Post Content */}
             <BlogPostContent html={content.html} />
 
-            {/* After the last line: pass it on */}
-            <footer className="mt-14 border-t border-border pt-8">
-              <p className="mb-4 text-sm font-semibold text-foreground">Share this post</p>
-              <ShareButtons url={getAbsoluteUrl(`/blog/${post.slug}`)} title={post.title} />
+            {/* After the last line: pass it on, and keep up */}
+            <footer className="mt-14 grid gap-8 border-t border-border pt-8 sm:grid-cols-[1fr_auto]">
+              <div>
+                <p className="mb-4 text-sm font-semibold text-foreground">Share this post</p>
+                <ShareButtons url={getAbsoluteUrl(`/blog/${post.slug}`)} title={post.title} />
+              </div>
+              <div>
+                <p className="mb-4 text-sm font-semibold text-foreground">Follow the blog</p>
+                <BlogFollowLinks />
+              </div>
             </footer>
           </div>
         </div>
