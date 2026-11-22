@@ -6,9 +6,10 @@
  * reached the clipboard.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { BlogPostContent } from './blog-post-content';
+import { renderPostContent } from '@/lib/blog-content/render';
 
 const POST =
   '<p>Run this:</p>' +
@@ -16,6 +17,12 @@ const POST =
   '<pre><code class="language-js">const a = 1;\nconst b = 2;\n</code></pre>';
 
 let writeText: ReturnType<typeof vi.fn>;
+let html: string;
+
+// The page renders the body on the server first; so do these tests.
+beforeAll(async () => {
+  html = (await renderPostContent(POST)).html;
+});
 
 beforeEach(() => {
   writeText = vi.fn().mockResolvedValue(undefined);
@@ -31,7 +38,7 @@ afterEach(() => {
 
 describe('BlogPostContent code blocks', () => {
   it('copies the decoded code of the block that was pressed, without its last newline', async () => {
-    render(<BlogPostContent content={POST} />);
+    render(<BlogPostContent html={html} />);
 
     const buttons = screen.getAllByRole('button', { name: 'Copy code' });
     expect(buttons).toHaveLength(2);
@@ -45,7 +52,7 @@ describe('BlogPostContent code blocks', () => {
 
   it('confirms the copy, then goes back to its resting state', async () => {
     vi.useFakeTimers();
-    render(<BlogPostContent content={POST} />);
+    render(<BlogPostContent html={html} />);
     const button = screen.getAllByRole('button', { name: 'Copy code' })[0];
 
     await act(async () => {
@@ -65,7 +72,7 @@ describe('BlogPostContent code blocks', () => {
 
   it('selects the code when the clipboard refuses, so the shortcut still works', async () => {
     writeText.mockRejectedValueOnce(new Error('NotAllowedError'));
-    render(<BlogPostContent content={POST} />);
+    render(<BlogPostContent html={html} />);
     const button = screen.getAllByRole('button', { name: 'Copy code' })[0];
 
     await act(async () => {
