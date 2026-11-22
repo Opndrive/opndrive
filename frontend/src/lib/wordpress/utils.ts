@@ -79,3 +79,15 @@ export function generateExcerpt(content: string, maxLength = 160): string {
   const text = stripHtmlTags(content);
   return truncateText(text, maxLength);
 }
+
+/**
+ * Whether a post changed on a later day than it was published, judged on the
+ * site's own calendar (the `...Local` dates). A fix made the same day is part
+ * of publishing it; telling readers it was "updated" then would say nothing.
+ */
+export function wasUpdatedAfterPublishing(publishedLocal: string, modifiedLocal: string): boolean {
+  const day = (date: string) => (/^\d{4}-\d{2}-\d{2}/.exec(date) ?? [''])[0];
+  const published = day(publishedLocal);
+  const modified = day(modifiedLocal);
+  return Boolean(published && modified) && modified > published;
+}

@@ -16,6 +16,7 @@ import { toHtml } from 'hast-util-to-html';
 import { transformCodeBlocks } from './code-blocks';
 import { getHighlighter } from './highlighter';
 import { linkHeadings, type PostHeading } from './headings';
+import { prepareImages } from './images';
 import { extractFaq, type PostFaqItem } from './outline';
 import { wrapTables } from './tables';
 
@@ -36,6 +37,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
 
   const headings = linkHeadings(tree);
   wrapTables(tree);
+  prepareImages(tree);
 
   // Colour is a nicety. A highlighter that fails to load (a grammar chunk
   // missing after a deploy, say) leaves the code uncoloured, not the post
