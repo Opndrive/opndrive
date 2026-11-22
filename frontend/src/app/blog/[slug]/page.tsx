@@ -8,7 +8,7 @@ import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { BlogPostContent, RelevantBlogPosts } from '@/components/blog';
 import BlogNavbar from '@/components/blog/blog-navbar';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
-import { BlogFAQSection } from '@/components/blog/blog-faq-section';
+import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { StructuredData } from '@/components/seo';
 import {
@@ -183,14 +183,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  // Fetch related posts
-  let relatedPosts: Awaited<ReturnType<typeof getRelatedPosts>> = [];
-  try {
-    relatedPosts = await getRelatedPosts(slug, 3);
-  } catch (error) {
-    console.error('Error fetching related posts:', error);
-    relatedPosts = [];
-  }
+  // Related posts and the rendered body do not depend on each other, so
+  // neither waits for the other. A failure to find related posts costs the
+  // page that section, not the post.
+  const [relatedPosts, content] = await Promise.all([
+    getRelatedPosts(post, 3).catch((error: unknown) => {
+      console.error('Error fetching related posts:', error);
+      return [];
+    }),
+    // Highlighted and framed on the server; remembered per post version.
+    getRenderedPostContent(post),
+  ]);
 
   // Generate structured data for SEO
   const articleSchema = generateArticleSchema(post);
@@ -203,9 +206,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
-
-  // Highlighted and framed on the server; remembered per post version.
-  const content = await getRenderedPostContent(post);
 
   return (
     <div className="min-h-screen bg-background">
@@ -281,14 +281,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       </article>
 
       {/* Relevant Blog Posts Section */}
-      <div className="overflow-x-hidden">
-        <RelevantBlogPosts posts={relatedPosts} />
-      </div>
+      <RelevantBlogPosts posts={relatedPosts} />
 
-      {/* FAQ Section */}
-      <div className="overflow-x-hidden">
-        <BlogFAQSection />
-      </div>
+      {/* The product FAQ, for posts that do not end with an FAQ of their own:
+          two FAQ sections one after the other read as a page repeating
+          itself. */}
+      {content.faq.length === 0 ? <FAQSection /> : null}
 
       {/* CTA Section */}
       <CTASection href="/connect" />

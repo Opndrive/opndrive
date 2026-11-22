@@ -14,6 +14,7 @@ import type { HighlighterCore } from 'shiki/core';
 import { h, s } from 'hastscript';
 import { toString } from 'hast-util-to-string';
 import { visit } from 'unist-util-visit';
+import { classList } from './hast';
 import { DARK_THEME, LIGHT_THEME } from './highlighter';
 
 const LANGUAGE_CLASS = /^lang(?:uage)?-([\w+#.-]+)$/i;
@@ -71,13 +72,6 @@ const GRAMMAR_ALIASES: Record<string, string> = {
   py: 'python',
   dockerfile: 'docker',
 };
-
-function classList(node: Element): string[] {
-  // Parsed HTML gives an array; Shiki and hand-built nodes may give a string.
-  const value: unknown = node.properties?.className;
-  if (Array.isArray(value)) return value.map(String);
-  return typeof value === 'string' ? value.split(/\s+/) : [];
-}
 
 function languageOf(node: Element | undefined): string | null {
   if (!node) return null;

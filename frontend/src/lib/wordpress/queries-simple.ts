@@ -134,6 +134,26 @@ export const GET_POST_SUMMARIES = `
 `;
 
 /**
+ * Summaries of the newest posts in any of the given categories, for a post's
+ * related posts. WPGraphQL takes the categories' global or database IDs.
+ */
+export const GET_RELATED_POST_SUMMARIES = `
+  query GetRelatedPostSummaries($categoryIn: [ID], $first: Int = 4) {
+    posts(
+      first: $first
+      where: { status: PUBLISH, categoryIn: $categoryIn, orderby: { field: DATE, order: DESC } }
+    ) {
+      nodes {
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+  ${AUTHOR_FRAGMENT}
+  ${FEATURED_IMAGE_FRAGMENT}
+`;
+
+/**
  * Query to fetch all published posts with pagination
  */
 export const GET_ALL_POSTS = `
@@ -252,30 +272,6 @@ export const GET_POSTS_BY_TAG = `
       }
       pageInfo {
         hasNextPage
-      }
-    }
-  }
-  ${POST_FIELDS}
-  ${AUTHOR_FRAGMENT}
-  ${FEATURED_IMAGE_FRAGMENT}
-`;
-
-/**
- * Query to fetch related posts based on categories
- */
-export const GET_RELATED_POSTS = `
-  query GetRelatedPosts($categoryIn: [ID!], $notIn: [ID!], $first: Int = 3) {
-    posts(
-      first: $first
-      where: {
-        status: PUBLISH
-        categoryIn: $categoryIn
-        notIn: $notIn
-        orderby: { field: DATE, order: DESC }
-      }
-    ) {
-      nodes {
-        ...PostFields
       }
     }
   }

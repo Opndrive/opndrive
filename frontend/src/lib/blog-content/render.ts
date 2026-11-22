@@ -15,14 +15,23 @@ import { fromHtml } from 'hast-util-from-html';
 import { toHtml } from 'hast-util-to-html';
 import { transformCodeBlocks } from './code-blocks';
 import { getHighlighter } from './highlighter';
+import { extractFaq, type PostFaqItem } from './outline';
+import { wrapTables } from './tables';
 
 export interface RenderedPostContent {
   /** The post body, ready for dangerouslySetInnerHTML. */
   html: string;
+  /** The questions and answers in the post's own FAQ section, if it has one. */
+  faq: PostFaqItem[];
 }
 
 export async function renderPostContent(html: string): Promise<RenderedPostContent> {
   const tree = fromHtml(html, { fragment: true });
+
+  // Read before anything below adds markup of its own.
+  const faq = extractFaq(tree);
+
+  wrapTables(tree);
 
   // Colour is a nicety. A highlighter that fails to load (a grammar chunk
   // missing after a deploy, say) leaves the code uncoloured, not the post
@@ -33,7 +42,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
   });
   transformCodeBlocks(tree, highlighter);
 
-  return { html: toHtml(tree) };
+  return { html: toHtml(tree), faq };
 }
 
 /**
@@ -42,7 +51,7 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
  * reader loses the extras, never the post.
  */
 function unrenderedContent(html: string): RenderedPostContent {
-  return { html };
+  return { html, faq: [] };
 }
 
 /**
