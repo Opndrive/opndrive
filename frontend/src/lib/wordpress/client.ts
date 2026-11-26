@@ -39,10 +39,7 @@ const getWordPressConfig = () => {
   const missing = missingWordPressConfig();
   if (missing) throw new Error(missing);
 
-  return {
-    WORDPRESS_API_URL: process.env.WORDPRESS_GRAPHQL_URL!,
-    WP_AUTH_TOKEN: process.env.WORDPRESS_AUTH_TOKEN,
-  };
+  return { WORDPRESS_API_URL: process.env.WORDPRESS_GRAPHQL_URL! };
 };
 
 interface GraphQLResponse<T> {
@@ -60,6 +57,8 @@ interface FetchOptions {
     revalidate?: number | false;
     tags?: string[];
   };
+  /** Extra request headers. Only the preview request sends any. */
+  headers?: Record<string, string>;
 }
 
 type GraphQLVariables = Record<
@@ -86,16 +85,16 @@ export async function fetchGraphQL<T>(
     throw new Error('Blog feature is disabled');
   }
 
-  const { WORDPRESS_API_URL, WP_AUTH_TOKEN } = getWordPressConfig();
+  const { WORDPRESS_API_URL } = getWordPressConfig();
 
+  // No credential here. Everything the public blog shows is published and
+  // public, and a logged-in request could be answered with a draft: a post
+  // looked up by slug that is still unpublished. Only the preview, below,
+  // signs in, and it never shares a cache with these requests.
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    ...options.headers,
   };
-
-  // Add authentication if token is available
-  if (WP_AUTH_TOKEN) {
-    headers['Authorization'] = `Bearer ${WP_AUTH_TOKEN}`;
-  }
 
   try {
     const response = await fetch(WORDPRESS_API_URL, {
@@ -107,9 +106,8 @@ export async function fetchGraphQL<T>(
       }),
       // Default caching strategy - can be overridden
       cache: options.cache || 'force-cache',
-      next: options.next || {
-        revalidate: 60, // Revalidate every 60 seconds by default
-      },
+      // A no-store request (the preview) has no revalidate interval at all.
+      ...(options.cache === 'no-store' ? {} : { next: options.next || { revalidate: 60 } }), // 60 seconds by default
     });
 
     if (!response.ok) {
@@ -158,13 +156,40 @@ export async function fetchGraphQLWithTags<T>(
 }
 
 /**
- * Fetch without caching (for preview or draft content)
+ * Whether the preview can sign in: both halves of the previewer's
+ * application password are set. The preview route answers 404 without them.
  */
-export async function fetchGraphQLNoCache<T>(
+export function isPreviewConfigured(): boolean {
+  return Boolean(process.env.WORDPRESS_PREVIEW_USER && process.env.WORDPRESS_PREVIEW_APP_PASSWORD);
+}
+
+/**
+ * A request signed in as the previewer, for the editors' draft preview only.
+ *
+ * The previewer is a WordPress user with a read-only role (see
+ * wordpress/mu-plugins/opndrive-preview.php) and an application password,
+ * which WordPress accepts over HTTP Basic auth. Never cached: a draft must
+ * not be kept where a public request could find it. `X-GraphQL-Preview` asks
+ * WPGraphQL to overlay the latest autosave when the user may see it; where it
+ * may not, or an older WPGraphQL does not know the header, the saved draft is
+ * returned unchanged.
+ */
+export async function fetchPreviewGraphQL<T>(
   query: string,
-  variables: GraphQLVariables = {}
+  variables: GraphQLVariables,
+  postId: number
 ): Promise<T> {
+  const user = process.env.WORDPRESS_PREVIEW_USER;
+  const password = process.env.WORDPRESS_PREVIEW_APP_PASSWORD;
+  if (!user || !password) {
+    throw new Error('The draft preview is not configured for this deployment.');
+  }
+
   return fetchGraphQL<T>(query, variables, {
     cache: 'no-store',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+      'X-GraphQL-Preview': `database_id=${postId}`,
+    },
   });
 }

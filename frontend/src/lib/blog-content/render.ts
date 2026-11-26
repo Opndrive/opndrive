@@ -19,6 +19,7 @@ import { linkHeadings, type PostHeading } from './headings';
 import { prepareImages } from './images';
 import { extractFaq, findFaqHeading, type PostFaqItem } from './outline';
 import { wrapTables } from './tables';
+import { sanitizePost, sanitizePostHtml } from './sanitize';
 
 export interface RenderedPostContent {
   /** The post body, ready for dangerouslySetInnerHTML. */
@@ -32,7 +33,8 @@ export interface RenderedPostContent {
 }
 
 export async function renderPostContent(html: string): Promise<RenderedPostContent> {
-  const tree = fromHtml(html, { fragment: true });
+  // First, before any step reads it: see sanitize.ts.
+  const tree = sanitizePost(fromHtml(html, { fragment: true }));
 
   // Read before anything below adds markup of its own.
   const faq = extractFaq(tree);
@@ -58,12 +60,19 @@ export async function renderPostContent(html: string): Promise<RenderedPostConte
 
 /**
  * What the page shows when the body cannot be rendered at all: WordPress's
- * HTML as it came, which is what every post was before any of this. The
- * reader loses the extras, never the post.
+ * HTML, sanitized but otherwise as it came. The reader loses the extras,
+ * never the post. Should even sanitizing fail, the HTML is shown as text:
+ * never unsanitized.
  */
-function unrenderedContent(html: string): RenderedPostContent {
+export function unrenderedContent(html: string): RenderedPostContent {
+  let safe: string;
+  try {
+    safe = sanitizePostHtml(html);
+  } catch {
+    safe = toHtml({ type: 'text', value: html });
+  }
   // No headings to list: they have no ids or links without the pipeline.
-  return { html, headings: [], faq: [], faqId: null };
+  return { html: safe, headings: [], faq: [], faqId: null };
 }
 
 /**

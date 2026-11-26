@@ -210,6 +210,22 @@ export const GET_POST_BY_SLUG = `
 `;
 
 /**
+ * A post by its database ID, in any status: the editors' preview. Only
+ * answered with a draft when the request is signed in as someone who may
+ * read it.
+ */
+export const GET_PREVIEW_POST = `
+  query GetPreviewPost($id: ID!) {
+    post(id: $id, idType: DATABASE_ID) {
+      ...PostFields
+    }
+  }
+  ${POST_FIELDS}
+  ${AUTHOR_FRAGMENT}
+  ${FEATURED_IMAGE_FRAGMENT}
+`;
+
+/**
  * Query to fetch every published post's slug and last-modified date, for the
  * sitemap
  */
