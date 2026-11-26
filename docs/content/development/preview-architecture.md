@@ -238,7 +238,6 @@ const shareableLink = generatePreviewUrl({
 5. **Comment/Annotation**: Add ability to comment on previewed files
 6. **Version History**: Show previous versions if available
 7. **Related Files**: Suggest files from same folder
-8. **Analytics**: Track preview opens for usage insights
 
 ## Performance Considerations
 

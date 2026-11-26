@@ -4,6 +4,7 @@ import { FaGithub } from 'react-icons/fa';
 import { DISCORD_URL, DOCS_URL } from '@/config/links';
 import { LICENSE_NAME, LICENSE_URL, REPOSITORY_URL } from '@/config/legal';
 import { isBlogEnabled } from '@/config/features';
+import { needsFullPageLoad } from '@/lib/privacy/page-profile';
 
 interface FooterLink {
   label: string;
@@ -67,6 +68,16 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   if (link.external) {
     return (
       <a href={link.href} className={className} target="_blank" rel="noopener noreferrer">
+        {link.label}
+      </a>
+    );
+  }
+
+  // Links into the app load a new document, under the app's own security
+  // policy; see page-profile.ts.
+  if (needsFullPageLoad(link.href)) {
+    return (
+      <a href={link.href} className={className}>
         {link.label}
       </a>
     );

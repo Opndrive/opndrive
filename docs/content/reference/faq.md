@@ -8,9 +8,9 @@ description:
 # FAQ
 
 **Where are my AWS credentials stored?** In your browser's `localStorage`,
-entered through the `/connect` form. Opndrive has no backend server and no
-database, so there's nowhere else for them to go. See
-[Connecting Storage](../guides/connecting-storage.md).
+entered through the `/connect` form. The app talks to your storage provider
+straight from your browser and never sends your keys to any Opndrive server or
+database. See [Connecting Storage](../guides/connecting-storage.md).
 
 **Does Opndrive work with storage other than AWS S3?** Yes. Amazon S3,
 Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces and MinIO each have

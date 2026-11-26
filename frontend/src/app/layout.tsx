@@ -5,7 +5,7 @@ import { ZustandBridge } from '@/context/zustand-bridge';
 import { UploadProvider } from '@/features/upload/context/upload-context';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { headers } from 'next/headers';
-import { AnalyticsGate } from '@/components/analytics/analytics-gate';
+import { PAGE_PROFILE_GLOBAL, type PageProfile } from '@/lib/privacy/page-profile';
 import { SITE_URL } from '@/config/links';
 import { ConfirmDialogHost } from '@/shared/components/ui/confirm-dialog';
 import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/seo/social';
@@ -88,7 +88,13 @@ export default async function RootLayout({
 }>) {
   // Set by middleware. Every inline script below carries it, which is what
   // lets script-src stay nonce-only instead of allowing 'unsafe-inline'.
-  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get('x-nonce') ?? undefined;
+  // Which policy this document arrived with (see page-profile.ts). Written by
+  // the inline script below, which runs once per document: moving between
+  // pages never runs it again, so it keeps describing the policy in force.
+  const pageProfile: PageProfile =
+    requestHeaders.get('x-page-profile') === 'public' ? 'public' : 'app';
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -145,6 +151,7 @@ export default async function RootLayout({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
+              window[${JSON.stringify(PAGE_PROFILE_GLOBAL)}] = ${JSON.stringify(pageProfile)};
               (function() {
                 try {
                   const storageKey = 'ui-theme';
@@ -181,7 +188,6 @@ export default async function RootLayout({
             </UploadProvider>
           </ThemeProvider>
         </AuthProvider>
-        <AnalyticsGate />
       </body>
     </html>
   );

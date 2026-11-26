@@ -135,6 +135,12 @@ jobs:
         env:
           NEXT_PUBLIC_ENABLE_BLOG: 'false'
 
+      # A build without the analytics settings (every self-hosted build) must
+      # contain no analytics code, key or host. This checks the real output.
+      - name: No analytics in a default build
+        if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.s3api == 'true' || needs.changes.outputs.root == 'true'
+        run: node ../.github/scripts/check-no-analytics.mjs .next
+
   s3-api:
     name: s3-api (typecheck, test, build)
     needs: changes
@@ -204,6 +210,16 @@ jobs:
             BLOG_STATUS=false
           cache-from: type=gha,scope=ci
           cache-to: type=gha,mode=max,scope=ci
+          # Kept locally so the next step can look inside it.
+          load: true
+          tags: opndrive:ci
+
+      # The image people run themselves must carry no analytics at all.
+      - name: No analytics in the image
+        run: >
+          docker run --rm --entrypoint node
+          -v "$PWD/.github/scripts:/checks:ro"
+          opndrive:ci /checks/check-no-analytics.mjs /app/frontend/.next
 
   # Required-status-check target. Individual jobs are skipped by path
   # filtering, and GitHub treats "skipped" as never-satisfied for branch

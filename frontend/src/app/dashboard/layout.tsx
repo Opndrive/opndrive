@@ -17,6 +17,7 @@ import { FilePreviewModal } from '@/components/file-preview';
 import { RenameModalManager } from '@/features/dashboard/components/ui/dialogs/rename-modal-manager';
 import { ShareModalManager } from '@/features/dashboard/components/ui/dialogs/share-modal-manager';
 import { useAuth } from '@/hooks/use-auth';
+import { PublicPolicyReload } from '@/components/privacy/public-policy-reload';
 import { UploadCard } from '@/features/upload/components/upload-card';
 import { useUnloadGuard } from '@/features/upload/hooks/use-unload-guard';
 import { DeleteRecoveryBanner } from '@/features/upload/components/delete-recovery-banner';
@@ -174,16 +175,20 @@ export default function DynamicDashboardLayout({ children }: { children: React.R
   useRefreshOnReturn();
 
   return (
-    <ScrollProvider>
-      <DetailsProvider>
-        <FilePreviewProvider>
-          <RenameProvider>
-            <ShareProvider>
-              <LayoutShell>{children}</LayoutShell>
-            </ShareProvider>
-          </RenameProvider>
-        </FilePreviewProvider>
-      </DetailsProvider>
-    </ScrollProvider>
+    <>
+      {/* First, so its check runs before anything below starts a request. */}
+      <PublicPolicyReload />
+      <ScrollProvider>
+        <DetailsProvider>
+          <FilePreviewProvider>
+            <RenameProvider>
+              <ShareProvider>
+                <LayoutShell>{children}</LayoutShell>
+              </ShareProvider>
+            </RenameProvider>
+          </FilePreviewProvider>
+        </DetailsProvider>
+      </ScrollProvider>
+    </>
   );
 }

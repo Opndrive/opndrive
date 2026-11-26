@@ -5,6 +5,9 @@ import { generateWebSiteSchema } from '@/lib/seo';
 import { serializeJsonLd } from '@/lib/seo/json-ld';
 import { HERO_IMAGE_PRIORITY_SCRIPT } from '@/features/landing-page/hero-image-priority';
 import { NAMED_PROVIDERS_PHRASE } from '@/config/providers';
+import { PublicAnalytics } from '@/components/analytics/public-analytics';
+import { GitHubStarsProvider } from '@/hooks/use-github-stars';
+import { getRepositoryStars } from '@/services/github-stars';
 
 /**
  * A server shell around the landing page, which is a client component and so
@@ -20,7 +23,8 @@ import { NAMED_PROVIDERS_PHRASE } from '@/config/providers';
  * reads `headers()` - so the shell costs nothing it was not already paying.
  */
 export default async function Page() {
-  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const [requestHeaders, stars] = await Promise.all([headers(), getRepositoryStars()]);
+  const nonce = requestHeaders.get('x-nonce') ?? undefined;
 
   return (
     <>
@@ -48,18 +52,21 @@ export default async function Page() {
           }),
         }}
       />
-      <LandingPage
-        namedProviders={NAMED_PROVIDERS_PHRASE}
-        heroImagePriorityScript={
-          // The browser hides a nonce from the DOM once it has used it, so the
-          // attribute never matches on hydration; that is expected.
-          <script
-            nonce={nonce}
-            suppressHydrationWarning
-            dangerouslySetInnerHTML={{ __html: HERO_IMAGE_PRIORITY_SCRIPT }}
-          />
-        }
-      />
+      <GitHubStarsProvider stars={stars}>
+        <LandingPage
+          namedProviders={NAMED_PROVIDERS_PHRASE}
+          heroImagePriorityScript={
+            // The browser hides a nonce from the DOM once it has used it, so the
+            // attribute never matches on hydration; that is expected.
+            <script
+              nonce={nonce}
+              suppressHydrationWarning
+              dangerouslySetInnerHTML={{ __html: HERO_IMAGE_PRIORITY_SCRIPT }}
+            />
+          }
+        />
+      </GitHubStarsProvider>
+      <PublicAnalytics />
     </>
   );
 }

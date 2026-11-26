@@ -1,93 +1,27 @@
-import { useState, useEffect } from 'react';
-import { githubService } from '@/services/github-service';
+'use client';
 
-interface UseGitHubStarsOptions {
-  owner: string;
-  repo: string;
-  enabled?: boolean; // Allow disabling the hook
-  refetchOnWindowFocus?: boolean;
-}
+import { createContext, createElement, useContext, type ReactNode } from 'react';
 
-interface UseGitHubStarsReturn {
+/**
+ * The star count the server fetched (see services/github-stars.ts), handed to
+ * the navbars that show it.
+ *
+ * Null outside a provider and whenever GitHub did not answer: the count is
+ * then simply not shown. Pages in the app have no provider, so the app never
+ * shows it, and never asks GitHub for it.
+ */
+const StarsContext = createContext<number | null>(null);
+
+export function GitHubStarsProvider({
+  stars,
+  children,
+}: {
   stars: number | null;
-  isLoading: boolean;
-  error: string | null;
-  refetch: () => Promise<void>;
+  children: ReactNode;
+}) {
+  return createElement(StarsContext.Provider, { value: stars }, children);
 }
 
-/**
- * Custom hook to fetch and manage GitHub repository star count
- * @param options - Configuration options
- * @returns Object containing stars count, loading state, error, and refetch function
- */
-export function useGitHubStars({
-  owner,
-  repo,
-  enabled = true,
-  refetchOnWindowFocus = false,
-}: UseGitHubStarsOptions): UseGitHubStarsReturn {
-  const [stars, setStars] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(enabled);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStars = async () => {
-    if (!enabled) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const starCount = await githubService.fetchStarCount(owner, repo);
-      setStars(starCount);
-
-      if (starCount === null) {
-        setError('Failed to fetch star count');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      console.error('Error fetching GitHub stars:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Initial fetch
-  useEffect(() => {
-    fetchStars();
-  }, [owner, repo, enabled]);
-
-  // Optional refetch on window focus
-  useEffect(() => {
-    if (!refetchOnWindowFocus || !enabled) return;
-
-    const handleFocus = () => {
-      fetchStars();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [refetchOnWindowFocus, enabled, owner, repo]);
-
-  return {
-    stars,
-    isLoading,
-    error,
-    refetch: fetchStars,
-  };
-}
-
-/**
- * Simplified hook for Opndrive repository specifically
- * @param options - Optional configuration
- * @returns UseGitHubStarsReturn
- */
-export function useOpndriveStars(
-  options: Omit<UseGitHubStarsOptions, 'owner' | 'repo'> = {}
-): UseGitHubStarsReturn {
-  return useGitHubStars({
-    owner: 'opndrive',
-    repo: 'opndrive',
-    ...options,
-  });
+export function useOpndriveStars(): { stars: number | null } {
+  return { stars: useContext(StarsContext) };
 }

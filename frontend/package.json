@@ -34,8 +34,6 @@
     "@tanstack/react-virtual": "3.14.26",
     "@types/css-modules": "^1.0.5",
     "@use-gesture/react": "^10.3.1",
-    "@vercel/analytics": "^2.0.1",
-    "@vercel/speed-insights": "^2.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "entities": "8.0.0",

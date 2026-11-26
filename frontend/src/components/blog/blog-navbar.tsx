@@ -14,7 +14,6 @@ const navItems = [
 ];
 
 export default function BlogNavbar() {
-  // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
 
   // This navbar does not stick, and never did. It used to track a sentinel on
@@ -65,7 +64,6 @@ export default function BlogNavbar() {
                 {stars !== null && (
                   <span className="text-sm font-medium tabular-nums">{stars.toLocaleString()}</span>
                 )}
-                {stars === null && <div className="w-6 h-4 rounded animate-pulse bg-muted" />}
               </a>
 
               <ThemeToggleCustom />

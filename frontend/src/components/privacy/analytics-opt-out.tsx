@@ -31,8 +31,8 @@ export function AnalyticsOptOut() {
         </label>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           {analytics
-            ? 'On. We count page views without cookies and without profiling you. Turn this off and we stop counting yours.'
-            : 'Off. We are not counting your visits. This is remembered on this site and on the documentation site.'}
+            ? 'On. Our home page, blog and documentation count visits without cookies or any lasting ID. The app itself counts nothing. Turn this off and your visits are not counted.'
+            : 'Off. Your visits are not counted. This is remembered on this site and on the documentation site.'}
         </p>
       </div>
 

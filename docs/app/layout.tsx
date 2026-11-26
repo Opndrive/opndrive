@@ -7,7 +7,7 @@ import { DiscordIcon } from 'nextra/icons';
 import { getPageMap } from 'nextra/page-map';
 import { APP_URL, DISCORD_URL, DOCS_URL } from '@/lib/links';
 import { BASE_OPEN_GRAPH, BASE_TWITTER } from '@/lib/site';
-import { AnalyticsGate } from '@/components/analytics-gate';
+import { PublicAnalytics } from '@/components/public-analytics';
 import 'nextra-theme-docs/style.css';
 
 export const metadata: Metadata = {
@@ -100,7 +100,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           {children}
         </Layout>
-        <AnalyticsGate />
+        <PublicAnalytics />
       </body>
     </html>
   );

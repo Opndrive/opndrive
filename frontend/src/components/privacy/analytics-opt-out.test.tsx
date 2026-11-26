@@ -104,12 +104,12 @@ describe('the control itself', () => {
 
   it('says something different depending on the position', () => {
     const { unmount } = render(<AnalyticsOptOut />);
-    expect(screen.getByText(/we stop counting yours/i)).toBeDefined();
+    expect(screen.getByText(/your visits are not counted\./i)).toBeDefined();
     unmount();
 
     setAnalyticsOptOut(true);
     render(<AnalyticsOptOut />);
-    expect(screen.getByText(/not counting your visits/i)).toBeDefined();
+    expect(screen.getByText(/^Off\. Your visits are not counted/i)).toBeDefined();
   });
 });
 

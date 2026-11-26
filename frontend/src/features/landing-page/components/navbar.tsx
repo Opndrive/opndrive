@@ -29,7 +29,6 @@ interface NavbarProps {
 export default function Navbar({ scrolledPastHero }: NavbarProps) {
   const router = useRouter();
 
-  // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
 
   return (
@@ -107,12 +106,6 @@ export default function Navbar({ scrolledPastHero }: NavbarProps) {
                 >
                   {stars.toLocaleString()}
                 </span>
-              )}
-              {stars === null && (
-                <div
-                  className="w-6 h-4 rounded animate-pulse"
-                  style={{ backgroundColor: 'var(--muted)' }}
-                />
               )}
             </a>
 

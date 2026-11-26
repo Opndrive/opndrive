@@ -21,9 +21,9 @@ export interface GeneralSettings {
  * other three described features that do not exist, so they were removed
  * rather than left to look like working controls.
  *
- * `enableAnalytics` stays because it is about to mean something: it becomes
- * the opt-out that AnalyticsGate reads. It is deliberately still unwired, so
- * nothing renders it as a switch until it does.
+ * `enableAnalytics` stays only so stored settings keep their shape. Nothing
+ * reads it: the analytics opt-out lives in lib/privacy/consent.ts, where the
+ * documentation site can read it too.
  */
 export interface PrivacySettings {
   enableAnalytics: boolean;

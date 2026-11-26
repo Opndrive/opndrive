@@ -9,7 +9,7 @@
  * Shown on both legal pages. Update it in the same commit as any change to
  * what we collect - the git history of these files is the real changelog.
  */
-export const LEGAL_LAST_UPDATED = '2026-08-20';
+export const LEGAL_LAST_UPDATED = '2026-11-26';
 
 /** Where privacy questions go. Security reports go through SECURITY.md. */
 export const PRIVACY_CONTACT_EMAIL = 'privacy@opndrive.app';

@@ -42,7 +42,7 @@ steps; any other S3-compatible service uses the custom endpoint option. See
 
 ## 2. Your Credentials, Your Browser
 
-Opndrive has no backend and no database. Credentials you enter are stored in
+Opndrive keeps no database of users or keys. Credentials you enter are stored in
 your browser's `localStorage` and used to talk to S3 directly from there - they
 never pass through an Opndrive-operated server. Click the user icon → **Clear
 Session** at any time to remove them.

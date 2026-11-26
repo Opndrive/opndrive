@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -22,6 +21,9 @@ import { useAuth } from '@/hooks/use-auth';
  * already say. `rounded-full` matches that pill, and the arrow thickens to 2.5
  * so it still reads as a direction at 16px rather than dissolving into the
  * label beside it.
+ *
+ * A plain link, not a client-side move: from a public page the dashboard has
+ * to load as a new document, under its own security policy (page-profile.ts).
  */
 export function DashboardLink({ className }: { className?: string }) {
   const { userCreds, isLoading } = useAuth();
@@ -29,7 +31,7 @@ export function DashboardLink({ className }: { className?: string }) {
   if (isLoading || !userCreds) return null;
 
   return (
-    <Link
+    <a
       href="/dashboard"
       className={
         className ??
@@ -42,6 +44,6 @@ export function DashboardLink({ className }: { className?: string }) {
         strokeWidth={2.5}
         aria-hidden="true"
       />
-    </Link>
+    </a>
   );
 }

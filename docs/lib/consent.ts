@@ -1,7 +1,3 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-
 /**
  * Reads the analytics opt-out written by the main app.
  *
@@ -22,7 +18,8 @@ const CONSENT_VERSION = 1;
 /** Matches the main app: analytics is on until somebody objects. */
 const DEFAULT_ANALYTICS_ALLOWED = true;
 
-function readAnalyticsPreference(): boolean {
+/** Whether analytics may run for this visitor: false once they have opted out on the main site. */
+export function readAnalyticsPreference(): boolean {
   if (typeof document === 'undefined') return DEFAULT_ANALYTICS_ALLOWED;
 
   for (const part of document.cookie.split(';')) {
@@ -42,21 +39,4 @@ function readAnalyticsPreference(): boolean {
   }
 
   return DEFAULT_ANALYTICS_ALLOWED;
-}
-
-/**
- * The server cannot read the cookie, so `isResolved` stays false through the
- * first render and nothing should load a script until it flips.
- */
-export function useAnalyticsConsent(): { analytics: boolean; isResolved: boolean } {
-  const [state, setState] = useState({
-    analytics: DEFAULT_ANALYTICS_ALLOWED,
-    isResolved: false,
-  });
-
-  useEffect(() => {
-    setState({ analytics: readAnalyticsPreference(), isResolved: true });
-  }, []);
-
-  return state;
 }

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Button } from '@/shared/components/ui';
 import Image from 'next/image';
 import { DiscordCtaBanner } from '@/shared/components/discord/discord-cta-banner';
@@ -66,8 +65,10 @@ export default function CTASection({
 
           <div className="flex justify-center items-center">
             {href ? (
+              // A plain link: the destination is the app, which has to load as a
+              // new document under its own security policy (page-profile.ts).
               <Button size="lg" asChild className={buttonClassName}>
-                <Link href={href}>{ctaLabel}</Link>
+                <a href={href}>{ctaLabel}</a>
               </Button>
             ) : (
               <Button

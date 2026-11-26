@@ -18,6 +18,7 @@ import { useOpndriveStars } from '@/hooks/use-github-stars';
 import { useAuth } from '@/hooks/use-auth';
 import { useScrolledPast } from '@/hooks/use-scrolled-past';
 import { DOCS_URL } from '@/config/links';
+import { reportLinkFollowed } from '@/lib/analytics/report-link';
 
 const navItems = [
   { label: 'Home', href: '#hero' },
@@ -43,7 +44,6 @@ export default function LandingPage({ heroImagePriorityScript, namedProviders }:
   const { userCreds } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
 
   /**
@@ -79,8 +79,16 @@ export default function LandingPage({ heroImagePriorityScript, namedProviders }:
   const hasSession = userCreds !== null;
   const ctaLabel = hasSession ? 'Go to Dashboard' : 'Get Started';
 
+  /**
+   * A full page load rather than a client-side move: this page's security
+   * policy does not let it reach a storage provider, and a document keeps its
+   * policy until a new one loads (see page-profile.ts). Announced first so a
+   * build with analytics counts it like the link it stands for.
+   */
   const handleGetStarted = () => {
-    router.push(hasSession ? '/dashboard' : '/connect');
+    const destination = hasSession ? '/dashboard' : '/connect';
+    reportLinkFollowed(destination);
+    window.location.assign(destination);
   };
 
   /**

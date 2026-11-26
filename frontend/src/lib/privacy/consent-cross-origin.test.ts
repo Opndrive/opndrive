@@ -51,8 +51,15 @@ describe('docs reads the same cookie the app writes', () => {
     expect(DOCS_CONSENT).not.toMatch(/document\.cookie\s*=/);
   });
 
-  it('waits for the cookie before deciding, like the app does', () => {
-    expect(DOCS_CONSENT).toContain('isResolved');
+  // The docs tracker asks before every event, so an opt-out made on the main
+  // site applies from the next event on, not from the next build.
+  it('is read before every event the docs site sends', () => {
+    const tracker = readFileSync(
+      join(process.cwd(), '..', 'docs', 'components', 'analytics-tracker.tsx'),
+      'utf8'
+    );
+
+    expect(tracker).toContain('hasOptedOut: () => !readAnalyticsPreference()');
   });
 });
 
