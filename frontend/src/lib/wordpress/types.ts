@@ -7,6 +7,8 @@ export interface WordPressPost {
   id: string;
   databaseId: number;
   slug: string;
+  /** Asked for by the lookup by slug only: `publish` for a published post. */
+  status?: string | null;
   title: string;
   excerpt: string;
   content: string;

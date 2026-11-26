@@ -41,11 +41,22 @@ The app's own pages never do.
 These only matter if `NEXT_PUBLIC_ENABLE_BLOG` is left enabled - the blog is
 backed by a headless WordPress instance over GraphQL:
 
-| Variable                | Used for                                                                                                                            |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `WORDPRESS_GRAPHQL_URL` | The WordPress GraphQL endpoint the blog fetches from                                                                                |
-| `WORDPRESS_AUTH_TOKEN`  | Auth token for that endpoint                                                                                                        |
-| `REVALIDATE_SECRET`     | Shared secret checked by `app/api/revalidate/route.ts`, WordPress calls this to trigger on-demand revalidation when content changes |
+| Variable                         | Used for                                                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `WORDPRESS_GRAPHQL_URL`          | The WordPress GraphQL endpoint the blog fetches from. Requests for the public blog are never signed in     |
+| `REVALIDATE_SECRET`              | Shared with WordPress, checked by `app/api/revalidate/route.ts` when WordPress reports a published change  |
+| `BLOG_PREVIEW_SECRET`            | Shared with WordPress, at least 32 characters: verifies the signed links behind WordPress's Preview button |
+| `WORDPRESS_PREVIEW_USER`         | A WordPress user with the read-only "Opndrive previewer" role, for draft previews                          |
+| `WORDPRESS_PREVIEW_APP_PASSWORD` | That user's application password. Without it and the user, `/api/preview` answers 404                      |
+
+`WORDPRESS_AUTH_TOKEN` is deprecated. The blog needs no credential to read
+published posts, and it only shows published ones. It is still sent while it is
+set, for a WPGraphQL endpoint restricted to signed-in users; turn that
+restriction off and unset it.
+
+The WordPress side of all three is in
+[`wordpress/`](https://github.com/Opndrive/opndrive/tree/main/wordpress): two
+small must-use plugins and how to install them.
 
 If you're not working on the marketing/blog surface, you can set
 `NEXT_PUBLIC_ENABLE_BLOG=false` and ignore this whole section.

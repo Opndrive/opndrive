@@ -44,6 +44,21 @@ const nextConfig: NextConfig = {
    * readers to the blog and tells search engines the right address, post
    * paths and query strings (?page=2) included.
    */
+  /**
+   * The editors' draft preview is never indexed and never cached, whatever
+   * the page itself says. Belt and braces with the page's own robots tag.
+   */
+  async headers() {
+    const privatePage = [
+      { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+      { key: 'Cache-Control', value: 'private, no-store' },
+    ];
+    return [
+      { source: '/preview/:path*', headers: privatePage },
+      { source: '/api/preview/:path*', headers: privatePage },
+      { source: '/api/preview', headers: privatePage },
+    ];
+  },
   async redirects() {
     return [
       { source: '/blogs', destination: '/blog', permanent: true },

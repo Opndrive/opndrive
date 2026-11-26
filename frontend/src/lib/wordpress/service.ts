@@ -3,11 +3,12 @@
  * High-level functions for fetching and transforming blog data
  */
 
-import { fetchGraphQL, fetchGraphQLWithTags } from './client';
+import { fetchGraphQL, fetchGraphQLWithTags, fetchPreviewGraphQL } from './client';
 import {
   GET_ALL_POSTS,
   GET_RECENT_POSTS,
   GET_POST_BY_SLUG,
+  GET_PREVIEW_POST,
   GET_ALL_POST_SLUGS,
   GET_POSTS_BY_CATEGORY,
   GET_POST_SUMMARIES,
@@ -205,11 +206,28 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
     `post-${slug}`,
   ]);
 
-  if (!data.post) {
+  // Only ever a published post on a public page, whoever WordPress thinks is
+  // asking. A draft found by its slug is a 404 here, never a page.
+  if (!data.post || (data.post.status && data.post.status !== 'publish')) {
     return null;
   }
 
   return transformPost(data.post);
+}
+
+/**
+ * A post by database ID, whatever its status, for the editors' preview. Read
+ * as the previewer and never cached; null when WordPress has no such post or
+ * will not show it to the previewer.
+ */
+export async function getPreviewPost(id: number): Promise<BlogPost | null> {
+  const data = await fetchPreviewGraphQL<WordPressPostBySlugResponse>(
+    GET_PREVIEW_POST,
+    { id: String(id) },
+    id
+  );
+
+  return data.post ? transformPost(data.post) : null;
 }
 
 /**
@@ -231,7 +249,9 @@ export async function getAllPostSitemapData({
     const data: WordPressPostsResponse = await fetchGraphQL<WordPressPostsResponse>(
       GET_ALL_POST_SLUGS,
       { first: 100, after },
-      { next: { revalidate } }
+      // Tagged like every other post request, so publishing refreshes the
+      // sitemap at once instead of within the hour.
+      { next: { revalidate, tags: ['posts'] } }
     );
 
     posts.push(

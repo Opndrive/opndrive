@@ -112,6 +112,11 @@ export default function PrivacyPolicyPage() {
           Only one of them is a cookie, and it is written <strong>only if you opt out</strong> of
           analytics, to record that choice. Take no action and Opndrive sets no cookie at all.
         </p>
+        <p>
+          One more applies only to our own editors: opening a draft preview from WordPress sets the
+          cookie <code>__prerender_bypass</code>, which lets that browser see the unpublished post
+          until the browser closes or the preview is exited. Visitors never receive it.
+        </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
             <thead>

@@ -1,12 +1,25 @@
 /**
  * The body pipeline never costs a reader the post: without a highlighter the
  * code is framed and uncoloured, a block a grammar chokes on stays as written,
- * and if rendering fails outright the page gets WordPress's HTML as it came.
+ * and if rendering fails outright the page gets WordPress's HTML, sanitized,
+ * or as plain text when even that cannot be done. Never unsanitized.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const highlighter = vi.hoisted(() => ({ impl: null as null | (() => Promise<unknown>) }));
 const parsing = vi.hoisted(() => ({ fail: false }));
+const tables = vi.hoisted(() => ({ fail: false }));
+
+vi.mock('./tables', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./tables')>();
+  return {
+    ...actual,
+    wrapTables: (...args: Parameters<typeof actual.wrapTables>) => {
+      if (tables.fail) throw new Error('a step failed');
+      return actual.wrapTables(...args);
+    },
+  };
+});
 
 vi.mock('./highlighter', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./highlighter')>();
@@ -41,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   highlighter.impl = null;
   parsing.fail = false;
+  tables.fail = false;
   vi.restoreAllMocks();
 });
 
@@ -83,12 +97,24 @@ describe('when highlighting is unavailable', () => {
 });
 
 describe('when rendering fails outright', () => {
-  it('shows the post as WordPress sent it, and tries again next time', async () => {
+  it('shows the post sanitized when a step after parsing fails', async () => {
+    tables.fail = true;
+    const post = {
+      slug: 'half-rendered',
+      content: '<p>Still readable.</p><script>steal()</script><img src="x" onerror="steal()">',
+    };
+
+    const fallback = await getRenderedPostContent(post);
+    expect(fallback.html).toBe('<p>Still readable.</p><img src="x">');
+  });
+
+  it('shows the post as text when it cannot even be parsed, and tries again next time', async () => {
     parsing.fail = true;
     const post = { slug: 'unrenderable', content: '<p>Still readable.</p>' };
 
     const fallback = await getRenderedPostContent(post);
-    expect(fallback.html).toBe('<p>Still readable.</p>');
+    // Escaped: the reader sees the words (and the tags), and nothing runs.
+    expect(fallback.html).toBe('&#x3C;p>Still readable.&#x3C;/p>');
     expect(fallback.headings).toEqual([]);
     expect(fallback.faq).toEqual([]);
 
