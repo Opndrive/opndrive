@@ -3,7 +3,28 @@ import {
   STATIC_SECURITY_HEADERS,
   buildContentSecurityPolicy,
   cspHeaderName,
+  httpsOrigin,
 } from '@/lib/privacy/csp';
+import { pageProfileFor } from '@/lib/privacy/page-profile';
+
+/**
+ * The analytics host, only when the build has analytics configured. Both
+ * variables are build-time values: a default build has neither.
+ */
+const ANALYTICS_ORIGIN =
+  process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST
+    ? httpsOrigin(process.env.NEXT_PUBLIC_POSTHOG_HOST)
+    : null;
+
+/**
+ * Where pictures inside blog posts load from: the WordPress host itself, and
+ * the image CDNs WordPress rewrites pictures to (the same hosts next.config.ts
+ * lets next/image fetch).
+ */
+function blogImageOrigins(): string[] {
+  const wordpress = httpsOrigin(process.env.WORDPRESS_GRAPHQL_URL);
+  return [...(wordpress ? [wordpress] : []), 'https://*.wp.com', 'https://secure.gravatar.com'];
+}
 
 /**
  * Issues a per-request nonce and attaches the security headers.
@@ -30,10 +51,22 @@ export function middleware(request: NextRequest) {
     ? forwardedProtocol.split(',')[0].trim() === 'https'
     : request.nextUrl.protocol === 'https:';
 
-  const policy = buildContentSecurityPolicy({ nonce, isDevelopment, isSecureRequest });
+  const profile = pageProfileFor(request.nextUrl.pathname);
+
+  const policy = buildContentSecurityPolicy({
+    nonce,
+    isDevelopment,
+    isSecureRequest,
+    profile,
+    analyticsOrigin: ANALYTICS_ORIGIN,
+    blogImageOrigins: profile === 'public' ? blogImageOrigins() : [],
+  });
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
+  // The root layout records this in the page, so an app page reached without
+  // a new document can tell it is running under a public page's policy.
+  requestHeaders.set('x-page-profile', profile);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 

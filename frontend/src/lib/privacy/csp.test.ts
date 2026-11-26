@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { STATIC_SECURITY_HEADERS, buildContentSecurityPolicy, cspHeaderName } from './csp';
+import {
+  STATIC_SECURITY_HEADERS,
+  buildContentSecurityPolicy,
+  cspHeaderName,
+  httpsOrigin,
+} from './csp';
 
 const NONCE = 'abc123def456';
 
@@ -172,5 +177,70 @@ describe('static security headers', () => {
     const referrer = STATIC_SECURITY_HEADERS.find(([name]) => name === 'Referrer-Policy');
 
     expect(referrer?.[1]).toBe('strict-origin-when-cross-origin');
+  });
+});
+
+describe('the public pages policy', () => {
+  const ANALYTICS = 'https://us.i.posthog.com';
+  const PICTURES = ['https://blog.example', 'https://*.wp.com'];
+
+  const publicWithAnalytics = buildContentSecurityPolicy({
+    nonce: NONCE,
+    isDevelopment: false,
+    isSecureRequest: true,
+    profile: 'public',
+    analyticsOrigin: ANALYTICS,
+    blogImageOrigins: PICTURES,
+  });
+  const publicWithout = buildContentSecurityPolicy({
+    nonce: NONCE,
+    isDevelopment: false,
+    isSecureRequest: true,
+    profile: 'public',
+    analyticsOrigin: null,
+  });
+  const appWithAnalyticsConfigured = buildContentSecurityPolicy({
+    nonce: NONCE,
+    isDevelopment: false,
+    isSecureRequest: true,
+    profile: 'app',
+    analyticsOrigin: ANALYTICS,
+  });
+
+  it('connects to this site and the analytics host, nothing else', () => {
+    expect(directive(publicWithAnalytics, 'connect-src')).toBe(`connect-src 'self' ${ANALYTICS}`);
+  });
+
+  it('connects to this site only when analytics is not configured', () => {
+    expect(directive(publicWithout, 'connect-src')).toBe("connect-src 'self'");
+    expect(publicWithout).not.toContain('posthog');
+  });
+
+  it('never names the analytics host on app pages', () => {
+    expect(appWithAnalyticsConfigured).not.toContain(ANALYTICS);
+    expect(appWithAnalyticsConfigured).toBe(production);
+  });
+
+  it('keeps the same script protection as the app', () => {
+    expect(directive(publicWithAnalytics, 'script-src')).toBe(directive(production, 'script-src'));
+  });
+
+  it('loads blog pictures from the named hosts only', () => {
+    expect(directive(publicWithAnalytics, 'img-src')).toBe(
+      `img-src 'self' blob: data: ${PICTURES.join(' ')}`
+    );
+  });
+
+  it('frames nothing', () => {
+    expect(directive(publicWithAnalytics, 'frame-src')).toBe("frame-src 'none'");
+  });
+});
+
+describe('httpsOrigin', () => {
+  it('reduces an https address to its origin, and refuses anything else', () => {
+    expect(httpsOrigin('https://us.i.posthog.com/')).toBe('https://us.i.posthog.com');
+    expect(httpsOrigin('http://us.i.posthog.com')).toBeNull();
+    expect(httpsOrigin('')).toBeNull();
+    expect(httpsOrigin(undefined)).toBeNull();
   });
 });

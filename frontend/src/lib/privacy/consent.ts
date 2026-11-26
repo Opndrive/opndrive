@@ -224,8 +224,9 @@ export function setAnalyticsOptOut(optedOut: boolean): void {
 
 export interface ConsentHookState extends ResolvedConsent {
   /**
-   * False until the first client effect has read the cookie. Nothing that
-   * loads a script should act while this is false - see AnalyticsGate.
+   * False until the first client effect has read the cookie. The opt-out
+   * switch stays disabled while this is false, so it never shows the wrong
+   * position.
    */
   isResolved: boolean;
 }

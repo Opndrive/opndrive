@@ -66,15 +66,33 @@ nor the GDPR requires one.
 Any of the following breaks that reasoning and **needs a consent banner before
 it can ship**. Please open an issue first rather than adding one in a PR.
 
-| Change                                         | Why it changes things                               |
-| ---------------------------------------------- | --------------------------------------------------- |
-| Google Analytics, PostHog, Amplitude, Mixpanel | All persist an identifier on the device to profile  |
-| Sentry with session replay or persistent IDs   | Replay captures user content; the ID is storage     |
-| Any advertising or conversion pixel            | Non-essential by definition, and a new controller   |
-| Embedded YouTube, Vimeo or Twitter             | Third-party cookies are set on load, before a click |
-| Intercom, Crisp or any chat widget             | Persistent visitor identity                         |
-| Any cross-domain identity or attribution       | Squarely non-essential                              |
-| User accounts on our own infrastructure        | Changes the controller relationship entirely        |
+| Change                                       | Why it changes things                               |
+| -------------------------------------------- | --------------------------------------------------- |
+| Any analytics library (PostHog's included)   | Libraries persist an identifier on the device       |
+| Sentry with session replay or persistent IDs | Replay captures user content; the ID is storage     |
+| Any advertising or conversion pixel          | Non-essential by definition, and a new controller   |
+| Embedded YouTube, Vimeo or Twitter           | Third-party cookies are set on load, before a click |
+| Intercom, Crisp or any chat widget           | Persistent visitor identity                         |
+| Any cross-domain identity or attribution     | Squarely non-essential                              |
+| User accounts on our own infrastructure      | Changes the controller relationship entirely        |
+
+### Changing analytics
+
+Analytics exists only on the public pages (home, blog, docs) and only in a build
+given `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. There is no
+library: `frontend/src/lib/analytics/analytics-core.ts` builds every field that
+is sent, and the docs site carries a byte-identical copy that a test checks.
+Keep it that way:
+
+- Never mount `PublicAnalytics` in the app (`/connect`, `/dashboard`) or on any
+  page that handles credentials, buckets or file names. `tracked-paths.ts` is an
+  allowlist; add to it only public pages.
+- A new field or event needs a line in `analytics-fields.ts`, which the privacy
+  policy renders. A test fails if the sender sends anything that is not listed.
+- Nothing may be stored on the device, and Do Not Track, Global Privacy Control
+  and the opt-out must keep turning everything off.
+- A default build must stay free of analytics: CI fails if the build output or
+  the Docker image contains a key, the host or the sending code.
 
 Also worth knowing: search terms and S3 object keys travel in the URL **hash**,
 never the query string, because a hash is never sent to a server. If you are

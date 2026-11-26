@@ -16,8 +16,8 @@ import { useEffect, useState } from 'react';
  * history - that is the user's own data on the user's own machine, and the
  * leak being closed here is transmission.
  *
- * Analytics redaction in `redact-url.ts` drops the hash as well, so a page
- * view reports the route and nothing else.
+ * The app sends no analytics at all, and the public pages that do send only
+ * an address's origin and path, never its query string or hash.
  */
 export const PRIVATE_PARAM_QUERY = 'q';
 export const PRIVATE_PARAM_PREVIEW = 'preview';

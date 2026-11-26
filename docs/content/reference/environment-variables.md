@@ -21,6 +21,21 @@ nothing in the codebase reads them.
 | `NEXT_PUBLIC_ENABLE_BLOG` | No       | enabled (anything except the literal string `'false'`) | Toggles the `/blog` routes and their WordPress dependency |
 | `NEXT_PUBLIC_DISCORD_URL` | No       | `https://discord.gg/5t5yMy5NUd`                        | Discord invite behind the landing page's Discord icon     |
 
+## Analytics (Our Hosted Site Only)
+
+Leave these unset and the build contains no analytics at all: no code, no key,
+no request. That is the default, and the Docker image is built that way. They
+are build-time values, so changing them needs a rebuild.
+
+| Variable                   | Used for                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_POSTHOG_KEY`  | The PostHog project key (`phc_...`). Analytics is built in only when both are set    |
+| `NEXT_PUBLIC_POSTHOG_HOST` | The PostHog ingestion host, `https://us.i.posthog.com` or `https://eu.i.posthog.com` |
+
+When both are set, only the home page, the blog and the docs send anything, and
+only what the [privacy policy](https://opndrive.app/privacy#collected) lists.
+The app's own pages never do.
+
 ## Blog Only (WordPress Integration)
 
 These only matter if `NEXT_PUBLIC_ENABLE_BLOG` is left enabled - the blog is

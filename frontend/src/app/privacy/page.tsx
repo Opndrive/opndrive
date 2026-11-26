@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { LegalHighlight, LegalLayout, LegalSection } from '@/components/legal/legal-layout';
 import { AnalyticsOptOut } from '@/components/privacy/analytics-opt-out';
 import { storageKeysForPolicy } from '@/lib/privacy/storage-keys';
+import { ANALYTICS_EVENTS, ANALYTICS_FIELDS } from '@/lib/analytics/analytics-fields';
 import {
   HOSTED_APP_DOMAIN,
   HOSTED_DOCS_DOMAIN,
@@ -14,7 +15,7 @@ import {
 export const metadata: Metadata = {
   title: 'Privacy Policy - Opndrive',
   description:
-    'What Opndrive collects, what it does not, and what is stored in your browser. No accounts, no trackers, and your files never reach our servers.',
+    'What Opndrive collects, what it does not, and what is stored in your browser. The app collects nothing, self-hosted copies collect nothing, and your files never reach our servers.',
   alternates: { canonical: '/privacy' },
 };
 
@@ -43,10 +44,16 @@ export default function PrivacyPolicyPage() {
       <LegalSection id="summary" heading="2. The short version">
         <LegalHighlight>
           <p>
-            There is no Opndrive account, so we hold no name, email address or password. Your files
-            go straight from your browser to your own storage provider, so we never receive them.
-            Your storage credentials stay in your browser and are never sent to us. We count page
-            views without cookies and without profiling you. Nothing is sold or shared.
+            The Opndrive app, the pages where you connect storage and work with your files, collects
+            nothing. Your keys and files go only between your browser and your storage provider.
+            Self-hosted copies of Opndrive collect nothing and send nothing to us.
+          </p>
+          <p className="mt-3">
+            On our public pages (the home page, the blog and {HOSTED_DOCS_DOMAIN}) we count visits
+            with PostHog. We use no cookies, store nothing on your device, and use no ID that
+            outlives the page. If your browser sends Do Not Track or Global Privacy Control, those
+            pages send nothing at all. There is no Opndrive account, so we hold no name, email
+            address or password, and nothing is sold or shared.
           </p>
         </LegalHighlight>
       </LegalSection>
@@ -60,8 +67,14 @@ export default function PrivacyPolicyPage() {
             The names or paths of your files, which stay between your browser and your bucket.
           </li>
           <li>Your storage credentials.</li>
-          <li>Anything used for advertising, retargeting, conversion tracking or profiling.</li>
-          <li>Session recordings or heatmaps.</li>
+          <li>
+            Anything at all from the app itself: the connect pages, the dashboard and file previews
+            send no analytics.
+          </li>
+          <li>Anything used for advertising, retargeting or profiling.</li>
+          <li>
+            Session recordings, heatmaps, or any click other than the links listed in section 6.
+          </li>
         </ul>
         <p>We do not sell or share personal information, and we never have.</p>
       </LegalSection>
@@ -134,34 +147,59 @@ export default function PrivacyPolicyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection id="collected" heading="6. What we collect when you visit">
+      <LegalSection id="collected" heading="6. What the public pages send">
         <p>
-          We use Vercel Web Analytics and Vercel Speed Insights to see which pages are used and how
-          quickly they load. Neither sets a cookie, neither stores anything on your device, and
-          neither builds a profile of you or follows you to other sites.
+          The home page, the blog and the documentation send a short message to PostHog, our
+          analytics service, when a page is opened and when one of a few links is followed. Nothing
+          else on the page is watched, and the app pages send nothing at all. This is the complete
+          list.
+        </p>
+        <p>The events:</p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          {ANALYTICS_EVENTS.map((event) => (
+            <li key={event.name}>{event.description}</li>
+          ))}
+        </ul>
+        <p>What each one carries:</p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          {ANALYTICS_FIELDS.map((field) => (
+            <li key={field.label}>
+              <strong>{field.label}.</strong> {field.description}
+            </li>
+          ))}
+        </ul>
+        <p>
+          Like any request on the internet, each message also carries your IP address. PostHog is
+          set to discard it and to look up no location. No cookie is set and nothing is written to
+          your device, so the next time you visit, you are a new visitor to us.
         </p>
         <p>
-          Page addresses are stripped before they are sent. Search terms and file paths are removed,
-          so what is recorded is which page was opened, never what was in it. Our host also keeps
-          standard server logs containing IP addresses and browser user agents, as any web server
-          does, which we use to keep the service running and to investigate abuse.
+          Nothing is sent if your browser sends Do Not Track or Global Privacy Control, if you turn
+          analytics off below, or if you block the request, which we do not try to work around.
         </p>
         <p>
-          The landing page asks GitHub for our public star count, so GitHub sees the request. That
-          is the only third party contacted by a page you have not chosen to visit.
+          Two other things happen on these pages. Our host keeps standard server logs containing IP
+          addresses and browser user agents, as any web server does, which we use to keep the
+          service running and to investigate abuse. And pictures inside blog posts load from the
+          server that hosts our blog content. The GitHub star count is fetched by our server, not by
+          your browser.
         </p>
-        <p>You can turn it off here, and the choice applies to both sites:</p>
+        <p>You can turn analytics off here, and the choice applies to both sites:</p>
         <AnalyticsOptOut />
       </LegalSection>
 
       <LegalSection id="third-parties" heading="7. Third-party services">
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
-            <strong>Vercel</strong> hosts both sites and provides the analytics described above.
+            <strong>Vercel</strong> hosts both sites.
           </li>
           <li>
-            <strong>GitHub</strong> receives a request for our public star count when the landing
-            page loads, and hosts our source code and issue tracker.
+            <strong>PostHog</strong>, in the United States, receives the analytics described in
+            section 6, from the public pages only.
+          </li>
+          <li>
+            <strong>GitHub</strong> hosts our source code and issue tracker. Our server asks it for
+            the public star count; your browser does not.
           </li>
           <li>
             <strong>Discord</strong> receives nothing unless you follow our invite link.
@@ -176,9 +214,11 @@ export default function PrivacyPolicyPage() {
       <LegalSection id="legal-bases" heading="8. Legal bases">
         <p>
           For visitors in the UK and the EU, we rely on legitimate interests under Article 6(1)(f)
-          of the GDPR to measure how the site is used and to keep it secure. That measurement is
-          aggregate, cookieless and not used to profile anyone, which is why it does not ask for
-          consent. You can object to it at any time using the opt-out described above.
+          of the GDPR to measure how the public pages are used and to keep the site secure. That
+          measurement is cookieless, keeps no ID beyond a page load and is not used to profile
+          anyone, which is why it does not ask for consent. You can object to it at any time using
+          the opt-out described above, and a Do Not Track or Global Privacy Control signal is
+          honoured as an objection.
         </p>
         <p>
           Storage on your device is limited to what is strictly necessary to provide the features
@@ -189,10 +229,10 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection id="retention" heading="9. How long we keep things">
         <p>
-          Analytics data is aggregate and retained by our host on a rolling window. Server logs are
-          short-lived and kept only for operational and security purposes. Your credentials and
-          saved connections stay in your browser until you use Clear Session or clear its site data.
-          Your preferences stay until you clear them.
+          Analytics events are kept in PostHog, without IP addresses, for the retention period of
+          our plan. Server logs are short-lived and kept only for operational and security purposes.
+          Your credentials and saved connections stay in your browser until you use Clear Session or
+          clear its site data. Your preferences stay until you clear them.
         </p>
       </LegalSection>
 
@@ -215,7 +255,10 @@ export default function PrivacyPolicyPage() {
             Your files are in your own storage account, so exporting or deleting them is entirely in
             your hands and does not involve us.
           </li>
-          <li>Analytics data is aggregate and cannot be traced back to an individual.</li>
+          <li>
+            Analytics events hold no IP address and no ID that lasts beyond a page load, so they
+            cannot be traced back to you.
+          </li>
         </ul>
         <p>
           If you are in the EU or UK and think we have handled your data badly, you may complain to
@@ -226,9 +269,9 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection id="transfers" heading="11. International transfers">
         <p>
-          Our host operates globally and processes data in the United States among other places.
-          Where personal data leaves the UK or the EEA, it is covered by the Standard Contractual
-          Clauses in our agreement with that provider.
+          Our host and PostHog process data in the United States, among other places. Where personal
+          data leaves the UK or the EEA, it is covered by the Standard Contractual Clauses in our
+          agreements with those providers.
         </p>
       </LegalSection>
 
@@ -285,9 +328,9 @@ export default function PrivacyPolicyPage() {
         <ul className="list-disc space-y-1.5 pl-5">
           <li>It has no phone-home and reports nothing to us.</li>
           <li>
-            The analytics components address a collector that only exists on Vercel&rsquo;s
-            platform. Deployed anywhere else there is nothing behind that address, so no usage data
-            is sent to anyone.
+            It sends no analytics. Analytics is only built in when the build is given an analytics
+            key and host, and only our own deployment is. A build without them, including our Docker
+            image, contains no analytics code and makes no request to any analytics service.
           </li>
           <li>It writes the browser storage listed in section 5 and sets no cookies.</li>
           <li>It talks only to the storage provider whose credentials the user supplies.</li>

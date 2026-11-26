@@ -74,7 +74,6 @@ export default function HeroSection({
   const priority = (theme: HeroTheme) =>
     promoted === theme ? ({ loading: 'eager', fetchPriority: 'high' } as const) : {};
 
-  // Use custom hook for GitHub stars
   const { stars } = useOpndriveStars();
 
   return (
@@ -241,12 +240,6 @@ export default function HeroSection({
                   >
                     {stars.toLocaleString()}
                   </span>
-                )}
-                {stars === null && (
-                  <div
-                    className="w-5 lg:w-6 h-3 lg:h-4 rounded animate-pulse"
-                    style={{ backgroundColor: 'var(--muted)' }}
-                  />
                 )}
               </a>
 

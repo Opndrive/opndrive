@@ -77,7 +77,7 @@ sequenceDiagram
    generally require).
 2. It verifies the credentials work against the bucket.
 3. Credentials are written to `localStorage` - never sent to any
-   Opndrive-operated server, because there isn't one.
+   Opndrive-operated server. The app has no server-side code that handles them.
 4. You're redirected to the dashboard.
 
 ## Switching Buckets

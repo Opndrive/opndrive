@@ -22,7 +22,15 @@
  * So: this materially reduces the chance of a script running at all, and does
  * little to contain one that does. That is the trade a bring-your-own-storage
  * design forces, and it is why `script-src` is worth the strictness.
+ *
+ * Public pages (the home page, the blog, the legal pages) have no such need,
+ * so they get a policy of their own where `connect-src` names its hosts: this
+ * site, and the analytics host only when a build has analytics configured. The
+ * app's policy never names the analytics host. See page-profile.ts for which
+ * page gets which, and why links into the app are full page loads.
  */
+
+import type { PageProfile } from './page-profile';
 
 export interface CspOptions {
   nonce: string;
@@ -36,6 +44,15 @@ export interface CspOptions {
    * `https:`, so a blanket policy blocks the app's core feature.
    */
   isSecureRequest: boolean;
+  /** Which policy: the app's broad one (the default) or a public page's. */
+  profile?: PageProfile;
+  /**
+   * The analytics ingestion origin, or null when analytics is not configured.
+   * Only public pages may connect to it.
+   */
+  analyticsOrigin?: string | null;
+  /** Where a blog post's own pictures load from: the WordPress host and its CDNs. */
+  blogImageOrigins?: readonly string[];
 }
 
 /**
@@ -74,7 +91,53 @@ function connectSrc(options: CspOptions): string {
   return `connect-src ${sources.join(' ')}`;
 }
 
+/** The origin of an https address, or null. Used for hosts read from the environment. */
+export function httpsOrigin(value: string | undefined | null): string | null {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A public page's policy. Nothing on these pages talks to a storage provider,
+ * so nothing here needs `https:` as a whole: each host is named.
+ */
+function publicPagePolicy(options: CspOptions): string {
+  const connect = ["'self'"];
+  if (options.analyticsOrigin) connect.push(options.analyticsOrigin);
+  if (options.isDevelopment) connect.push('ws:');
+
+  const pictures = [...(options.blogImageOrigins ?? [])];
+
+  const directives = [
+    "default-src 'self'",
+    scriptSrc(options),
+    `connect-src ${connect.join(' ')}`,
+    "style-src 'self' 'unsafe-inline'",
+    ['img-src', "'self'", 'blob:', 'data:', ...pictures].join(' '),
+    ['media-src', "'self'", ...pictures].join(' '),
+    "font-src 'self' data:",
+    "frame-src 'none'",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ];
+
+  if (options.isSecureRequest) directives.push('upgrade-insecure-requests');
+
+  return directives.join('; ');
+}
+
 export function buildContentSecurityPolicy(options: CspOptions): string {
+  if (options.profile === 'public') return publicPagePolicy(options);
+
   const remote = remoteSchemes(options).join(' ');
 
   const directives = [

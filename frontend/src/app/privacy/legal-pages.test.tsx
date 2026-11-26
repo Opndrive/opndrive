@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import PrivacyPolicyPage from './page';
 import TermsOfServicePage from '../terms/page';
 import { LEGAL_LAST_UPDATED, formatLegalDate } from '@/config/legal';
+import { ANALYTICS_EVENTS, ANALYTICS_FIELDS } from '@/lib/analytics/analytics-fields';
 
 const privacyHtml = renderToStaticMarkup(<PrivacyPolicyPage />);
 const termsHtml = renderToStaticMarkup(<TermsOfServicePage />);
@@ -40,8 +41,24 @@ describe('privacy policy', () => {
   });
 
   it('names the analytics rather than denying it', () => {
-    expect(privacyHtml).toContain('Vercel Web Analytics');
-    expect(privacyHtml).toContain('Speed Insights');
+    expect(privacyHtml).toContain('PostHog');
+    expect(privacyHtml).not.toContain('Vercel Web Analytics');
+    expect(privacyHtml).not.toContain('Speed Insights');
+  });
+
+  it('lists every event and every field the public pages send', () => {
+    for (const event of ANALYTICS_EVENTS) expect(privacyHtml).toContain(event.description);
+    for (const field of ANALYTICS_FIELDS) expect(privacyHtml).toContain(field.label);
+  });
+
+  it('says the app and self-hosted copies send nothing', () => {
+    expect(privacyHtml).toContain('send no analytics');
+    expect(privacyHtml).toContain('contains no analytics code');
+  });
+
+  it('names Do Not Track and Global Privacy Control', () => {
+    expect(privacyHtml).toContain('Do Not Track');
+    expect(privacyHtml).toContain('Global Privacy Control');
   });
 
   it('states the credential risk instead of glossing over it', () => {

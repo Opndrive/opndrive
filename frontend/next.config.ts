@@ -2,6 +2,20 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /**
+   * Analytics is off unless both of these are set when the site is built, and
+   * only our own production deployment sets them.
+   *
+   * Defined here so an unset variable becomes "" in the bundle rather than a
+   * lookup at run time. That is what lets the build see that analytics is off
+   * and leave its code out: PublicAnalytics reads both in a condition that
+   * folds to false, and the import of the sender goes with it. Self-hosted
+   * builds and the Docker image therefore carry no analytics code, key or host.
+   */
+  env: {
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY ?? '',
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '',
+  },
+  /**
    * Put the title, description, canonical and social tags in <head> for every
    * visitor, crawlers included.
    *

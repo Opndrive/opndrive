@@ -348,12 +348,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     your data.
                   </p>
 
-                  <Link
+                  {/* A plain link: the app loads as a new document, under its
+                      own security policy (see page-profile.ts). */}
+                  <a
                     href="/connect"
                     className="block w-full bg-primary hover:bg-primary/90 text-primary-foreground text-center font-semibold py-2.5 px-6 rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Get Started
-                  </Link>
+                  </a>
                 </div>
               </div>
             </div>
