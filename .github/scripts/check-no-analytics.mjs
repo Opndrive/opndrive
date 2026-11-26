@@ -18,12 +18,8 @@ import { join } from 'node:path';
 // outside the lint config's Node-environment globs.
 import process from 'node:process';
 
-const say = (line) =>
-  process.stdout.write(`${line}
-`);
-const complain = (line) =>
-  process.stderr.write(`${line}
-`);
+const say = (line) => process.stdout.write(`${line}\n`);
+const complain = (line) => process.stderr.write(`${line}\n`);
 
 const FORBIDDEN = [
   { pattern: /phc_[A-Za-z0-9]/, what: 'a PostHog project key' },
