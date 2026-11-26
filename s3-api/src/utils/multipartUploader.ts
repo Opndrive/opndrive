@@ -457,7 +457,14 @@ export class MultipartUploader {
             )
           );
 
-          this.completedParts.push({ ETag: ETag!, PartNumber: partNumber });
+          // S3 sends a part's ETag only as a response header, and a browser
+          // hides every header the bucket's CORS rules do not expose. Without
+          // the ETags the parts cannot be put together: S3 refuses the
+          // completion, after every byte has been sent. So the first part to
+          // come back without one stops the upload, with the reason.
+          if (!ETag) throw this.missingETagError();
+
+          this.completedParts.push({ ETag, PartNumber: partNumber });
           uploadedNumbers.add(partNumber);
 
           onProgress?.(Math.min(100, (uploadedNumbers.size / totalParts) * 100));
@@ -481,6 +488,18 @@ export class MultipartUploader {
     // resume() this. UploadManager does not: it aborts a failed upload, since
     // nothing there will ever resume it.
     if (failure) throw failure.error;
+  }
+
+  /**
+   * The failure for a part answered without an ETag. An UploadError, so it is
+   * never retried: it comes back the same until the bucket's CORS changes.
+   */
+  private missingETagError(): Error {
+    return uploadError(
+      `"${this.fileName}" could not be uploaded: the bucket's CORS rules do not expose the ` +
+        'ETag header, which uploads in parts need. Add ETag to ExposeHeaders in the ' +
+        "bucket's CORS configuration, then try again."
+    );
   }
 
   /** Aborts every request still in flight. */

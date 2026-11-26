@@ -384,3 +384,19 @@ describe('active download tracking', () => {
     expect(service.getActiveDownloads()).toEqual([]);
   });
 });
+
+describe('the saved blob', () => {
+  // A blob: URL is this site's origin. Typed text/html or image/svg+xml, a
+  // blob that were opened rather than saved would render here.
+  it('is typed so it can only ever be saved, never rendered', async () => {
+    const html = new TextEncoder().encode('<script>steal()</script>');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([html])));
+
+    await createDownloadService(makeApi()).downloadFile(makeFile());
+
+    const saved = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(saved.type).toBe('application/octet-stream');
+    expect(saved.size).toBe(html.byteLength);
+    expect(clicks[0].download).not.toBe('');
+  });
+});

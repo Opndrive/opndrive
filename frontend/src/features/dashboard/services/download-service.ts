@@ -154,8 +154,15 @@ class DownloadService {
     return new Blob(chunks as BlobPart[], contentType ? { type: contentType } : undefined);
   }
 
+  /**
+   * A blob: URL belongs to this site's origin, the one that holds the user's
+   * keys. Typed as the file's own type (text/html, image/svg+xml), a blob
+   * opened instead of saved would render here and could run script. The link
+   * only ever saves it, and the neutral type makes sure it could not render
+   * even if it were opened.
+   */
   private saveBlob(blob: Blob, fileName: string): void {
-    const objectUrl = URL.createObjectURL(blob);
+    const objectUrl = URL.createObjectURL(new Blob([blob], { type: 'application/octet-stream' }));
     try {
       clickDownloadLink(objectUrl, fileName);
     } finally {

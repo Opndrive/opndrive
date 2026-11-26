@@ -1787,3 +1787,34 @@ describe('cancel', () => {
     expect(uploadIdOf(uploader)).toBe('upload-1');
   });
 });
+
+describe('a bucket whose CORS rules hide the ETag header', () => {
+  // The browser drops every header CORS does not expose, so the SDK sees a
+  // part answered without an ETag. It used to push `undefined` and carry on,
+  // sending every part, for S3 to refuse the completion at the very end.
+  it('stops at the first part, with the reason, and sends no more', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({});
+    s3Mock.on(CompleteMultipartUploadCommand).resolves({});
+
+    const uploader = makeUploader({ concurrency: 1 });
+    const failure = await uploader.start(makeFile(30 * MB)).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toMatch(/ETag/);
+    expect((failure as Error).message).toMatch(/ExposeHeaders/);
+    expect(s3Mock.commandCalls(UploadPartCommand)).toHaveLength(1);
+    expect(s3Mock).not.toHaveReceivedCommand(CompleteMultipartUploadCommand);
+  });
+
+  it('is not retried, since it fails the same way every time', async () => {
+    s3Mock.on(CreateMultipartUploadCommand).resolves({ UploadId: 'upload-1' });
+    s3Mock.on(UploadPartCommand).resolves({});
+
+    const failure = await makeUploader()
+      .start(makeFile(6 * MB))
+      .catch((error: unknown) => error);
+
+    expect(isTransientUploadError(failure)).toBe(false);
+  });
+});
