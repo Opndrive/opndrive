@@ -49,6 +49,11 @@ backed by a headless WordPress instance over GraphQL:
 | `WORDPRESS_PREVIEW_USER`         | A WordPress user with the read-only "Opndrive previewer" role, for draft previews                          |
 | `WORDPRESS_PREVIEW_APP_PASSWORD` | That user's application password. Without it and the user, `/api/preview` answers 404                      |
 
+`WORDPRESS_AUTH_TOKEN` is deprecated. The blog needs no credential to read
+published posts, and it only shows published ones. It is still sent while it is
+set, for a WPGraphQL endpoint restricted to signed-in users; turn that
+restriction off and unset it.
+
 The WordPress side of all three is in
 [`wordpress/`](https://github.com/Opndrive/opndrive/tree/main/wordpress): two
 small must-use plugins and how to install them.

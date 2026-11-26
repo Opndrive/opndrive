@@ -87,12 +87,20 @@ export async function fetchGraphQL<T>(
 
   const { WORDPRESS_API_URL } = getWordPressConfig();
 
-  // No credential here. Everything the public blog shows is published and
-  // public, and a logged-in request could be answered with a draft: a post
-  // looked up by slug that is still unpublished. Only the preview, below,
-  // signs in, and it never shares a cache with these requests.
-  const headers: HeadersInit = {
+  // Everything the public blog shows is published and public, so its
+  // requests need no credential, and should have none: a signed-in lookup can
+  // be answered with a draft. WORDPRESS_AUTH_TOKEN is still sent while it is
+  // set, only so a WordPress that refuses anonymous requests keeps working
+  // until it is changed; it is deprecated, and once it is unset nothing here
+  // signs in. Either way the public pages never show an unpublished post: the
+  // lists ask for published posts only, and getPostBySlug drops anything else.
+  // The preview (below) signs in as its own user and is never cached.
+  const legacyToken = process.env.WORDPRESS_AUTH_TOKEN;
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...(legacyToken && !options.headers?.Authorization
+      ? { Authorization: `Bearer ${legacyToken}` }
+      : {}),
     ...options.headers,
   };
 

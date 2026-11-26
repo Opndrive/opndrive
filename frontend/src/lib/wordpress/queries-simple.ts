@@ -202,6 +202,7 @@ export const GET_POST_BY_SLUG = `
   query GetPostBySlug($slug: ID!) {
     post(id: $slug, idType: SLUG) {
       ...PostFields
+      status
     }
   }
   ${POST_FIELDS}

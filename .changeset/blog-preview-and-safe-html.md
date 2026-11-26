@@ -21,7 +21,9 @@ Draft previews, instant updates on publish, and sanitized post HTML
   `javascript:` links are removed; text, headings, links, tables, code, figures
   and responsive pictures are kept. If rendering fails, the fallback is
   sanitized too, never the raw HTML.
-- **The public blog no longer signs in to WordPress.** Published posts are
-  public, and a signed-in request could have been answered with a draft.
-  `WORDPRESS_AUTH_TOKEN` is no longer read; only the preview signs in, with its
-  own read-only user.
+- **A draft can never appear on a public page.** A post looked up by its address
+  is shown only when WordPress says it is published, and the blog needs no
+  WordPress credential: `WORDPRESS_AUTH_TOKEN` is deprecated. It is still sent
+  while set, so a WordPress that refuses anonymous requests keeps working; once
+  it is unset, no public request signs in. Only the preview signs in, as its own
+  read-only user.

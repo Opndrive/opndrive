@@ -206,7 +206,9 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
     `post-${slug}`,
   ]);
 
-  if (!data.post) {
+  // Only ever a published post on a public page, whoever WordPress thinks is
+  // asking. A draft found by its slug is a 404 here, never a page.
+  if (!data.post || (data.post.status && data.post.status !== 'publish')) {
     return null;
   }
 
