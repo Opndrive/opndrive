@@ -373,7 +373,12 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               try {
                 setActiveRenames((prev) => new Set(prev).add(folderId));
 
-                const uniqueName = await renameService.findUniqueFolderName(newName, currentPath);
+                // A free name where the folder is, like the check above: one
+                // free only in the open folder would merge into a taken one.
+                const uniqueName = await renameService.findUniqueFolderName(
+                  newName,
+                  folderParentPath(folder, currentPath)
+                );
 
                 const undoRename = applyRename(folder, 'folder', uniqueName);
 

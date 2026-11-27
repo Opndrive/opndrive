@@ -49,14 +49,15 @@ export interface ChunkedItemsResult<T> {
  *
  * @param items - All items to display
  * @param options - Configuration options
- * @param resetDependency - A value that starts over at the first chunk when it changes (the query)
+ * @param resetDependency - A key that identifies the list (for search, the query and its
+ *   scope); a new value starts over at the first chunk
  *
  * @example
  * ```tsx
  * const { displayedItems, sentinelRef, canLoadMoreChunks } = useChunkedItems(
  *   allResults,
  *   { chunkSize: 100 },
- *   query
+ *   `${query}::${scope}`
  * );
  * ```
  */

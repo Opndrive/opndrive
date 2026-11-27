@@ -4,6 +4,7 @@ import { useEffect, useState, Fragment, useMemo } from 'react';
 import { Search, ArrowLeft, X, FolderOpen, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/features/dashboard/hooks/use-search';
+import { useSearchStore } from '@/features/dashboard/stores/use-search-store';
 import { SearchInput } from '@/features/dashboard/components/views/search/search-input';
 import { Button } from '@/shared/components/ui/button';
 import { FileItemList, FileItemGrid, FileItemMobile } from '@/features/dashboard/components/ui';
@@ -60,6 +61,7 @@ export default function SearchPage() {
   const { value: query, isHydrated: queryReady } = usePrivateParam(PRIVATE_PARAM_QUERY);
   const { layout: viewMode } = useCurrentLayout();
   const currentPrefix = useDriveStore((state) => state.currentPrefix);
+  const resultScope = useSearchStore((state) => state.currentPrefix);
   const [showCreditWarning, setShowCreditWarning] = useState(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -224,8 +226,10 @@ export default function SearchPage() {
     }) || [];
 
   // Use chunked display for performance with large result sets. A new query
-  // or a new scope is a new list, and starts again at the first chunk.
-  const resultSet = `${query}::${currentPrefix ?? ''}`;
+  // or a new scope is a new list, and starts again at the first chunk. The
+  // scope is the one the results were fetched for, kept by the search store,
+  // not the drive's: that can change without the results changing.
+  const resultSet = `${query}::${resultScope ?? ''}`;
   const {
     displayedItems: displayedFolders,
     canLoadMoreChunks: canLoadMoreFolderChunks,
