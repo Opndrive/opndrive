@@ -20,6 +20,7 @@ import type { Metadata, MetadataRoute } from 'next';
 import { isWordPressConfigured } from './client';
 import { getPostSummaries } from './service';
 import type { BlogPost, BlogPostSummary } from './types';
+import { authorPath, hasHub, hubPath } from './seo-text';
 
 /**
  * How many posts the blog index asks WordPress for: all of them, in practice.
@@ -167,31 +168,51 @@ export function blogIndexRobots(postCount: number | null): NonNullable<Metadata[
 }
 
 /**
- * Sitemap entries for the blog: none until a post exists, then the index and
- * every post. With `posts` null (WordPress could not be reached) the index
- * stays listed and the posts are left for the next rebuild, rather than the
- * blog vanishing from the sitemap for an hour.
+ * Sitemap entries for the blog: none until a post exists, then the index,
+ * every post, every author with a published post, and every topic with a hub
+ * (see hasHub). With `posts` null (WordPress could not be reached) the index
+ * stays listed and the rest is left for the next rebuild, rather than the blog
+ * vanishing from the sitemap for an hour.
  *
  * Posts carry the date WordPress last modified them, which is a real per-page
- * date and so worth giving Google. The index does not have one of its own, so
- * it carries none rather than a made-up one.
+ * date and so worth giving Google. An author or topic page changes when one of
+ * its posts does, so it carries the newest of their dates. The index carries
+ * none rather than a made-up one.
  */
 export function blogSitemapEntries(
-  posts: ReadonlyArray<Pick<BlogPost, 'slug' | 'modifiedDate'>> | null,
+  posts: ReadonlyArray<
+    Pick<BlogPost, 'slug' | 'modifiedDate'> & {
+      authorSlug?: string;
+      categories?: ReadonlyArray<{ slug: string; count?: number | null }>;
+    }
+  > | null,
   siteUrl: string
 ): MetadataRoute.Sitemap {
   if (posts === null) return [{ url: `${siteUrl}/blog` }];
   if (posts.length === 0) return [];
 
+  const dated = (url: string, date: Date | null) =>
+    date && !Number.isNaN(date.getTime()) ? { url, lastModified: date } : { url };
+
+  /** The newest modified date per author page and per hub, in first-seen order. */
+  const newest = new Map<string, Date | null>();
+  const consider = (path: string, date: Date) => {
+    const valid = Number.isNaN(date.getTime()) ? null : date;
+    const known = newest.get(path) ?? null;
+    newest.set(path, valid && known ? (valid > known ? valid : known) : (valid ?? known));
+  };
+
+  for (const post of posts) {
+    const modified = new Date(post.modifiedDate);
+    if (post.authorSlug) consider(authorPath(post.authorSlug), modified);
+    for (const category of post.categories ?? []) {
+      if (hasHub(category)) consider(hubPath(category.slug), modified);
+    }
+  }
+
   return [
     { url: `${siteUrl}/blog` },
-    ...posts.map((post) => {
-      const modified = new Date(post.modifiedDate);
-
-      return {
-        url: `${siteUrl}/blog/${post.slug}`,
-        ...(Number.isNaN(modified.getTime()) ? {} : { lastModified: modified }),
-      };
-    }),
+    ...posts.map((post) => dated(`${siteUrl}/blog/${post.slug}`, new Date(post.modifiedDate))),
+    ...[...newest].map(([path, date]) => dated(`${siteUrl}${path}`, date)),
   ];
 }

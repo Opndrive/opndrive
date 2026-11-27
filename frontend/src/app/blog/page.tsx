@@ -51,8 +51,9 @@ function baseMetadata(page: number): Metadata {
 
   return {
     title: `${BLOG_TITLE}${pageSuffix} | Opndrive`,
-    description:
-      'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides. Expert tutorials and insights for managing your data effectively.',
+    // One description everywhere: this tag, Open Graph, Twitter and the Blog
+    // structured data all read SEO_CONFIG.blog.description.
+    description: SEO_CONFIG.blog.description,
     keywords:
       'cloud storage blog, s3 tutorials, file management tips, cloud storage guides, opndrive blog, storage optimization, data management',
     authors: [{ name: 'Opndrive Team', url: 'https://opndrive.app' }],

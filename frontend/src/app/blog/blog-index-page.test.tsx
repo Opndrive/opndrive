@@ -33,11 +33,12 @@ function summary(n: number): BlogPostSummary {
     slug: `post-${n}`,
     title: `Post number ${n}`,
     excerpt: `What post ${n} is about.`,
+    description: `What post ${n} is about.`,
     publishedDate: '2026-11-01T03:30:00Z',
     publishedDateLocal: '2026-11-01T09:00:00',
     modifiedDate: '2026-11-02T04:30:00Z',
     modifiedDateLocal: '2026-11-02T10:00:00',
-    author: { name: 'Opndrive' },
+    author: { name: 'Opndrive', sameAs: [] },
     categories: [],
     tags: [],
   };

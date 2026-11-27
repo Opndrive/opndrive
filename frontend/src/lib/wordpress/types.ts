@@ -1,3 +1,5 @@
+import type { AuthorSocial } from './seo-text';
+
 /**
  * WordPress GraphQL Types
  * Type-safe definitions for WordPress content
@@ -30,15 +32,22 @@ export interface WordPressPost {
 }
 
 export interface WordPressAuthor {
-  node: {
-    name: string;
-    firstName?: string;
-    lastName?: string;
-    avatar?: {
-      url: string;
-    };
-    description?: string;
-  };
+  node: WordPressUser;
+}
+
+/** A WordPress user, as the author fragment and the author query return it. */
+export interface WordPressUser {
+  name: string;
+  slug?: string;
+  /** The website on their profile. */
+  url?: string | null;
+  firstName?: string;
+  lastName?: string;
+  avatar?: {
+    url: string;
+  } | null;
+  description?: string | null;
+  seo?: { social?: AuthorSocial | null } | null;
 }
 
 export interface WordPressFeaturedImage {
@@ -74,6 +83,8 @@ export interface CategoryNode {
   id: string;
   name: string;
   slug: string;
+  /** Published posts in the category, as WordPress counts them. */
+  count?: number | null;
 }
 
 export interface TagNode {
@@ -115,8 +126,10 @@ export interface WordPressPostsResponse {
   };
 }
 
-/** A post as GET_POST_SUMMARIES returns it: no body, tags or SEO fields. */
-export type WordPressPostSummary = Omit<WordPressPost, 'content' | 'tags' | 'seo'>;
+/** A post as GET_POST_SUMMARIES returns it: no body or tags, and only the SEO description. */
+export type WordPressPostSummary = Omit<WordPressPost, 'content' | 'tags' | 'seo'> & {
+  seo?: Pick<WordPressSEO, 'metaDesc'> | null;
+};
 
 export interface WordPressPostSummariesResponse {
   posts: {
@@ -134,6 +147,27 @@ export interface WordPressPostResponse {
 
 export interface WordPressPostBySlugResponse {
   post: WordPressPost | null;
+  /** WordPress's own site name, which Yoast's title templates end with. */
+  generalSettings?: { title?: string | null } | null;
+}
+
+export interface WordPressAuthorResponse {
+  user:
+    | (WordPressUser & {
+        slug: string;
+        posts: { nodes: WordPressPostSummary[] };
+      })
+    | null;
+}
+
+export interface WordPressCategoryHubResponse {
+  category: {
+    name: string;
+    slug: string;
+    description?: string | null;
+    count?: number | null;
+    posts: { nodes: WordPressPostSummary[] };
+  } | null;
 }
 
 // Simplified types for frontend consumption
@@ -165,11 +199,12 @@ export interface BlogPost {
    * showing to readers, for the same reason as `publishedDateLocal`.
    */
   modifiedDateLocal: string;
-  author: {
-    name: string;
-    avatar?: string;
-    bio?: string;
-  };
+  author: BlogAuthor;
+  /**
+   * What search results show under the title: the Yoast meta description in
+   * full, or the excerpt cut at a word under 160 characters.
+   */
+  description: string;
   featuredImage?: {
     url: string;
     alt: string;
@@ -180,6 +215,8 @@ export interface BlogPost {
     id: string;
     name: string;
     slug: string;
+    /** Published posts in it; decides whether it has a hub page. */
+    count?: number;
   }>;
   tags: Array<{
     id: string;
@@ -187,15 +224,26 @@ export interface BlogPost {
     slug: string;
   }>;
   seo: {
+    /** The Yoast search title, for <title>, og:title and twitter:title. */
     title: string;
+    /** The same as `description`, for every description tag. */
     description: string;
-    ogTitle?: string;
-    ogDescription?: string;
     ogImage?: string;
-    canonical?: string;
     noindex?: boolean;
     nofollow?: boolean;
   };
+}
+
+/** Who wrote a post, as the byline, the profile page and the structured data show them. */
+export interface BlogAuthor {
+  name: string;
+  /** The WordPress user's slug, which names their profile at /blog/author/<slug>. */
+  slug?: string;
+  avatar?: string;
+  /** Plain text; empty when the profile has none. */
+  bio?: string;
+  /** Their website and social profiles, for the structured data's `sameAs`. */
+  sameAs: string[];
 }
 
 /**

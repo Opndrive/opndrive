@@ -27,8 +27,10 @@ export const SEO_CONFIG = {
   // Blog Specific
   blog: {
     title: 'Opndrive Blog - Cloud Storage Insights & Tutorials',
+    // What the blog covers, for the index page's description and the Blog
+    // structured data. Between 120 and 155 characters.
     description:
-      'Learn about cloud storage management, S3 best practices, file organization tips, and productivity guides for managing your data effectively.',
+      'Practical guides to S3-compatible storage: fix CORS, presigned URL and signature errors, scope IAM access to one bucket, and run MinIO yourself.',
     ogImage: '/og-blog.png', // Create this image
     articlesPerPage: 10,
   },

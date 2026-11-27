@@ -6,12 +6,12 @@ import { getRenderedPostContent } from '@/lib/blog-content/render';
 import { coverImageFor } from '@/lib/blog-cover/cover-url';
 import { StructuredData } from '@/components/seo';
 import { BlogPostArticle } from '@/components/blog/blog-post-article';
+import { authorPath, hubFor, hubPath } from '@/lib/wordpress/seo-text';
 import {
   generateBlogPostingSchema,
   generateBreadcrumbSchema,
   generateFaqPageSchema,
   getAbsoluteUrl,
-  optimizeDescription,
   generateKeywords,
 } from '@/lib/seo';
 import { isBlogEnabled } from '@/config/features';
@@ -67,8 +67,9 @@ export async function generateMetadata({
     };
   }
 
-  // Optimize description length for SEO
-  const optimizedDescription = optimizeDescription(post.seo.description);
+  // Yoast's search title and description, whole: <title>, Open Graph and
+  // Twitter all say the same thing. See transformPost for the fallbacks.
+  const { title, description } = post.seo;
 
   // Generate comprehensive keywords
   const keywords = generateKeywords(
@@ -98,13 +99,13 @@ export async function generateMetadata({
       };
 
   return {
-    title: post.seo.title,
-    description: optimizedDescription,
+    title,
+    description,
     keywords: keywords,
     authors: [
       {
         name: post.author.name,
-        url: getAbsoluteUrl('/blog'),
+        url: getAbsoluteUrl(post.author.slug ? authorPath(post.author.slug) : '/blog'),
       },
     ],
     creator: post.author.name,
@@ -112,8 +113,8 @@ export async function generateMetadata({
 
     // Open Graph
     openGraph: {
-      title: post.seo.ogTitle || post.seo.title,
-      description: post.seo.ogDescription || optimizedDescription,
+      title,
+      description,
       type: 'article',
       publishedTime: post.publishedDate,
       modifiedTime: post.modifiedDate,
@@ -131,16 +132,18 @@ export async function generateMetadata({
     // Twitter Card
     twitter: {
       card: 'summary_large_image',
-      title: post.seo.ogTitle || post.seo.title,
-      description: post.seo.ogDescription || optimizedDescription,
+      title,
+      description,
       images: [shareImage.url],
       creator: '@opndrive',
       site: '@opndrive',
     },
 
-    // Canonical URL, and the blog's feed for readers who land on a post
+    // Canonical URL, and the blog's feed for readers who land on a post.
+    // Always the post's own address here: Yoast's canonical is the address
+    // on the WordPress server, and is not asked for.
     alternates: {
-      canonical: post.seo.canonical || absoluteUrl,
+      canonical: absoluteUrl,
       types: {
         'application/rss+xml': [
           { url: getAbsoluteUrl('/blog/rss.xml'), title: 'Opndrive Blog RSS Feed' },
@@ -210,11 +213,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   // Generate structured data for SEO
   const cover = coverImageFor(post);
+  const hub = hubFor(post.categories);
   const structuredData: Array<Record<string, unknown>> = [
     generateBlogPostingSchema(post, cover),
     generateBreadcrumbSchema([
       { name: 'Home', url: '/' },
       { name: 'Blog', url: '/blog' },
+      // The post's topic, once that topic has a hub page of its own.
+      ...(hub ? [{ name: hub.name, url: hubPath(hub.slug) }] : []),
       { name: post.title, url: `/blog/${post.slug}` },
     ]),
     // The questions the post's own FAQ section answers, as it shows them.

@@ -134,3 +134,38 @@ describe('paginateBlogIndex', () => {
     expect(paginateBlogIndex([], 1)).toEqual({ featured: null, posts: [], totalPages: 0 });
   });
 });
+
+describe('blogSitemapEntries for authors and topics', () => {
+  const site = 'https://opndrive.app';
+  const post = (slug: string, modifiedDate: string, count: number) => ({
+    slug,
+    modifiedDate,
+    authorSlug: 'yash',
+    categories: [{ slug: 'troubleshooting', count }],
+  });
+
+  it('lists each author once, dated by their newest post', () => {
+    const entries = blogSitemapEntries(
+      [post('a', '2026-11-21T00:00:00Z', 2), post('b', '2026-11-26T00:00:00Z', 2)],
+      site
+    );
+    const authorEntries = entries.filter((entry) => entry.url.includes('/blog/author/'));
+
+    expect(authorEntries).toEqual([
+      {
+        url: 'https://opndrive.app/blog/author/yash',
+        lastModified: new Date('2026-11-26T00:00:00Z'),
+      },
+    ]);
+  });
+
+  it('lists a topic only once it has a hub', () => {
+    const without = blogSitemapEntries([post('a', '2026-11-21T00:00:00Z', 2)], site);
+    const withHub = blogSitemapEntries([post('a', '2026-11-21T00:00:00Z', 3)], site);
+
+    expect(without.some((entry) => entry.url.includes('/blog/category/'))).toBe(false);
+    expect(withHub.map((entry) => entry.url)).toContain(
+      'https://opndrive.app/blog/category/troubleshooting'
+    );
+  });
+});

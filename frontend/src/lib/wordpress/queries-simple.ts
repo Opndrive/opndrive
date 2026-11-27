@@ -1,6 +1,11 @@
 /**
- * WordPress GraphQL Queries - Simplified Version
- * Works without Yoast SEO plugin
+ * WordPress GraphQL Queries.
+ *
+ * The blog's WordPress runs Yoast SEO with WPGraphQL for Yoast SEO, which adds
+ * the `seo` fields below: the search title and description editors set in
+ * Yoast, its robots choices, and the social profiles on a user. Yoast's
+ * `canonical` is deliberately not asked for: it is the post's address on the
+ * WordPress server, and a post's canonical is always its own address here.
  */
 
 /**
@@ -10,12 +15,24 @@ export const AUTHOR_FRAGMENT = `
   fragment AuthorFields on NodeWithAuthorToUserConnectionEdge {
     node {
       name
+      slug
+      url
       firstName
       lastName
       avatar {
         url
       }
       description
+      seo {
+        social {
+          twitter
+          linkedIn
+          facebook
+          youTube
+          wikipedia
+          instagram
+        }
+      }
     }
   }
 `;
@@ -62,6 +79,7 @@ export const POST_FIELDS = `
         id
         name
         slug
+        count
       }
     }
     tags {
@@ -69,6 +87,15 @@ export const POST_FIELDS = `
         id
         name
         slug
+      }
+    }
+    seo {
+      title
+      metaDesc
+      metaRobotsNoindex
+      metaRobotsNofollow
+      opengraphImage {
+        sourceUrl
       }
     }
   }
@@ -103,7 +130,11 @@ export const POST_SUMMARY_FIELDS = `
         id
         name
         slug
+        count
       }
+    }
+    seo {
+      metaDesc
     }
   }
 `;
@@ -204,6 +235,9 @@ export const GET_POST_BY_SLUG = `
       ...PostFields
       status
     }
+    generalSettings {
+      title
+    }
   }
   ${POST_FIELDS}
   ${AUTHOR_FRAGMENT}
@@ -219,6 +253,9 @@ export const GET_PREVIEW_POST = `
   query GetPreviewPost($id: ID!) {
     post(id: $id, idType: DATABASE_ID) {
       ...PostFields
+    }
+    generalSettings {
+      title
     }
   }
   ${POST_FIELDS}
@@ -236,6 +273,20 @@ export const GET_ALL_POST_SLUGS = `
       nodes {
         slug
         modifiedGmt
+        author {
+          node {
+            slug
+          }
+        }
+        categories {
+          nodes {
+            slug
+            count
+          }
+        }
+        seo {
+          metaRobotsNoindex
+        }
       }
       pageInfo {
         hasNextPage
@@ -293,6 +344,67 @@ export const GET_POSTS_BY_TAG = `
     }
   }
   ${POST_FIELDS}
+  ${AUTHOR_FRAGMENT}
+  ${FEATURED_IMAGE_FRAGMENT}
+`;
+
+/**
+ * An author's profile: who they are and what they have published, newest
+ * first. WPGraphQL only shows a user who has published something, so an
+ * author with no posts is not found.
+ */
+export const GET_AUTHOR = `
+  query GetAuthor($slug: ID!) {
+    user(id: $slug, idType: SLUG) {
+      name
+      slug
+      url
+      description
+      avatar(size: 192) {
+        url
+      }
+      seo {
+        social {
+          twitter
+          linkedIn
+          facebook
+          youTube
+          wikipedia
+          instagram
+        }
+      }
+      posts(first: 100, where: { status: PUBLISH, orderby: { field: DATE, order: DESC } }) {
+        nodes {
+          ...PostSummaryFields
+        }
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+  ${AUTHOR_FRAGMENT}
+  ${FEATURED_IMAGE_FRAGMENT}
+`;
+
+/**
+ * A topic's hub: the category, its description and its published posts,
+ * newest first. `count` is WordPress's count of the category's published
+ * posts, which is what decides whether it has a hub at all.
+ */
+export const GET_CATEGORY_HUB = `
+  query GetCategoryHub($slug: ID!) {
+    category(id: $slug, idType: SLUG) {
+      name
+      slug
+      description
+      count
+      posts(first: 100, where: { status: PUBLISH, orderby: { field: DATE, order: DESC } }) {
+        nodes {
+          ...PostSummaryFields
+        }
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
   ${AUTHOR_FRAGMENT}
   ${FEATURED_IMAGE_FRAGMENT}
 `;

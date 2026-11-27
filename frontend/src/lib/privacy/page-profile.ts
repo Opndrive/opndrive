@@ -14,7 +14,13 @@
  */
 export type PageProfile = 'public' | 'app';
 
-const PUBLIC_PAGES = [/^\/$/, /^\/blog(\/[^/]+)?\/?$/, /^\/(privacy|terms)\/?$/];
+const PUBLIC_PAGES = [
+  /^\/$/,
+  /^\/blog(\/[^/]+)?\/?$/,
+  // Author profiles and topic hubs.
+  /^\/blog\/(author|category)\/[^/]+\/?$/,
+  /^\/(privacy|terms)\/?$/,
+];
 
 export function pageProfileFor(pathname: string): PageProfile {
   return PUBLIC_PAGES.some((pattern) => pattern.test(pathname)) ? 'public' : 'app';

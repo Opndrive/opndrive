@@ -4,7 +4,8 @@
  */
 
 import { SEO_CONFIG } from './config';
-import type { BlogPost, BlogPostSummary } from '@/lib/wordpress/types';
+import type { BlogAuthor, BlogPost, BlogPostSummary } from '@/lib/wordpress/types';
+import { authorPath, hubPath } from '@/lib/wordpress/seo-text';
 import { coverImageFor, type CoverImage } from '@/lib/blog-cover/cover-url';
 import { countWords } from '@/lib/wordpress/utils';
 
@@ -66,13 +67,68 @@ function absolute(url: string): string {
 }
 
 /**
- * Who wrote a post. The posts are published under the "Opndrive" account, which
- * is the organisation itself, not a person; calling it a Person would be false.
+ * Who wrote a post: a Person, with their profile page on this blog, their
+ * bio and their own pages elsewhere, all from their WordPress profile. The
+ * organisation is the publisher, not the author.
  */
-function postAuthor(name: string) {
-  return name === SEO_CONFIG.organization.name
-    ? { '@type': 'Organization', name, url: SEO_CONFIG.organization.url }
-    : { '@type': 'Person', name };
+export function authorPerson(author: BlogAuthor) {
+  return {
+    '@type': 'Person',
+    name: author.name,
+    ...(author.slug ? { url: absolute(authorPath(author.slug)) } : {}),
+    ...(author.bio ? { description: author.bio } : {}),
+    ...(author.sameAs.length ? { sameAs: author.sameAs } : {}),
+  };
+}
+
+/**
+ * An author's profile page: the person, and the posts the page lists.
+ * ProfilePage is the type Google reads for a page about one person.
+ */
+export function generateProfilePageSchema(
+  author: BlogAuthor & { slug: string },
+  posts: ReadonlyArray<Pick<BlogPostSummary, 'slug' | 'title' | 'publishedDate'>>
+) {
+  const url = absolute(authorPath(author.slug));
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ProfilePage',
+    '@id': `${url}#profile`,
+    url,
+    mainEntity: { ...authorPerson(author), '@id': `${url}#person` },
+    hasPart: posts.map((post) => ({
+      '@type': 'BlogPosting',
+      headline: post.title,
+      url: postUrl(post.slug),
+      datePublished: post.publishedDate,
+    })),
+  };
+}
+
+/** A topic's hub: a collection of the posts it lists, part of the blog. */
+export function generateCollectionPageSchema(
+  hub: { name: string; slug: string; description: string },
+  posts: ReadonlyArray<Pick<BlogPostSummary, 'slug' | 'title'>>
+) {
+  const url = absolute(hubPath(hub.slug));
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    '@id': `${url}#hub`,
+    url,
+    name: hub.name,
+    ...(hub.description ? { description: hub.description } : {}),
+    isPartOf: { '@id': BLOG_ID },
+    mainEntity: {
+      '@type': 'ItemList',
+      itemListElement: posts.map((post, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: postUrl(post.slug),
+        name: post.title,
+      })),
+    },
+  };
 }
 
 /**
@@ -148,7 +204,7 @@ export function generateBlogPostingSchema(post: BlogPost, cover: CoverImage) {
     },
     datePublished: post.publishedDate,
     dateModified: post.modifiedDate,
-    author: postAuthor(post.author.name),
+    author: authorPerson(post.author),
     publisher: PUBLISHER,
     mainEntityOfPage: {
       '@type': 'WebPage',

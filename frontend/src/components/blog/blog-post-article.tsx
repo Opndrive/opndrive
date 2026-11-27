@@ -16,6 +16,7 @@ import { TOC_MIN_SECTIONS } from '@/lib/blog-content/headings';
 import FAQSection from '@/features/landing-page/components/faq-section';
 import CTASection from '@/features/landing-page/components/cta-section';
 import { getAbsoluteUrl } from '@/lib/seo';
+import { authorPath, hubFor, hubPath } from '@/lib/wordpress/seo-text';
 
 /**
  * A post as readers see it: the published page and the editors' preview both
@@ -38,6 +39,8 @@ export function BlogPostArticle({
 }) {
   const isPreview = previewNotice !== undefined;
   const cover = coverImageFor(post);
+  // The topic's hub, once it has one: the breadcrumb leads there.
+  const hub = hubFor(post.categories);
 
   // Calculate reading time
   const readingTime = getReadingTime(post.content);
@@ -79,6 +82,16 @@ export function BlogPostArticle({
                 Blog
               </Link>
             </li>
+            {hub ? (
+              <>
+                <li aria-hidden="true">/</li>
+                <li>
+                  <Link href={hubPath(hub.slug)} className="hover:text-foreground hover:underline">
+                    {hub.name}
+                  </Link>
+                </li>
+              </>
+            ) : null}
           </ol>
         </nav>
 
@@ -97,7 +110,20 @@ export function BlogPostArticle({
 
         {/* Meta Info. Wraps on a narrow screen rather than running off it. */}
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-8">
-          <span>by {post.author.name}</span>
+          <span>
+            by{' '}
+            {post.author.slug ? (
+              <Link
+                href={authorPath(post.author.slug)}
+                rel="author"
+                className="font-medium text-foreground hover:underline"
+              >
+                {post.author.name}
+              </Link>
+            ) : (
+              post.author.name
+            )}
+          </span>
           <span aria-hidden="true">|</span>
           <time dateTime={post.publishedDate}>{formatDate(post.publishedDateLocal)}</time>
           {updated ? (

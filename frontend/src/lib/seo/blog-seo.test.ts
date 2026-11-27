@@ -18,12 +18,13 @@ const post: BlogPost = {
   slug: 'fix-signature',
   title: 'Fix SignatureDoesNotMatch',
   excerpt: 'Compare signed and sent headers.',
+  description: 'Compare signed and sent headers.',
   content: '<p>One <strong>two</strong> three.</p><pre><code>four five</code></pre>',
   publishedDate: '2026-11-21T03:30:00Z',
   publishedDateLocal: '2026-11-21T09:00:00',
   modifiedDate: '2026-11-22T03:30:00Z',
   modifiedDateLocal: '2026-11-22T09:00:00',
-  author: { name: 'Opndrive' },
+  author: { name: 'Yash Sangwan', slug: 'yash', bio: '', sameAs: [] },
   categories: [{ id: 'c', name: 'Troubleshooting', slug: 'troubleshooting' }],
   tags: [],
   seo: { title: 'Fix SignatureDoesNotMatch', description: 'Compare signed and sent headers.' },
@@ -43,25 +44,42 @@ describe('generateBlogPostingSchema', () => {
     expect(schema.isPartOf).toEqual({ '@id': 'https://opndrive.app/blog#blog' });
   });
 
-  it('credits the organisation as an organisation, with no link to a missing page', () => {
+  it('credits the author as a person, linked to their profile page', () => {
     expect(schema.author).toEqual({
-      '@type': 'Organization',
-      name: 'Opndrive',
-      url: 'https://opndrive.app',
+      '@type': 'Person',
+      name: 'Yash Sangwan',
+      url: 'https://opndrive.app/blog/author/yash',
     });
-    expect(JSON.stringify(schema)).not.toContain('/about');
+  });
+
+  it('keeps the organisation as the publisher', () => {
+    expect(schema.publisher).toMatchObject({ '@type': 'Organization', name: 'Opndrive' });
   });
 
   it('counts the words of the text, not of its markup', () => {
     expect(schema.wordCount).toBe(5);
   });
 
-  it('calls a named writer a person', () => {
-    const byPerson = generateBlogPostingSchema(
-      { ...post, author: { name: 'Yash' } },
+  it('carries the bio and the links from the author profile when there are any', () => {
+    const withProfile = generateBlogPostingSchema(
+      {
+        ...post,
+        author: {
+          name: 'Yash Sangwan',
+          slug: 'yash',
+          bio: 'Builds Opndrive.',
+          sameAs: ['https://github.com/yash'],
+        },
+      },
       coverImageFor(post)
     );
-    expect(byPerson.author).toEqual({ '@type': 'Person', name: 'Yash' });
+    expect(withProfile.author).toEqual({
+      '@type': 'Person',
+      name: 'Yash Sangwan',
+      url: 'https://opndrive.app/blog/author/yash',
+      description: 'Builds Opndrive.',
+      sameAs: ['https://github.com/yash'],
+    });
   });
 });
 
