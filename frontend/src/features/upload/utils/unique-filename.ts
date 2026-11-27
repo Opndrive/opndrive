@@ -13,20 +13,6 @@ export async function generateUniqueFileName(
   originalName: string,
   currentPath: string
 ): Promise<string> {
-  const generateS3Key = (fileName: string, path: string): string => {
-    let cleanPath = path;
-    if (cleanPath.startsWith('/')) {
-      cleanPath = cleanPath.slice(1);
-    }
-    if (!cleanPath || cleanPath === '' || cleanPath === '/') {
-      return fileName;
-    }
-    if (!cleanPath.endsWith('/')) {
-      cleanPath = `${cleanPath}/`;
-    }
-    return `${cleanPath}${fileName}`;
-  };
-
   // Deliberately not caught. This picks the name an upload is written to, so
   // reading a failed check as "free" hands back a name that may well be in use
   // - and "keep both" then overwrites the very file it was asked to keep. A

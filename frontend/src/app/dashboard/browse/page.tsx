@@ -4,7 +4,6 @@ import { useScroll } from '@/context/scroll-context';
 import { DriveList } from '@/features/dashboard/components/views/drive/drive-list';
 import { DashboardLoading } from '@/features/dashboard/components/ui/skeletons/dashboard-skeleton';
 import { Folder } from '@/features/dashboard/types/folder';
-import { FileItem } from '@/features/dashboard/types/file';
 import { useDriveStore, useDirectoryState, useCurrentListing } from '@/context/data-context';
 import { entryCount } from '@/context/folder-listing';
 import { AsyncBoundary } from '@/shared/components/ui/async-boundary';
@@ -155,12 +154,6 @@ function BrowsePageContent() {
     }
   };
 
-  const handleFolderMenuClick = (_folder: Folder, _event: React.MouseEvent) => {};
-
-  const handleFileClick = (_file: FileItem) => {};
-
-  const handleFileAction = (_action: string, _file: FileItem) => {};
-
   const handleFilesDroppedToDirectoryWrapper = useCallback(
     async (processedData: ProcessedDragData) => {
       await dispatchDrop(processedData, currentPrefix ?? '', apiS3);
@@ -310,9 +303,6 @@ function BrowsePageContent() {
                 initialScrollOffset={data.scrollOffset}
                 label={`Contents of ${currentFolderName}`}
                 onFolderClick={handleFolderClick}
-                onFolderMenuClick={handleFolderMenuClick}
-                onFileClick={handleFileClick}
-                onFileAction={handleFileAction}
                 onFilesDropped={handleFilesDroppedToDirectoryWrapper}
                 onFilesDroppedToFolder={handleFilesDroppedToFolderWrapper}
               />

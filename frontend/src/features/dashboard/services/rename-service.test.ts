@@ -213,6 +213,32 @@ describe('renameFolder', () => {
     });
   });
 
+  // Prefixes come from generateS3Key, which adds the slash a path came
+  // without. Built by hand, "docs" + "pictures/" was "docspictures/".
+  it('renames inside a path given without its trailing slash', async () => {
+    const api = fakeApi();
+    const noPrefix = { name: 'photos' } as Folder;
+
+    await createRenameService(api).renameFolder(noPrefix, 'pictures', 'docs');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'docs/photos/',
+      newPrefix: 'docs/pictures/',
+    });
+  });
+
+  it('works out the old prefix when the folder has none', async () => {
+    const api = fakeApi();
+    const noPrefix = { name: 'photos' } as Folder;
+
+    await createRenameService(api).renameFolder(noPrefix, 'pictures', '/docs/');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'docs/photos/',
+      newPrefix: 'docs/pictures/',
+    });
+  });
+
   it('reports success when the rename completes', async () => {
     const h = handlers();
 
@@ -480,6 +506,40 @@ describe('existence checks', () => {
     const api = fakeApi();
 
     await expect(createRenameService(api).checkFolderExists('photos', 'docs')).resolves.toBe(false);
+  });
+
+  // The keys both checks ask about, pinned for every shape a path arrives in:
+  // the root, nested, with and without a leading or trailing slash. #67 moved
+  // this normalisation into generateS3Key alone.
+  it.each([
+    ['', 'a.md'],
+    ['/', 'a.md'],
+    ['docs', 'docs/a.md'],
+    ['/docs', 'docs/a.md'],
+    ['docs/', 'docs/a.md'],
+    ['/docs/2026/', 'docs/2026/a.md'],
+  ])('checks a new file in %j at %j', async (path, key) => {
+    const objectExists = vi.fn(async (_key: string) => false);
+
+    await createRenameService(fakeApi({ objectExists })).checkFileExists('a.md', path);
+
+    expect(objectExists).toHaveBeenCalledWith(key);
+  });
+
+  it.each([
+    ['', 'photos/'],
+    ['/', 'photos/'],
+    ['docs', 'docs/photos/'],
+    ['/docs/', 'docs/photos/'],
+  ])('checks a folder in %j at the prefix %j', async (path, prefix) => {
+    const fetchDirectoryStructure = vi.fn(async () => ({ files: [], folders: [] }));
+
+    await createRenameService(fakeApi({ fetchDirectoryStructure })).checkFolderExists(
+      'photos',
+      path
+    );
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledWith(prefix, 1);
   });
 });
 

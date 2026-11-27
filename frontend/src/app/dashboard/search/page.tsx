@@ -227,7 +227,6 @@ export default function SearchPage() {
   const {
     displayedItems: displayedFolders,
     canLoadMoreChunks: canLoadMoreFolderChunks,
-    isLoadingChunks: isLoadingFolderChunks,
     sentinelRef: folderSentinelRef,
     loadMoreChunks: loadMoreFolderChunks,
     remainingItems: remainingFolders,
@@ -236,7 +235,6 @@ export default function SearchPage() {
   const {
     displayedItems: displayedFiles,
     canLoadMoreChunks: canLoadMoreFileChunks,
-    isLoadingChunks: isLoadingFileChunks,
     sentinelRef: fileSentinelRef,
     loadMoreChunks: loadMoreFileChunks,
     remainingItems: remainingFiles,
@@ -683,39 +681,25 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {/* Chunk Loading Indicator */}
-              {(isLoadingFolderChunks || isLoadingFileChunks) && (
-                <div className="mt-6 flex items-center justify-center gap-3 text-muted-foreground">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  <span className="text-sm">Loading more items...</span>
-                </div>
-              )}
-
               {/* Manual Load More Buttons */}
               {(canLoadMoreFolderChunks || canLoadMoreFileChunks) && (
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
                   {canLoadMoreFolderChunks && remainingFolders > 0 && (
                     <Button
                       onClick={loadMoreFolderChunks}
-                      disabled={isLoadingFolderChunks}
                       variant="outline"
                       className="w-full sm:w-auto"
                     >
-                      {isLoadingFolderChunks
-                        ? 'Loading...'
-                        : `Load ${Math.min(remainingFolders, 100)} More Folder${remainingFolders > 1 ? 's' : ''}`}
+                      {`Load ${Math.min(remainingFolders, 100)} More Folder${remainingFolders > 1 ? 's' : ''}`}
                     </Button>
                   )}
                   {canLoadMoreFileChunks && remainingFiles > 0 && (
                     <Button
                       onClick={loadMoreFileChunks}
-                      disabled={isLoadingFileChunks}
                       variant="outline"
                       className="w-full sm:w-auto"
                     >
-                      {isLoadingFileChunks
-                        ? 'Loading...'
-                        : `Load ${Math.min(remainingFiles, 100)} More File${remainingFiles > 1 ? 's' : ''}`}
+                      {`Load ${Math.min(remainingFiles, 100)} More File${remainingFiles > 1 ? 's' : ''}`}
                     </Button>
                   )}
                 </div>

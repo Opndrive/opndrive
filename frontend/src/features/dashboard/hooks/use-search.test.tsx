@@ -283,3 +283,53 @@ describe('useSearch - in-flight search cleanup', () => {
     releaseSearch?.();
   });
 });
+
+describe('useSearch - store subscription (#106)', () => {
+  beforeEach(() => {
+    mockUseAuthGuard.mockReset();
+    useSearchStore.getState().clearCache();
+    useSearchStore.getState().setLoading(false);
+  });
+
+  // A bare useSearchStore() subscribed the hook to the whole store, so every
+  // page a streaming search wrote into the cache re-rendered it - even pages
+  // of a search this component is not showing.
+  it('does not re-render when the store changes in a way it does not read', () => {
+    mockUseAuthGuard.mockReturnValue({ apiS3: providerA });
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      return useSearch();
+    });
+    const settled = renders;
+
+    act(() => {
+      useSearchStore.getState().setSearchResults('another search', '/elsewhere/', {
+        files: [],
+        totalFiles: 0,
+        folders: [],
+        totalFolders: 0,
+        totalKeys: 0,
+      });
+    });
+
+    expect(renders).toBe(settled);
+  });
+
+  it('still re-renders when what it shows changes', () => {
+    mockUseAuthGuard.mockReturnValue({ apiS3: providerA });
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useSearch();
+    });
+    const settled = renders;
+
+    act(() => {
+      useSearchStore.getState().setLoading(true);
+    });
+
+    expect(renders).toBeGreaterThan(settled);
+    expect(result.current.isLoading).toBe(true);
+  });
+});

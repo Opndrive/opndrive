@@ -198,16 +198,11 @@ class RenameService {
     try {
       onProgress?.({ status: 'renaming' });
 
-      // Normalize paths - remove leading slashes
-      let normalizedCurrentPath = currentPath || '';
-      if (normalizedCurrentPath.startsWith('/')) {
-        normalizedCurrentPath = normalizedCurrentPath.slice(1);
-      }
-
-      const oldPrefix = folder.Prefix || `${normalizedCurrentPath}${folder.name}/`;
-      const newPrefix = normalizedCurrentPath
-        ? `${normalizedCurrentPath}${newName}/`
-        : `${newName}/`;
+      // Both prefixes from generateS3Key, like every other key: it drops a
+      // leading slash and adds the trailing one a path came without.
+      const path = currentPath || '';
+      const oldPrefix = folder.Prefix || generateS3Key(`${folder.name}/`, path);
+      const newPrefix = generateS3Key(`${newName}/`, path);
 
       // Success is decided only from the final settled result, not from a
       // mid-flight progress signal - the new algorithm runs in phases
@@ -265,12 +260,9 @@ class RenameService {
       pathParts[pathParts.length - 1] = fileName;
       fileKey = pathParts.join('/');
     } else {
-      // Fallback to the old method for new file creation
-      let normalizedPath = currentPath || '';
-      if (normalizedPath.startsWith('/')) {
-        normalizedPath = normalizedPath.slice(1);
-      }
-      fileKey = generateS3Key(fileName, normalizedPath);
+      // generateS3Key is the one place a path is turned into a key: it drops
+      // the leading slash and adds the trailing one itself.
+      fileKey = generateS3Key(fileName, currentPath || '');
     }
 
     try {
@@ -281,13 +273,7 @@ class RenameService {
   }
 
   async checkFolderExists(folderName: string, currentPath: string): Promise<boolean> {
-    // Normalize currentPath to work with generateS3Key
-    let normalizedPath = currentPath || '';
-    if (normalizedPath.startsWith('/')) {
-      normalizedPath = normalizedPath.slice(1);
-    }
-
-    const folderPrefix = generateS3Key(`${folderName}/`, normalizedPath);
+    const folderPrefix = generateS3Key(`${folderName}/`, currentPath || '');
     try {
       return await folderExists(this.api, folderPrefix);
     } catch {
