@@ -13,8 +13,14 @@ import {
   GET_POSTS_BY_CATEGORY,
   GET_POST_SUMMARIES,
   GET_RELATED_POST_SUMMARIES,
-} from './queries-simple'; // Using simplified queries without SEO
+  GET_AUTHOR,
+  GET_CATEGORY_HUB,
+} from './queries-simple';
 import type {
+  BlogAuthor,
+  WordPressAuthorResponse,
+  WordPressCategoryHubResponse,
+  WordPressUser,
   WordPressPostsResponse,
   WordPressPostBySlugResponse,
   WordPressPostSummariesResponse,
@@ -26,6 +32,7 @@ import type {
   TagNode,
 } from './types';
 import { decodeHtmlEntities, htmlToText } from './entities';
+import { authorSameAs, descriptionFromText, searchTitle } from './seo-text';
 
 /**
  * A WPGraphQL "...Gmt" field as an ISO string Date can read.
@@ -39,17 +46,20 @@ export function gmtToIso(gmt: string | undefined | null): string | undefined {
   return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(gmt) ? gmt : `${gmt}Z`;
 }
 
-/**
- * The first `count` characters, counted as code points: a decoded excerpt can
- * hold emoji, and cutting by UTF-16 unit could leave half of one behind.
- */
-function firstChars(text: string, count: number): string {
-  return Array.from(text).slice(0, count).join('');
-}
-
 /** A rendered WordPress text field (title, term name, SEO text) as plain text. */
 function plainText(rendered: string | undefined | null): string {
   return rendered ? decodeHtmlEntities(rendered) : '';
+}
+
+/** A WordPress user as a post's author: their name, profile slug, bio and links. */
+export function transformAuthor(user: WordPressUser | null | undefined): BlogAuthor {
+  return {
+    name: plainText(user?.name) || 'Anonymous',
+    slug: user?.slug || undefined,
+    avatar: user?.avatar?.url,
+    bio: user?.description ? htmlToText(user.description).trim() : '',
+    sameAs: authorSameAs(user?.url, user?.seo?.social),
+  };
 }
 
 /**
@@ -62,7 +72,10 @@ function plainText(rendered: string | undefined | null): string {
  * `content` is HTML and stays as it is.
  */
 export function transformPostSummary(
-  post: WordPressPostSummary & Partial<Pick<WordPressPost, 'tags'>>
+  post: WordPressPostSummary &
+    Partial<Pick<WordPressPost, 'tags'>> & {
+      seo?: { metaDesc?: string | null } | null;
+    }
 ): BlogPostSummary {
   // Plain text from here on: components show it as it is, without stripping
   // tags again, which would eat a "<b>" the author wrote as text.
@@ -74,15 +87,14 @@ export function transformPostSummary(
     slug: post.slug,
     title,
     excerpt: cleanExcerpt,
+    // Yoast's description in full; written by hand without one, the excerpt
+    // cut at a word under 160 characters, never with "..." added.
+    description: plainText(post.seo?.metaDesc).trim() || descriptionFromText(cleanExcerpt),
     publishedDate: gmtToIso(post.dateGmt) ?? post.date,
     publishedDateLocal: post.date,
     modifiedDate: gmtToIso(post.modifiedGmt) ?? post.modified,
     modifiedDateLocal: post.modified,
-    author: {
-      name: post.author?.node?.name || 'Anonymous',
-      avatar: post.author?.node?.avatar?.url,
-      bio: post.author?.node?.description,
-    },
+    author: transformAuthor(post.author?.node),
     featuredImage: post.featuredImage?.node
       ? {
           url: post.featuredImage.node.sourceUrl,
@@ -96,6 +108,7 @@ export function transformPostSummary(
         id: cat.id,
         name: plainText(cat.name),
         slug: cat.slug,
+        ...(typeof cat.count === 'number' ? { count: cat.count } : {}),
       })) || [],
     tags:
       post.tags?.nodes?.map((tag: TagNode) => ({
@@ -106,23 +119,21 @@ export function transformPostSummary(
   };
 }
 
-export function transformPost(post: WordPressPost): BlogPost {
+/**
+ * `wordpressSiteName` is WordPress's own site name, which Yoast's title
+ * template ends with; see searchTitle. The post queries ask for it alongside
+ * the post.
+ */
+export function transformPost(post: WordPressPost, wordpressSiteName?: string | null): BlogPost {
   const summary = transformPostSummary(post);
-  const { title, excerpt: cleanExcerpt } = summary;
 
   return {
     ...summary,
     content: post.content,
     seo: {
-      title: plainText(post.seo?.title) || title,
-      description: plainText(post.seo?.metaDesc) || firstChars(cleanExcerpt, 160),
-      ogTitle: plainText(post.seo?.opengraphTitle) || plainText(post.seo?.title) || title,
-      ogDescription:
-        plainText(post.seo?.opengraphDescription) ||
-        plainText(post.seo?.metaDesc) ||
-        firstChars(cleanExcerpt, 160),
+      title: searchTitle(plainText(post.seo?.title), summary.title, wordpressSiteName),
+      description: summary.description,
       ogImage: post.seo?.opengraphImage?.sourceUrl || post.featuredImage?.node?.sourceUrl,
-      canonical: post.seo?.canonical,
       noindex: post.seo?.metaRobotsNoindex === 'noindex',
       nofollow: post.seo?.metaRobotsNofollow === 'nofollow',
     },
@@ -137,7 +148,7 @@ export async function getAllPosts(limit = 100): Promise<BlogPost[]> {
     'posts',
   ]);
 
-  return data.posts.nodes.map(transformPost);
+  return data.posts.nodes.map((post) => transformPost(post));
 }
 
 /**
@@ -154,7 +165,7 @@ export async function getRecentPosts(
     revalidate
   );
 
-  return data.posts.nodes.map(transformPost);
+  return data.posts.nodes.map((post) => transformPost(post));
 }
 
 /** WPGraphQL's default ceiling on `first`; asking for more returns 100 anyway. */
@@ -212,7 +223,7 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
     return null;
   }
 
-  return transformPost(data.post);
+  return transformPost(data.post, data.generalSettings?.title);
 }
 
 /**
@@ -227,7 +238,7 @@ export async function getPreviewPost(id: number): Promise<BlogPost | null> {
     id
   );
 
-  return data.post ? transformPost(data.post) : null;
+  return data.post ? transformPost(data.post, data.generalSettings?.title) : null;
 }
 
 /**
@@ -240,8 +251,8 @@ export async function getPreviewPost(id: number): Promise<BlogPost | null> {
  */
 export async function getAllPostSitemapData({
   revalidate = 60,
-}: { revalidate?: number } = {}): Promise<Array<Pick<BlogPost, 'slug' | 'modifiedDate'>>> {
-  const posts: Array<Pick<BlogPost, 'slug' | 'modifiedDate'>> = [];
+}: { revalidate?: number } = {}): Promise<SitemapPost[]> {
+  const posts: SitemapPost[] = [];
   let hasNextPage = true;
   let after: string | null = null;
 
@@ -254,15 +265,25 @@ export async function getAllPostSitemapData({
       { next: { revalidate, tags: ['posts'] } }
     );
 
-    posts.push(
-      ...data.posts.nodes.map((post: WordPressPost) => ({
+    for (const post of data.posts.nodes) {
+      // A post an editor marked noindex in Yoast is not listed: a sitemap
+      // names only pages that are meant to be found.
+      if (post.seo?.metaRobotsNoindex === 'noindex') continue;
+
+      posts.push({
         slug: post.slug,
         // WPGraphQL's `modified` is the site's local time with no offset, so
         // it would be read as whatever zone the server runs in. `modifiedGmt`
         // is UTC; gmtToIso marks it as such.
         modifiedDate: gmtToIso(post.modifiedGmt) ?? '',
-      }))
-    );
+        authorSlug: post.author?.node?.slug || undefined,
+        categories:
+          post.categories?.nodes?.map((category) => ({
+            slug: category.slug,
+            count: category.count ?? 0,
+          })) ?? [],
+      });
+    }
 
     hasNextPage = data.posts.pageInfo.hasNextPage;
     after = data.posts.pageInfo.endCursor;
@@ -281,7 +302,7 @@ export async function getPostsByCategory(categorySlug: string, limit = 10): Prom
     ['posts', `category-${categorySlug}`]
   );
 
-  return data.posts.nodes.map(transformPost);
+  return data.posts.nodes.map((post) => transformPost(post));
 }
 
 /**
@@ -324,4 +345,66 @@ export async function getRelatedPosts(
   }
 
   return related;
+}
+
+/** A post as the sitemap needs it: where it is, when it changed, who wrote it and its topics. */
+export interface SitemapPost {
+  slug: string;
+  modifiedDate: string;
+  authorSlug?: string;
+  categories: Array<{ slug: string; count: number }>;
+}
+
+export interface AuthorProfile extends BlogAuthor {
+  slug: string;
+  posts: BlogPostSummary[];
+}
+
+/**
+ * An author's profile and published posts, newest first, or null when
+ * WordPress has no such author or they have published nothing.
+ */
+export async function getAuthor(slug: string): Promise<AuthorProfile | null> {
+  const data = await fetchGraphQLWithTags<WordPressAuthorResponse>(GET_AUTHOR, { slug }, [
+    'posts',
+    `author-${slug}`,
+  ]);
+
+  const user = data.user;
+  if (!user || user.posts.nodes.length === 0) return null;
+
+  return {
+    ...transformAuthor(user),
+    slug: user.slug,
+    posts: user.posts.nodes.map(transformPostSummary),
+  };
+}
+
+export interface CategoryHub {
+  name: string;
+  slug: string;
+  /** Plain text; empty when WordPress has none. */
+  description: string;
+  count: number;
+  posts: BlogPostSummary[];
+}
+
+/** A category with its published posts, newest first, or null when there is no such category. */
+export async function getCategoryHub(slug: string): Promise<CategoryHub | null> {
+  const data = await fetchGraphQLWithTags<WordPressCategoryHubResponse>(
+    GET_CATEGORY_HUB,
+    { slug },
+    ['posts', `category-${slug}`]
+  );
+
+  const category = data.category;
+  if (!category) return null;
+
+  return {
+    name: plainText(category.name),
+    slug: category.slug,
+    description: category.description ? htmlToText(category.description).trim() : '',
+    count: category.count ?? 0,
+    posts: category.posts.nodes.map(transformPostSummary),
+  };
 }

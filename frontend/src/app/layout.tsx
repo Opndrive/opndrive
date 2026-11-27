@@ -110,6 +110,9 @@ export default async function RootLayout({
             __html: serializeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'Organization',
+              // The same identifier the blog's posts use for their author and
+              // publisher, so all of them are one organisation.
+              '@id': `${SITE_URL}/#organization`,
               name: 'Opndrive',
               url: SITE_URL,
               logo: `${SITE_URL}/logo.png`,

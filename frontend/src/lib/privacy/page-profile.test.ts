@@ -3,12 +3,18 @@ import { needsFullPageLoad, pageProfileFor } from './page-profile';
 import { isTrackedPath } from '../analytics/tracked-paths';
 
 describe('which pages get the public policy', () => {
-  it.each(['/', '/blog', '/blog/', '/blog/a-post', '/privacy', '/terms'])(
-    '%s is public',
-    (path) => {
-      expect(pageProfileFor(path)).toBe('public');
-    }
-  );
+  it.each([
+    '/',
+    '/blog',
+    '/blog/',
+    '/blog/a-post',
+    '/blog/author/yash',
+    '/blog/category/troubleshooting',
+    '/privacy',
+    '/terms',
+  ])('%s is public', (path) => {
+    expect(pageProfileFor(path)).toBe('public');
+  });
 
   it.each([
     '/connect',
@@ -40,9 +46,12 @@ describe('links that must load a new document', () => {
 });
 
 describe('pages that may send analytics', () => {
-  it.each(['/', '/blog', '/blog/a-post'])('%s may', (path) => {
-    expect(isTrackedPath(path)).toBe(true);
-  });
+  it.each(['/', '/blog', '/blog/a-post', '/blog/author/yash', '/blog/category/guides'])(
+    '%s may',
+    (path) => {
+      expect(isTrackedPath(path)).toBe(true);
+    }
+  );
 
   // A tracked page must also be a public one: its policy is the only one that
   // names the analytics host.

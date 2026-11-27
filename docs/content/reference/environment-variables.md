@@ -49,6 +49,12 @@ backed by a headless WordPress instance over GraphQL:
 | `WORDPRESS_PREVIEW_USER`         | A WordPress user with the read-only "Opndrive previewer" role, for draft previews                          |
 | `WORDPRESS_PREVIEW_APP_PASSWORD` | That user's application password. Without it and the user, `/api/preview` answers 404                      |
 
+The WordPress behind the blog needs two plugins besides WPGraphQL: Yoast SEO and
+WPGraphQL for Yoast SEO. The blog reads each post's search title, description
+and robots settings from Yoast, and each author's social profiles. It never uses
+Yoast's canonical, which is the post's address on the WordPress server: a post's
+canonical is always its address on this site.
+
 `WORDPRESS_AUTH_TOKEN` is deprecated. The blog needs no credential to read
 published posts, and it only shows published ones. It is still sent while it is
 set, for a WPGraphQL endpoint restricted to signed-in users; turn that

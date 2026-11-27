@@ -51,14 +51,23 @@ describe('transformPost', () => {
     expect(post.publishedDateLocal).toBe('2026-11-01T09:00:00');
   });
 
-  it('cuts a long excerpt at 160 characters without splitting an emoji', () => {
-    // 159 letters, then an emoji WordPress sent as a reference: a cut by
-    // UTF-16 unit would keep only half of it.
-    const excerpt = `<p>${'a'.repeat(159)}&#128512; and more</p>`;
+  it('cuts a long excerpt under 160 characters without splitting an emoji', () => {
+    // 158 letters, then an emoji WordPress sent as a reference, right at the
+    // cut: a cut by UTF-16 unit would keep only half of it.
+    const excerpt = `<p>${'a'.repeat(158)}&#128512;&#128512; and more</p>`;
     const description = transformPost(wpPost({ excerpt })).seo!.description;
 
-    expect(Array.from(description)).toHaveLength(160);
-    expect(description.codePointAt(159)).toBe(0x1f600);
+    expect(Array.from(description)).toHaveLength(159);
+    expect(description.codePointAt(158)).toBe(0x1f600);
+    expect(description.endsWith('...')).toBe(false);
+  });
+
+  it('cuts a long excerpt at the last whole word that fits', () => {
+    const excerpt = `<p>${'word '.repeat(40)}</p>`;
+    const description = transformPost(wpPost({ excerpt })).seo!.description;
+
+    expect(Array.from(description).length).toBeLessThan(160);
+    expect(description.endsWith(' word')).toBe(true);
   });
 
   it('falls back to the local time when WordPress gives no GMT twin', () => {
