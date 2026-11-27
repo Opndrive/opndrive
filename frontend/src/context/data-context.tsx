@@ -199,18 +199,24 @@ function settled(listing: FolderListing): FolderListing {
 // Keys
 // ---------------------------------------------------------------------------
 
+/*
+ * Every cache key is derived here and nowhere else (#71): a mismatch between
+ * two hand-written copies showed up as cache misses for folders that were in
+ * the cache all along. Exported for data-context-keys.test.ts.
+ */
+
 /** The store keys the bucket root as '/', everything else by its own prefix. */
-function toCacheKey(prefix: string): string {
+export function toCacheKey(prefix: string): string {
   return prefix === '' ? '/' : prefix;
 }
 
 /** The prefix S3 is asked for, for a cache key. */
-function apiPrefixOf(key: string): string {
+export function apiPrefixOf(key: string): string {
   return key === '/' ? '' : key;
 }
 
 /** The cache key of the folder on screen, or null before one is chosen. */
-function currentKey(state: Pick<Store, 'currentPrefix' | 'rootPrefix'>): string | null {
+export function currentKey(state: Pick<Store, 'currentPrefix' | 'rootPrefix'>): string | null {
   const { currentPrefix, rootPrefix } = state;
   if (currentPrefix === null || rootPrefix === null) return null;
 

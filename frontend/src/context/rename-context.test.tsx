@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import type React from 'react';
 import type { FileItem } from '@/features/dashboard/types/file';
 import type { Folder } from '@/features/dashboard/types/folder';
@@ -93,5 +93,55 @@ describe('a rename whose name could not be checked', () => {
 
     expect(api.moveFile).toHaveBeenCalledWith({ oldKey: 'docs/a.md', newKey: 'docs/b.md' });
     expect(notify.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('a folder renamed from search results', () => {
+  // Search lists folders from anywhere in the bucket while the drive is still
+  // at the root. The rename and its duplicate check used the folder being
+  // browsed as the parent, so "a/b/photos/" renamed from the root went to
+  // "pictures/" at the root.
+  it('is checked and renamed where it is, not where the user is browsing', async () => {
+    api.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+    const deep = { id: 'a/b/photos/', Prefix: 'a/b/photos/', name: 'photos' } as Folder;
+    const { result } = renderHook(() => useRename(), { wrapper });
+
+    act(() => result.current.showRenameDialog(deep, 'folder', ''));
+    await act(async () => {
+      await result.current.handleRenameConfirm('pictures');
+    });
+
+    expect(api.fetchDirectoryStructure).toHaveBeenCalledWith('a/b/pictures/', 1);
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'a/b/photos/',
+      newPrefix: 'a/b/pictures/',
+    });
+  });
+
+  // "Keep both" has to find its free name where the folder is too: a name
+  // free only in the open folder would copy onto a folder that exists.
+  it('keeps both under a name that is free where the folder is', async () => {
+    const taken = new Set(['a/b/pictures/', 'a/b/pictures (1)/']);
+    api.fetchDirectoryStructure.mockImplementation(async (prefix: string) => ({
+      files: taken.has(prefix) ? [{ Key: `${prefix}x` }] : [],
+      folders: [],
+    }));
+    const deep = { id: 'a/b/photos/', Prefix: 'a/b/photos/', name: 'photos' } as Folder;
+    const { result } = renderHook(() => useRename(), { wrapper });
+
+    act(() => result.current.showRenameDialog(deep, 'folder', ''));
+    act(() => {
+      void result.current.handleRenameConfirm('pictures');
+    });
+    await waitFor(() => expect(result.current.duplicateDialog.isOpen).toBe(true));
+
+    await act(async () => {
+      await result.current.duplicateDialog.onKeepBoth?.();
+    });
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'a/b/photos/',
+      newPrefix: 'a/b/pictures (2)/',
+    });
   });
 });

@@ -1,9 +1,23 @@
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 import { objectExists } from '@/services/object-existence';
+
+/**
+ * The folder a folder sits in: read from its own prefix when it has one.
+ *
+ * A folder found by search can be anywhere in the bucket, while `currentPath`
+ * is the folder the user is browsing. Taken as the parent, a search result
+ * "a/b/photos/" renamed from the root moved the whole tree to "pictures/" at
+ * the root, and the duplicate check looked there too. Only a folder with no
+ * prefix of its own falls back to `currentPath`.
+ */
+export function folderParentPath(folder: Pick<Folder, 'Prefix'>, currentPath: string): string {
+  return folder.Prefix ? getParentPrefix(folder.Prefix) : currentPath || '';
+}
 
 export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
@@ -198,16 +212,12 @@ class RenameService {
     try {
       onProgress?.({ status: 'renaming' });
 
-      // Normalize paths - remove leading slashes
-      let normalizedCurrentPath = currentPath || '';
-      if (normalizedCurrentPath.startsWith('/')) {
-        normalizedCurrentPath = normalizedCurrentPath.slice(1);
-      }
-
-      const oldPrefix = folder.Prefix || `${normalizedCurrentPath}${folder.name}/`;
-      const newPrefix = normalizedCurrentPath
-        ? `${normalizedCurrentPath}${newName}/`
-        : `${newName}/`;
+      // Renamed where it is. Both prefixes come from generateS3Key, like every
+      // other key: it drops a leading slash and adds the trailing one a path
+      // came without.
+      const parent = folderParentPath(folder, currentPath);
+      const oldPrefix = folder.Prefix || generateS3Key(`${folder.name}/`, parent);
+      const newPrefix = generateS3Key(`${newName}/`, parent);
 
       // Success is decided only from the final settled result, not from a
       // mid-flight progress signal - the new algorithm runs in phases
@@ -265,12 +275,9 @@ class RenameService {
       pathParts[pathParts.length - 1] = fileName;
       fileKey = pathParts.join('/');
     } else {
-      // Fallback to the old method for new file creation
-      let normalizedPath = currentPath || '';
-      if (normalizedPath.startsWith('/')) {
-        normalizedPath = normalizedPath.slice(1);
-      }
-      fileKey = generateS3Key(fileName, normalizedPath);
+      // generateS3Key is the one place a path is turned into a key: it drops
+      // the leading slash and adds the trailing one itself.
+      fileKey = generateS3Key(fileName, currentPath || '');
     }
 
     try {
@@ -281,13 +288,7 @@ class RenameService {
   }
 
   async checkFolderExists(folderName: string, currentPath: string): Promise<boolean> {
-    // Normalize currentPath to work with generateS3Key
-    let normalizedPath = currentPath || '';
-    if (normalizedPath.startsWith('/')) {
-      normalizedPath = normalizedPath.slice(1);
-    }
-
-    const folderPrefix = generateS3Key(`${folderName}/`, normalizedPath);
+    const folderPrefix = generateS3Key(`${folderName}/`, currentPath || '');
     try {
       return await folderExists(this.api, folderPrefix);
     } catch {

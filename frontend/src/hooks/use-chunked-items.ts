@@ -10,8 +10,6 @@ export interface ChunkedDisplayOptions {
   chunkSize?: number;
   /** Distance from bottom to trigger auto-load in pixels (default: 200) */
   prefetchDistance?: number;
-  /** Delay before loading next chunk in ms (default: 300) */
-  loadDelay?: number;
 }
 
 /**
@@ -22,8 +20,6 @@ export interface ChunkedItemsResult<T> {
   displayedItems: T[];
   /** Whether more chunks can be loaded from cache */
   canLoadMoreChunks: boolean;
-  /** Whether currently loading more chunks */
-  isLoadingChunks: boolean;
   /** Ref for sentinel element (for IntersectionObserver) */
   sentinelRef: React.RefObject<HTMLDivElement | null>;
   /** Manually load more chunks */
@@ -37,25 +33,31 @@ export interface ChunkedItemsResult<T> {
 }
 
 /**
- * Custom hook for progressive chunked display of large lists
+ * Progressive display of a long list that is already in memory: the search
+ * results page shows them a chunk at a time, and reveals the next chunk as the
+ * reader scrolls near the end or presses the button.
  *
- * Features:
- * - Automatic loading via IntersectionObserver
- * - Manual load more button support
- * - Configurable chunk size and prefetch distance
- * - Performance optimized for large datasets
- * - Reusable across browse and search pages
+ * A chunk appears at once. It used to wait 300 ms behind a timer, for items
+ * that were already here: a pause on every chunk that only looked like
+ * loading. The timer was also started from inside a state updater, which
+ * React may call twice, so one scroll could reveal two chunks.
  *
- * @param items - All items to display (from cache/API)
+ * The observer is rebuilt after every chunk. It reports an element's
+ * intersection when it starts observing, so a sentinel still on screen after a
+ * chunk (a tall window, a short chunk) reveals the next one instead of waiting
+ * for a scroll that is not coming.
+ *
+ * @param items - All items to display
  * @param options - Configuration options
- * @param resetDependency - Dependency that triggers chunk reset (e.g., query, prefix)
+ * @param resetDependency - A key that identifies the list (for search, the query and its
+ *   scope); a new value starts over at the first chunk
  *
  * @example
  * ```tsx
  * const { displayedItems, sentinelRef, canLoadMoreChunks } = useChunkedItems(
  *   allResults,
  *   { chunkSize: 100 },
- *   query // Reset chunks when query changes
+ *   `${query}::${scope}`
  * );
  * ```
  */
@@ -64,86 +66,55 @@ export function useChunkedItems<T>(
   options: ChunkedDisplayOptions = {},
   resetDependency?: string | null
 ): ChunkedItemsResult<T> {
-  const { chunkSize = 100, prefetchDistance = 200, loadDelay = 300 } = options;
+  const { chunkSize = 100, prefetchDistance = 200 } = options;
 
   const [visibleChunks, setVisibleChunks] = useState(1);
-  const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Calculate displayed items
+  // The most chunks this list can fill. Each reveal stops there, so two
+  // triggers at once (the sentinel and the button) cannot run ahead and make
+  // the next results that stream in appear two chunks at a time.
+  const chunksNeeded = Math.max(1, Math.ceil(items.length / chunkSize));
   const maxVisibleItems = visibleChunks * chunkSize;
   const displayedItems = items.slice(0, maxVisibleItems);
   const canLoadMoreChunks = items.length > maxVisibleItems;
   const remainingItems = items.length - maxVisibleItems;
 
-  /**
-   * Reset chunks when dependency changes (e.g., new search query, different folder)
-   */
+  /** Start over at the first chunk when the list is a different one. */
   useEffect(() => {
     setVisibleChunks(1);
-    setIsLoadingChunks(false);
   }, [resetDependency]);
 
-  /**
-   * Manual function to load more chunks
-   */
   const loadMoreChunks = useCallback(() => {
-    if (isLoadingChunks || !canLoadMoreChunks) return;
+    if (canLoadMoreChunks) setVisibleChunks((prev) => Math.min(prev + 1, chunksNeeded));
+  }, [canLoadMoreChunks, chunksNeeded]);
 
-    setIsLoadingChunks(true);
-
-    setTimeout(() => {
-      setVisibleChunks((prev) => prev + 1);
-      setIsLoadingChunks(false);
-    }, loadDelay);
-  }, [isLoadingChunks, canLoadMoreChunks, loadDelay]);
-
-  /**
-   * IntersectionObserver for automatic chunk loading
-   * Triggers when user scrolls near the bottom
-   */
+  /** Reveal the next chunk when the sentinel nears the viewport. */
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel || !canLoadMoreChunks) return;
 
     const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-
-        // Only trigger if intersecting and not currently loading
-        if (entry.isIntersecting) {
-          // Use a ref check inside the callback to avoid stale closure
-          setIsLoadingChunks((currentLoading) => {
-            if (currentLoading) return true; // Already loading, don't trigger
-
-            // Start loading
-            setTimeout(() => {
-              setVisibleChunks((prev) => prev + 1);
-              setIsLoadingChunks(false);
-            }, loadDelay);
-
-            return true; // Set loading to true
-          });
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisibleChunks((prev) => Math.min(prev + 1, chunksNeeded));
         }
       },
       {
-        // Trigger when the sentinel is X px away from being visible
+        // Trigger when the sentinel is this far from being visible.
         rootMargin: `${prefetchDistance}px 0px`,
-        threshold: 0.01, // Changed from 0 to 0.01 for better detection
+        threshold: 0.01,
       }
     );
 
     observer.observe(sentinel);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [canLoadMoreChunks, prefetchDistance, loadDelay]); // Removed isLoadingChunks dependency!
+    return () => observer.disconnect();
+    // visibleChunks: a fresh observer after each chunk; see above.
+  }, [canLoadMoreChunks, chunksNeeded, prefetchDistance, visibleChunks]);
 
   return {
     displayedItems,
     canLoadMoreChunks,
-    isLoadingChunks,
     sentinelRef,
     loadMoreChunks,
     visibleChunks,

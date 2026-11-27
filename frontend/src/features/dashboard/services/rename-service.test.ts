@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
-import { createRenameService } from './rename-service';
+import { createRenameService, folderParentPath } from './rename-service';
 import type { FileItem } from '../types/file';
 import type { Folder } from '../types/folder';
 
@@ -210,6 +210,44 @@ describe('renameFolder', () => {
     expect(api.renameFolder).toHaveBeenCalledWith({
       oldPrefix: 'photos/',
       newPrefix: 'pictures/',
+    });
+  });
+
+  // Prefixes come from generateS3Key, which adds the slash a path came
+  // without. Built by hand, "docs" + "pictures/" was "docspictures/".
+  it('renames inside a path given without its trailing slash', async () => {
+    const api = fakeApi();
+    const noPrefix = { name: 'photos' } as Folder;
+
+    await createRenameService(api).renameFolder(noPrefix, 'pictures', 'docs');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'docs/photos/',
+      newPrefix: 'docs/pictures/',
+    });
+  });
+
+  it('renames a folder found by search where it is, whatever folder is open', async () => {
+    const api = fakeApi();
+    const deep = { name: 'photos', Prefix: 'a/b/photos/' } as Folder;
+
+    await createRenameService(api).renameFolder(deep, 'pictures', '');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'a/b/photos/',
+      newPrefix: 'a/b/pictures/',
+    });
+  });
+
+  it('works out the old prefix when the folder has none', async () => {
+    const api = fakeApi();
+    const noPrefix = { name: 'photos' } as Folder;
+
+    await createRenameService(api).renameFolder(noPrefix, 'pictures', '/docs/');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'docs/photos/',
+      newPrefix: 'docs/pictures/',
     });
   });
 
@@ -481,6 +519,40 @@ describe('existence checks', () => {
 
     await expect(createRenameService(api).checkFolderExists('photos', 'docs')).resolves.toBe(false);
   });
+
+  // The keys both checks ask about, pinned for every shape a path arrives in:
+  // the root, nested, with and without a leading or trailing slash. #67 moved
+  // this normalisation into generateS3Key alone.
+  it.each([
+    ['', 'a.md'],
+    ['/', 'a.md'],
+    ['docs', 'docs/a.md'],
+    ['/docs', 'docs/a.md'],
+    ['docs/', 'docs/a.md'],
+    ['/docs/2026/', 'docs/2026/a.md'],
+  ])('checks a new file in %j at %j', async (path, key) => {
+    const objectExists = vi.fn(async (_key: string) => false);
+
+    await createRenameService(fakeApi({ objectExists })).checkFileExists('a.md', path);
+
+    expect(objectExists).toHaveBeenCalledWith(key);
+  });
+
+  it.each([
+    ['', 'photos/'],
+    ['/', 'photos/'],
+    ['docs', 'docs/photos/'],
+    ['/docs/', 'docs/photos/'],
+  ])('checks a folder in %j at the prefix %j', async (path, prefix) => {
+    const fetchDirectoryStructure = vi.fn(async () => ({ files: [], folders: [] }));
+
+    await createRenameService(fakeApi({ fetchDirectoryStructure })).checkFolderExists(
+      'photos',
+      path
+    );
+
+    expect(fetchDirectoryStructure).toHaveBeenCalledWith(prefix, 1);
+  });
 });
 
 describe('findUniqueFileName', () => {
@@ -531,5 +603,17 @@ describe('findUniqueFileName', () => {
     const name = await createRenameService(api).findUniqueFolderName('photos', 'docs');
 
     expect(name).toMatch(/^photos \(\d{13}\)$/);
+  });
+});
+
+describe('folderParentPath', () => {
+  it('reads the parent from the folder prefix', () => {
+    expect(folderParentPath({ Prefix: 'a/b/photos/' }, '')).toBe('a/b/');
+    expect(folderParentPath({ Prefix: 'photos/' }, 'docs/')).toBe('');
+  });
+
+  it('falls back to the open folder when the folder has no prefix', () => {
+    expect(folderParentPath({}, 'docs/')).toBe('docs/');
+    expect(folderParentPath({}, '')).toBe('');
   });
 });

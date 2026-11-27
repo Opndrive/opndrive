@@ -3,7 +3,10 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
-import { createRenameService } from '@/features/dashboard/services/rename-service';
+import {
+  createRenameService,
+  folderParentPath,
+} from '@/features/dashboard/services/rename-service';
 import { useNotification } from '@/context/notification-context';
 import { useDriveStore, type Revert } from '@/context/data-context';
 import { PreviewLoading } from '@/components/file-preview';
@@ -316,7 +319,12 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      const folderExists = await renameService.checkFolderExists(newName, currentPath);
+      // Checked where the folder is, which for a search result is not the
+      // folder being browsed; see folderParentPath.
+      const folderExists = await renameService.checkFolderExists(
+        newName,
+        folderParentPath(folder, currentPath)
+      );
 
       if (folderExists) {
         return new Promise<void>((resolve) => {
@@ -365,7 +373,12 @@ export const RenameProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               try {
                 setActiveRenames((prev) => new Set(prev).add(folderId));
 
-                const uniqueName = await renameService.findUniqueFolderName(newName, currentPath);
+                // A free name where the folder is, like the check above: one
+                // free only in the open folder would merge into a taken one.
+                const uniqueName = await renameService.findUniqueFolderName(
+                  newName,
+                  folderParentPath(folder, currentPath)
+                );
 
                 const undoRename = applyRename(folder, 'folder', uniqueName);
 

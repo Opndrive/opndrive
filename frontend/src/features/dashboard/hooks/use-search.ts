@@ -13,15 +13,16 @@ export const useSearch = () => {
   // AbortController for cancelling searches
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Use Zustand store instead of local state
-  const {
-    setSearchResults: setCachedSearchResults,
-    getCachedOrNull,
-    setLoading,
-    setCurrentQuery,
-    invalidateQuery,
-    setRequestCount,
-  } = useSearchStore();
+  // One selector per action. Actions never change, so none of these makes the
+  // hook re-render. They used to come from a bare useSearchStore(), which
+  // subscribes to every change in the store: each page a streaming search
+  // wrote into the cache re-rendered every component using this hook.
+  const setCachedSearchResults = useSearchStore((state) => state.setSearchResults);
+  const getCachedOrNull = useSearchStore((state) => state.getCachedOrNull);
+  const setLoading = useSearchStore((state) => state.setLoading);
+  const setCurrentQuery = useSearchStore((state) => state.setCurrentQuery);
+  const invalidateQuery = useSearchStore((state) => state.invalidateQuery);
+  const setRequestCount = useSearchStore((state) => state.setRequestCount);
 
   // Subscribe to store state changes using Zustand selectors
   // These will trigger re-renders when the store updates
