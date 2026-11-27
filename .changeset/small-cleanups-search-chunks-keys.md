@@ -22,8 +22,9 @@ Instant search result chunks, one place for S3 keys, and two small cleanups
 - **Renaming a folder from search results renames it where it is.** The rename,
   and its check for a folder of the same name, took the folder being browsed as
   the parent. A search result `a/b/photos/` renamed to `pictures` from the
-  bucket root was moved, whole, to `pictures/` at the root. Both now use the
-  folder's own place.
+  bucket root was moved, whole, to `pictures/` at the root, and "Keep both"
+  could pick a name already taken there and copy onto that folder. The rename,
+  the check and "Keep both" now all use the folder's own place.
 - **A new search scope starts at the first chunk**, like a new query; it used to
   open already expanded.
 - **Cache keys are tested.** The drive store's cache keys come from one helper,
