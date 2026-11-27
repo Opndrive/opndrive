@@ -16,6 +16,7 @@ export function generateOrganizationSchema() {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
+    '@id': ORGANIZATION_ID,
     name: SEO_CONFIG.organization.name,
     url: SEO_CONFIG.organization.url,
     logo: SEO_CONFIG.organization.logo,
@@ -46,8 +47,12 @@ export function generateWebSiteSchema() {
 /** The blog as one entity that every post is part of. */
 const BLOG_ID = `${SEO_CONFIG.siteUrl}/blog#blog`;
 
+/** One identifier for Opndrive, so every mention of it is the same entity. */
+export const ORGANIZATION_ID = `${SEO_CONFIG.siteUrl}/#organization`;
+
 const PUBLISHER = {
   '@type': 'Organization',
+  '@id': ORGANIZATION_ID,
   name: SEO_CONFIG.organization.name,
   url: SEO_CONFIG.organization.url,
   logo: {
@@ -71,7 +76,7 @@ function absolute(url: string): string {
  * bio and their own pages elsewhere, all from their WordPress profile. The
  * organisation is the publisher, not the author.
  */
-export function authorPerson(author: BlogAuthor) {
+function authorPersonEntity(author: BlogAuthor) {
   return {
     '@type': 'Person',
     name: author.name,
@@ -82,20 +87,54 @@ export function authorPerson(author: BlogAuthor) {
 }
 
 /**
- * An author's profile page: the person, and the posts the page lists.
- * ProfilePage is the type Google reads for a page about one person.
+ * Whether a post's author is Opndrive itself: the WordPress account the posts
+ * are published under, which is the organisation, not a person.
+ */
+export function isOrganizationAuthor(author: Pick<BlogAuthor, 'name'>): boolean {
+  return author.name.trim().toLowerCase() === SEO_CONFIG.organization.name.toLowerCase();
+}
+
+/**
+ * Who wrote a post, for BlogPosting's `author`.
+ *
+ * Posts by the Opndrive account are by the organisation: the same entity as
+ * the publisher (one `@id`), linked to its home page, as Google's article
+ * guidelines ask of an organisation author. A post by a person names them as a
+ * Person, with their profile page here, their bio and their own pages.
+ */
+export function postAuthorEntity(author: BlogAuthor) {
+  return isOrganizationAuthor(author) ? PUBLISHER : authorPersonEntity(author);
+}
+
+/**
+ * An author's profile page, and the posts it lists.
+ *
+ * Google reads ProfilePage for a page whose main focus is one person or
+ * organisation affiliated with the site; `mainEntity` may be either, and
+ * needs a `name`, with `description`, `image` and `sameAs` recommended. For
+ * Opndrive it is the organisation, the same `@id` the posts name as author
+ * and publisher, with the bio from its WordPress profile.
  */
 export function generateProfilePageSchema(
   author: BlogAuthor & { slug: string },
   posts: ReadonlyArray<Pick<BlogPostSummary, 'slug' | 'title' | 'publishedDate'>>
 ) {
   const url = absolute(authorPath(author.slug));
+  const mainEntity = isOrganizationAuthor(author)
+    ? {
+        ...PUBLISHER,
+        image: SEO_CONFIG.organization.logo,
+        ...(author.bio ? { description: author.bio } : {}),
+        sameAs: Array.from(new Set([...SEO_CONFIG.organization.sameAs, ...author.sameAs])),
+      }
+    : { ...authorPersonEntity(author), '@id': `${url}#person` };
+
   return {
     '@context': 'https://schema.org',
     '@type': 'ProfilePage',
     '@id': `${url}#profile`,
     url,
-    mainEntity: { ...authorPerson(author), '@id': `${url}#person` },
+    mainEntity,
     hasPart: posts.map((post) => ({
       '@type': 'BlogPosting',
       headline: post.title,
@@ -204,7 +243,7 @@ export function generateBlogPostingSchema(post: BlogPost, cover: CoverImage) {
     },
     datePublished: post.publishedDate,
     dateModified: post.modifiedDate,
-    author: authorPerson(post.author),
+    author: postAuthorEntity(post.author),
     publisher: PUBLISHER,
     mainEntityOfPage: {
       '@type': 'WebPage',

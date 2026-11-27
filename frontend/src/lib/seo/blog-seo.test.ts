@@ -10,6 +10,8 @@ import {
   generateBlogPostingSchema,
   generateBlogSchema,
   generateFaqPageSchema,
+  generateProfilePageSchema,
+  ORGANIZATION_ID,
 } from './structured-data';
 import { buildLlmsTxt } from './llms-txt';
 
@@ -176,5 +178,77 @@ describe('buildLlmsTxt', () => {
     const text = buildLlmsTxt({ ...input, posts: null });
     expect(text).not.toContain('## Blog');
     expect(text).not.toContain('rss.xml');
+  });
+});
+
+describe('a post by Opndrive itself', () => {
+  const byOrganization = generateBlogPostingSchema(
+    {
+      ...post,
+      author: {
+        name: 'Opndrive',
+        slug: 'opndrive',
+        bio: 'Opndrive is a free, open-source web UI for S3-compatible storage.',
+        sameAs: [],
+      },
+    },
+    coverImageFor(post)
+  );
+
+  it('names the organisation as author, the same entity as the publisher', () => {
+    expect(byOrganization.author).toMatchObject({
+      '@type': 'Organization',
+      '@id': ORGANIZATION_ID,
+      name: 'Opndrive',
+      url: 'https://opndrive.app',
+    });
+    expect(byOrganization.author).toEqual(byOrganization.publisher);
+  });
+});
+
+describe('generateProfilePageSchema', () => {
+  const posts = [{ slug: 'a', title: 'A', publishedDate: '2026-11-21T00:00:00Z' }];
+
+  it("describes Opndrive's page as the organisation, with its bio and links", () => {
+    const page = generateProfilePageSchema(
+      { name: 'Opndrive', slug: 'opndrive', bio: 'The bio.', sameAs: ['https://opndrive.app/'] },
+      posts
+    );
+
+    expect(page['@type']).toBe('ProfilePage');
+    expect(page.url).toBe('https://opndrive.app/blog/author/opndrive');
+    expect(page.mainEntity).toMatchObject({
+      '@type': 'Organization',
+      '@id': ORGANIZATION_ID,
+      name: 'Opndrive',
+      description: 'The bio.',
+      image: 'https://opndrive.app/logo.png',
+    });
+    expect(page.mainEntity.sameAs).toContain('https://github.com/opndrive/opndrive');
+    expect(page.hasPart).toEqual([
+      {
+        '@type': 'BlogPosting',
+        headline: 'A',
+        url: 'https://opndrive.app/blog/a',
+        datePublished: '2026-11-21T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('describes a person as a person', () => {
+    const page = generateProfilePageSchema(
+      { name: 'Yash Sangwan', slug: 'yash', bio: '', sameAs: [] },
+      posts
+    );
+    expect(page.mainEntity).toMatchObject({ '@type': 'Person', name: 'Yash Sangwan' });
+    expect(page.mainEntity).not.toHaveProperty('description');
+  });
+
+  it('leaves the bio out when there is none', () => {
+    const page = generateProfilePageSchema(
+      { name: 'Opndrive', slug: 'opndrive', bio: '', sameAs: [] },
+      posts
+    );
+    expect(page.mainEntity).not.toHaveProperty('description');
   });
 });

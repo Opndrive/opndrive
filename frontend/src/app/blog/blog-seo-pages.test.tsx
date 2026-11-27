@@ -150,6 +150,21 @@ describe("a post's page", () => {
 });
 
 describe('an author page', () => {
+  it("titles Opndrive's own page without naming it twice", async () => {
+    service.getAuthor.mockResolvedValue({
+      name: 'Opndrive',
+      slug: 'opndrive',
+      bio: 'Opndrive is a free, open-source web UI for S3-compatible storage. Self-host it to browse, upload and share files on AWS S3, MinIO, Cloudflare R2, Backblaze B2 and more.',
+      sameAs: [],
+      posts: [summary(1)],
+    });
+    const meta = await authorMetadata({ params: Promise.resolve({ slug: 'opndrive' }) });
+
+    expect(meta.title).toBe('About Opndrive: every post on the blog');
+    expect(String(meta.description).length).toBeLessThan(160);
+    expect(String(meta.description)).not.toMatch(/\.\.\.$/);
+  });
+
   it('shows the name and the posts, and no empty bio', async () => {
     service.getAuthor.mockResolvedValue({ ...author, posts: [summary(1), summary(2)] });
     const { container } = render(await AuthorPage({ params: Promise.resolve({ slug: 'yash' }) }));

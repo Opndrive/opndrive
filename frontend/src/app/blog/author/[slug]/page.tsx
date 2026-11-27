@@ -7,7 +7,12 @@ import BlogNavbar from '@/components/blog/blog-navbar';
 import { PostList } from '@/components/blog/post-list';
 import { StructuredData } from '@/components/seo';
 import { isBlogEnabled } from '@/config/features';
-import { generateBreadcrumbSchema, generateProfilePageSchema, getAbsoluteUrl } from '@/lib/seo';
+import {
+  generateBreadcrumbSchema,
+  generateProfilePageSchema,
+  getAbsoluteUrl,
+  isOrganizationAuthor,
+} from '@/lib/seo';
 import { pageSocialMetadata } from '@/lib/seo/social';
 import { isWordPressConfigured } from '@/lib/wordpress/client';
 import { getAuthor } from '@/lib/wordpress/service';
@@ -19,6 +24,9 @@ import { authorPath, descriptionFromText } from '@/lib/wordpress/seo-text';
  *
  * All of it comes from the author's WordPress profile (Users, Profile): the
  * display name, the biographical info, the website and Yoast's contact info.
+ * The posts are published by the Opndrive account, so this page is usually
+ * about the organisation; its structured data says so (see
+ * generateProfilePageSchema).
  * An empty bio is simply left out. An author with no published posts has no
  * page: WordPress does not show them, and neither does this.
  */
@@ -39,7 +47,10 @@ export async function generateMetadata({
   if (!author) return { title: 'Author Not Found' };
 
   const path = authorPath(author.slug);
-  const title = `${author.name}, author at the Opndrive blog`;
+  // Opndrive writing as itself would otherwise be named twice in one title.
+  const title = isOrganizationAuthor(author)
+    ? `About ${author.name}: every post on the blog`
+    : `${author.name}, author at the Opndrive blog`;
   const description = author.bio
     ? descriptionFromText(author.bio)
     : `Every post ${author.name} has written for the Opndrive blog, newest first: guides and fixes for S3-compatible storage.`;

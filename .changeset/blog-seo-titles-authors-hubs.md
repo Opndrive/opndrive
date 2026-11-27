@@ -15,10 +15,12 @@ Blog search titles and descriptions from Yoast, author pages and topic hubs
   its template, ending with WordPress's own site name; that ending is dropped.
 - **The blog index describes the blog** as it is: guides to S3-compatible
   storage, CORS, presigned URL and signature errors, IAM, and self-hosting.
-- **Named authors.** Each post's byline links to the author's page at
+- **Author pages.** Each post's byline links to the author's page at
   `/blog/author/<slug>`, with their name, bio, links and posts, all from their
-  WordPress profile. The post's structured data names the author as a Person;
-  Opndrive stays the publisher.
+  WordPress profile. Posts by the Opndrive account are by the organisation: the
+  post's structured data names the same Organization as author and publisher,
+  and the author page is a ProfilePage about that Organization. A post by a
+  person would name them as a Person.
 - **Topic hubs.** A category with three or more published posts gets a page at
   `/blog/category/<slug>`: its description and its posts, newest first. The
   post's breadcrumb leads to it. A smaller category has no page and no link.
