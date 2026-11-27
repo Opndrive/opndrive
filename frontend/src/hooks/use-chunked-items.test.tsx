@@ -141,6 +141,24 @@ describe('useChunkedItems', () => {
     expect(shown()).toBe(10);
   });
 
+  // The sentinel and the button can fire together. Neither may run past the
+  // list, or the next results to stream in would show two chunks at once.
+  it('never reveals more chunks than the list has', () => {
+    const { rerender } = render(<Harness />);
+
+    act(() => {
+      FakeObserver.current()?.intersect();
+      screen.getByRole('button').click();
+      screen.getByRole('button').click();
+      screen.getByRole('button').click();
+    });
+    expect(shown()).toBe(25);
+
+    rerender(<Harness list={Array.from({ length: 45 }, (_, i) => `item-${i}`)} />);
+
+    expect(shown()).toBe(30);
+  });
+
   // The old version started its timer inside a state updater, which Strict
   // Mode calls twice: one intersection then revealed two chunks.
   it('reveals one chunk per intersection under Strict Mode', () => {

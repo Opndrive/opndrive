@@ -95,3 +95,26 @@ describe('a rename whose name could not be checked', () => {
     expect(notify.error).not.toHaveBeenCalled();
   });
 });
+
+describe('a folder renamed from search results', () => {
+  // Search lists folders from anywhere in the bucket while the drive is still
+  // at the root. The rename and its duplicate check used the folder being
+  // browsed as the parent, so "a/b/photos/" renamed from the root went to
+  // "pictures/" at the root.
+  it('is checked and renamed where it is, not where the user is browsing', async () => {
+    api.fetchDirectoryStructure.mockResolvedValue({ files: [], folders: [] });
+    const deep = { id: 'a/b/photos/', Prefix: 'a/b/photos/', name: 'photos' } as Folder;
+    const { result } = renderHook(() => useRename(), { wrapper });
+
+    act(() => result.current.showRenameDialog(deep, 'folder', ''));
+    await act(async () => {
+      await result.current.handleRenameConfirm('pictures');
+    });
+
+    expect(api.fetchDirectoryStructure).toHaveBeenCalledWith('a/b/pictures/', 1);
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'a/b/photos/',
+      newPrefix: 'a/b/pictures/',
+    });
+  });
+});

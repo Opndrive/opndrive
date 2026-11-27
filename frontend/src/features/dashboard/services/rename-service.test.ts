@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { BYOS3ApiProvider } from '@opndrive/s3-api';
-import { createRenameService } from './rename-service';
+import { createRenameService, folderParentPath } from './rename-service';
 import type { FileItem } from '../types/file';
 import type { Folder } from '../types/folder';
 
@@ -224,6 +224,18 @@ describe('renameFolder', () => {
     expect(api.renameFolder).toHaveBeenCalledWith({
       oldPrefix: 'docs/photos/',
       newPrefix: 'docs/pictures/',
+    });
+  });
+
+  it('renames a folder found by search where it is, whatever folder is open', async () => {
+    const api = fakeApi();
+    const deep = { name: 'photos', Prefix: 'a/b/photos/' } as Folder;
+
+    await createRenameService(api).renameFolder(deep, 'pictures', '');
+
+    expect(api.renameFolder).toHaveBeenCalledWith({
+      oldPrefix: 'a/b/photos/',
+      newPrefix: 'a/b/pictures/',
     });
   });
 
@@ -591,5 +603,17 @@ describe('findUniqueFileName', () => {
     const name = await createRenameService(api).findUniqueFolderName('photos', 'docs');
 
     expect(name).toMatch(/^photos \(\d{13}\)$/);
+  });
+});
+
+describe('folderParentPath', () => {
+  it('reads the parent from the folder prefix', () => {
+    expect(folderParentPath({ Prefix: 'a/b/photos/' }, '')).toBe('a/b/');
+    expect(folderParentPath({ Prefix: 'photos/' }, 'docs/')).toBe('');
+  });
+
+  it('falls back to the open folder when the folder has no prefix', () => {
+    expect(folderParentPath({}, 'docs/')).toBe('docs/');
+    expect(folderParentPath({}, '')).toBe('');
   });
 });

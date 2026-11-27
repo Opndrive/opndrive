@@ -1,9 +1,23 @@
 import { FileItem } from '@/features/dashboard/types/file';
 import { Folder } from '@/features/dashboard/types/folder';
 import { generateS3Key } from '@/features/upload/utils/generate-s3-key';
+import { getParentPrefix } from '@/features/folder-navigation/folder-navigation';
 import { BYOS3ApiProvider } from '@opndrive/s3-api';
 import { folderExists, describeFolderCheckError } from '@/services/folder-existence';
 import { objectExists } from '@/services/object-existence';
+
+/**
+ * The folder a folder sits in: read from its own prefix when it has one.
+ *
+ * A folder found by search can be anywhere in the bucket, while `currentPath`
+ * is the folder the user is browsing. Taken as the parent, a search result
+ * "a/b/photos/" renamed from the root moved the whole tree to "pictures/" at
+ * the root, and the duplicate check looked there too. Only a folder with no
+ * prefix of its own falls back to `currentPath`.
+ */
+export function folderParentPath(folder: Pick<Folder, 'Prefix'>, currentPath: string): string {
+  return folder.Prefix ? getParentPrefix(folder.Prefix) : currentPath || '';
+}
 
 export interface RenameOptions {
   onProgress?: (progress: { status: 'renaming' | 'success' | 'error'; error?: string }) => void;
@@ -198,11 +212,12 @@ class RenameService {
     try {
       onProgress?.({ status: 'renaming' });
 
-      // Both prefixes from generateS3Key, like every other key: it drops a
-      // leading slash and adds the trailing one a path came without.
-      const path = currentPath || '';
-      const oldPrefix = folder.Prefix || generateS3Key(`${folder.name}/`, path);
-      const newPrefix = generateS3Key(`${newName}/`, path);
+      // Renamed where it is. Both prefixes come from generateS3Key, like every
+      // other key: it drops a leading slash and adds the trailing one a path
+      // came without.
+      const parent = folderParentPath(folder, currentPath);
+      const oldPrefix = folder.Prefix || generateS3Key(`${folder.name}/`, parent);
+      const newPrefix = generateS3Key(`${newName}/`, parent);
 
       // Success is decided only from the final settled result, not from a
       // mid-flight progress signal - the new algorithm runs in phases

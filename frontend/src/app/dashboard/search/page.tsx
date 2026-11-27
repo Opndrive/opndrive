@@ -223,14 +223,16 @@ export default function SearchPage() {
       } as FileItem;
     }) || [];
 
-  // Use chunked display for performance with large result sets
+  // Use chunked display for performance with large result sets. A new query
+  // or a new scope is a new list, and starts again at the first chunk.
+  const resultSet = `${query}::${currentPrefix ?? ''}`;
   const {
     displayedItems: displayedFolders,
     canLoadMoreChunks: canLoadMoreFolderChunks,
     sentinelRef: folderSentinelRef,
     loadMoreChunks: loadMoreFolderChunks,
     remainingItems: remainingFolders,
-  } = useChunkedItems(folders, { chunkSize: 100 }, query);
+  } = useChunkedItems(folders, { chunkSize: 100 }, resultSet);
 
   const {
     displayedItems: displayedFiles,
@@ -238,7 +240,7 @@ export default function SearchPage() {
     sentinelRef: fileSentinelRef,
     loadMoreChunks: loadMoreFileChunks,
     remainingItems: remainingFiles,
-  } = useChunkedItems(files, { chunkSize: 100 }, query);
+  } = useChunkedItems(files, { chunkSize: 100 }, resultSet);
 
   // Combined loading and chunking state
   const canLoadMoreChunks = canLoadMoreFolderChunks || canLoadMoreFileChunks;

@@ -19,6 +19,13 @@ Instant search result chunks, one place for S3 keys, and two small cleanups
   name check each had their own copy of `generateS3Key`'s path handling. Both
   now use it, which also fixes renaming a folder inside a path given without its
   trailing slash: `docs` and `photos` made `docsphotos/`. (#67)
+- **Renaming a folder from search results renames it where it is.** The rename,
+  and its check for a folder of the same name, took the folder being browsed as
+  the parent. A search result `a/b/photos/` renamed to `pictures` from the
+  bucket root was moved, whole, to `pictures/` at the root. Both now use the
+  folder's own place.
+- **A new search scope starts at the first chunk**, like a new query; it used to
+  open already expanded.
 - **Cache keys are tested.** The drive store's cache keys come from one helper,
   now covered by tests. (#71)
 - **No placeholder handlers.** The browse page passed three empty click handlers

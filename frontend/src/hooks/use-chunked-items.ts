@@ -70,6 +70,10 @@ export function useChunkedItems<T>(
   const [visibleChunks, setVisibleChunks] = useState(1);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // The most chunks this list can fill. Each reveal stops there, so two
+  // triggers at once (the sentinel and the button) cannot run ahead and make
+  // the next results that stream in appear two chunks at a time.
+  const chunksNeeded = Math.max(1, Math.ceil(items.length / chunkSize));
   const maxVisibleItems = visibleChunks * chunkSize;
   const displayedItems = items.slice(0, maxVisibleItems);
   const canLoadMoreChunks = items.length > maxVisibleItems;
@@ -81,8 +85,8 @@ export function useChunkedItems<T>(
   }, [resetDependency]);
 
   const loadMoreChunks = useCallback(() => {
-    if (canLoadMoreChunks) setVisibleChunks((prev) => prev + 1);
-  }, [canLoadMoreChunks]);
+    if (canLoadMoreChunks) setVisibleChunks((prev) => Math.min(prev + 1, chunksNeeded));
+  }, [canLoadMoreChunks, chunksNeeded]);
 
   /** Reveal the next chunk when the sentinel nears the viewport. */
   useEffect(() => {
@@ -91,7 +95,9 @@ export function useChunkedItems<T>(
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) setVisibleChunks((prev) => prev + 1);
+        if (entry?.isIntersecting) {
+          setVisibleChunks((prev) => Math.min(prev + 1, chunksNeeded));
+        }
       },
       {
         // Trigger when the sentinel is this far from being visible.
@@ -103,7 +109,7 @@ export function useChunkedItems<T>(
     observer.observe(sentinel);
     return () => observer.disconnect();
     // visibleChunks: a fresh observer after each chunk; see above.
-  }, [canLoadMoreChunks, prefetchDistance, visibleChunks]);
+  }, [canLoadMoreChunks, chunksNeeded, prefetchDistance, visibleChunks]);
 
   return {
     displayedItems,
